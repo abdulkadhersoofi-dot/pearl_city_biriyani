@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.env
+.venv/
+venv/
+instance/
+*.egg-info/
+.pytest_cache/
+.DS_Store
+*.log
+.flask_session/
+flask_session/

@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Customers - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Customers</h1>
+  <a href="{{ url_for('customers.new_customer') }}" class="btn btn-primary">+ Add customer</a>
+</div>
+
+<form class="search-bar" method="get">
+  <input type="text" name="q" value="{{ search }}" placeholder="Search by name" class="field-input">
+  <button class="btn btn-secondary">Search</button>
+</form>
+
+<div class="table-wrap card">
+  <table>
+    <thead><tr><th>Name</th><th>GSTIN</th><th>State</th><th>Phone</th><th></th></tr></thead>
+    <tbody>
+    {% for c in customers %}
+      <tr>
+        <td>{{ c.name }}</td>
+        <td>{{ c.gstin or '-' }}</td>
+        <td>{{ c.state_name or '-' }}</td>
+        <td>{{ c.phone or '-' }}</td>
+        <td><a href="{{ url_for('customers.edit_customer', customer_id=c.id) }}">Edit</a></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="5" class="empty-state">No customers yet. Add your first one.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

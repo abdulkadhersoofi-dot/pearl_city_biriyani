@@ -1,0 +1,107 @@
+import enum
+
+from app.extensions import db
+from app.models.invoice_series import DocumentType
+from app.models.mixins import TenantScopedMixin, TimestampMixin
+
+
+class InvoiceStatus(str, enum.Enum):
+    DRAFT = "draft"
+    ISSUED = "issued"
+    VOID = "void"
+
+
+class Invoice(db.Model, TenantScopedMixin, TimestampMixin):
+    """An issued document (Tax Invoice, Bill of Supply, ...). Never
+    hard-deleted - voiding sets status=void and keeps the full audit trail.
+    """
+
+    __tablename__ = "invoices"
+    __table_args__ = (
+        db.UniqueConstraint("tenant_id", "invoice_number", name="uq_invoice_tenant_number"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    gstin_id = db.Column(db.Integer, db.ForeignKey("gstins.id"), nullable=False, index=True)
+    invoice_series_id = db.Column(
+        db.Integer, db.ForeignKey("invoice_series.id"), nullable=False
+    )
+    invoice_number = db.Column(db.String(64), nullable=False, index=True)
+    document_type = db.Column(db.Enum(DocumentType, name="document_type"), nullable=False)
+
+    customer_id = db.Column(db.Integer, db.ForeignKey("customers.id"), nullable=False)
+    # Frozen copy of the customer's name/GSTIN/address at issue time, so a
+    # later edit to the customer master never rewrites history on a past
+    # invoice.
+    customer_snapshot = db.Column(db.JSON, nullable=False)
+
+    place_of_supply_state_code = db.Column(db.String(2), nullable=False)
+    invoice_date = db.Column(db.Date, nullable=False)
+    status = db.Column(
+        db.Enum(InvoiceStatus, name="invoice_status"), nullable=False, default=InvoiceStatus.ISSUED
+    )
+
+    subtotal = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    total_discount = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    total_taxable_value = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    total_cgst = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    total_sgst = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    total_igst = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    round_off = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    grand_total = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+
+    notes = db.Column(db.Text)
+    created_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+
+    voided_at = db.Column(db.DateTime(timezone=True))
+    voided_by_id = db.Column(db.Integer, db.ForeignKey("users.id"))
+    void_reason = db.Column(db.Text)
+
+    gstin = db.relationship("Gstin")
+    series = db.relationship("InvoiceSeries")
+    customer = db.relationship("Customer")
+    created_by = db.relationship("User", foreign_keys=[created_by_id])
+    voided_by = db.relationship("User", foreign_keys=[voided_by_id])
+    lines = db.relationship(
+        "InvoiceLine",
+        backref="invoice",
+        cascade="all, delete-orphan",
+        order_by="InvoiceLine.sort_order",
+    )
+
+    @property
+    def is_intra_state(self) -> bool:
+        return self.gstin is not None and self.place_of_supply_state_code == self.gstin.state_code
+
+    def __repr__(self):
+        return f"<Invoice {self.invoice_number}>"
+
+
+class InvoiceLine(db.Model, TimestampMixin):
+    __tablename__ = "invoice_lines"
+
+    id = db.Column(db.Integer, primary_key=True)
+    invoice_id = db.Column(db.Integer, db.ForeignKey("invoices.id"), nullable=False, index=True)
+    product_id = db.Column(db.Integer, db.ForeignKey("products.id"))
+
+    description = db.Column(db.String(255), nullable=False)
+    hsn_or_sac_code = db.Column(db.String(8))
+    qty = db.Column(db.Numeric(12, 3), nullable=False, default=1)
+    unit = db.Column(db.String(20), nullable=False, default="pcs")
+    rate = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    discount_percent = db.Column(db.Numeric(5, 2), nullable=False, default=0)
+    discount_amount = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+
+    taxable_value = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    gst_rate = db.Column(db.Numeric(5, 2), nullable=False, default=0)
+    cgst_amount = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    sgst_amount = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    igst_amount = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    line_total = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+
+    sort_order = db.Column(db.Integer, nullable=False, default=0)
+
+    product = db.relationship("Product")
+
+    def __repr__(self):
+        return f"<InvoiceLine {self.id} {self.description}>"

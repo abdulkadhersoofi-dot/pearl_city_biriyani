@@ -1,0 +1,8 @@
+{% macro field(f, help=None) %}
+<div class="field {{ 'field-error' if f.errors }}">
+  {{ f.label(class="field-label") }}
+  {{ f(class="field-input") }}
+  {% if help %}<p class="field-help">{{ help }}</p>{% endif %}
+  {% for error in f.errors %}<p class="field-error-msg">{{ error }}</p>{% endfor %}
+</div>
+{% endmacro %}

@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% from "macros.html" import field %}
+{% block title %}Onboard client - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header"><h1>Onboard a new client</h1></div>
+<form method="post" class="card stack" novalidate>
+  {{ form.hidden_tag() }}
+  <div class="form-grid">
+    {{ field(form.legal_name) }}
+    {{ field(form.trade_name) }}
+    {{ field(form.registration_type, help="Composition and unregistered clients issue a Bill of Supply, never a Tax Invoice.") }}
+    {{ field(form.gstin) }}
+    {{ field(form.state_code) }}
+  </div>
+  {{ field(form.registered_address) }}
+  <hr>
+  <h2 style="font-size:1.05rem; margin:0;">Client Admin login</h2>
+  <div class="form-grid">
+    {{ field(form.admin_name) }}
+    {{ field(form.admin_email, help="We'll email a one-time setup code here.") }}
+    {{ field(form.admin_phone) }}
+  </div>
+  <button type="submit" class="btn btn-primary btn-lg">Onboard client</button>
+</form>
+{% endblock %}

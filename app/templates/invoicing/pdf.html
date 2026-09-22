@@ -1,0 +1,99 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @page { size: A4; margin: 18mm 16mm; }
+  body { font-family: "Helvetica Neue", Arial, sans-serif; color: #1f2a24; font-size: 11pt; }
+  h1 { font-size: 16pt; margin: 0 0 2px; }
+  .doc-type { font-size: 11pt; color: #5c6b62; margin: 0 0 16px; }
+  .header { display: flex; justify-content: space-between; border-bottom: 2px solid #1f7a4d; padding-bottom: 12px; margin-bottom: 16px; }
+  .header .firm { text-align: right; }
+  .meta-grid { display: flex; justify-content: space-between; margin-bottom: 16px; }
+  .meta-grid .block { width: 48%; }
+  .meta-grid .label { font-size: 8.5pt; text-transform: uppercase; color: #5c6b62; letter-spacing: .04em; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+  th, td { border: 1px solid #d8ddd6; padding: 6px 8px; font-size: 10pt; text-align: left; }
+  th { background: #f0f2ee; }
+  td.num, th.num { text-align: right; }
+  .totals { width: 45%; margin-left: auto; }
+  .totals td { border: none; padding: 3px 8px; }
+  .totals .grand td { border-top: 1.5px solid #1f2a24; font-weight: 700; font-size: 12pt; }
+  .rcm-badge { display: inline-block; background: #fdecea; color: #b3261e; padding: 2px 8px; border-radius: 4px; font-size: 9pt; font-weight: 700; }
+  .footer-note { margin-top: 24px; font-size: 9pt; color: #5c6b62; }
+</style>
+</head>
+<body>
+  <div class="header">
+    <div>
+      <h1>{{ document_label }}</h1>
+      <p class="doc-type">
+        {{ invoice.invoice_number }}
+        {% if invoice.document_type.value == 'rcm_invoice' %}&nbsp;<span class="rcm-badge">Tax payable on Reverse Charge</span>{% endif %}
+      </p>
+    </div>
+    <div class="firm">
+      <strong>{{ firm_name }}</strong><br>
+      {% if invoice.gstin %}GSTIN: {{ invoice.gstin.gstin }}<br>{{ invoice.gstin.registered_address or '' }}{% endif %}
+    </div>
+  </div>
+
+  <div class="meta-grid">
+    <div class="block">
+      <div class="label">Billed to</div>
+      <strong>{{ invoice.customer_snapshot.name }}</strong><br>
+      {% if invoice.customer_snapshot.gstin %}GSTIN: {{ invoice.customer_snapshot.gstin }}<br>{% endif %}
+      {{ invoice.customer_snapshot.address_line1 or '' }} {{ invoice.customer_snapshot.address_line2 or '' }}<br>
+      {{ invoice.customer_snapshot.city or '' }} {{ invoice.customer_snapshot.state_name or '' }} {{ invoice.customer_snapshot.pincode or '' }}
+    </div>
+    <div class="block">
+      <div class="label">Invoice date</div>
+      {{ invoice.invoice_date.strftime('%d %b %Y') }}<br><br>
+      <div class="label">Place of supply</div>
+      {{ invoice.place_of_supply_state_code }}
+    </div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>#</th><th>Description</th><th>HSN/SAC</th><th class="num">Qty</th><th class="num">Rate</th>
+        <th class="num">Discount</th><th class="num">Taxable</th>
+        {% if invoice.total_igst %}<th class="num">IGST</th>{% else %}<th class="num">CGST</th><th class="num">SGST</th>{% endif %}
+        <th class="num">Total</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for l in invoice.lines %}
+      <tr>
+        <td>{{ loop.index }}</td>
+        <td>{{ l.description }}</td>
+        <td>{{ l.hsn_or_sac_code or '-' }}</td>
+        <td class="num">{{ l.qty }} {{ l.unit }}</td>
+        <td class="num">{{ '%.2f'|format(l.rate) }}</td>
+        <td class="num">{{ '%.2f'|format(l.discount_amount) }}</td>
+        <td class="num">{{ '%.2f'|format(l.taxable_value) }}</td>
+        {% if invoice.total_igst %}<td class="num">{{ '%.2f'|format(l.igst_amount) }}</td>
+        {% else %}<td class="num">{{ '%.2f'|format(l.cgst_amount) }}</td><td class="num">{{ '%.2f'|format(l.sgst_amount) }}</td>{% endif %}
+        <td class="num">{{ '%.2f'|format(l.line_total) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <table class="totals">
+    <tr><td>Taxable value</td><td class="num">Rs. {{ '%.2f'|format(invoice.total_taxable_value) }}</td></tr>
+    {% if invoice.total_cgst %}<tr><td>CGST</td><td class="num">Rs. {{ '%.2f'|format(invoice.total_cgst) }}</td></tr>{% endif %}
+    {% if invoice.total_sgst %}<tr><td>SGST</td><td class="num">Rs. {{ '%.2f'|format(invoice.total_sgst) }}</td></tr>{% endif %}
+    {% if invoice.total_igst %}<tr><td>IGST</td><td class="num">Rs. {{ '%.2f'|format(invoice.total_igst) }}</td></tr>{% endif %}
+    <tr><td>Round off</td><td class="num">Rs. {{ '%.2f'|format(invoice.round_off) }}</td></tr>
+    <tr class="grand"><td>Total</td><td class="num">Rs. {{ '%.2f'|format(invoice.grand_total) }}</td></tr>
+  </table>
+
+  {% if invoice.notes %}<p>{{ invoice.notes }}</p>{% endif %}
+
+  <p class="footer-note">
+    This is a system-generated {{ document_label|lower }}{% if invoice.status.value == 'void' %} - VOID{% endif %}.
+  </p>
+</body>
+</html>

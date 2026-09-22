@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+{% from "macros.html" import field %}
+{% block title %}New invoice - {{ firm_name }}{% endblock %}
+
+{% block head %}
+<script>
+  const GSTIN_STATE = { {% for g in current_user.tenant.gstins %}{{ g.id }}: "{{ g.state_code }}",{% endfor %} };
+  const PRODUCTS_BY_NAME = { {% for p in products %}"{{ p.name|e }}": {hsn: "{{ p.hsn_or_sac_code }}", rate: {{ p.default_price }}, gst_rate: {{ p.gst_rate }}, unit: "{{ p.unit }}", id: {{ p.id }}},{% endfor %} };
+  const BILL_OF_SUPPLY = "bill_of_supply";
+  const PREFILL_LINES = [
+    {% for l in (duplicate_from.lines if duplicate_from else []) %}
+    {description: {{ l.description|tojson }}, hsn: {{ (l.hsn_or_sac_code or '')|tojson }}, qty: {{ l.qty }}, rate: {{ l.rate }}, discount: {{ l.discount_percent }}, gst_rate: {{ l.gst_rate }}, unit: {{ (l.unit or 'pcs')|tojson }}, product_id: {{ l.product_id or 'null' }}},
+    {% endfor %}
+  ];
+</script>
+{% endblock %}
+
+{% block content %}
+<div class="page-header"><h1>New invoice</h1></div>
+
+<form method="post" novalidate x-data="invoiceForm()" x-init="init()">
+  {{ form.hidden_tag() }}
+
+  <div class="card" style="margin-bottom:20px;">
+    <div class="form-grid">
+      <div class="field {{ 'field-error' if form.gstin_id.errors }}">
+        {{ form.gstin_id.label(class="field-label") }}
+        {{ form.gstin_id(class="field-input", **{"@change": "recalc()"}) }}
+      </div>
+      <div class="field {{ 'field-error' if form.document_type.errors }}">
+        {{ form.document_type.label(class="field-label") }}
+        {{ form.document_type(class="field-input", **{"@change": "recalc()"}) }}
+      </div>
+      {{ field(form.invoice_date) }}
+      <div class="field">
+        {{ form.place_of_supply_state_code.label(class="field-label") }}
+        {{ form.place_of_supply_state_code(class="field-input", **{"x-model": "placeOfSupply", "@change": "recalc()"}) }}
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:20px;">
+    <div class="field">
+      {{ form.customer_id.label(class="field-label") }}
+      {{ form.customer_id(class="field-input", **{"x-model": "customerId"}) }}
+    </div>
+    <template x-if="customerId === 'new'">
+      <div class="form-grid" style="margin-top:12px;">
+        {{ field(form.new_customer_name) }}
+        {{ field(form.new_customer_gstin) }}
+        {{ field(form.new_customer_address) }}
+        {{ field(form.new_customer_state_code) }}
+      </div>
+    </template>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0;">Items</h2>
+    <div class="line-items table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th style="min-width:220px;">Item / description</th>
+            <th>HSN/SAC</th>
+            <th style="width:90px;">Qty</th>
+            <th style="width:110px;">Rate</th>
+            <th style="width:90px;">Disc %</th>
+            <th style="width:90px;">GST %</th>
+            <th style="width:110px;">Amount</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="(line, i) in lines" :key="i">
+            <tr class="line-item-row">
+              <td>
+                <input type="text" list="product-names" x-model="line.description"
+                       @change="applyProduct(line)" name="line_description[]" placeholder="Item name">
+              </td>
+              <td><input type="text" x-model="line.hsn" name="line_hsn[]"></td>
+              <td><input type="number" step="0.001" min="0" x-model.number="line.qty" @input="recalc()" name="line_qty[]"></td>
+              <td><input type="number" step="0.01" min="0" x-model.number="line.rate" @input="recalc()" name="line_rate[]"></td>
+              <td><input type="number" step="0.01" min="0" x-model.number="line.discount" @input="recalc()" name="line_discount[]"></td>
+              <td><input type="number" step="0.01" min="0" x-model.number="line.gst_rate" @input="recalc()" name="line_gst_rate[]"></td>
+              <td class="text-muted" x-text="lineAmount(line)"></td>
+              <td>
+                <input type="hidden" name="line_product_id[]" :value="line.product_id || ''">
+                <input type="hidden" name="line_unit[]" :value="line.unit">
+                <button type="button" class="btn btn-quiet" @click="removeLine(i)" x-show="lines.length > 1">&times;</button>
+              </td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+    <datalist id="product-names">
+      {% for p in products %}<option value="{{ p.name }}">{% endfor %}
+    </datalist>
+    <button type="button" class="btn btn-secondary" style="margin-top:12px;" @click="addLine()">+ Add item</button>
+  </div>
+
+  <div class="totals-panel">
+    <div class="totals-box">
+      <div class="totals-row"><span>Taxable value</span><span x-text="'Rs. ' + totals.taxable.toFixed(2)"></span></div>
+      <template x-if="isIntraState()">
+        <div>
+          <div class="totals-row"><span>CGST</span><span x-text="'Rs. ' + totals.cgst.toFixed(2)"></span></div>
+          <div class="totals-row"><span>SGST</span><span x-text="'Rs. ' + totals.sgst.toFixed(2)"></span></div>
+        </div>
+      </template>
+      <template x-if="!isIntraState()">
+        <div class="totals-row"><span>IGST</span><span x-text="'Rs. ' + totals.igst.toFixed(2)"></span></div>
+      </template>
+      <div class="totals-row grand"><span>Total</span><span x-text="'Rs. ' + totals.grand.toFixed(2)"></span></div>
+    </div>
+  </div>
+
+  {{ field(form.notes) }}
+
+  <button type="submit" class="btn btn-primary btn-lg btn-block">Save &amp; issue invoice</button>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function invoiceForm() {
+  return {
+    lines: PREFILL_LINES.length ? PREFILL_LINES : [{description:'', hsn:'', qty:1, rate:0, discount:0, gst_rate:0, unit:'pcs', product_id:null}],
+    customerId: document.querySelector('[name=customer_id]')?.value || '',
+    placeOfSupply: document.querySelector('[name=place_of_supply_state_code]')?.value || '',
+    totals: { taxable: 0, cgst: 0, sgst: 0, igst: 0, grand: 0 },
+    init() { this.recalc(); },
+    isIntraState() {
+      const gstinSelect = document.querySelector('[name=gstin_id]');
+      const gstinState = GSTIN_STATE[gstinSelect ? gstinSelect.value : ''] || '';
+      return gstinState && gstinState === this.placeOfSupply;
+    },
+    chargesGst() {
+      const docType = document.querySelector('[name=document_type]');
+      return !docType || docType.value !== BILL_OF_SUPPLY;
+    },
+    applyProduct(line) {
+      const p = PRODUCTS_BY_NAME[line.description];
+      if (p) {
+        line.hsn = p.hsn; line.rate = p.rate; line.gst_rate = p.gst_rate; line.unit = p.unit; line.product_id = p.id;
+      }
+      this.recalc();
+    },
+    lineAmount(line) {
+      const gross = (line.qty || 0) * (line.rate || 0);
+      const discount = gross * (line.discount || 0) / 100;
+      const taxable = gross - discount;
+      const gstRate = this.chargesGst() ? (line.gst_rate || 0) : 0;
+      const tax = taxable * gstRate / 100;
+      return 'Rs. ' + (taxable + tax).toFixed(2);
+    },
+    addLine() { this.lines.push({description:'', hsn:'', qty:1, rate:0, discount:0, gst_rate:0, unit:'pcs', product_id:null}); },
+    removeLine(i) { this.lines.splice(i, 1); this.recalc(); },
+    recalc() {
+      let taxable = 0, tax = 0;
+      const chargesGst = this.chargesGst();
+      this.lines.forEach(line => {
+        const gross = (line.qty || 0) * (line.rate || 0);
+        const discount = gross * (line.discount || 0) / 100;
+        const lineTaxable = gross - discount;
+        taxable += lineTaxable;
+        if (chargesGst) tax += lineTaxable * (line.gst_rate || 0) / 100;
+      });
+      this.totals.taxable = taxable;
+      if (this.isIntraState()) {
+        this.totals.cgst = tax / 2; this.totals.sgst = tax / 2; this.totals.igst = 0;
+      } else {
+        this.totals.cgst = 0; this.totals.sgst = 0; this.totals.igst = tax;
+      }
+      this.totals.grand = Math.round(taxable + tax);
+    }
+  };
+}
+</script>
+{% endblock %}

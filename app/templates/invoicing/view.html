@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}{{ invoice.invoice_number }} - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>{{ invoice.invoice_number }}</h1>
+    <p class="text-muted mt-0">
+      {{ document_label }} ·
+      <span class="status-badge status-{{ invoice.status.value }}">{{ invoice.status.value|title }}</span>
+    </p>
+  </div>
+  <div class="row">
+    <a href="{{ url_for('invoicing.invoice_pdf', invoice_id=invoice.id) }}" class="btn btn-secondary" target="_blank">Download PDF</a>
+    {% if invoice.status.value == 'issued' %}
+    <a href="{{ url_for('invoicing.new_invoice', duplicate_from=invoice.id) }}" class="btn btn-secondary">Duplicate</a>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:20px;">
+  <div class="form-grid">
+    <div><strong>Customer</strong><p>{{ invoice.customer_snapshot.name }}<br>
+      {% if invoice.customer_snapshot.gstin %}GSTIN: {{ invoice.customer_snapshot.gstin }}<br>{% endif %}
+      {{ invoice.customer_snapshot.state_name }}</p></div>
+    <div><strong>Invoice date</strong><p>{{ invoice.invoice_date.strftime('%d %b %Y') }}</p></div>
+    <div><strong>Place of supply</strong><p>{{ invoice.place_of_supply_state_code }}</p></div>
+  </div>
+</div>
+
+<div class="table-wrap card">
+  <table>
+    <thead><tr><th>Item</th><th>HSN/SAC</th><th>Qty</th><th>Rate</th><th>GST %</th><th>Amount</th></tr></thead>
+    <tbody>
+    {% for l in invoice.lines %}
+      <tr>
+        <td>{{ l.description }}</td>
+        <td>{{ l.hsn_or_sac_code or '-' }}</td>
+        <td>{{ l.qty }} {{ l.unit }}</td>
+        <td>Rs. {{ '%.2f'|format(l.rate) }}</td>
+        <td>{{ l.gst_rate }}%</td>
+        <td>Rs. {{ '%.2f'|format(l.line_total) }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="totals-panel">
+  <div class="totals-box">
+    <div class="totals-row"><span>Taxable value</span><span>Rs. {{ '%.2f'|format(invoice.total_taxable_value) }}</span></div>
+    {% if invoice.total_cgst %}<div class="totals-row"><span>CGST</span><span>Rs. {{ '%.2f'|format(invoice.total_cgst) }}</span></div>{% endif %}
+    {% if invoice.total_sgst %}<div class="totals-row"><span>SGST</span><span>Rs. {{ '%.2f'|format(invoice.total_sgst) }}</span></div>{% endif %}
+    {% if invoice.total_igst %}<div class="totals-row"><span>IGST</span><span>Rs. {{ '%.2f'|format(invoice.total_igst) }}</span></div>{% endif %}
+    <div class="totals-row"><span>Round off</span><span>Rs. {{ '%.2f'|format(invoice.round_off) }}</span></div>
+    <div class="totals-row grand"><span>Total</span><span>Rs. {{ '%.2f'|format(invoice.grand_total) }}</span></div>
+  </div>
+</div>
+
+{% if invoice.status.value == 'issued' %}
+<div class="card" style="margin-top:20px;">
+  <h2 style="margin-top:0;">Void this invoice</h2>
+  <p class="text-muted">Invoices are never deleted - voiding keeps it on record with the reason, for audit.</p>
+  <form method="post" action="{{ url_for('invoicing.void_invoice_route', invoice_id=invoice.id) }}"
+        onsubmit="return confirm('Void invoice {{ invoice.invoice_number }}? This cannot be undone.');" class="row">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="text" name="reason" placeholder="Reason for voiding" required class="field-input" style="flex:1; min-width:200px;">
+    <button class="btn btn-danger">Void invoice</button>
+  </form>
+</div>
+{% elif invoice.status.value == 'void' %}
+<div class="card" style="margin-top:20px;">
+  <p><strong>Voided</strong> on {{ invoice.voided_at.strftime('%d %b %Y %H:%M') }} by {{ invoice.voided_by.name if invoice.voided_by else '-' }}.</p>
+  <p class="text-muted">Reason: {{ invoice.void_reason }}</p>
+</div>
+{% endif %}
+{% endblock %}

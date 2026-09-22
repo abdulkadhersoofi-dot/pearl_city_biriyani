@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% from "macros.html" import field %}
+{% block title %}{{ 'Edit item' if product else 'New item' }} - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header"><h1>{{ 'Edit item' if product else 'New item' }}</h1></div>
+<form method="post" class="card stack" novalidate>
+  {{ form.hidden_tag() }}
+  {{ field(form.name) }}
+  {{ field(form.description) }}
+  <div class="form-grid">
+    {{ field(form.hsn_or_sac_code) }}
+    {{ field(form.gst_rate) }}
+    {{ field(form.unit) }}
+    {{ field(form.default_price) }}
+  </div>
+  <button type="submit" class="btn btn-primary btn-lg">Save</button>
+</form>
+{% if product %}
+<form method="post" action="{{ url_for('products.deactivate_product', product_id=product.id) }}"
+      style="margin-top:12px;"
+      onsubmit="return confirm('Remove {{ product.name }} from the active list?');">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <button class="btn btn-quiet">Remove</button>
+</form>
+{% endif %}
+{% endblock %}

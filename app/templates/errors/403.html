@@ -1,0 +1,9 @@
+{% extends "base.html" if current_user.is_authenticated else "auth_base.html" %}
+{% block title %}Not allowed - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="empty-state">
+  <h1>You don't have access to this page</h1>
+  <p>If you think this is a mistake, ask your administrator.</p>
+  <a href="{{ url_for('main.index') }}" class="btn btn-secondary">Go back</a>
+</div>
+{% endblock %}

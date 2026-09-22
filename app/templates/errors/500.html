@@ -1,0 +1,9 @@
+{% extends "base.html" if current_user.is_authenticated else "auth_base.html" %}
+{% block title %}Something went wrong - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="empty-state">
+  <h1>Something went wrong</h1>
+  <p>Please try again. If this keeps happening, contact support.</p>
+  <a href="{{ url_for('main.index') }}" class="btn btn-secondary">Go back</a>
+</div>
+{% endblock %}

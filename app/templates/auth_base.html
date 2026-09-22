@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5">
+  <title>{% block title %}{{ firm_name }}{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+</head>
+<body class="auth-body">
+  <div class="auth-wrap">
+    <div class="auth-card">
+      <h1 class="auth-brand">{{ firm_name }}</h1>
+      {% include "_flashes.html" %}
+      {% block content %}{% endblock %}
+    </div>
+  </div>
+</body>
+</html>

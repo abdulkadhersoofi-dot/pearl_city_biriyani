@@ -1,0 +1,14 @@
+{% extends "auth_base.html" %}
+{% from "macros.html" import field %}
+{% block title %}Sign in - {{ firm_name }}{% endblock %}
+{% block content %}
+<form method="post" class="stack" novalidate>
+  {{ form.hidden_tag() }}
+  {{ field(form.email) }}
+  {{ field(form.password) }}
+  <button type="submit" class="btn btn-primary btn-block btn-lg">Sign in</button>
+</form>
+<p class="text-muted" style="text-align:center; margin-top:16px;">
+  <a href="{{ url_for('auth.forgot_password') }}">Forgot password?</a>
+</p>
+{% endblock %}

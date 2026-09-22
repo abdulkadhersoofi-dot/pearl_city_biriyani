@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Audit log - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header"><h1>Audit log</h1></div>
+<div class="table-wrap card">
+  <table>
+    <thead><tr><th>When</th><th>Actor</th><th>Action</th><th>Client</th><th>Entity</th><th>IP</th></tr></thead>
+    <tbody>
+    {% for log in logs %}
+      <tr>
+        <td>{{ log.created_at.strftime('%d %b %Y %H:%M') }}</td>
+        <td>{{ log.actor.name if log.actor else 'System' }}</td>
+        <td>{{ log.action|replace('_',' ') }}</td>
+        <td>{{ log.tenant.legal_name if log.tenant else '-' }}</td>
+        <td>{{ log.entity_type or '-' }}{% if log.entity_id %} #{{ log.entity_id }}{% endif %}</td>
+        <td>{{ log.ip_address or '-' }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6" class="empty-state">No activity recorded yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

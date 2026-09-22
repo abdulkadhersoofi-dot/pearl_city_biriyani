@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Clients - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Clients</h1>
+  <a href="{{ url_for('tenants.onboard') }}" class="btn btn-primary">+ Onboard client</a>
+</div>
+
+<div class="table-wrap card">
+  <table>
+    <thead>
+      <tr><th>Business</th><th>GSTIN</th><th>Registration</th><th>Status</th><th>Onboarded</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for tenant in tenants %}
+      <tr>
+        <td><a href="{{ url_for('tenants.detail', tenant_id=tenant.id) }}">{{ tenant.legal_name }}</a></td>
+        <td>{{ tenant.gstins.first().gstin if tenant.gstins.first() else '-' }}</td>
+        <td>{{ tenant.registration_type.value|title }}</td>
+        <td>
+          {% if tenant.is_active %}<span class="status-badge status-issued">Active</span>
+          {% else %}<span class="status-badge status-void">Inactive</span>{% endif %}
+        </td>
+        <td>{{ tenant.created_at.strftime('%d %b %Y') }}</td>
+        <td><a href="{{ url_for('tenants.detail', tenant_id=tenant.id) }}">View</a></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" class="empty-state">No clients onboarded yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
