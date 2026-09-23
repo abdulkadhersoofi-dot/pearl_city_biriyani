@@ -4,6 +4,7 @@ from app.models.invoice_series import InvoiceSeries, DocumentType, DOCUMENT_TYPE
 from app.models.customer import Customer
 from app.models.product import Product
 from app.models.invoice import Invoice, InvoiceLine, InvoiceStatus
+from app.models.pos_bill import POSBill, POSBillLine, POSBillStatus, PaymentMode
 from app.models.audit_log import AuditLog
 
 __all__ = [
@@ -21,5 +22,9 @@ __all__ = [
     "Invoice",
     "InvoiceLine",
     "InvoiceStatus",
+    "POSBill",
+    "POSBillLine",
+    "POSBillStatus",
+    "PaymentMode",
     "AuditLog",
 ]

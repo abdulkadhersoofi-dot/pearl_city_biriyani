@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Receipt {{ bill.bill_number }} - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>{{ bill.bill_number }}</h1>
+    <p class="text-muted mt-0">
+      {{ bill.completed_at.strftime('%d %b %Y %H:%M') if bill.completed_at else '' }} ·
+      <span class="status-badge status-{{ 'issued' if bill.status.value == 'completed' else 'void' }}">{{ bill.status.value|title }}</span>
+    </p>
+  </div>
+  <div class="row">
+    <a href="{{ url_for('pos.terminal') }}" class="btn btn-primary btn-lg">New sale</a>
+  </div>
+</div>
+
+<div class="card" style="max-width:420px;">
+  <table>
+    <thead><tr><th>Item</th><th>Qty</th><th>Amount</th></tr></thead>
+    <tbody>
+    {% for l in bill.lines %}
+      <tr>
+        <td>{{ l.description }}</td>
+        <td>{{ l.qty }} {{ l.unit }}</td>
+        <td>Rs. {{ '%.2f'|format(l.line_total) }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <div class="totals-panel" style="justify-content:stretch;">
+    <div class="totals-box" style="width:100%;">
+      <div class="totals-row"><span>Taxable value</span><span>Rs. {{ '%.2f'|format(bill.total_taxable_value) }}</span></div>
+      {% if bill.total_cgst %}<div class="totals-row"><span>CGST</span><span>Rs. {{ '%.2f'|format(bill.total_cgst) }}</span></div>{% endif %}
+      {% if bill.total_sgst %}<div class="totals-row"><span>SGST</span><span>Rs. {{ '%.2f'|format(bill.total_sgst) }}</span></div>{% endif %}
+      {% if bill.total_igst %}<div class="totals-row"><span>IGST</span><span>Rs. {{ '%.2f'|format(bill.total_igst) }}</span></div>{% endif %}
+      <div class="totals-row grand"><span>Total</span><span>Rs. {{ '%.2f'|format(bill.grand_total) }}</span></div>
+      <div class="totals-row"><span>Paid via</span><span>{{ bill.payment_mode.value|upper if bill.payment_mode else '-' }}</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="row" style="margin-top:20px;">
+  <a href="{{ url_for('pos.receipt_pdf', bill_id=bill.id, format='80mm') }}" class="btn btn-secondary" target="_blank">Print - 80mm</a>
+  <a href="{{ url_for('pos.receipt_pdf', bill_id=bill.id, format='58mm') }}" class="btn btn-secondary" target="_blank">Print - 58mm</a>
+  <a href="{{ url_for('pos.receipt_pdf', bill_id=bill.id, format='a4') }}" class="btn btn-secondary" target="_blank">A4 copy</a>
+  {% if bill.status.value == 'completed' %}
+  <form method="post" action="{{ url_for('pos.refund_bill_route', bill_id=bill.id) }}" class="row" style="margin-left:auto;"
+        onsubmit="return confirm('Refund this sale?');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="amount" value="{{ bill.grand_total }}">
+    <input type="text" name="reason" placeholder="Refund reason" required class="field-input" style="min-width:160px;">
+    <button class="btn btn-danger">Refund</button>
+  </form>
+  {% endif %}
+</div>
+
+{% if auto_print %}
+<div class="card" style="max-width:420px; margin-top:20px;">
+  <h2 style="margin-top:0;">Receipt preview</h2>
+  <iframe id="receipt-frame" src="{{ url_for('pos.receipt_pdf', bill_id=bill.id, format='80mm') }}"
+          style="width:100%; height:420px; border:1px solid var(--color-border); border-radius:var(--radius);"></iframe>
+  <button type="button" class="btn btn-primary btn-block" style="margin-top:12px;"
+          onclick="document.getElementById('receipt-frame').contentWindow.print()">Print receipt</button>
+</div>
+{% endif %}
+{% endblock %}

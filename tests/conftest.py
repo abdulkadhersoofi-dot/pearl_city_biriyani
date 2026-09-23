@@ -66,3 +66,18 @@ def client_admin(db, tenant):
     db.session.add(user)
     db.session.commit()
     return user
+
+
+@pytest.fixture()
+def staff(db, tenant):
+    user = User(
+        tenant_id=tenant.id,
+        name="Cashier",
+        email="cashier@acme.example.com",
+        role=UserRole.STAFF,
+        must_change_password=False,
+    )
+    user.set_password("CashierSecret123")
+    db.session.add(user)
+    db.session.commit()
+    return user

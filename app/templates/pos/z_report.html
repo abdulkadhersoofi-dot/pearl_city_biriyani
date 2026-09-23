@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Z-report {{ report.date.isoformat() }} - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>End-of-day Z-report</h1>
+  <form method="get" class="row">
+    <input type="date" name="date" value="{{ report.date.isoformat() }}" class="field-input" onchange="this.form.submit()">
+    <a href="{{ url_for('pos.day_book', date=report.date.isoformat()) }}" class="btn btn-secondary">Day-book</a>
+  </form>
+</div>
+
+<div class="form-grid" style="margin-bottom:20px;">
+  <div class="card">
+    <p class="text-muted mt-0">Bills</p>
+    <p style="font-size:1.8rem; font-weight:800; margin:0;">{{ report.bill_count }}</p>
+  </div>
+  <div class="card">
+    <p class="text-muted mt-0">Total sales</p>
+    <p style="font-size:1.8rem; font-weight:800; margin:0;">Rs. {{ '%.2f'|format(report.total_sales) }}</p>
+  </div>
+  <div class="card">
+    <p class="text-muted mt-0">Tax collected</p>
+    <p style="font-size:1.8rem; font-weight:800; margin:0;">Rs. {{ '%.2f'|format(report.total_tax) }}</p>
+  </div>
+  <div class="card">
+    <p class="text-muted mt-0">Refunds</p>
+    <p style="font-size:1.8rem; font-weight:800; margin:0;">Rs. {{ '%.2f'|format(report.total_refunds) }}</p>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:20px;">
+  <h2 style="margin-top:0;">Payment mode split</h2>
+  <table>
+    <thead><tr><th>Mode</th><th>Bills</th><th>Total</th></tr></thead>
+    <tbody>
+    {% for mode in PaymentMode %}
+      <tr>
+        <td>{{ mode.value|upper }}</td>
+        <td>{{ report.by_mode[mode].count }}</td>
+        <td>Rs. {{ '%.2f'|format(report.by_mode[mode].total) }}</td>
+      </tr>
+    {% endfor %}
+    <tr class="bold">
+      <td><strong>Net sales</strong></td>
+      <td></td>
+      <td><strong>Rs. {{ '%.2f'|format(report.net_sales) }}</strong></td>
+    </tr>
+    </tbody>
+  </table>
+</div>
+{% endblock %}

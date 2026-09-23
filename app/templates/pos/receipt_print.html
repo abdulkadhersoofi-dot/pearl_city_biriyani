@@ -1,0 +1,73 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @page { size: {{ page_size }}; margin: {{ '3mm' if is_thermal else '16mm' }}; }
+  body {
+    font-family: "Courier New", monospace;
+    font-size: {{ '10pt' if is_thermal else '11pt' }};
+    color: #000;
+    margin: 0;
+  }
+  .center { text-align: center; }
+  .right { text-align: right; }
+  .bold { font-weight: 700; }
+  .rule { border-top: 1px dashed #000; margin: {{ '6px 0' if is_thermal else '10px 0' }}; }
+  table { width: 100%; border-collapse: collapse; }
+  td { padding: 2px 0; vertical-align: top; }
+  .line-desc { width: 100%; }
+  .totals td { padding: 3px 0; }
+  .grand { font-size: {{ '12pt' if is_thermal else '14pt' }}; font-weight: 700; }
+  .small { font-size: {{ '8pt' if is_thermal else '9pt' }}; color: #333; }
+</style>
+</head>
+<body>
+  <div class="center">
+    <div class="bold">{{ firm_name }}</div>
+    {% if bill.gstin %}<div class="small">GSTIN: {{ bill.gstin.gstin }}</div>{% endif %}
+  </div>
+  <div class="rule"></div>
+  <table>
+    <tr><td>Receipt</td><td class="right bold">{{ bill.bill_number }}</td></tr>
+    <tr><td>Date</td><td class="right">{{ bill.completed_at.strftime('%d %b %Y %H:%M') if bill.completed_at else '' }}</td></tr>
+    {% if bill.customer_snapshot %}<tr><td>Customer</td><td class="right">{{ bill.customer_snapshot.name }}</td></tr>{% endif %}
+  </table>
+  <div class="rule"></div>
+
+  <table>
+    {% for l in bill.lines %}
+    <tr>
+      <td class="line-desc" colspan="2">{{ l.description }}</td>
+    </tr>
+    <tr>
+      <td>{{ l.qty }} {{ l.unit }} x {{ '%.2f'|format(l.rate) }}</td>
+      <td class="right">{{ '%.2f'|format(l.line_total) }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  <div class="rule"></div>
+
+  <table class="totals">
+    <tr><td>Taxable value</td><td class="right">{{ '%.2f'|format(bill.total_taxable_value) }}</td></tr>
+    {% if bill.total_cgst %}<tr><td>CGST</td><td class="right">{{ '%.2f'|format(bill.total_cgst) }}</td></tr>{% endif %}
+    {% if bill.total_sgst %}<tr><td>SGST</td><td class="right">{{ '%.2f'|format(bill.total_sgst) }}</td></tr>{% endif %}
+    {% if bill.total_igst %}<tr><td>IGST</td><td class="right">{{ '%.2f'|format(bill.total_igst) }}</td></tr>{% endif %}
+    <tr><td>Round off</td><td class="right">{{ '%.2f'|format(bill.round_off) }}</td></tr>
+    <tr class="grand"><td>TOTAL</td><td class="right">Rs. {{ '%.2f'|format(bill.grand_total) }}</td></tr>
+  </table>
+  <div class="rule"></div>
+  <table>
+    <tr><td>Paid via</td><td class="right">{{ bill.payment_mode.value|upper if bill.payment_mode else '-' }}</td></tr>
+  </table>
+
+  {% if bill.status.value == 'refunded' %}
+  <div class="rule"></div>
+  <div class="center bold">REFUNDED</div>
+  <div class="center small">Rs. {{ '%.2f'|format(bill.refunded_amount) }} on {{ bill.refunded_at.strftime('%d %b %Y') if bill.refunded_at else '' }}</div>
+  {% endif %}
+
+  <div class="rule"></div>
+  <div class="center small">Thank you, visit again!</div>
+</body>
+</html>

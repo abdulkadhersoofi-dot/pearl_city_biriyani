@@ -1,0 +1,214 @@
+{% extends "base.html" %}
+{% block title %}POS - {{ firm_name }}{% endblock %}
+
+{% block head %}
+<script>
+  const PRODUCTS = [
+    {% for p in products %}
+    {id: {{ p.id }}, name: {{ p.name|tojson }}, hsn: {{ (p.hsn_or_sac_code or '')|tojson }}, rate: {{ p.default_price }}, gst_rate: {{ p.gst_rate }}, unit: {{ p.unit|tojson }}},
+    {% endfor %}
+  ];
+  const PREFILL_CART = [
+    {% for l in (resume_bill.lines if resume_bill else []) %}
+    {product_id: {{ l.product_id or 'null' }}, description: {{ l.description|tojson }}, hsn: {{ (l.hsn_or_sac_code or '')|tojson }}, rate: {{ l.rate }}, gst_rate: {{ l.gst_rate }}, unit: {{ (l.unit or 'pcs')|tojson }}, qty: {{ l.qty }}},
+    {% endfor %}
+  ];
+</script>
+{% endblock %}
+
+{% block content %}
+<div x-data="posTerminal()" x-init="init()">
+  <div class="page-header">
+    <h1>POS billing</h1>
+    <div class="row">
+      {% if held_bills %}
+      <button type="button" class="btn btn-secondary" @click="showHeld = !showHeld">
+        Held bills ({{ held_bills|length }})
+      </button>
+      {% endif %}
+      <a href="{{ url_for('pos.day_book') }}" class="btn btn-quiet">Day-book</a>
+      <a href="{{ url_for('pos.z_report_view') }}" class="btn btn-quiet">Z-report</a>
+    </div>
+  </div>
+
+  {% if held_bills %}
+  <div class="card" style="margin-bottom:16px;" x-show="showHeld" x-cloak>
+    <table>
+      <thead><tr><th>Label</th><th>Items</th><th>Total</th><th>Held at</th><th></th></tr></thead>
+      <tbody>
+      {% for hb in held_bills %}
+        <tr>
+          <td>{{ hb.hold_label or ('Bill #' ~ hb.id) }}</td>
+          <td>{{ hb.lines|length }} item(s)</td>
+          <td>Rs. {{ '%.2f'|format(hb.grand_total) }}</td>
+          <td>{{ hb.created_at.strftime('%H:%M') }}</td>
+          <td class="row">
+            <a href="{{ url_for('pos.terminal', resume=hb.id) }}" class="btn btn-quiet">Resume</a>
+            <form method="post" action="{{ url_for('pos.discard_held', bill_id=hb.id) }}"
+                  onsubmit="return confirm('Discard this held bill?');">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="btn btn-quiet">Discard</button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  <div class="pos-layout">
+    <div>
+      <input type="text" class="field-input pos-search" placeholder="Search items..."
+             x-model="search" autofocus>
+      <div class="product-grid">
+        <template x-for="p in filteredProducts()" :key="p.id">
+          <button type="button" class="product-tile" @click="addToCart(p)">
+            <span class="tile-name" x-text="p.name"></span>
+            <span class="tile-price" x-text="'Rs. ' + p.rate.toFixed(2)"></span>
+          </button>
+        </template>
+      </div>
+      <p class="text-muted" x-show="filteredProducts().length === 0" style="margin-top:20px;">
+        No items match "<span x-text="search"></span>".
+      </p>
+    </div>
+
+    <div class="cart-panel">
+      <h2 style="margin:0;">Cart</h2>
+      <div class="cart-items">
+        <template x-if="cart.length === 0">
+          <div class="cart-empty">Tap an item to add it to the cart.</div>
+        </template>
+        <template x-for="(line, i) in cart" :key="i">
+          <div class="cart-line">
+            <span class="cart-line-name" x-text="line.description"></span>
+            <div class="qty-stepper">
+              <button type="button" @click="decrement(i)">&minus;</button>
+              <span class="qty-value" x-text="line.qty"></span>
+              <button type="button" @click="increment(i)">+</button>
+            </div>
+            <span class="cart-line-amount" x-text="'Rs. ' + lineTotal(line).toFixed(2)"></span>
+          </div>
+        </template>
+      </div>
+
+      <div class="cart-total-row">
+        <span>Total</span>
+        <span x-text="'Rs. ' + cartTotal().toFixed(2)"></span>
+      </div>
+
+      <button type="button" class="btn btn-primary btn-lg btn-block" :disabled="cart.length === 0"
+              @click="checkoutStep = 'payment'">Checkout</button>
+
+      <form method="post" :action="holdUrl" x-ref="holdForm">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <template x-for="(line, i) in cart" :key="'hold-'+i">
+          <span>
+            <input type="hidden" name="line_product_id[]" :value="line.product_id || ''">
+            <input type="hidden" name="line_description[]" :value="line.description">
+            <input type="hidden" name="line_hsn[]" :value="line.hsn">
+            <input type="hidden" name="line_qty[]" :value="line.qty">
+            <input type="hidden" name="line_rate[]" :value="line.rate">
+            <input type="hidden" name="line_gst_rate[]" :value="line.gst_rate">
+            <input type="hidden" name="line_unit[]" :value="line.unit">
+          </span>
+        </template>
+        <button type="submit" class="btn btn-secondary btn-block" :disabled="cart.length === 0">Hold bill</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- 3-tap checkout: Checkout (above) -> pick payment mode -> Confirm -->
+  <div class="checkout-overlay" x-show="checkoutStep !== 'idle'" x-cloak>
+    <div class="checkout-sheet" @click.outside="checkoutStep = 'idle'">
+      <template x-if="checkoutStep === 'payment'">
+        <div>
+          <h2>Pick payment mode</h2>
+          <div class="payment-mode-grid">
+            <button type="button" class="payment-mode-btn" @click="selectPayment('cash')">Cash</button>
+            <button type="button" class="payment-mode-btn" @click="selectPayment('upi')">UPI</button>
+            <button type="button" class="payment-mode-btn" @click="selectPayment('card')">Card</button>
+          </div>
+          <button type="button" class="btn btn-quiet" @click="checkoutStep = 'idle'">Cancel</button>
+        </div>
+      </template>
+      <template x-if="checkoutStep === 'confirm'">
+        <div>
+          <h2>Confirm sale</h2>
+          <p class="totals-row grand" style="justify-content:center; font-size:2rem;" x-text="'Rs. ' + cartTotal().toFixed(2)"></p>
+          <p class="text-muted">Paid via <span x-text="paymentMode.toUpperCase()"></span></p>
+          <form method="post" :action="checkoutUrl">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="payment_mode" :value="paymentMode">
+            <template x-for="(line, i) in cart" :key="'co-'+i">
+              <span>
+                <input type="hidden" name="line_product_id[]" :value="line.product_id || ''">
+                <input type="hidden" name="line_description[]" :value="line.description">
+                <input type="hidden" name="line_hsn[]" :value="line.hsn">
+                <input type="hidden" name="line_qty[]" :value="line.qty">
+                <input type="hidden" name="line_rate[]" :value="line.rate">
+                <input type="hidden" name="line_gst_rate[]" :value="line.gst_rate">
+                <input type="hidden" name="line_unit[]" :value="line.unit">
+              </span>
+            </template>
+            <button type="submit" class="btn btn-primary btn-lg btn-block">Confirm</button>
+          </form>
+          <button type="button" class="btn btn-quiet" style="margin-top:10px;" @click="checkoutStep = 'payment'">Back</button>
+        </div>
+      </template>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function posTerminal() {
+  return {
+    search: "",
+    cart: [],
+    showHeld: false,
+    checkoutStep: "idle",
+    paymentMode: "",
+    holdUrl: "{{ url_for('pos.hold_bill') }}",
+    checkoutUrl: "{{ url_for('pos.checkout_route') }}",
+    init() {
+      if (PREFILL_CART.length) {
+        this.cart = PREFILL_CART.map(l => ({...l}));
+      }
+    },
+    filteredProducts() {
+      const q = this.search.trim().toLowerCase();
+      if (!q) return PRODUCTS;
+      return PRODUCTS.filter(p => p.name.toLowerCase().includes(q));
+    },
+    addToCart(p) {
+      const existing = this.cart.find(l => l.product_id === p.id);
+      if (existing) {
+        existing.qty += 1;
+      } else {
+        this.cart.push({product_id: p.id, description: p.name, hsn: p.hsn, rate: p.rate, gst_rate: p.gst_rate, unit: p.unit, qty: 1});
+      }
+    },
+    increment(i) { this.cart[i].qty += 1; },
+    decrement(i) {
+      this.cart[i].qty -= 1;
+      if (this.cart[i].qty <= 0) this.cart.splice(i, 1);
+    },
+    lineTotal(line) {
+      const taxable = line.qty * line.rate;
+      const tax = taxable * (line.gst_rate || 0) / 100;
+      return taxable + tax;
+    },
+    cartTotal() {
+      return this.cart.reduce((sum, l) => sum + this.lineTotal(l), 0);
+    },
+    selectPayment(mode) {
+      this.paymentMode = mode;
+      this.checkoutStep = "confirm";
+    }
+  };
+}
+</script>
+{% endblock %}

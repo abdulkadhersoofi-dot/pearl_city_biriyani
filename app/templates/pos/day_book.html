@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Day-book - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>POS day-book</h1>
+  <form method="get" class="row">
+    <input type="date" name="date" value="{{ on_date.isoformat() }}" class="field-input" onchange="this.form.submit()">
+    <a href="{{ url_for('pos.z_report_view', date=on_date.isoformat()) }}" class="btn btn-secondary">Z-report</a>
+  </form>
+</div>
+
+<div class="table-wrap card">
+  <table>
+    <thead><tr><th>Bill</th><th>Time</th><th>Payment</th><th>Status</th><th>Total</th></tr></thead>
+    <tbody>
+    {% for b in bills %}
+      <tr>
+        <td><a href="{{ url_for('pos.view_receipt', bill_id=b.id) }}">{{ b.bill_number }}</a></td>
+        <td>{{ b.completed_at.strftime('%H:%M') if b.completed_at else '-' }}</td>
+        <td>{{ b.payment_mode.value|upper if b.payment_mode else '-' }}</td>
+        <td>
+          {% if b.status.value == 'completed' %}<span class="status-badge status-issued">Completed</span>
+          {% else %}<span class="status-badge status-void">Refunded</span>{% endif %}
+        </td>
+        <td>Rs. {{ '%.2f'|format(b.grand_total) }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="5" class="empty-state">No sales on this date.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

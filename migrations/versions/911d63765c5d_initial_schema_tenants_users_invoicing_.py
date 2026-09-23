@@ -1,8 +1,8 @@
-"""Phase 1: tenants, users, invoicing
+"""Initial schema: tenants, users, invoicing, POS
 
-Revision ID: c5fc24a068b2
+Revision ID: 911d63765c5d
 Revises: 
-Create Date: 2026-09-22 10:38:16.417359
+Create Date: 2026-09-23 11:44:20.316439
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = 'c5fc24a068b2'
+revision = '911d63765c5d'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -27,7 +27,9 @@ def upgrade():
     sa.Column('onboarded_by_id', sa.Integer(), nullable=True),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
-    sa.ForeignKeyConstraint(['onboarded_by_id'], ['users.id'], name='fk_tenants_onboarded_by', use_alter=True),
+    # onboarded_by_id -> users.id is added below via a separate ALTER TABLE,
+    # once the users table exists - tenants and users reference each other,
+    # so this FK can't be created inline here without a circular dependency.
     sa.PrimaryKeyConstraint('id')
     )
     op.create_table('customers',
@@ -107,6 +109,10 @@ def upgrade():
     with op.batch_alter_table('users', schema=None) as batch_op:
         batch_op.create_index(batch_op.f('ix_users_email'), ['email'], unique=True)
         batch_op.create_index(batch_op.f('ix_users_tenant_id'), ['tenant_id'], unique=False)
+
+    op.create_foreign_key(
+        'fk_tenants_onboarded_by', 'tenants', 'users', ['onboarded_by_id'], ['id']
+    )
 
     op.create_table('audit_logs',
     sa.Column('id', sa.Integer(), nullable=False),
@@ -203,6 +209,47 @@ def upgrade():
         batch_op.create_index(batch_op.f('ix_invoices_invoice_number'), ['invoice_number'], unique=False)
         batch_op.create_index(batch_op.f('ix_invoices_tenant_id'), ['tenant_id'], unique=False)
 
+    op.create_table('pos_bills',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('gstin_id', sa.Integer(), nullable=False),
+    sa.Column('invoice_series_id', sa.Integer(), nullable=True),
+    sa.Column('bill_number', sa.String(length=64), nullable=True),
+    sa.Column('customer_id', sa.Integer(), nullable=True),
+    sa.Column('customer_snapshot', sa.JSON(), nullable=True),
+    sa.Column('status', sa.Enum('HELD', 'COMPLETED', 'REFUNDED', name='pos_bill_status'), nullable=False),
+    sa.Column('payment_mode', sa.Enum('CASH', 'UPI', 'CARD', name='payment_mode'), nullable=True),
+    sa.Column('hold_label', sa.String(length=100), nullable=True),
+    sa.Column('subtotal', sa.Numeric(precision=12, scale=2), nullable=False),
+    sa.Column('total_discount', sa.Numeric(precision=12, scale=2), nullable=False),
+    sa.Column('total_taxable_value', sa.Numeric(precision=12, scale=2), nullable=False),
+    sa.Column('total_cgst', sa.Numeric(precision=12, scale=2), nullable=False),
+    sa.Column('total_sgst', sa.Numeric(precision=12, scale=2), nullable=False),
+    sa.Column('total_igst', sa.Numeric(precision=12, scale=2), nullable=False),
+    sa.Column('round_off', sa.Numeric(precision=12, scale=2), nullable=False),
+    sa.Column('grand_total', sa.Numeric(precision=12, scale=2), nullable=False),
+    sa.Column('created_by_id', sa.Integer(), nullable=False),
+    sa.Column('completed_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('refunded_amount', sa.Numeric(precision=12, scale=2), nullable=True),
+    sa.Column('refund_reason', sa.Text(), nullable=True),
+    sa.Column('refunded_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('refunded_by_id', sa.Integer(), nullable=True),
+    sa.Column('tenant_id', sa.Integer(), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
+    sa.ForeignKeyConstraint(['created_by_id'], ['users.id'], ),
+    sa.ForeignKeyConstraint(['customer_id'], ['customers.id'], ),
+    sa.ForeignKeyConstraint(['gstin_id'], ['gstins.id'], ),
+    sa.ForeignKeyConstraint(['invoice_series_id'], ['invoice_series.id'], ),
+    sa.ForeignKeyConstraint(['refunded_by_id'], ['users.id'], ),
+    sa.ForeignKeyConstraint(['tenant_id'], ['tenants.id'], ),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('tenant_id', 'bill_number', name='uq_pos_bill_tenant_number')
+    )
+    with op.batch_alter_table('pos_bills', schema=None) as batch_op:
+        batch_op.create_index(batch_op.f('ix_pos_bills_bill_number'), ['bill_number'], unique=False)
+        batch_op.create_index(batch_op.f('ix_pos_bills_gstin_id'), ['gstin_id'], unique=False)
+        batch_op.create_index(batch_op.f('ix_pos_bills_tenant_id'), ['tenant_id'], unique=False)
+
     op.create_table('invoice_lines',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('invoice_id', sa.Integer(), nullable=False),
@@ -230,15 +277,52 @@ def upgrade():
     with op.batch_alter_table('invoice_lines', schema=None) as batch_op:
         batch_op.create_index(batch_op.f('ix_invoice_lines_invoice_id'), ['invoice_id'], unique=False)
 
+    op.create_table('pos_bill_lines',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('bill_id', sa.Integer(), nullable=False),
+    sa.Column('product_id', sa.Integer(), nullable=True),
+    sa.Column('description', sa.String(length=255), nullable=False),
+    sa.Column('hsn_or_sac_code', sa.String(length=8), nullable=True),
+    sa.Column('qty', sa.Numeric(precision=12, scale=3), nullable=False),
+    sa.Column('unit', sa.String(length=20), nullable=False),
+    sa.Column('rate', sa.Numeric(precision=12, scale=2), nullable=False),
+    sa.Column('discount_percent', sa.Numeric(precision=5, scale=2), nullable=False),
+    sa.Column('discount_amount', sa.Numeric(precision=12, scale=2), nullable=False),
+    sa.Column('taxable_value', sa.Numeric(precision=12, scale=2), nullable=False),
+    sa.Column('gst_rate', sa.Numeric(precision=5, scale=2), nullable=False),
+    sa.Column('cgst_amount', sa.Numeric(precision=12, scale=2), nullable=False),
+    sa.Column('sgst_amount', sa.Numeric(precision=12, scale=2), nullable=False),
+    sa.Column('igst_amount', sa.Numeric(precision=12, scale=2), nullable=False),
+    sa.Column('line_total', sa.Numeric(precision=12, scale=2), nullable=False),
+    sa.Column('sort_order', sa.Integer(), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
+    sa.ForeignKeyConstraint(['bill_id'], ['pos_bills.id'], ),
+    sa.ForeignKeyConstraint(['product_id'], ['products.id'], ),
+    sa.PrimaryKeyConstraint('id')
+    )
+    with op.batch_alter_table('pos_bill_lines', schema=None) as batch_op:
+        batch_op.create_index(batch_op.f('ix_pos_bill_lines_bill_id'), ['bill_id'], unique=False)
+
     # ### end Alembic commands ###
 
 
 def downgrade():
     # ### commands auto generated by Alembic - please adjust! ###
+    with op.batch_alter_table('pos_bill_lines', schema=None) as batch_op:
+        batch_op.drop_index(batch_op.f('ix_pos_bill_lines_bill_id'))
+
+    op.drop_table('pos_bill_lines')
     with op.batch_alter_table('invoice_lines', schema=None) as batch_op:
         batch_op.drop_index(batch_op.f('ix_invoice_lines_invoice_id'))
 
     op.drop_table('invoice_lines')
+    with op.batch_alter_table('pos_bills', schema=None) as batch_op:
+        batch_op.drop_index(batch_op.f('ix_pos_bills_tenant_id'))
+        batch_op.drop_index(batch_op.f('ix_pos_bills_gstin_id'))
+        batch_op.drop_index(batch_op.f('ix_pos_bills_bill_number'))
+
+    op.drop_table('pos_bills')
     with op.batch_alter_table('invoices', schema=None) as batch_op:
         batch_op.drop_index(batch_op.f('ix_invoices_tenant_id'))
         batch_op.drop_index(batch_op.f('ix_invoices_invoice_number'))
@@ -260,6 +344,7 @@ def downgrade():
         batch_op.drop_index(batch_op.f('ix_audit_logs_action'))
 
     op.drop_table('audit_logs')
+    op.drop_constraint('fk_tenants_onboarded_by', 'tenants', type_='foreignkey')
     with op.batch_alter_table('users', schema=None) as batch_op:
         batch_op.drop_index(batch_op.f('ix_users_tenant_id'))
         batch_op.drop_index(batch_op.f('ix_users_email'))
@@ -279,3 +364,17 @@ def downgrade():
     op.drop_table('customers')
     op.drop_table('tenants')
     # ### end Alembic commands ###
+
+    # Postgres ENUM types are independent of the tables/columns that use
+    # them - dropping the tables above does not drop these, and a repeat
+    # upgrade would otherwise fail with "type already exists".
+    bind = op.get_bind()
+    for enum_name in (
+        "registration_type",
+        "user_role",
+        "document_type",
+        "invoice_status",
+        "pos_bill_status",
+        "payment_mode",
+    ):
+        sa.Enum(name=enum_name).drop(bind, checkfirst=True)
