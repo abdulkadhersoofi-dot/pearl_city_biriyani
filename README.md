@@ -11,7 +11,9 @@ land in later phases (see [Roadmap](#roadmap)).
 ## Stack
 
 - Python 3.11 / Flask (REST-ish, server-rendered with HTMX + Alpine.js for
-  in-page interactivity)
+  in-page interactivity - both vendored under `app/static/js/vendor/`, not
+  loaded from a CDN, so the app keeps working on a client's offline/LAN
+  network)
 - PostgreSQL (one shared database; every business table carries `tenant_id`)
 - Server-side sessions (Flask-Login + Redis-backed session store)
 - WeasyPrint for PDF generation (invoices, thermal/A4 receipts later)

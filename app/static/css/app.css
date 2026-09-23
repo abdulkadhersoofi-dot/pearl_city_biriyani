@@ -160,6 +160,8 @@ tr:last-child td { border-bottom: none; }
 
 @media (max-width: 640px) {
   .topbar { flex-wrap: wrap; height: auto; padding: 12px 16px; }
-  .main-nav { order: 3; width: 100%; }
+  /* flex-basis (from the base rule's `flex: 1`) beats `width`, so it has
+     to be reset here too, or this never actually wraps onto its own row. */
+  .main-nav { order: 3; flex: 1 1 100%; }
   .app-main { padding: 16px 14px 48px; }
 }

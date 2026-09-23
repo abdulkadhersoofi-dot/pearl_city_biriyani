@@ -10,3 +10,4 @@ instance/
 *.log
 .flask_session/
 flask_session/
+dump.rdb

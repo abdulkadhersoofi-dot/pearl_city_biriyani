@@ -1,3 +1,4 @@
+import logging
 import os
 
 from flask import Flask
@@ -13,6 +14,7 @@ def create_app(config_object=None):
     app = Flask(__name__)
     app.config.from_object(config_object or get_config())
 
+    _configure_logging(app)
     _init_extensions(app)
     _register_blueprints(app)
     _register_error_handlers(app)
@@ -20,6 +22,18 @@ def create_app(config_object=None):
     _register_context_processors(app)
 
     return app
+
+
+def _configure_logging(app: Flask) -> None:
+    # A bare `flask run` / gunicorn process has no handler on the root
+    # logger by default, so anything logged via logging.getLogger(...)
+    # (e.g. the console-mail OTP fallback) would silently vanish. Give the
+    # root logger a handler if nothing else has, and always surface OTPs
+    # from the console-mail backend regardless of the app's overall log
+    # level - that fallback exists specifically to be visible.
+    if not logging.getLogger().handlers:
+        logging.basicConfig(level=logging.WARNING, format="%(levelname)s:%(name)s:%(message)s")
+    logging.getLogger("gstapp.mail").setLevel(logging.INFO)
 
 
 def _init_extensions(app: Flask) -> None:
@@ -86,6 +100,12 @@ def _register_context_processors(app: Flask) -> None:
     @app.context_processor
     def inject_globals():
         return {"firm_name": app.config["FIRM_NAME"]}
+
+    @app.template_filter("state_name")
+    def state_name_filter(state_code: str) -> str:
+        from app.utils.indian_states import STATE_NAME_BY_CODE
+
+        return STATE_NAME_BY_CODE.get(state_code, state_code)
 
 
 def _register_cli(app: Flask) -> None:

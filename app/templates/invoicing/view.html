@@ -23,7 +23,7 @@
       {% if invoice.customer_snapshot.gstin %}GSTIN: {{ invoice.customer_snapshot.gstin }}<br>{% endif %}
       {{ invoice.customer_snapshot.state_name }}</p></div>
     <div><strong>Invoice date</strong><p>{{ invoice.invoice_date.strftime('%d %b %Y') }}</p></div>
-    <div><strong>Place of supply</strong><p>{{ invoice.place_of_supply_state_code }}</p></div>
+    <div><strong>Place of supply</strong><p>{{ invoice.place_of_supply_state_code|state_name }}</p></div>
   </div>
 </div>
 

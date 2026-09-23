@@ -74,10 +74,10 @@
           <template x-for="(line, i) in lines" :key="i">
             <tr class="line-item-row">
               <td>
-                <input type="text" list="product-names" x-model="line.description"
+                <input type="text" list="product-names" x-model="line.description" maxlength="255"
                        @change="applyProduct(line)" name="line_description[]" placeholder="Item name">
               </td>
-              <td><input type="text" x-model="line.hsn" name="line_hsn[]"></td>
+              <td><input type="text" x-model="line.hsn" name="line_hsn[]" maxlength="8"></td>
               <td><input type="number" step="0.001" min="0" x-model.number="line.qty" @input="recalc()" name="line_qty[]"></td>
               <td><input type="number" step="0.01" min="0" x-model.number="line.rate" @input="recalc()" name="line_rate[]"></td>
               <td><input type="number" step="0.01" min="0" x-model.number="line.discount" @input="recalc()" name="line_discount[]"></td>

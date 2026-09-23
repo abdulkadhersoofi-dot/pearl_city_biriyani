@@ -50,7 +50,7 @@
       <div class="label">Invoice date</div>
       {{ invoice.invoice_date.strftime('%d %b %Y') }}<br><br>
       <div class="label">Place of supply</div>
-      {{ invoice.place_of_supply_state_code }}
+      {{ invoice.place_of_supply_state_code|state_name }} ({{ invoice.place_of_supply_state_code }})
     </div>
   </div>
 

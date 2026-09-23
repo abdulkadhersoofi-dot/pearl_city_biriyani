@@ -49,6 +49,20 @@ def _to_decimal(value: str, field_name: str) -> Decimal:
         raise InvoiceValidationError(f"'{field_name}' must be a number.")
 
 
+# Mirrors the column sizes in app.models.invoice.InvoiceLine - checked
+# here so a too-long value becomes a clean form error instead of an
+# unhandled 500 from the database's own length constraint.
+_MAX_DESCRIPTION_LENGTH = 255
+_MAX_HSN_LENGTH = 8
+_MAX_UNIT_LENGTH = 20
+
+
+def _bounded(value: str, field_name: str, max_length: int) -> str:
+    if len(value) > max_length:
+        raise InvoiceValidationError(f"'{field_name}' can be at most {max_length} characters.")
+    return value
+
+
 def parse_line_arrays(
     descriptions, hsns, qtys, rates, discounts, gst_rates, product_ids, units
 ) -> list[LineInput]:
@@ -57,10 +71,12 @@ def parse_line_arrays(
         description = (description or "").strip()
         if not description:
             continue
+        hsn = (hsns[i] if i < len(hsns) else "").strip()
+        unit = (units[i] if i < len(units) and units[i] else "pcs").strip()
         lines.append(
             LineInput(
-                description=description,
-                hsn_or_sac_code=(hsns[i] if i < len(hsns) else "").strip(),
+                description=_bounded(description, "Item description", _MAX_DESCRIPTION_LENGTH),
+                hsn_or_sac_code=_bounded(hsn, "HSN/SAC code", _MAX_HSN_LENGTH),
                 qty=_to_decimal(qtys[i] if i < len(qtys) else "0", "quantity"),
                 rate=_to_decimal(rates[i] if i < len(rates) else "0", "rate"),
                 discount_percent=_to_decimal(
@@ -68,7 +84,7 @@ def parse_line_arrays(
                 ),
                 gst_rate=_to_decimal(gst_rates[i] if i < len(gst_rates) else "0", "GST rate"),
                 product_id=int(product_ids[i]) if i < len(product_ids) and product_ids[i] else None,
-                unit=(units[i] if i < len(units) and units[i] else "pcs"),
+                unit=_bounded(unit, "Unit", _MAX_UNIT_LENGTH),
             )
         )
     if not lines:

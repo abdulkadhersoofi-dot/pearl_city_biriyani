@@ -5,8 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5">
   <title>{% block title %}{{ firm_name }}{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
-  <script src="https://cdn.jsdelivr.net/npm/htmx.org@1.9.12/dist/htmx.min.js"></script>
-  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.5/dist/cdn.min.js"></script>
+  {# Vendored locally, not loaded from a CDN: this app is self-hosted and
+     must keep working on a client's LAN/offline network, or if a public
+     CDN is ever blocked/down. #}
+  <script src="{{ url_for('static', filename='js/vendor/htmx.min.js') }}"></script>
+  <script defer src="{{ url_for('static', filename='js/vendor/alpine.min.js') }}"></script>
   {% block head %}{% endblock %}
 </head>
 <body>
