@@ -122,6 +122,51 @@ deploy/               # nginx.conf, gunicorn.conf.py
 
 ## Deployment
 
+### Render (quick start / testing)
+
+`render.yaml` is a Render Blueprint that provisions the web service, a
+managed Postgres database, and a managed Redis (Key Value) instance
+together, wired to each other automatically.
+
+1. Push this repo to GitHub.
+2. In the Render dashboard: **New → Blueprint**, point it at the repo.
+   Render reads `render.yaml` and shows you the three resources it's about
+   to create - review the plans (see the cost note below) and click
+   **Apply**.
+3. First deploy will build the Docker image, run `flask db upgrade`
+   (wired as `preDeployCommand`), then start Gunicorn.
+4. Open the web service's **Shell** tab and run:
+   ```bash
+   flask create-super-admin
+   ```
+   to create the firm's first login.
+5. `MAIL_BACKEND=console` by default, so OTP codes (onboarding, password
+   reset) show up in the service's **Logs** tab rather than a real inbox
+   until you set `SMTP_*` env vars and change `MAIL_BACKEND` to `smtp`.
+
+**Cost/durability note:** `render.yaml` requests Render's `free` plan for
+all three resources so you can try it at no cost. Render's free Postgres
+**auto-deletes after 30 days and has no backups**, and free web services
+spin down when idle (the first request after a while takes longer to
+wake it up). That's fine for testing; before putting real client data in
+it, upgrade at least the database plan from the Render dashboard (Settings
+→ Change Plan) - the app itself needs no code change either way.
+
+**Custom domain:** once you're ready to move off the `onrender.com`
+subdomain onto your own domain, it's a dashboard step, no code change:
+web service → **Settings → Custom Domains** → add your domain, then add
+the CNAME/A record it gives you at your DNS provider. Render issues the
+TLS certificate automatically.
+
+### Self-hosted (VPS / your own server)
+
+```bash
+docker build -t gst-billing .
+docker run -p 8000:8000 --env-file .env gst-billing
+```
+
+or without Docker:
+
 ```bash
 gunicorn -c deploy/gunicorn.conf.py wsgi:app
 ```

@@ -1,0 +1,51 @@
+# Render Blueprint - one-click provisioning of the web app + Postgres +
+# Redis together. In the Render dashboard: New -> Blueprint -> point at
+# this repo. Review the plans it proposes (free tiers may not always be
+# offered) before clicking Apply.
+#
+# After the first deploy, create the firm's Super Admin login via the
+# Render dashboard's Shell tab on the web service:
+#   flask create-super-admin
+
+databases:
+  - name: gst-billing-db
+    plan: free
+    # postgresMajorVersion omitted deliberately - Render defaults to its
+    # current supported version, and this field has a history of type-
+    # validation quirks (string vs number) across schema versions.
+
+services:
+  - type: keyvalue
+    name: gst-billing-redis
+    plan: free
+    maxmemoryPolicy: allkeys-lru
+    ipAllowList: [] # only reachable from other services in this project
+
+  - type: web
+    name: gst-billing-app
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /healthz
+    preDeployCommand: flask db upgrade
+    envVars:
+      - key: FLASK_ENV
+        value: production
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: gst-billing-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          name: gst-billing-redis
+          type: keyvalue
+          property: connectionString
+      - key: FIRM_NAME
+        value: Pearl City & Associates
+      - key: MAIL_BACKEND
+        value: console
+      - key: GUNICORN_WORKERS
+        value: "2" # free-tier instances are RAM/CPU constrained; raise
+        # this (Settings -> Environment) once you upgrade the plan.

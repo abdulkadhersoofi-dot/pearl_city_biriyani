@@ -2,11 +2,22 @@ import os
 from datetime import timedelta
 
 
+def _normalize_database_url(url: str) -> str:
+    """Render (like Heroku) hands out connection strings as postgres://,
+    which SQLAlchemy 1.4+/psycopg2 reject - they require postgresql://.
+    """
+    if url.startswith("postgres://"):
+        return url.replace("postgres://", "postgresql://", 1)
+    return url
+
+
 class Config:
     SECRET_KEY = os.environ.get("SECRET_KEY", "dev-only-insecure-key")
 
-    SQLALCHEMY_DATABASE_URI = os.environ.get(
-        "DATABASE_URL", "postgresql+psycopg2://gst_app:gst_app@localhost:5432/gst_billing"
+    SQLALCHEMY_DATABASE_URI = _normalize_database_url(
+        os.environ.get(
+            "DATABASE_URL", "postgresql+psycopg2://gst_app:gst_app@localhost:5432/gst_billing"
+        )
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_ENGINE_OPTIONS = {

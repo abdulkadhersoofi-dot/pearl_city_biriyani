@@ -1,0 +1,13 @@
+.venv/
+venv/
+__pycache__/
+*.pyc
+.git/
+.pytest_cache/
+.env
+instance/
+flask_session/
+.flask_session/
+dump.rdb
+*.log
+tests/
