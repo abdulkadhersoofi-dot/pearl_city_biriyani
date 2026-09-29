@@ -3,9 +3,12 @@
 # this repo. Review the plans it proposes (free tiers may not always be
 # offered) before clicking Apply.
 #
-# After the first deploy, create the firm's Super Admin login via the
-# Render dashboard's Shell tab on the web service:
-#   flask create-super-admin
+# The free plan has no Shell tab, so the firm's first Super Admin login
+# is created automatically at container startup instead, from the
+# SUPER_ADMIN_EMAIL / SUPER_ADMIN_PASSWORD env vars below (set their real
+# values in the Render dashboard - Environment tab on the web service -
+# they're deliberately left blank here). Saving them triggers a redeploy;
+# after that, sign in with whatever you set.
 
 databases:
   - name: gst-billing-db
@@ -49,6 +52,12 @@ services:
         value: Pearl City & Associates
       - key: MAIL_BACKEND
         value: console
+      - key: SUPER_ADMIN_NAME
+        value: Firm Admin
+      - key: SUPER_ADMIN_EMAIL
+        sync: false # set your real login email in the dashboard
+      - key: SUPER_ADMIN_PASSWORD
+        sync: false # set your real login password in the dashboard
       - key: GUNICORN_WORKERS
         value: "2" # free-tier instances are RAM/CPU constrained; raise
         # this (Settings -> Environment) once you upgrade the plan.

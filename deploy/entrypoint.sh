@@ -10,4 +10,11 @@
 set -e
 
 flask db upgrade
+
+# Best-effort, not fatal: free tier also has no Shell tab to run this
+# by hand, so it happens here instead. A failure here (e.g. a bad env
+# var) must never take the whole app down - `|| true` keeps the site up
+# even if this one step has a problem.
+flask bootstrap-super-admin || true
+
 exec gunicorn -c deploy/gunicorn.conf.py wsgi:app

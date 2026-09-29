@@ -133,3 +133,38 @@ def _register_cli(app: Flask) -> None:
         db.session.add(user)
         db.session.commit()
         click.echo(f"Super Admin '{email}' created.")
+
+    @app.cli.command("bootstrap-super-admin")
+    def bootstrap_super_admin():
+        """Non-interactive counterpart to create-super-admin, driven by
+        SUPER_ADMIN_EMAIL / SUPER_ADMIN_PASSWORD / SUPER_ADMIN_NAME env
+        vars. Meant to run at container startup (see
+        deploy/entrypoint.sh) on hosts whose free tier has no shell
+        access - Render's is one. Idempotent and safe on every restart:
+        does nothing if the env vars aren't set, or if that email
+        already has an account.
+        """
+        from app.models.user import User, UserRole
+
+        email = os.environ.get("SUPER_ADMIN_EMAIL", "").strip().lower()
+        password = os.environ.get("SUPER_ADMIN_PASSWORD", "")
+        name = os.environ.get("SUPER_ADMIN_NAME", "Firm Admin").strip()
+
+        if not email or not password:
+            click.echo("SUPER_ADMIN_EMAIL/SUPER_ADMIN_PASSWORD not set - skipping bootstrap.")
+            return
+
+        if User.query.filter_by(email=email).first():
+            click.echo(f"'{email}' already exists - skipping bootstrap.")
+            return
+
+        user = User(
+            name=name,
+            email=email,
+            role=UserRole.SUPER_ADMIN,
+            must_change_password=False,
+        )
+        user.set_password(password)
+        db.session.add(user)
+        db.session.commit()
+        click.echo(f"Super Admin '{email}' created via bootstrap.")
