@@ -5,9 +5,19 @@ from datetime import timedelta
 def _normalize_database_url(url: str) -> str:
     """Render (like Heroku) hands out connection strings as postgres://,
     which SQLAlchemy 1.4+/psycopg2 reject - they require postgresql://.
+
+    A bare postgresql:// (no +driver) also isn't safe to leave alone:
+    SQLAlchemy's default DBAPI choice for that scheme isn't pinned to
+    psycopg2 across versions - on Render it resolved to the psycopg (v3)
+    dialect, which isn't installed (only psycopg2-binary is, in
+    requirements.txt), crashing with ModuleNotFoundError. Forcing
+    +psycopg2 explicitly removes the ambiguity instead of relying on
+    whatever SQLAlchemy defaults to.
     """
     if url.startswith("postgres://"):
-        return url.replace("postgres://", "postgresql://", 1)
+        url = url.replace("postgres://", "postgresql://", 1)
+    if url.startswith("postgresql://"):
+        url = url.replace("postgresql://", "postgresql+psycopg2://", 1)
     return url
 
 
