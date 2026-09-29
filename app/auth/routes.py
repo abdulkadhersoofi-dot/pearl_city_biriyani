@@ -84,6 +84,9 @@ def forgot_password():
                 expiry_minutes=current_app.config["OTP_EXPIRY_MINUTES"],
             )
             db.session.commit()
+            # Return value deliberately ignored: showing a different message
+            # on send failure would let this form be used to tell a
+            # registered email apart from an unregistered one.
             send_otp_email(user.email, code)
         flash("If that email is registered, a one-time code has been sent.", "info")
         return redirect(url_for("auth.reset_password", email=email))

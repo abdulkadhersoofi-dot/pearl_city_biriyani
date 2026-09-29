@@ -79,8 +79,15 @@ def onboard():
         )
         db.session.commit()
 
-        send_otp_email(admin_user.email, code, purpose="account setup")
-        flash(f"{tenant.legal_name} onboarded. A setup code was sent to {admin_user.email}.", "success")
+        if send_otp_email(admin_user.email, code, purpose="account setup"):
+            flash(f"{tenant.legal_name} onboarded. A setup code was sent to {admin_user.email}.", "success")
+        else:
+            flash(
+                f"{tenant.legal_name} onboarded, but the setup email to {admin_user.email} "
+                "failed to send. Check the server logs for the code, or use "
+                "'Reset password' on the client's detail page to try again.",
+                "error",
+            )
         return redirect(url_for("tenants.directory"))
 
     return render_template("tenants/onboard.html", form=form)
@@ -153,8 +160,13 @@ def reset_client_password(tenant_id, user_id):
         entity_id=user.id,
     )
     db.session.commit()
-    send_otp_email(user.email, code, purpose="password reset")
-    flash(f"A password reset code was sent to {user.email}.", "success")
+    if send_otp_email(user.email, code, purpose="password reset"):
+        flash(f"A password reset code was sent to {user.email}.", "success")
+    else:
+        flash(
+            f"Could not email {user.email} - check the server logs for the code, or try again.",
+            "error",
+        )
     return redirect(url_for("tenants.detail", tenant_id=tenant_id))
 
 

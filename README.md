@@ -137,14 +137,43 @@ together, wired to each other automatically.
    startup (`deploy/entrypoint.sh`) runs `flask db upgrade` before
    starting Gunicorn - `preDeployCommand` would be the cleaner way to do
    this, but it's a paid-tier-only Render feature.
-4. Open the web service's **Shell** tab and run:
-   ```bash
-   flask create-super-admin
-   ```
-   to create the firm's first login.
-5. `MAIL_BACKEND=console` by default, so OTP codes (onboarding, password
-   reset) show up in the service's **Logs** tab rather than a real inbox
-   until you set `SMTP_*` env vars and change `MAIL_BACKEND` to `smtp`.
+4. Render's free plan has no Shell tab, so the firm's first login isn't
+   created by hand - it's created automatically at startup from env vars.
+   Web service → **Environment** tab → set `SUPER_ADMIN_EMAIL` and
+   `SUPER_ADMIN_PASSWORD` (and optionally `SUPER_ADMIN_NAME`) to whatever
+   you want to sign in with. Saving triggers a redeploy; once it's live
+   again, sign in with what you set. (This only *creates* the account -
+   changing the env var later won't update an existing one.)
+5. Set up email (see below) so OTP codes (onboarding, password reset)
+   actually reach an inbox instead of only appearing in the **Logs** tab.
+
+#### Email (Gmail)
+
+`render.yaml` is preconfigured for Gmail's SMTP (`MAIL_BACKEND=smtp`,
+host/port already set) - you just need an App Password:
+
+1. On the Gmail account you want to send from: **Google Account → Security
+   → 2-Step Verification** (turn it on if it isn't already - App Passwords
+   require it).
+2. Still under Security: **App Passwords** → create one (any name, e.g.
+   "Pearl City Billing") → Google shows a 16-character password once.
+3. Web service → **Environment** tab, set:
+   - `SMTP_USERNAME` = your full Gmail address
+   - `SMTP_PASSWORD` = the 16-character App Password (not your normal
+     Gmail password)
+   - `SMTP_FROM` = the **same** Gmail address as `SMTP_USERNAME` - Gmail
+     rejects a From address that doesn't match the authenticated account
+4. Save - this redeploys. Test it via **Forgot password** on the login
+   page, or by onboarding a client.
+
+If a send fails (wrong password, Gmail blocking it), the app degrades
+gracefully rather than crashing the page you were on: onboarding and
+admin-initiated password resets show a clear error telling you to check
+the Logs tab for the code, and the account/action itself still goes
+through. Gmail is fine for testing; if you outgrow it (sending limits,
+deliverability), switch to a transactional provider (Resend, Brevo,
+SendGrid) by changing `SMTP_HOST`/`SMTP_PORT` and the credentials - no
+code change needed.
 
 **Cost/durability note:** `render.yaml` requests Render's `free` plan for
 all three resources so you can try it at no cost. Render's free Postgres

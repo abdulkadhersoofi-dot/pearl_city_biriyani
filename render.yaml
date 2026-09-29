@@ -51,7 +51,18 @@ services:
       - key: FIRM_NAME
         value: Pearl City & Associates
       - key: MAIL_BACKEND
-        value: console
+        value: smtp
+      - key: SMTP_HOST
+        value: smtp.gmail.com
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USERNAME
+        sync: false # your full Gmail address, e.g. you@gmail.com
+      - key: SMTP_PASSWORD
+        sync: false # a 16-character Gmail "App Password", NOT your normal password
+      - key: SMTP_FROM
+        sync: false # must be the SAME address as SMTP_USERNAME - Gmail
+        # rejects a From that doesn't match the authenticated account
       - key: SUPER_ADMIN_NAME
         value: Firm Admin
       - key: SUPER_ADMIN_EMAIL
