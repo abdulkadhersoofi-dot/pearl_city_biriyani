@@ -27,13 +27,10 @@ def create_app(config_object=None):
 def _configure_logging(app: Flask) -> None:
     # A bare `flask run` / gunicorn process has no handler on the root
     # logger by default, so anything logged via logging.getLogger(...)
-    # (e.g. the console-mail OTP fallback) would silently vanish. Give the
-    # root logger a handler if nothing else has, and always surface OTPs
-    # from the console-mail backend regardless of the app's overall log
-    # level - that fallback exists specifically to be visible.
+    # would silently vanish. Give the root logger a handler if nothing
+    # else has.
     if not logging.getLogger().handlers:
         logging.basicConfig(level=logging.WARNING, format="%(levelname)s:%(name)s:%(message)s")
-    logging.getLogger("gstapp.mail").setLevel(logging.INFO)
 
 
 def _init_extensions(app: Flask) -> None:
@@ -64,6 +61,7 @@ def _register_blueprints(app: Flask) -> None:
     from app.pos import pos_bp
     from app.products import products_bp
     from app.reports import reports_bp
+    from app.staff import staff_bp
     from app.tenants import tenants_bp
     from app.main import main_bp
 
@@ -76,6 +74,7 @@ def _register_blueprints(app: Flask) -> None:
     app.register_blueprint(pos_bp)
     app.register_blueprint(notes_bp)
     app.register_blueprint(reports_bp)
+    app.register_blueprint(staff_bp)
     app.register_blueprint(api_bp)
 
 

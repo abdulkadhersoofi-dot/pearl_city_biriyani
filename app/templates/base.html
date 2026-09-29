@@ -25,6 +25,7 @@
           <a href="{{ url_for('pos.terminal') }}" class="{{ 'active' if request.blueprint == 'pos' }}">POS</a>
           <a href="{{ url_for('customers.list_customers') }}" class="{{ 'active' if request.blueprint == 'customers' }}">Customers</a>
           <a href="{{ url_for('products.list_products') }}" class="{{ 'active' if request.blueprint == 'products' }}">Items</a>
+          <a href="{{ url_for('staff.list_staff') }}" class="{{ 'active' if request.blueprint == 'staff' }}">Staff</a>
           <a href="{{ url_for('reports.index') }}" class="{{ 'active' if request.blueprint == 'reports' }}">Reports</a>
         {% else %}
           <a href="{{ url_for('pos.terminal') }}" class="active">POS</a>

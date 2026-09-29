@@ -49,21 +49,6 @@ class Config:
 
     WTF_CSRF_ENABLED = True
 
-    OTP_EXPIRY_MINUTES = int(os.environ.get("OTP_EXPIRY_MINUTES", "10"))
-    OTP_LENGTH = int(os.environ.get("OTP_LENGTH", "6"))
-    OTP_MAX_ATTEMPTS = 5
-
-    # "console" (default, zero setup) | "resend" (HTTPS API - the one that
-    # works on hosts that block outbound SMTP, e.g. Render's free tier) |
-    # "smtp" (raw SMTP - fine on hosts that don't block it).
-    MAIL_BACKEND = os.environ.get("MAIL_BACKEND", "console")
-    RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
-    SMTP_HOST = os.environ.get("SMTP_HOST", "")
-    SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
-    SMTP_USERNAME = os.environ.get("SMTP_USERNAME", "")
-    SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
-    SMTP_FROM = os.environ.get("SMTP_FROM", "no-reply@example.com")
-
     FIRM_NAME = os.environ.get("FIRM_NAME", "Pearl City & Associates")
 
     LOGIN_RATE_LIMIT_ATTEMPTS = 8

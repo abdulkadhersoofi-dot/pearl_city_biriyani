@@ -1,15 +1,13 @@
-import secrets
-
-from flask import current_app, flash, redirect, render_template, url_for
+from flask import flash, redirect, render_template, url_for
 from flask_login import current_user
 
 from app.auth.decorators import roles_required
-from app.auth.mail import send_otp_email
+from app.auth.forms import SetPasswordForm
 from app.extensions import db
 from app.models.audit_log import AuditLog
 from app.models.invoice import Invoice
 from app.models.tenant import Gstin, RegistrationType, Tenant
-from app.models.user import PasswordResetOTP, User, UserRole
+from app.models.user import User, UserRole
 from app.tenants import tenants_bp
 from app.tenants.forms import OnboardClientForm
 from app.utils.audit import record_audit
@@ -61,15 +59,10 @@ def onboard():
             role=UserRole.CLIENT_ADMIN,
             must_change_password=True,
         )
-        admin_user.set_password(secrets.token_urlsafe(32))
+        admin_user.set_password(form.admin_password.data)
         db.session.add(admin_user)
         db.session.flush()
 
-        otp, code = PasswordResetOTP.issue(
-            admin_user,
-            length=current_app.config["OTP_LENGTH"],
-            expiry_minutes=current_app.config["OTP_EXPIRY_MINUTES"],
-        )
         record_audit(
             current_user,
             "client_onboarded",
@@ -79,15 +72,11 @@ def onboard():
         )
         db.session.commit()
 
-        if send_otp_email(admin_user.email, code, purpose="account setup"):
-            flash(f"{tenant.legal_name} onboarded. A setup code was sent to {admin_user.email}.", "success")
-        else:
-            flash(
-                f"{tenant.legal_name} onboarded, but the setup email to {admin_user.email} "
-                "failed to send. Check the server logs for the code, or use "
-                "'Reset password' on the client's detail page to try again.",
-                "error",
-            )
+        flash(
+            f"{tenant.legal_name} onboarded. Share the password you set with "
+            f"{admin_user.email} - they'll be asked to change it on first sign-in.",
+            "success",
+        )
         return redirect(url_for("tenants.directory"))
 
     return render_template("tenants/onboard.html", form=form)
@@ -142,32 +131,25 @@ def activate(tenant_id):
     return redirect(url_for("tenants.detail", tenant_id=tenant.id))
 
 
-@tenants_bp.route("/clients/<int:tenant_id>/users/<int:user_id>/reset-password", methods=["POST"])
+@tenants_bp.route("/clients/<int:tenant_id>/users/<int:user_id>/reset-password", methods=["GET", "POST"])
 @roles_required(UserRole.SUPER_ADMIN)
 def reset_client_password(tenant_id, user_id):
     user = User.query.filter_by(id=user_id, tenant_id=tenant_id).first_or_404()
-    otp, code = PasswordResetOTP.issue(
-        user,
-        length=current_app.config["OTP_LENGTH"],
-        expiry_minutes=current_app.config["OTP_EXPIRY_MINUTES"],
-    )
-    user.must_change_password = True
-    record_audit(
-        current_user,
-        "client_password_reset_initiated_by_firm",
-        tenant_id=tenant_id,
-        entity_type="user",
-        entity_id=user.id,
-    )
-    db.session.commit()
-    if send_otp_email(user.email, code, purpose="password reset"):
-        flash(f"A password reset code was sent to {user.email}.", "success")
-    else:
-        flash(
-            f"Could not email {user.email} - check the server logs for the code, or try again.",
-            "error",
+    form = SetPasswordForm()
+    if form.validate_on_submit():
+        user.set_password(form.new_password.data)
+        user.must_change_password = True
+        record_audit(
+            current_user,
+            "client_password_reset_by_firm",
+            tenant_id=tenant_id,
+            entity_type="user",
+            entity_id=user.id,
         )
-    return redirect(url_for("tenants.detail", tenant_id=tenant_id))
+        db.session.commit()
+        flash(f"Password updated for {user.email}. Share it with them directly.", "success")
+        return redirect(url_for("tenants.detail", tenant_id=tenant_id))
+    return render_template("tenants/reset_password.html", form=form, tenant_user=user, tenant_id=tenant_id)
 
 
 @tenants_bp.route("/audit-log")

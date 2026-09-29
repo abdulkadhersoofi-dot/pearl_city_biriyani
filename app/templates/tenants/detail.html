@@ -48,11 +48,7 @@
         <td>{{ u.role.value|replace('_',' ')|title }}</td>
         <td>{{ 'Active' if u.is_active else 'Inactive' }}</td>
         <td>
-          <form method="post" action="{{ url_for('tenants.reset_client_password', tenant_id=tenant.id, user_id=u.id) }}"
-                onsubmit="return confirm('Send a password reset code to ' + '{{ u.email }}' + '?');">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button class="btn btn-quiet">Reset password</button>
-          </form>
+          <a href="{{ url_for('tenants.reset_client_password', tenant_id=tenant.id, user_id=u.id) }}" class="btn btn-quiet">Reset password</a>
         </td>
       </tr>
     {% endfor %}

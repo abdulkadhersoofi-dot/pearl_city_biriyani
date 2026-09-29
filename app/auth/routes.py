@@ -1,15 +1,14 @@
 from datetime import timedelta
 
-from flask import current_app, flash, redirect, render_template, request, url_for
+from flask import current_app, flash, redirect, render_template, url_for
 from flask_login import current_user, login_required, login_user, logout_user
 
 from app.auth import auth_bp
-from app.auth.forms import ChangePasswordForm, ForgotPasswordForm, LoginForm, ResetPasswordForm
-from app.auth.mail import send_otp_email
+from app.auth.forms import ChangePasswordForm, LoginForm
 from app.extensions import db
 from app.models.audit_log import AuditLog
 from app.models.mixins import utcnow
-from app.models.user import PasswordResetOTP, User
+from app.models.user import User
 from app.utils.audit import record_audit
 
 
@@ -67,67 +66,6 @@ def logout():
     db.session.commit()
     logout_user()
     return redirect(url_for("auth.login"))
-
-
-@auth_bp.route("/forgot-password", methods=["GET", "POST"])
-def forgot_password():
-    form = ForgotPasswordForm()
-    if form.validate_on_submit():
-        email = form.email.data.strip().lower()
-        user = User.query.filter_by(email=email, is_active=True).first()
-        # Always show the same message, whether or not the email exists,
-        # so the form can't be used to enumerate registered users.
-        if user:
-            otp, code = PasswordResetOTP.issue(
-                user,
-                length=current_app.config["OTP_LENGTH"],
-                expiry_minutes=current_app.config["OTP_EXPIRY_MINUTES"],
-            )
-            db.session.commit()
-            # Return value deliberately ignored: showing a different message
-            # on send failure would let this form be used to tell a
-            # registered email apart from an unregistered one.
-            send_otp_email(user.email, code)
-        flash("If that email is registered, a one-time code has been sent.", "info")
-        return redirect(url_for("auth.reset_password", email=email))
-
-    return render_template("auth/forgot_password.html", form=form)
-
-
-@auth_bp.route("/reset-password", methods=["GET", "POST"])
-def reset_password():
-    email = request.args.get("email", "").strip().lower()
-    form = ResetPasswordForm()
-    if form.validate_on_submit():
-        user = User.query.filter_by(email=email).first()
-        otp = (
-            PasswordResetOTP.query.filter_by(user_id=user.id if user else None)
-            .order_by(PasswordResetOTP.created_at.desc())
-            .first()
-            if user
-            else None
-        )
-
-        max_attempts = current_app.config["OTP_MAX_ATTEMPTS"]
-        if not user or not otp or not otp.is_usable(max_attempts):
-            flash("That code is invalid or has expired. Request a new one.", "error")
-            return redirect(url_for("auth.forgot_password"))
-
-        otp.attempts += 1
-        if not otp.verify(form.otp.data.strip()):
-            db.session.commit()
-            flash("Incorrect code.", "error")
-            return render_template("auth/reset_password.html", form=form, email=email)
-
-        otp.consumed_at = utcnow()
-        user.set_password(form.new_password.data)
-        user.must_change_password = False
-        record_audit(user, "password_reset_via_otp", tenant_id=user.tenant_id)
-        db.session.commit()
-        flash("Password updated. Please sign in.", "success")
-        return redirect(url_for("auth.login"))
-
-    return render_template("auth/reset_password.html", form=form, email=email)
 
 
 @auth_bp.route("/change-password", methods=["GET", "POST"])

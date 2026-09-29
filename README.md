@@ -23,9 +23,14 @@ land in later phases (see [Roadmap](#roadmap)).
 
 | Role | Access |
 |---|---|
-| Super Admin (the firm) | Onboard/deactivate clients, read-only cross-tenant view + export, full audit log, reset client passwords |
-| Client Admin (business owner) | Own GSTIN(s), invoice numbering, catalog, staff logins, full invoicing/POS/reports |
-| Staff/Cashier | POS billing screen only (Phase 2) |
+| Super Admin (the firm) | Onboard/deactivate clients, read-only cross-tenant view + export, full audit log, sets/resets Client Admin passwords directly |
+| Client Admin (business owner) | Own GSTIN(s), invoice numbering, catalog, staff logins, full invoicing/POS/reports, sets/resets Staff passwords directly |
+| Staff/Cashier | POS billing screen only |
+
+Every login is created with a password set directly by the admin creating
+it (Super Admin sets a Client Admin's password, Client Admin sets a Staff
+user's password) - no OTP, no email step. The new user is asked to change
+that password the next time they sign in.
 
 ## Local development
 
@@ -57,12 +62,6 @@ cp .env.example .env
 # edit .env: DATABASE_URL, REDIS_URL, SECRET_KEY at minimum
 ```
 
-`MAIL_BACKEND=console` (the default) logs OTP codes to the console instead
-of sending real email - convenient for local dev. Set `MAIL_BACKEND=smtp`
-and the `SMTP_*` variables, or `MAIL_BACKEND=resend` and `RESEND_API_KEY`,
-to send real email (see [Email (Resend)](#email-resend) for why Render
-deployments use the latter).
-
 ### 5. Run migrations
 
 ```bash
@@ -83,9 +82,9 @@ flask run --debug
 ```
 
 Sign in as the Super Admin, onboard a client from **Clients → Onboard
-client**, then use the setup code that gets logged to the console (or
-emailed, once SMTP is configured) at `/auth/reset-password` to set that
-client's first password.
+client** - you set that client's first password right there in the form,
+then share it with them yourself. They'll be asked to change it on first
+sign-in.
 
 ## Tests
 
@@ -105,11 +104,13 @@ pytest
 app/
 ├── models/          # Tenant, Gstin, User, InvoiceSeries, Customer, Product,
 │                     # Invoice, InvoiceLine, AuditLog
-├── auth/            # login, OTP password reset, role decorators
+├── auth/            # login, change password, role decorators
 ├── tenants/         # Super Admin console: onboarding, directory, audit log
+├── staff/           # Client Admin: create/deactivate/reset staff logins
 ├── invoicing/        # Phase 1 core: form, PDF, GST calc, numbering
 ├── customers/, products/   # tenant-scoped catalog CRUD
-├── pos/, notes/, reports/  # stubbed, ship in Phases 2/3/5
+├── pos/         # Phase 2 POS module
+├── notes/, reports/  # stubbed, ship in Phases 3/5
 ├── api/              # small JSON endpoints (product lookup today; POS
 │                     # cart/checkout from Phase 2) - kept separate so a
 │                     # future SPA frontend can reuse them
@@ -146,44 +147,10 @@ together, wired to each other automatically.
    you want to sign in with. Saving triggers a redeploy; once it's live
    again, sign in with what you set. (This only *creates* the account -
    changing the env var later won't update an existing one.)
-5. Set up email (see below) so OTP codes (onboarding, password reset)
-   actually reach an inbox instead of only appearing in the **Logs** tab.
-
-#### Email (Resend)
-
-**Render's free web services block all outbound SMTP traffic** (ports 25,
-465, 587) platform-wide, as an anti-spam measure - this isn't specific to
-Gmail or any one provider; every SMTP host fails there with `Network is
-unreachable`. The fix is an email provider with an HTTPS API instead of
-SMTP, which isn't affected. `render.yaml` is preconfigured for
-[Resend](https://resend.com) (`MAIL_BACKEND=resend`), which has a free tier
-with no credit card required:
-
-1. Sign up at [resend.com](https://resend.com) (free).
-2. Dashboard → **API Keys** → create one → copy the key (starts `re_`).
-3. Web service → **Environment** tab, set `RESEND_API_KEY` to that key.
-4. Save - this redeploys. Test it via **Forgot password** on the login
-   page, or by onboarding a client.
-
-`SMTP_FROM` already defaults to `onboarding@resend.dev`, Resend's shared
-sandbox sender - it works immediately with zero setup, **but only delivers
-to the email address on your own Resend account**. That's enough to test
-your own login (forgot-password, etc.), but emails to any other address
-(e.g. a real client you're onboarding) will silently fail to deliver.
-
-To actually email clients, verify a domain you own: Resend dashboard →
-**Domains** → add your domain → add the DNS records it gives you (SPF/
-DKIM) → once verified, set `SMTP_FROM` to an address on that domain (e.g.
-`billing@yourdomain.com`). This is the same domain mentioned in the custom
-domain section below, so it's one DNS setup step for both.
-
-If a send fails (bad key, sandbox-sender restriction, provider hiccup),
-the app degrades gracefully rather than crashing the page you were on:
-onboarding and admin-initiated password resets show a clear error telling
-you to check the Logs tab for the code, and the account/action itself
-still goes through. If you move to a paid Render plan or self-host where
-SMTP isn't blocked, set `MAIL_BACKEND=smtp` and the `SMTP_*` variables
-instead - that code path is still there, just unused by default on Render.
+5. Sign in and onboard clients from **Clients → Onboard client** - you set
+   each Client Admin's password right there in the form and share it with
+   them yourself. Nothing to configure: there's no email step anywhere in
+   the app, so there's no separate mail provider to set up.
 
 **Cost/durability note:** `render.yaml` requests Render's `free` plan for
 all three resources so you can try it at no cost. Render's free Postgres

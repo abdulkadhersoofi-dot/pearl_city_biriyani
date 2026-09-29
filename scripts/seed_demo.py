@@ -1,6 +1,6 @@
 """Seeds a demo tenant with a GSTIN, a Client Admin login, a couple of
 products and a customer - useful for trying the Invoicing module locally
-without going through the full onboarding + email-OTP flow by hand.
+without going through the onboarding form by hand.
 
 Usage:
     export FLASK_APP=wsgi.py

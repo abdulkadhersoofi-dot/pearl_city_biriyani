@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% from "macros.html" import field %}
+{% block title %}New staff - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header"><h1>New staff login</h1></div>
+<form method="post" class="card stack" novalidate>
+  {{ form.hidden_tag() }}
+  {{ field(form.name) }}
+  {{ field(form.email) }}
+  {{ field(form.phone) }}
+  {{ field(form.password, help="Share this with them yourself - they'll be asked to change it on first sign-in.") }}
+  {{ field(form.confirm_password) }}
+  <button type="submit" class="btn btn-primary btn-lg">Add staff</button>
+</form>
+{% endblock %}

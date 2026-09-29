@@ -1,6 +1,6 @@
 from flask_wtf import FlaskForm
-from wtforms import SelectField, StringField
-from wtforms.validators import DataRequired, Email, Length, Optional, Regexp
+from wtforms import PasswordField, SelectField, StringField
+from wtforms.validators import DataRequired, Email, EqualTo, Length, Optional, Regexp
 
 from app.models.tenant import RegistrationType
 from app.utils.indian_states import INDIAN_STATES
@@ -27,3 +27,8 @@ class OnboardClientForm(FlaskForm):
     admin_name = StringField("Client Admin - full name", validators=[DataRequired(), Length(max=255)])
     admin_email = StringField("Client Admin - email", validators=[DataRequired(), Email()])
     admin_phone = StringField("Client Admin - phone", validators=[Optional(), Length(max=20)])
+    admin_password = PasswordField("Client Admin - initial password", validators=[DataRequired(), Length(min=8)])
+    admin_confirm_password = PasswordField(
+        "Confirm password",
+        validators=[DataRequired(), EqualTo("admin_password", message="Passwords must match")],
+    )

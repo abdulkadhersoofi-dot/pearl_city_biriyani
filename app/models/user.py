@@ -1,13 +1,11 @@
 import enum
-import secrets
-from datetime import datetime, timedelta, timezone
 
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
 from flask_login import UserMixin
 
 from app.extensions import db
-from app.models.mixins import TimestampMixin, utcnow
+from app.models.mixins import TimestampMixin
 
 _hasher = PasswordHasher()
 
@@ -64,50 +62,3 @@ class User(db.Model, UserMixin, TimestampMixin):
 
     def __repr__(self):
         return f"<User {self.id} {self.email} {self.role}>"
-
-
-class PasswordResetOTP(db.Model, TimestampMixin):
-    """One-time password for the forgot-password flow. The OTP itself is
-    never stored in plaintext - only a hash of it, like a password."""
-
-    __tablename__ = "password_reset_otps"
-
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
-    otp_hash = db.Column(db.String(255), nullable=False)
-    expires_at = db.Column(db.DateTime(timezone=True), nullable=False)
-    consumed_at = db.Column(db.DateTime(timezone=True))
-    attempts = db.Column(db.Integer, nullable=False, default=0)
-
-    user = db.relationship("User")
-
-    @staticmethod
-    def generate_code(length: int) -> str:
-        return "".join(secrets.choice("0123456789") for _ in range(length))
-
-    @classmethod
-    def issue(cls, user: "User", length: int, expiry_minutes: int) -> tuple["PasswordResetOTP", str]:
-        code = cls.generate_code(length)
-        otp = cls(
-            user_id=user.id,
-            otp_hash=_hasher.hash(code),
-            expires_at=utcnow() + timedelta(minutes=expiry_minutes),
-        )
-        db.session.add(otp)
-        return otp, code
-
-    def is_expired(self) -> bool:
-        return utcnow() > self.expires_at
-
-    def is_usable(self, max_attempts: int) -> bool:
-        return (
-            self.consumed_at is None
-            and not self.is_expired()
-            and self.attempts < max_attempts
-        )
-
-    def verify(self, code: str) -> bool:
-        try:
-            return _hasher.verify(self.otp_hash, code)
-        except VerifyMismatchError:
-            return False

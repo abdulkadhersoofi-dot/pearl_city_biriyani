@@ -8,12 +8,10 @@ class LoginForm(FlaskForm):
     password = PasswordField("Password", validators=[DataRequired()])
 
 
-class ForgotPasswordForm(FlaskForm):
-    email = StringField("Email", validators=[DataRequired(), Email()])
+class SetPasswordForm(FlaskForm):
+    """An admin (Super Admin for a Client Admin, Client Admin for a Staff
+    user) setting someone else's password directly - no OTP, no email."""
 
-
-class ResetPasswordForm(FlaskForm):
-    otp = StringField("6-digit code", validators=[DataRequired(), Length(min=4, max=8)])
     new_password = PasswordField("New password", validators=[DataRequired(), Length(min=8)])
     confirm_password = PasswordField(
         "Confirm new password",

@@ -17,8 +17,10 @@
   <h2 style="font-size:1.05rem; margin:0;">Client Admin login</h2>
   <div class="form-grid">
     {{ field(form.admin_name) }}
-    {{ field(form.admin_email, help="We'll email a one-time setup code here.") }}
+    {{ field(form.admin_email) }}
     {{ field(form.admin_phone) }}
+    {{ field(form.admin_password, help="Share this with the client yourself - they'll be asked to change it on first sign-in.") }}
+    {{ field(form.admin_confirm_password) }}
   </div>
   <button type="submit" class="btn btn-primary btn-lg">Onboard client</button>
 </form>

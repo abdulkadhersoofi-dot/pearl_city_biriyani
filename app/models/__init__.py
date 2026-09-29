@@ -1,5 +1,5 @@
 from app.models.tenant import Tenant, Gstin, RegistrationType
-from app.models.user import User, UserRole, PasswordResetOTP
+from app.models.user import User, UserRole
 from app.models.invoice_series import InvoiceSeries, DocumentType, DOCUMENT_TYPE_LABELS
 from app.models.customer import Customer
 from app.models.product import Product
@@ -13,7 +13,6 @@ __all__ = [
     "RegistrationType",
     "User",
     "UserRole",
-    "PasswordResetOTP",
     "InvoiceSeries",
     "DocumentType",
     "DOCUMENT_TYPE_LABELS",
