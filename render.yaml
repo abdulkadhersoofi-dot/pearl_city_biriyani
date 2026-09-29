@@ -27,7 +27,10 @@ services:
     dockerfilePath: ./Dockerfile
     plan: free
     healthCheckPath: /healthz
-    preDeployCommand: flask db upgrade
+    # preDeployCommand (run once before rollout) is a paid-tier-only
+    # feature - not available on free. Migrations instead run at
+    # container startup via deploy/entrypoint.sh (flask db upgrade is
+    # idempotent, so this is safe on every restart).
     envVars:
       - key: FLASK_ENV
         value: production

@@ -133,8 +133,10 @@ together, wired to each other automatically.
    Render reads `render.yaml` and shows you the three resources it's about
    to create - review the plans (see the cost note below) and click
    **Apply**.
-3. First deploy will build the Docker image, run `flask db upgrade`
-   (wired as `preDeployCommand`), then start Gunicorn.
+3. First deploy will build the Docker image, then the container's own
+   startup (`deploy/entrypoint.sh`) runs `flask db upgrade` before
+   starting Gunicorn - `preDeployCommand` would be the cleaner way to do
+   this, but it's a paid-tier-only Render feature.
 4. Open the web service's **Shell** tab and run:
    ```bash
    flask create-super-admin

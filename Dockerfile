@@ -23,6 +23,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
+RUN chmod +x deploy/entrypoint.sh
 
 ENV PYTHONUNBUFFERED=1 \
     FLASK_APP=wsgi.py \
@@ -30,4 +31,4 @@ ENV PYTHONUNBUFFERED=1 \
 
 EXPOSE 8000
 
-CMD ["gunicorn", "-c", "deploy/gunicorn.conf.py", "wsgi:app"]
+CMD ["deploy/entrypoint.sh"]
