@@ -51,18 +51,21 @@ services:
       - key: FIRM_NAME
         value: Pearl City & Associates
       - key: MAIL_BACKEND
-        value: smtp
-      - key: SMTP_HOST
-        value: smtp.gmail.com
-      - key: SMTP_PORT
-        value: "587"
-      - key: SMTP_USERNAME
-        sync: false # your full Gmail address, e.g. you@gmail.com
-      - key: SMTP_PASSWORD
-        sync: false # a 16-character Gmail "App Password", NOT your normal password
+        value: resend
+        # Render's free web services block ALL outbound SMTP (ports 25/465/
+        # 587) platform-wide - Gmail/any SMTP provider will fail with
+        # "Network is unreachable" no matter the credentials. Resend's HTTPS
+        # API (port 443) isn't affected. Switch this to "smtp" only if you
+        # move to a paid Render plan or self-host.
+      - key: RESEND_API_KEY
+        sync: false # free at resend.com - no credit card. Dashboard -> API Keys.
       - key: SMTP_FROM
-        sync: false # must be the SAME address as SMTP_USERNAME - Gmail
-        # rejects a From that doesn't match the authenticated account
+        value: onboarding@resend.dev
+        # Works immediately with no setup, but Resend's sandbox sender only
+        # delivers to the email address on your Resend account - fine for
+        # testing your own login. To email actual clients, verify a domain
+        # you own in the Resend dashboard and change this to an address on
+        # it (e.g. billing@yourdomain.com).
       - key: SUPER_ADMIN_NAME
         value: Firm Admin
       - key: SUPER_ADMIN_EMAIL

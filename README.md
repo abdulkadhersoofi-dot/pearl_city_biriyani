@@ -59,7 +59,9 @@ cp .env.example .env
 
 `MAIL_BACKEND=console` (the default) logs OTP codes to the console instead
 of sending real email - convenient for local dev. Set `MAIL_BACKEND=smtp`
-and the `SMTP_*` variables to send real email.
+and the `SMTP_*` variables, or `MAIL_BACKEND=resend` and `RESEND_API_KEY`,
+to send real email (see [Email (Resend)](#email-resend) for why Render
+deployments use the latter).
 
 ### 5. Run migrations
 
@@ -147,33 +149,41 @@ together, wired to each other automatically.
 5. Set up email (see below) so OTP codes (onboarding, password reset)
    actually reach an inbox instead of only appearing in the **Logs** tab.
 
-#### Email (Gmail)
+#### Email (Resend)
 
-`render.yaml` is preconfigured for Gmail's SMTP (`MAIL_BACKEND=smtp`,
-host/port already set) - you just need an App Password:
+**Render's free web services block all outbound SMTP traffic** (ports 25,
+465, 587) platform-wide, as an anti-spam measure - this isn't specific to
+Gmail or any one provider; every SMTP host fails there with `Network is
+unreachable`. The fix is an email provider with an HTTPS API instead of
+SMTP, which isn't affected. `render.yaml` is preconfigured for
+[Resend](https://resend.com) (`MAIL_BACKEND=resend`), which has a free tier
+with no credit card required:
 
-1. On the Gmail account you want to send from: **Google Account → Security
-   → 2-Step Verification** (turn it on if it isn't already - App Passwords
-   require it).
-2. Still under Security: **App Passwords** → create one (any name, e.g.
-   "Pearl City Billing") → Google shows a 16-character password once.
-3. Web service → **Environment** tab, set:
-   - `SMTP_USERNAME` = your full Gmail address
-   - `SMTP_PASSWORD` = the 16-character App Password (not your normal
-     Gmail password)
-   - `SMTP_FROM` = the **same** Gmail address as `SMTP_USERNAME` - Gmail
-     rejects a From address that doesn't match the authenticated account
+1. Sign up at [resend.com](https://resend.com) (free).
+2. Dashboard → **API Keys** → create one → copy the key (starts `re_`).
+3. Web service → **Environment** tab, set `RESEND_API_KEY` to that key.
 4. Save - this redeploys. Test it via **Forgot password** on the login
    page, or by onboarding a client.
 
-If a send fails (wrong password, Gmail blocking it), the app degrades
-gracefully rather than crashing the page you were on: onboarding and
-admin-initiated password resets show a clear error telling you to check
-the Logs tab for the code, and the account/action itself still goes
-through. Gmail is fine for testing; if you outgrow it (sending limits,
-deliverability), switch to a transactional provider (Resend, Brevo,
-SendGrid) by changing `SMTP_HOST`/`SMTP_PORT` and the credentials - no
-code change needed.
+`SMTP_FROM` already defaults to `onboarding@resend.dev`, Resend's shared
+sandbox sender - it works immediately with zero setup, **but only delivers
+to the email address on your own Resend account**. That's enough to test
+your own login (forgot-password, etc.), but emails to any other address
+(e.g. a real client you're onboarding) will silently fail to deliver.
+
+To actually email clients, verify a domain you own: Resend dashboard →
+**Domains** → add your domain → add the DNS records it gives you (SPF/
+DKIM) → once verified, set `SMTP_FROM` to an address on that domain (e.g.
+`billing@yourdomain.com`). This is the same domain mentioned in the custom
+domain section below, so it's one DNS setup step for both.
+
+If a send fails (bad key, sandbox-sender restriction, provider hiccup),
+the app degrades gracefully rather than crashing the page you were on:
+onboarding and admin-initiated password resets show a clear error telling
+you to check the Logs tab for the code, and the account/action itself
+still goes through. If you move to a paid Render plan or self-host where
+SMTP isn't blocked, set `MAIL_BACKEND=smtp` and the `SMTP_*` variables
+instead - that code path is still there, just unused by default on Render.
 
 **Cost/durability note:** `render.yaml` requests Render's `free` plan for
 all three resources so you can try it at no cost. Render's free Postgres
