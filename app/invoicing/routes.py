@@ -92,7 +92,7 @@ def new_invoice():
                 customer = Customer(
                     tenant_id=tenant.id,
                     name=form.new_customer_name.data.strip(),
-                    gstin=(form.new_customer_gstin.data or "").strip().upper() or None,
+                    gstin=form.new_customer_gstin.data,  # already normalized/validated by the form field
                     address_line1=form.new_customer_address.data,
                     state_code=form.new_customer_state_code.data or form.place_of_supply_state_code.data,
                 )

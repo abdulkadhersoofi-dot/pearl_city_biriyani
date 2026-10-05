@@ -2,8 +2,9 @@ from datetime import date
 
 from flask_wtf import FlaskForm
 from wtforms import DateField, SelectField, StringField, TextAreaField
-from wtforms.validators import DataRequired, Length, Optional
+from wtforms.validators import DataRequired, Length, Optional, Regexp
 
+from app.utils.gst import GSTIN_REGEX, normalize_gstin
 from app.utils.indian_states import INDIAN_STATES
 
 
@@ -19,7 +20,11 @@ class InvoiceHeaderForm(FlaskForm):
 
     customer_id = SelectField("Customer", validators=[DataRequired()])
     new_customer_name = StringField("New customer name", validators=[Optional(), Length(max=255)])
-    new_customer_gstin = StringField("New customer GSTIN (optional)", validators=[Optional(), Length(max=15)])
+    new_customer_gstin = StringField(
+        "New customer GSTIN (optional)",
+        validators=[Optional(), Regexp(GSTIN_REGEX, message="Enter a valid 15-character GSTIN, or leave it blank")],
+        filters=[normalize_gstin],
+    )
     new_customer_address = StringField("Address", validators=[Optional(), Length(max=255)])
     new_customer_state_code = SelectField(
         "State", choices=[("", "Select state")] + INDIAN_STATES, validators=[Optional()]

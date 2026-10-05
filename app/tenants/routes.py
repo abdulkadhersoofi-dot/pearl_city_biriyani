@@ -70,7 +70,7 @@ def onboard():
         # nothing to bill from for an unregistered client.
         gstin = Gstin(
             tenant_id=tenant.id,
-            gstin=(form.gstin.data or "").strip().upper() or None,
+            gstin=form.gstin.data,  # already normalized/validated by the form field
             state_code=form.state_code.data,
             state_name=STATE_NAME_BY_CODE.get(form.state_code.data, ""),
             registered_address=form.registered_address.data,
@@ -221,7 +221,7 @@ def add_gstin(tenant_id):
     if form.validate_on_submit():
         gstin = Gstin(
             tenant_id=tenant.id,
-            gstin=(form.gstin.data or "").strip().upper() or None,
+            gstin=form.gstin.data,  # already normalized/validated by the form field
             state_code=form.state_code.data,
             state_name=STATE_NAME_BY_CODE.get(form.state_code.data, ""),
             registered_address=form.registered_address.data,

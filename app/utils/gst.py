@@ -11,6 +11,28 @@ from app.models.tenant import RegistrationType
 
 TWO_PLACES = Decimal("0.01")
 
+# The official GSTIN structure (every GSTIN input field in the app
+# validates against this, nothing else is accepted):
+#   - 2 digits: state code
+#   - 10 chars: PAN (5 letters, 4 digits, 1 letter)
+#   - 1 char: entity number under that PAN (1-9 or A-Z)
+#   - literal "Z"
+#   - 1 char: checksum (alphanumeric)
+# This checks structure/format only, not the actual check-digit algorithm -
+# "NIL", "-", "N/A" and the like are rejected by this just as reliably as a
+# malformed real-looking GSTIN would be. A customer/client with no GSTIN
+# must leave the field blank; nothing else means "unregistered".
+GSTIN_REGEX = r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$"
+
+
+def normalize_gstin(value):
+    """WTForms filter: blank/whitespace becomes None (not a stored empty
+    string a later `bool()` check could misread as "has a GSTIN"), and a
+    real GSTIN is uppercased before the Regexp validator checks its
+    format - so e.g. a lowercase-typed GSTIN or one with stray
+    leading/trailing whitespace isn't rejected on a technicality."""
+    return (value or "").strip().upper() or None
+
 # Document types a tenant is allowed to issue, gated by registration type.
 # Never left to the operator's judgement - the invoicing UI only offers
 # what this table allows for the tenant's registration_type.
