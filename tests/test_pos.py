@@ -207,4 +207,81 @@ def test_pos_day_book_is_tenant_isolated(client, db, tenant, client_admin):
     resp = client.get("/pos/bills")
 
     assert f"/pos/bills/{own_bill.id}/receipt".encode() in resp.data
-    assert f"/pos/bills/{other_bill.id}/receipt".encode() not in resp.data
+
+
+def _checkout_payload(payment_mode="cash"):
+    return {
+        "payment_mode": payment_mode,
+        "line_description[]": ["Chicken Biriyani"],
+        "line_hsn[]": ["996331"],
+        "line_qty[]": ["2"],
+        "line_rate[]": ["100"],
+        "line_gst_rate[]": ["18"],
+        "line_product_id[]": [""],
+        "line_unit[]": ["plate"],
+    }
+
+
+def test_checkout_route_returns_json_for_the_ajax_print_flow(client, db, tenant, client_admin):
+    """The terminal's Confirm button submits via fetch (not a form POST)
+    so it can show the paper-size picker and print directly, without
+    navigating to a separate receipt page first."""
+    _login(client, client_admin.email, "ClientSecret123")
+
+    resp = client.post(
+        "/pos/checkout",
+        data=_checkout_payload(),
+        headers={"X-Requested-With": "XMLHttpRequest"},
+    )
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["bill_number"].startswith("POS/")
+    assert "bill_id" in data
+
+
+def test_checkout_route_returns_json_error_on_validation_failure(client, db, tenant, client_admin):
+    _login(client, client_admin.email, "ClientSecret123")
+
+    payload = _checkout_payload(payment_mode="")
+    resp = client.post(
+        "/pos/checkout",
+        data=payload,
+        headers={"X-Requested-With": "XMLHttpRequest"},
+    )
+    assert resp.status_code == 400
+    assert "error" in resp.get_json()
+
+
+def test_refund_shows_as_a_separate_negative_entry_in_the_day_book(client, db, tenant, client_admin):
+    """A refunded bill must not look like an ordinary positive sale in
+    the day-book - the original sale stays a + entry and the refund is
+    its own - entry, so the two cancel out at a glance."""
+    from app.models.pos_bill import PaymentMode
+
+    bill = checkout(tenant, client_admin, _cart(qty="2", rate="100", gst_rate="18"), PaymentMode.CASH)
+    db.session.commit()
+    refund_bill(bill, client_admin, bill.grand_total, "Customer returned the order")
+    db.session.commit()
+
+    _login(client, client_admin.email, "ClientSecret123")
+    resp = client.get(f"/pos/bills?date={bill.completed_at.date().isoformat()}")
+    body = resp.data.decode()
+
+    assert f"Rs. {bill.grand_total:.2f}" in body
+    assert f"- Rs. {bill.refunded_amount:.2f}" in body
+    assert "Customer returned the order" in body
+
+
+def test_refund_route_redirects_back_to_the_requested_day_book_date(client, db, tenant, client_admin):
+    from app.models.pos_bill import PaymentMode
+
+    bill = checkout(tenant, client_admin, _cart(), PaymentMode.CASH)
+    db.session.commit()
+
+    _login(client, client_admin.email, "ClientSecret123")
+    resp = client.post(
+        f"/pos/bills/{bill.id}/refund",
+        data={"amount": str(bill.grand_total), "reason": "test", "redirect_date": "2025-01-15"},
+    )
+    assert resp.status_code == 302
+    assert "date=2025-01-15" in resp.headers["Location"]

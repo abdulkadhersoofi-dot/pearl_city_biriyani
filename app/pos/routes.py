@@ -2,7 +2,7 @@ from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from io import BytesIO
 
-from flask import abort, flash, redirect, render_template, request, send_file, url_for
+from flask import abort, flash, jsonify, redirect, render_template, request, send_file, url_for
 from flask_login import current_user
 
 from app.auth.decorators import tenant_user_required
@@ -10,7 +10,7 @@ from app.extensions import db
 from app.models.pos_bill import PaymentMode, POSBill, POSBillStatus
 from app.models.product import Product
 from app.pos import pos_bp
-from app.pos.receipt import render_receipt_pdf
+from app.pos.receipt import DEFAULT_PAGE_FORMAT, render_receipt_pdf
 from app.pos.services import (
     CartInput,
     POSValidationError,
@@ -96,6 +96,11 @@ def discard_held(bill_id):
 @pos_bp.route("/checkout", methods=["POST"])
 @tenant_user_required
 def checkout_route():
+    # The terminal submits checkout via fetch() with this header set, so it
+    # can show the paper-size picker and print directly from the same
+    # screen instead of navigating to a separate receipt page first. A
+    # plain form POST (no JS) still gets the old redirect-based flow.
+    wants_json = request.headers.get("X-Requested-With") == "XMLHttpRequest"
     try:
         cart = _cart_from_request()
         try:
@@ -113,9 +118,13 @@ def checkout_route():
             details={"bill_number": bill.bill_number, "amount": str(bill.grand_total)},
         )
         db.session.commit()
-        return redirect(url_for("pos.view_receipt", bill_id=bill.id, auto_print=1))
+        if wants_json:
+            return jsonify({"bill_id": bill.id, "bill_number": bill.bill_number})
+        return redirect(url_for("pos.view_receipt", bill_id=bill.id))
     except POSValidationError as exc:
         db.session.rollback()
+        if wants_json:
+            return jsonify({"error": exc.message}), 400
         flash(exc.message, "error")
         return redirect(url_for("pos.terminal"))
 
@@ -125,8 +134,7 @@ def checkout_route():
 def view_receipt(bill_id):
     bill = tenant_query(POSBill).filter_by(id=bill_id).first_or_404()
     assert_owns(bill)
-    auto_print = request.args.get("auto_print") == "1"
-    return render_template("pos/receipt.html", bill=bill, auto_print=auto_print)
+    return render_template("pos/receipt.html", bill=bill)
 
 
 @pos_bp.route("/bills/<int:bill_id>/receipt.pdf")
@@ -134,7 +142,7 @@ def view_receipt(bill_id):
 def receipt_pdf(bill_id):
     bill = tenant_query(POSBill).filter_by(id=bill_id).first_or_404()
     assert_owns(bill)
-    page_format = request.args.get("format", "80mm")
+    page_format = request.args.get("format", DEFAULT_PAGE_FORMAT)
     pdf_bytes = render_receipt_pdf(bill, page_format)
     return send_file(
         BytesIO(pdf_bytes),
@@ -149,6 +157,7 @@ def receipt_pdf(bill_id):
 def refund_bill_route(bill_id):
     bill = tenant_query(POSBill).filter_by(id=bill_id).first_or_404()
     assert_owns(bill)
+    redirect_date = request.form.get("redirect_date") or None
     try:
         amount = Decimal(request.form.get("amount", "0"))
     except InvalidOperation:
@@ -168,7 +177,7 @@ def refund_bill_route(bill_id):
     except POSValidationError as exc:
         db.session.rollback()
         flash(exc.message, "error")
-    return redirect(url_for("pos.view_receipt", bill_id=bill.id))
+    return redirect(url_for("pos.day_book", date=redirect_date))
 
 
 @pos_bp.route("/bills")

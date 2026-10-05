@@ -3,23 +3,31 @@
 <head>
 <meta charset="utf-8">
 <style>
-  @page { size: {{ page_size }}; margin: {{ '3mm' if is_thermal else '16mm' }}; }
+  @page { size: {{ page_size }}; margin: {{ '0.12in' if is_thermal else '16mm' }}; }
   body {
     font-family: "Courier New", monospace;
-    font-size: {{ '10pt' if is_thermal else '11pt' }};
+    /* Thermal paper is read up close at the counter, not from across a desk
+       like an A4 copy - small print is the #1 complaint about receipts, so
+       thermal gets a noticeably LARGER base size than the A4 copy, not a
+       smaller one. The 2-inch roll gets a slightly smaller size than the
+       3-inch roll (still well above the A4 copy's) since there's less
+       width to wrap into. */
+    font-size: {{ '12pt' if is_narrow else ('15pt' if is_thermal else '11pt') }};
+    line-height: {{ '1.3' if is_thermal else '1.2' }};
     color: #000;
     margin: 0;
   }
   .center { text-align: center; }
   .right { text-align: right; }
   .bold { font-weight: 700; }
-  .rule { border-top: 1px dashed #000; margin: {{ '6px 0' if is_thermal else '10px 0' }}; }
+  .rule { border-top: 1px dashed #000; margin: {{ '8px 0' if is_thermal else '10px 0' }}; }
   table { width: 100%; border-collapse: collapse; }
-  td { padding: 2px 0; vertical-align: top; }
+  td { padding: {{ '3px 0' if is_thermal else '2px 0' }}; vertical-align: top; }
   .line-desc { width: 100%; }
-  .totals td { padding: 3px 0; }
-  .grand { font-size: {{ '12pt' if is_thermal else '14pt' }}; font-weight: 700; }
-  .small { font-size: {{ '8pt' if is_thermal else '9pt' }}; color: #333; }
+  .totals td { padding: {{ '4px 0' if is_thermal else '3px 0' }}; }
+  .grand { font-size: {{ '15pt' if is_narrow else ('18pt' if is_thermal else '14pt') }}; font-weight: 700; }
+  .small { font-size: {{ '10pt' if is_narrow else ('12pt' if is_thermal else '9pt') }}; color: #333; }
+  .bill-number { text-align: center; font-weight: 700; word-break: break-all; }
 </style>
 </head>
 <body>
@@ -28,8 +36,8 @@
     {% if bill.gstin and bill.gstin.gstin %}<div class="small">GSTIN: {{ bill.gstin.gstin }}</div>{% endif %}
   </div>
   <div class="rule"></div>
+  <div class="bill-number">{{ bill.bill_number }}</div>
   <table>
-    <tr><td>Receipt</td><td class="right bold">{{ bill.bill_number }}</td></tr>
     <tr><td>Date</td><td class="right">{{ bill.completed_at.strftime('%d %b %Y %H:%M') if bill.completed_at else '' }}</td></tr>
     {% if bill.customer_snapshot %}<tr><td>Customer</td><td class="right">{{ bill.customer_snapshot.name }}</td></tr>{% endif %}
   </table>
@@ -54,7 +62,7 @@
     {% if bill.total_sgst %}<tr><td>SGST</td><td class="right">{{ '%.2f'|format(bill.total_sgst) }}</td></tr>{% endif %}
     {% if bill.total_igst %}<tr><td>IGST</td><td class="right">{{ '%.2f'|format(bill.total_igst) }}</td></tr>{% endif %}
     <tr><td>Round off</td><td class="right">{{ '%.2f'|format(bill.round_off) }}</td></tr>
-    <tr class="grand"><td>TOTAL</td><td class="right">Rs. {{ '%.2f'|format(bill.grand_total) }}</td></tr>
+    <tr class="grand"><td>TOTAL</td><td class="right">{{ '%.2f'|format(bill.grand_total) }}</td></tr>
   </table>
   <div class="rule"></div>
   <table>

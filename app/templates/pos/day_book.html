@@ -9,25 +9,62 @@
   </form>
 </div>
 
-<div class="table-wrap card">
+<div class="table-wrap card" x-data="dayBook()">
   <table>
-    <thead><tr><th>Bill</th><th>Time</th><th>Payment</th><th>Status</th><th>Total</th></tr></thead>
+    <thead><tr><th>Bill</th><th>Time</th><th>Payment</th><th>Status</th><th>Amount</th><th></th></tr></thead>
     <tbody>
     {% for b in bills %}
       <tr>
         <td><a href="{{ url_for('pos.view_receipt', bill_id=b.id) }}">{{ b.bill_number }}</a></td>
         <td>{{ b.completed_at.strftime('%H:%M') if b.completed_at else '-' }}</td>
         <td>{{ b.payment_mode.value|upper if b.payment_mode else '-' }}</td>
-        <td>
-          {% if b.status.value == 'completed' %}<span class="status-badge status-issued">Completed</span>
-          {% else %}<span class="status-badge status-void">Refunded</span>{% endif %}
-        </td>
+        <td><span class="status-badge status-issued">Completed</span></td>
         <td>Rs. {{ '%.2f'|format(b.grand_total) }}</td>
+        <td class="row">
+          <button type="button" class="btn btn-quiet" @click="print({{ b.id }}, '2in')">2&quot;</button>
+          <button type="button" class="btn btn-quiet" @click="print({{ b.id }}, '3in')">3&quot;</button>
+          <button type="button" class="btn btn-quiet" @click="print({{ b.id }}, 'a4')">A4</button>
+          {% if b.status.value == 'completed' %}
+          <form method="post" action="{{ url_for('pos.refund_bill_route', bill_id=b.id) }}"
+                onsubmit="var r = prompt('Reason for refund:'); if (!r) { return false; } this.reason.value = r; return confirm('Refund Rs. {{ '%.2f'|format(b.grand_total) }} for {{ b.bill_number }}?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="amount" value="{{ b.grand_total }}">
+            <input type="hidden" name="redirect_date" value="{{ on_date.isoformat() }}">
+            <input type="hidden" name="reason">
+            <button class="btn btn-quiet" style="color:var(--color-danger);">Refund</button>
+          </form>
+          {% endif %}
+        </td>
       </tr>
+      {% if b.status.value == 'refunded' %}
+      <tr class="text-muted">
+        <td>&#8618; Refund</td>
+        <td>{{ b.refunded_at.strftime('%H:%M') if b.refunded_at else '-' }}</td>
+        <td>{{ b.payment_mode.value|upper if b.payment_mode else '-' }}</td>
+        <td><span class="status-badge status-void">Refunded</span></td>
+        <td>- Rs. {{ '%.2f'|format(b.refunded_amount or 0) }}</td>
+        <td>{{ b.refund_reason or '' }}</td>
+      </tr>
+      {% endif %}
     {% else %}
-      <tr><td colspan="5" class="empty-state">No sales on this date.</td></tr>
+      <tr><td colspan="6" class="empty-state">No sales on this date.</td></tr>
     {% endfor %}
     </tbody>
   </table>
+  <iframe id="receipt-print-frame" style="display:none;"></iframe>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function dayBook() {
+  return {
+    print(billId, format) {
+      const frame = document.getElementById("receipt-print-frame");
+      frame.onload = () => { frame.contentWindow.print(); };
+      frame.src = "{{ url_for('pos.receipt_pdf', bill_id=0) }}".replace("/0/", "/" + billId + "/") + "?format=" + format;
+    }
+  };
+}
+</script>
 {% endblock %}

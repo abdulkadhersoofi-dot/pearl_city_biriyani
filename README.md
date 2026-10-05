@@ -221,6 +221,30 @@ Gunicorn workers or add app servers behind Nginx as load grows.
   lines and are editable, so a partial return/correction is as easy as a
   full one. Each gets its own numbering series (`CN`/`DN` prefixes) and is
   never hard-deleted - voiding works the same way as an invoice.
+- **POS checkout prints directly, no preview page.** Confirming a sale
+  posts via `fetch()` instead of a form submit, so the terminal can show
+  a paper-size picker (2"/3" thermal roll, or A4) in the same screen and
+  print immediately through a hidden iframe once a size is picked -
+  there's no separate "receipt preview" page in that path. A bill can
+  still be reprinted later (same direct-print buttons) from its receipt
+  page or the Day-book.
+- **Thermal receipts are sized in real inches, not a broken "auto".**
+  `app/pos/receipt.py` renders at an actual 2.28in/3.15in page width -
+  CSS Paged Media has no "fixed width, auto height" value, so an earlier
+  version that tried `58mm auto` was silently ignored by WeasyPrint and
+  fell back to a full A4 page every time. The height is seeded from the
+  bill's line count and doubled and re-rendered until the content fits
+  one page, so a big cart never spills onto a second page and a small
+  one never shrinks to an unreadable sliver in a PDF viewer's fit-to-page
+  view. Thermal font sizes are bumped well above the A4 copy's (counter
+  paper is read up close, not across a desk) and tuned separately per
+  width, since the 2-inch roll wraps long values the 3-inch size doesn't.
+- **A refund is two entries, not one flipped status.** The Day-book shows
+  a refunded sale as its original `+` row (untouched) plus a separate
+  `-` row for the refund - summing the two gets you back to zero, same
+  as a credit note against an invoice. Refund is a Day-book row action
+  (not on the receipt page), since that's where the two entries live
+  together.
 
 ## Roadmap
 

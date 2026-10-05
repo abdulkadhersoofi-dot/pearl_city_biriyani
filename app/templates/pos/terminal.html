@@ -13,6 +13,11 @@
     {product_id: {{ l.product_id or 'null' }}, description: {{ l.description|tojson }}, hsn: {{ (l.hsn_or_sac_code or '')|tojson }}, rate: {{ l.rate }}, gst_rate: {{ l.gst_rate }}, unit: {{ (l.unit or 'pcs')|tojson }}, qty: {{ l.qty }}},
     {% endfor %}
   ];
+  // bill_id=0 is a placeholder swapped for the real id once checkout
+  // returns one - keeps the route structure in one place (url_for)
+  // instead of hand-building the path in JS.
+  const RECEIPT_PDF_URL_TEMPLATE = {{ url_for('pos.receipt_pdf', bill_id=0)|tojson }};
+  const CSRF_TOKEN = {{ csrf_token()|tojson }};
 </script>
 {% endblock %}
 
@@ -119,9 +124,9 @@
     </div>
   </div>
 
-  <!-- 3-tap checkout: Checkout (above) -> pick payment mode -> Confirm -->
+  <!-- 3-tap checkout: Checkout (above) -> pick payment mode -> Confirm -> pick paper size (prints immediately, no preview page) -->
   <div class="checkout-overlay" x-show="checkoutStep !== 'idle'" x-cloak>
-    <div class="checkout-sheet" @click.outside="checkoutStep = 'idle'">
+    <div class="checkout-sheet" @click.outside="checkoutStep === 'payment' || checkoutStep === 'confirm' ? checkoutStep = 'idle' : null">
       <template x-if="checkoutStep === 'payment'">
         <div>
           <h2>Pick payment mode</h2>
@@ -138,27 +143,41 @@
           <h2>Confirm sale</h2>
           <p class="totals-row grand" style="justify-content:center; font-size:2rem;" x-text="'Rs. ' + cartTotal().toFixed(2)"></p>
           <p class="text-muted">Paid via <span x-text="paymentMode.toUpperCase()"></span></p>
-          <form method="post" :action="checkoutUrl">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <input type="hidden" name="payment_mode" :value="paymentMode">
-            <template x-for="(line, i) in cart" :key="'co-'+i">
-              <span>
-                <input type="hidden" name="line_product_id[]" :value="line.product_id || ''">
-                <input type="hidden" name="line_description[]" :value="line.description">
-                <input type="hidden" name="line_hsn[]" :value="line.hsn">
-                <input type="hidden" name="line_qty[]" :value="line.qty">
-                <input type="hidden" name="line_rate[]" :value="line.rate">
-                <input type="hidden" name="line_gst_rate[]" :value="line.gst_rate">
-                <input type="hidden" name="line_unit[]" :value="line.unit">
-              </span>
-            </template>
-            <button type="submit" class="btn btn-primary btn-lg btn-block">Confirm</button>
-          </form>
-          <button type="button" class="btn btn-quiet" style="margin-top:10px;" @click="checkoutStep = 'payment'">Back</button>
+          <p class="text-muted" x-show="checkoutError" x-text="checkoutError" style="color:var(--color-danger);"></p>
+          <button type="button" class="btn btn-primary btn-lg btn-block" :disabled="submitting" @click="confirmCheckout()">
+            <span x-text="submitting ? 'Please wait...' : 'Confirm'"></span>
+          </button>
+          <button type="button" class="btn btn-quiet" style="margin-top:10px;" @click="checkoutStep = 'payment'" :disabled="submitting">Back</button>
+        </div>
+      </template>
+      <template x-if="checkoutStep === 'size'">
+        <div>
+          <h2>Print receipt</h2>
+          <p class="text-muted mt-0">Bill <strong x-text="completedBillNumber"></strong> - pick the paper in the printer. It prints immediately.</p>
+          <div class="payment-mode-grid">
+            <button type="button" class="payment-mode-btn" @click="printReceipt('2in')">2 inch roll</button>
+            <button type="button" class="payment-mode-btn" @click="printReceipt('3in')">3 inch roll</button>
+            <button type="button" class="payment-mode-btn" @click="printReceipt('a4')">A4 copy</button>
+          </div>
+          <button type="button" class="btn btn-primary btn-block" @click="newSale()">Done - new sale</button>
+        </div>
+      </template>
+      <template x-if="checkoutStep === 'done'">
+        <div>
+          <h2>Printed</h2>
+          <p class="text-muted mt-0">Bill <strong x-text="completedBillNumber"></strong> sent to the printer. Reprint on a different size, or start the next sale.</p>
+          <div class="payment-mode-grid">
+            <button type="button" class="payment-mode-btn" @click="printReceipt('2in')">2 inch roll</button>
+            <button type="button" class="payment-mode-btn" @click="printReceipt('3in')">3 inch roll</button>
+            <button type="button" class="payment-mode-btn" @click="printReceipt('a4')">A4 copy</button>
+          </div>
+          <button type="button" class="btn btn-primary btn-block" @click="newSale()">New sale</button>
         </div>
       </template>
     </div>
   </div>
+
+  <iframe id="receipt-print-frame" style="display:none;"></iframe>
 </div>
 {% endblock %}
 
@@ -171,6 +190,10 @@ function posTerminal() {
     showHeld: false,
     checkoutStep: "idle",
     paymentMode: "",
+    submitting: false,
+    checkoutError: "",
+    completedBillId: null,
+    completedBillNumber: "",
     holdUrl: "{{ url_for('pos.hold_bill') }}",
     checkoutUrl: "{{ url_for('pos.checkout_route') }}",
     init() {
@@ -207,6 +230,57 @@ function posTerminal() {
     selectPayment(mode) {
       this.paymentMode = mode;
       this.checkoutStep = "confirm";
+    },
+    async confirmCheckout() {
+      this.submitting = true;
+      this.checkoutError = "";
+      const body = new FormData();
+      body.append("csrf_token", CSRF_TOKEN);
+      body.append("payment_mode", this.paymentMode);
+      this.cart.forEach(line => {
+        body.append("line_product_id[]", line.product_id || "");
+        body.append("line_description[]", line.description);
+        body.append("line_hsn[]", line.hsn);
+        body.append("line_qty[]", line.qty);
+        body.append("line_rate[]", line.rate);
+        body.append("line_gst_rate[]", line.gst_rate);
+        body.append("line_unit[]", line.unit);
+      });
+      try {
+        const res = await fetch(this.checkoutUrl, {
+          method: "POST",
+          headers: {"X-Requested-With": "XMLHttpRequest"},
+          body,
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          this.checkoutError = data.error || "Checkout failed.";
+          return;
+        }
+        this.completedBillId = data.bill_id;
+        this.completedBillNumber = data.bill_number;
+        this.checkoutStep = "size";
+      } catch (e) {
+        this.checkoutError = "Could not reach the server - check your connection and try again.";
+      } finally {
+        this.submitting = false;
+      }
+    },
+    printReceipt(format) {
+      if (!this.completedBillId) return;
+      const frame = document.getElementById("receipt-print-frame");
+      const url = RECEIPT_PDF_URL_TEMPLATE.replace("/0/", "/" + this.completedBillId + "/") + "?format=" + format;
+      frame.onload = () => { frame.contentWindow.print(); };
+      frame.src = url;
+      this.checkoutStep = "done";
+    },
+    newSale() {
+      this.cart = [];
+      this.checkoutStep = "idle";
+      this.paymentMode = "";
+      this.checkoutError = "";
+      this.completedBillId = null;
+      this.completedBillNumber = "";
     }
   };
 }
