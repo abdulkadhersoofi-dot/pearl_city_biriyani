@@ -13,8 +13,8 @@
     {{ field(form.unit) }}
     {{ field(form.default_price) }}
   </div>
-  {% if product and product.image_path %}
-    <img src="{{ url_for('static', filename=product.image_path) }}" alt="{{ product.name }}" style="width:96px; height:96px; object-fit:cover; border-radius:var(--radius); border:1px solid var(--color-border);">
+  {% if product and product.image_id %}
+    <img src="{{ url_for('main.media', image_id=product.image_id) }}" alt="{{ product.name }}" style="width:96px; height:96px; object-fit:cover; border-radius:var(--radius); border:1px solid var(--color-border);">
   {% endif %}
   {{ field(form.image, help="Shown on the POS item tile, alongside the name and price.") }}
   <button type="submit" class="btn btn-primary btn-lg">Save</button>

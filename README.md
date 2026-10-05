@@ -257,17 +257,25 @@ Gunicorn workers or add app servers behind Nginx as load grows.
   themed went instantly unreadable. Font choice is a fixed set of
   OS-available stacks, not a CDN font, to keep the app's offline story
   intact.
-- **Uploaded images (tenant logos, product photos) are stored on local
-  disk** under `app/static/uploads/<logos|products>/`, served free by
-  Flask's own static handler (see `app/utils/uploads.py`). Product
-  photos are center-cropped and resized to an exact 512x512 square on
-  upload (Pillow), so a POS tile always shows a cleanly filled square
-  regardless of the original's aspect ratio, instead of leaving that to
-  CSS `object-fit` at display time. This fits the
-  app's self-hosted/offline design, but **is not durable on a host with
-  an ephemeral filesystem** (e.g. Render's free tier) - uploaded images
-  are lost on every redeploy or restart there. Swap in S3-compatible
-  object storage before relying on uploads in that kind of deployment.
+- **Uploaded images (tenant logos, product photos) are stored in the
+  database**, not on local disk - an `uploaded_images` table
+  (`app/models/media.py`), served through `GET /media/<id>`
+  (`app/main/routes.py`), not Flask's static handler. An earlier version
+  saved files under `app/static/uploads/` instead; that's lost on every
+  container restart or redeploy on most hosts (this one included),
+  which is exactly the bug this was changed to fix - a client's logo and
+  item photos would vanish and need re-uploading after any sign-out/
+  sign-in that happened to land after a restart. A database row is as
+  durable as the rest of the tenant's data, with no extra infrastructure
+  (S3, etc.) needed. Served images are cached hard (`Cache-Control:
+  immutable`, a 1-year max-age) since replacing an image creates a new
+  row/id rather than overwriting the old one. Product photos are
+  center-cropped and resized to an exact 512x512 square on upload
+  (Pillow), so a POS tile always shows a cleanly filled square
+  regardless of the original's aspect ratio. A PDF (invoice/note) embeds
+  the logo as a base64 `data:` URI directly in the HTML WeasyPrint
+  renders, since a PDF has no way to reach a database-backed `/media/<id>`
+  URL or a filesystem path.
 - **Thermal receipts are sized in real inches, not a broken "auto".**
   `app/pos/receipt.py` renders at an actual 2.28in/3.15in page width -
   CSS Paged Media has no "fixed width, auto height" value, so an earlier

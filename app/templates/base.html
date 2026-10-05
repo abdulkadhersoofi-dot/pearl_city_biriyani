@@ -17,8 +17,8 @@
   <div class="app-shell">
     <header class="topbar">
       <a class="brand" href="{{ url_for('main.index') }}">
-        {% if brand_logo_path %}
-          <img src="{{ url_for('static', filename=brand_logo_path) }}" alt="{{ firm_name }}" class="brand-logo">
+        {% if brand_logo_url %}
+          <img src="{{ brand_logo_url }}" alt="{{ firm_name }}" class="brand-logo">
         {% elif not current_user.is_authenticated or current_user.is_super_admin %}
           <img src="{{ url_for('static', filename='img/arfa-logo.jpg') }}" alt="ARFA" class="brand-logo">
         {% endif %}

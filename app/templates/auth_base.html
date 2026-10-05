@@ -11,8 +11,8 @@
   <div class="auth-wrap">
     <div class="auth-card">
       {% if login_tenant %}
-        {% if login_tenant.logo_path %}
-          <img src="{{ url_for('static', filename=login_tenant.logo_path) }}" alt="{{ login_tenant.display_name }}" class="auth-logo">
+        {% if login_tenant.logo_image_id %}
+          <img src="{{ url_for('main.media', image_id=login_tenant.logo_image_id) }}" alt="{{ login_tenant.display_name }}" class="auth-logo">
         {% endif %}
         <h1 class="auth-brand">{{ login_tenant.display_name }}</h1>
       {% else %}

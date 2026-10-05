@@ -32,7 +32,7 @@
       </p>
     </div>
     <div class="firm">
-      {% if logo_path %}<img class="firm-logo" src="file://{{ logo_path }}">{% endif %}
+      {% if logo_data_uri %}<img class="firm-logo" src="{{ logo_data_uri }}">{% endif %}
       <strong>{{ firm_name }}</strong><br>
       {% if note.gstin %}
         {% if note.gstin.gstin %}GSTIN: {{ note.gstin.gstin }}<br>{% endif %}

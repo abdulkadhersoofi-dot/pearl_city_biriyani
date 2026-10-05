@@ -100,21 +100,23 @@ def _register_error_handlers(app: Flask) -> None:
 def _register_context_processors(app: Flask) -> None:
     @app.context_processor
     def inject_globals():
+        from flask import url_for
         from flask_login import current_user
 
         # Platform identity (ARFA) everywhere by default. A signed-in
         # Client Admin/Staff user sees their own tenant's branding instead -
         # nav, page titles, and (passed explicitly) their printed documents.
         brand_name = app.config["FIRM_NAME"]
-        brand_logo_path = None
+        brand_logo_url = None
         brand_tenant = None
         if current_user.is_authenticated and not current_user.is_super_admin and current_user.tenant:
             brand_tenant = current_user.tenant
             brand_name = brand_tenant.display_name
-            brand_logo_path = brand_tenant.logo_path
+            if brand_tenant.logo_image_id:
+                brand_logo_url = url_for("main.media", image_id=brand_tenant.logo_image_id)
         return {
             "firm_name": brand_name,
-            "brand_logo_path": brand_logo_path,
+            "brand_logo_url": brand_logo_url,
             "brand_tenant": brand_tenant,
             "platform_name": app.config["FIRM_NAME"],
         }

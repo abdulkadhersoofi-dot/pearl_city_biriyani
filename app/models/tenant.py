@@ -30,8 +30,10 @@ class Tenant(db.Model, TimestampMixin):
 
     # Branding: shown instead of the platform's own name/logo wherever a
     # Client Admin or Staff user is signed in - the nav, invoice PDFs, POS
-    # receipts, and (via login_slug) this client's own login page.
-    logo_path = db.Column(db.String(255))  # relative to app/static/, e.g. "uploads/logos/xyz.png"
+    # receipts, and (via login_slug) this client's own login page. Stored
+    # in uploaded_images (database row, not a disk path) so it survives a
+    # container restart/redeploy - see app/models/media.py.
+    logo_image_id = db.Column(db.Integer, db.ForeignKey("uploaded_images.id"))
     # Site theme, each independently settable from Settings - see
     # app/utils/theme.py for how these four turn into CSS.
     primary_color = db.Column(db.String(7), nullable=False, default="#1f7a4d")  # buttons/links

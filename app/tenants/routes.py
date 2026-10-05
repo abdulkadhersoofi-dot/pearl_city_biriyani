@@ -59,7 +59,7 @@ def onboard():
 
         tenant.login_slug = _make_login_slug(tenant.legal_name, tenant.id)
         try:
-            tenant.logo_path = save_uploaded_image(form.logo.data, "logos")
+            tenant.logo_image_id = save_uploaded_image(form.logo.data)
         except UploadError as exc:
             flash(exc.message, "error")
             return render_template("tenants/onboard.html", form=form)
@@ -192,14 +192,16 @@ def update_logo(tenant_id):
     # one in without a Client Admin visiting Settings themselves.
     tenant = Tenant.query.get_or_404(tenant_id)
     try:
-        new_logo_path = save_uploaded_image(request.files.get("logo"), "logos")
+        new_logo_id = save_uploaded_image(request.files.get("logo"))
     except UploadError as exc:
         flash(exc.message, "error")
         return redirect(url_for("tenants.detail", tenant_id=tenant.id))
 
-    if new_logo_path:
-        delete_uploaded_image(tenant.logo_path)
-        tenant.logo_path = new_logo_path
+    if new_logo_id:
+        old_logo_id = tenant.logo_image_id
+        tenant.logo_image_id = new_logo_id
+        db.session.flush()
+        delete_uploaded_image(old_logo_id)
         if not tenant.login_slug:
             tenant.login_slug = _make_login_slug(tenant.legal_name, tenant.id)
         record_audit(

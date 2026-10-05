@@ -5,7 +5,7 @@
 <script>
   const PRODUCTS = [
     {% for p in products %}
-    {id: {{ p.id }}, name: {{ p.name|tojson }}, hsn: {{ (p.hsn_or_sac_code or '')|tojson }}, rate: {{ p.default_price }}, gst_rate: {{ p.gst_rate }}, unit: {{ p.unit|tojson }}, image: {{ (url_for('static', filename=p.image_path) if p.image_path else '')|tojson }}},
+    {id: {{ p.id }}, name: {{ p.name|tojson }}, hsn: {{ (p.hsn_or_sac_code or '')|tojson }}, rate: {{ p.default_price }}, gst_rate: {{ p.gst_rate }}, unit: {{ p.unit|tojson }}, image: {{ (url_for('main.media', image_id=p.image_id) if p.image_id else '')|tojson }}},
     {% endfor %}
   ];
   const DEFAULT_RECEIPT_FORMAT = {{ default_receipt_format|tojson }};

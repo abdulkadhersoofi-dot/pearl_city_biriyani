@@ -1,22 +1,33 @@
-"""Local-disk image uploads (logos, product photos). Saved under
-app/static/uploads/<subdir>/ with a random filename, so they're served
-free by Flask's own static handler - no separate route needed.
+"""Image uploads (tenant logos, product photos) - stored as rows in the
+uploaded_images table, not on local disk.
 
-Self-hosted on a VPS with persistent disk, this is fine and matches the
-app's offline/LAN-friendly design. On a host with an ephemeral filesystem
-(Render's free tier, for one) these files are lost on every redeploy or
-restart - swap this for S3-compatible object storage before relying on
-uploaded images in a deployment like that (see README).
+An earlier version of this saved files under app/static/uploads/ instead.
+That's lost on every container restart or redeploy on most hosts
+(this one included) - a client's logo and item photos would silently
+vanish and need re-uploading. A database row persists exactly as
+reliably as the rest of the tenant's data, with no extra infrastructure
+(S3, etc.) needed to keep this app's self-hosted, offline-friendly
+design intact.
 """
 
-import os
-import uuid
+import base64
+import io
 
-from flask import current_app
 from PIL import Image, ImageOps, UnidentifiedImageError
+
+from app.extensions import db
+from app.models.media import UploadedImage
 
 ALLOWED_IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp"}
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
+
+_CONTENT_TYPES = {
+    "png": "image/png",
+    "jpg": "image/jpeg",
+    "jpeg": "image/jpeg",
+    "gif": "image/gif",
+    "webp": "image/webp",
+}
 
 
 class UploadError(Exception):
@@ -25,18 +36,17 @@ class UploadError(Exception):
         self.message = message
 
 
-def save_uploaded_image(file_storage, subdir: str, square_size: int | None = None) -> str | None:
-    """Returns a path relative to app/static/ (for url_for('static', ...)
-    and for direct filesystem use in WeasyPrint PDFs), or None if no file
-    was submitted.
+def save_uploaded_image(file_storage, square_size: int | None = None) -> int | None:
+    """Validates and stores an uploaded image as a new UploadedImage row
+    (flushed, not committed - the caller's own commit covers it),
+    returning its id, or None if no file was submitted.
 
     square_size, when given, center-crops and resizes the image down to
-    an exact square on the server (not just CSS object-fit on display) -
-    for product photos, so every POS tile shows a consistently filled
-    square regardless of what aspect ratio was uploaded, and so a huge
-    phone-camera original doesn't ship to the POS terminal as-is. Logos
-    are saved at their native aspect ratio (square_size omitted) since
-    forcing a wordmark logo into a square would crop it badly."""
+    an exact square (not just CSS object-fit on display) - for product
+    photos, so every POS tile shows a consistently filled square
+    regardless of what aspect ratio was uploaded. Logos are stored at
+    their native aspect ratio (square_size omitted) since forcing a
+    wordmark logo into a square would crop it badly."""
     if not file_storage or not file_storage.filename:
         return None
 
@@ -44,51 +54,50 @@ def save_uploaded_image(file_storage, subdir: str, square_size: int | None = Non
     if ext not in ALLOWED_IMAGE_EXTENSIONS:
         raise UploadError("Unsupported image type - use PNG, JPG, GIF or WEBP.")
 
-    file_storage.stream.seek(0, os.SEEK_END)
-    size = file_storage.stream.tell()
-    file_storage.stream.seek(0)
-    if size > MAX_IMAGE_BYTES:
+    data = file_storage.read()
+    if len(data) > MAX_IMAGE_BYTES:
         raise UploadError("Image is too large - 5 MB max.")
 
-    target_dir = os.path.join(current_app.root_path, "static", "uploads", subdir)
-    os.makedirs(target_dir, exist_ok=True)
-    filename = f"{uuid.uuid4().hex}.{ext}"
-    full_path = os.path.join(target_dir, filename)
-    file_storage.save(full_path)
-
-    if square_size:
-        _square_crop_in_place(full_path, square_size)
-
-    return f"uploads/{subdir}/{filename}"
-
-
-def _square_crop_in_place(path: str, size: int) -> None:
     try:
-        with Image.open(path) as img:
-            img = ImageOps.exif_transpose(img)  # phone photos often carry a rotation flag, not pixels
-            fitted = ImageOps.fit(img, (size, size), Image.LANCZOS)
-            if path.lower().endswith((".jpg", ".jpeg")) and fitted.mode in ("RGBA", "P", "LA"):
-                fitted = fitted.convert("RGB")
-            fitted.save(path)
+        with Image.open(io.BytesIO(data)) as img:
+            img.verify()
     except (UnidentifiedImageError, OSError) as exc:
-        os.remove(path)
         raise UploadError("That file doesn't look like a valid image.") from exc
 
+    content_type = _CONTENT_TYPES[ext]
+    if square_size:
+        data, content_type = _square_crop(data, square_size)
 
-def delete_uploaded_image(relative_path: str | None) -> None:
-    if not relative_path:
+    record = UploadedImage(content_type=content_type, data=data)
+    db.session.add(record)
+    db.session.flush()
+    return record.id
+
+
+def _square_crop(data: bytes, size: int) -> tuple[bytes, str]:
+    with Image.open(io.BytesIO(data)) as img:
+        img = ImageOps.exif_transpose(img)  # phone photos often carry a rotation flag, not pixels
+        fitted = ImageOps.fit(img, (size, size), Image.LANCZOS)
+        if fitted.mode in ("RGBA", "P", "LA"):
+            fitted = fitted.convert("RGB")
+        buf = io.BytesIO()
+        fitted.save(buf, format="JPEG", quality=88)
+        return buf.getvalue(), "image/jpeg"
+
+
+def delete_uploaded_image(image_id: int | None) -> None:
+    if not image_id:
         return
-    full_path = os.path.join(current_app.root_path, "static", relative_path)
-    if os.path.isfile(full_path):
-        os.remove(full_path)
+    UploadedImage.query.filter_by(id=image_id).delete()
 
 
-def absolute_image_path(relative_path: str | None) -> str | None:
-    """Absolute filesystem path for embedding in a WeasyPrint PDF -
-    url_for('static', ...) produces a server-absolute URL path ('/static/
-    ...') that WeasyPrint's file resolver can't map back to this app's
-    static folder, so PDF templates need the real path instead."""
-    if not relative_path:
+def image_data_uri(image_id: int | None) -> str | None:
+    """A data: URI embedding the image inline - for a WeasyPrint-rendered
+    PDF's <img src=...>, which has no way to reach a database-backed
+    /media/<id> URL (and no filesystem path to resolve either)."""
+    if not image_id:
         return None
-    full_path = os.path.join(current_app.root_path, "static", relative_path)
-    return full_path if os.path.isfile(full_path) else None
+    record = UploadedImage.query.get(image_id)
+    if not record:
+        return None
+    return f"data:{record.content_type};base64,{base64.b64encode(record.data).decode('ascii')}"

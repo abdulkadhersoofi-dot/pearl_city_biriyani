@@ -35,7 +35,7 @@ def new_product():
         product = Product(tenant_id=current_user.tenant_id)
         form.populate_obj(product)
         try:
-            product.image_path = save_uploaded_image(form.image.data, "products", square_size=PRODUCT_IMAGE_SIZE)
+            product.image_id = save_uploaded_image(form.image.data, square_size=PRODUCT_IMAGE_SIZE)
         except UploadError as exc:
             flash(exc.message, "error")
             return render_template("products/form.html", form=form, product=None)
@@ -56,12 +56,16 @@ def edit_product(product_id):
         form.populate_obj(product)
         if form.image.data and form.image.data.filename:
             try:
-                new_image_path = save_uploaded_image(form.image.data, "products", square_size=PRODUCT_IMAGE_SIZE)
+                new_image_id = save_uploaded_image(form.image.data, square_size=PRODUCT_IMAGE_SIZE)
             except UploadError as exc:
                 flash(exc.message, "error")
                 return render_template("products/form.html", form=form, product=product)
-            delete_uploaded_image(product.image_path)
-            product.image_path = new_image_path
+            # New row referenced (and flushed) before the old one is
+            # deleted - the other way around trips the foreign key.
+            old_image_id = product.image_id
+            product.image_id = new_image_id
+            db.session.flush()
+            delete_uploaded_image(old_image_id)
         db.session.commit()
         flash(f"{product.name} updated.", "success")
         return redirect(url_for("products.list_products"))

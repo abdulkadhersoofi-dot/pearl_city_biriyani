@@ -17,12 +17,17 @@ def index():
     if form.validate_on_submit():
         if form.logo.data and form.logo.data.filename:
             try:
-                new_logo_path = save_uploaded_image(form.logo.data, "logos")
+                new_logo_id = save_uploaded_image(form.logo.data)
             except UploadError as exc:
                 flash(exc.message, "error")
                 return render_template("settings/form.html", form=form, tenant=tenant)
-            delete_uploaded_image(tenant.logo_path)
-            tenant.logo_path = new_logo_path
+            # Point the tenant at the new image (and flush it) before
+            # deleting the old row - the other way around trips the
+            # foreign key, since tenant.logo_image_id still references it.
+            old_logo_id = tenant.logo_image_id
+            tenant.logo_image_id = new_logo_id
+            db.session.flush()
+            delete_uploaded_image(old_logo_id)
 
         tenant.primary_color = form.primary_color.data
         tenant.background_color = form.background_color.data
