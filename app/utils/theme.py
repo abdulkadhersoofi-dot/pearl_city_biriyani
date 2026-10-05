@@ -28,38 +28,39 @@ FONT_FAMILY_STACKS = {
 
 DEFAULT_PRIMARY_COLOR = "#1f7a4d"
 DEFAULT_BACKGROUND_COLOR = "#f6f7f5"
+DEFAULT_TEXT_COLOR = "#1f2a24"
 DEFAULT_FONT_FAMILY = "system"
-
-# Matches app.css's own :root defaults for --color-text / a light
-# equivalent - picked per-tenant by contrast against their own
-# --color-bg, never exposed as a separate setting.
-DARK_PAGE_TEXT = "#1f2a24"
-LIGHT_PAGE_TEXT = "#f5f6f4"
 
 
 def _safe_hex(value, fallback):
     return value if value and HEX_COLOR_RE.match(value) else fallback
 
 
-def _contrast_text_color(background_hex: str) -> str:
+def contrast_text_color(background_hex: str) -> str:
+    """Light or dark text for readable contrast against background_hex -
+    used only to seed a sensible default (new tenants, and the migration
+    backfill for ones that already had a background set); the stored
+    text_color is always what's actually rendered, fully user-editable
+    from Settings."""
     r, g, b = int(background_hex[1:3], 16), int(background_hex[3:5], 16), int(background_hex[5:7], 16)
     luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
-    return DARK_PAGE_TEXT if luminance > 0.5 else LIGHT_PAGE_TEXT
+    return DEFAULT_TEXT_COLOR if luminance > 0.5 else "#f5f6f4"
 
 
 def tenant_theme_css(tenant) -> str:
-    """CSS text (no <style> tags) overriding buttons/background/font for
-    this tenant, or "" if there's no tenant (platform pages keep app.css
-    as-is). Page text color is derived from the background automatically
-    for contrast - cards/inputs stay white regardless, see app.css."""
+    """CSS text (no <style> tags) overriding buttons/background/font/text
+    color for this tenant, or "" if there's no tenant (platform pages
+    keep app.css as-is). "Surface" elements (cards, inputs, the topbar)
+    pin their own text color regardless, see app.css, so a tenant's text
+    color choice only affects text sitting directly on their background."""
     if not tenant:
         return ""
     primary = _safe_hex(tenant.primary_color, DEFAULT_PRIMARY_COLOR)
     background = _safe_hex(tenant.background_color, DEFAULT_BACKGROUND_COLOR)
+    text = _safe_hex(tenant.text_color, DEFAULT_TEXT_COLOR)
     font_stack = FONT_FAMILY_STACKS.get(tenant.font_family, FONT_FAMILY_STACKS[DEFAULT_FONT_FAMILY])
-    page_text = _contrast_text_color(background)
     return (
         f":root {{ --color-primary: {primary}; --color-primary-dark: {primary}; "
-        f"--color-bg: {background}; --color-page-text: {page_text}; }}"
+        f"--color-bg: {background}; --color-page-text: {text}; }}"
         f" body {{ font-family: {font_stack}; }}"
     )

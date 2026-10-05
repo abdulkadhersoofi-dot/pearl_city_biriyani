@@ -33,18 +33,20 @@
         {{ form.document_type(class="field-input", **{"@change": "recalc()"}) }}
       </div>
       {{ field(form.invoice_date) }}
-      <div class="field">
-        {{ form.place_of_supply_state_code.label(class="field-label") }}
-        {{ form.place_of_supply_state_code(class="field-input", **{"x-model": "placeOfSupply", "@change": "recalc()"}) }}
-      </div>
     </div>
   </div>
 
   <div class="card" style="margin-bottom:20px;">
-    <div class="field">
-      {{ form.customer_id.label(class="field-label") }}
-      {{ form.customer_id(class="field-input", **{"x-model": "customerId", "@change": "onCustomerChange()"}) }}
-      <p class="field-help" x-show="customerId !== 'new' && customerId !== ''">Place of supply is set from this customer's state - change it above if this sale ships to a different state.</p>
+    <div class="form-grid">
+      <div class="field">
+        {{ form.customer_id.label(class="field-label") }}
+        {{ form.customer_id(class="field-input", **{"x-model": "customerId", "@change": "onCustomerChange()"}) }}
+        <p class="field-help" x-show="customerId !== 'new' && customerId !== ''">Place of supply is set from this customer's state below - change it if this sale ships to a different state.</p>
+      </div>
+      <div class="field">
+        {{ form.place_of_supply_state_code.label(class="field-label") }}
+        {{ form.place_of_supply_state_code(class="field-input", **{"x-model": "placeOfSupply", "@change": "recalc()"}) }}
+      </div>
     </div>
     <template x-if="customerId === 'new'">
       <div class="form-grid" style="margin-top:12px;">

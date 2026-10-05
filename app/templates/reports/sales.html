@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Sales report - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Sales report</h1>
+    <p class="text-muted mt-0">{{ data.start.strftime('%d %b %Y') }} - {{ data.end.strftime('%d %b %Y') }} &middot; {{ data.invoice_count }} invoice(s), {{ data.pos_bill_count }} POS bill(s)</p>
+  </div>
+  <div class="row">
+    <a href="{{ url_for('reports.sales_xlsx', start=data.start.isoformat(), end=data.end.isoformat()) }}" class="btn btn-secondary">Excel</a>
+    <a href="{{ url_for('reports.sales_pdf', start=data.start.isoformat(), end=data.end.isoformat()) }}" class="btn btn-secondary" target="_blank">PDF</a>
+    <a href="{{ url_for('reports.index') }}" class="btn btn-quiet">Back</a>
+  </div>
+</div>
+
+<form method="get" class="card row" style="margin-bottom:20px; align-items:flex-end;">
+  <div class="field" style="margin-bottom:0;">
+    <label class="field-label" for="start">From</label>
+    <input type="date" name="start" id="start" value="{{ data.start.isoformat() }}" class="field-input">
+  </div>
+  <div class="field" style="margin-bottom:0;">
+    <label class="field-label" for="end">To</label>
+    <input type="date" name="end" id="end" value="{{ data.end.isoformat() }}" class="field-input">
+  </div>
+  <button type="submit" class="btn btn-primary">Update</button>
+</form>
+
+<div class="form-grid" style="margin-bottom:20px;">
+  <div class="card">
+    <p class="text-muted mt-0">Taxable value</p>
+    <p style="font-size:1.6rem; font-weight:800; margin:0;">Rs. {{ '%.2f'|format(data.totals.taxable_value) }}</p>
+  </div>
+  <div class="card">
+    <p class="text-muted mt-0">CGST + SGST</p>
+    <p style="font-size:1.6rem; font-weight:800; margin:0;">Rs. {{ '%.2f'|format(data.totals.cgst + data.totals.sgst) }}</p>
+  </div>
+  <div class="card">
+    <p class="text-muted mt-0">IGST</p>
+    <p style="font-size:1.6rem; font-weight:800; margin:0;">Rs. {{ '%.2f'|format(data.totals.igst) }}</p>
+  </div>
+  <div class="card">
+    <p class="text-muted mt-0">Total</p>
+    <p style="font-size:1.6rem; font-weight:800; margin:0;">Rs. {{ '%.2f'|format(data.totals.total) }}</p>
+  </div>
+</div>
+
+<div class="card">
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Date</th><th>Type</th><th>Document no.</th><th>Customer</th><th>Payment</th>
+          <th>Taxable</th><th>CGST</th><th>SGST</th><th>IGST</th><th>Total</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for r in data.rows %}
+        <tr>
+          <td>{{ r.doc_date.strftime('%d %b %Y') }}</td>
+          <td>{{ r.doc_type }}</td>
+          <td>{{ r.doc_number }}</td>
+          <td>{{ r.customer_name }}</td>
+          <td>{{ r.payment_mode|upper if r.payment_mode else '-' }}</td>
+          <td>{{ '%.2f'|format(r.sign * r.taxable_value) }}</td>
+          <td>{{ '%.2f'|format(r.sign * r.cgst) }}</td>
+          <td>{{ '%.2f'|format(r.sign * r.sgst) }}</td>
+          <td>{{ '%.2f'|format(r.sign * r.igst) }}</td>
+          <td>{{ '%.2f'|format(r.signed_total) }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="10" class="empty-state">No sales in this date range.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

@@ -1,11 +1,23 @@
 import io
 
+from PIL import Image
+
 from app.models.product import Product
 from app.models.tenant import Tenant
 
 
 def _login(client, email, password):
     return client.post("/auth/login", data={"email": email, "password": password}, follow_redirects=True)
+
+
+def _real_image_bytes(width=800, height=400, color=(220, 40, 40)):
+    """A real, decodable image - product uploads are now validated and
+    center-cropped server-side (app.utils.uploads), so a bare byte
+    string no longer passes."""
+    buf = io.BytesIO()
+    Image.new("RGB", (width, height), color).save(buf, format="JPEG")
+    buf.seek(0)
+    return buf
 
 
 def test_settings_page_updates_theme_and_print_size(client, db, client_admin, tenant):
@@ -130,7 +142,7 @@ def test_staff_cannot_upload_a_logo_for_a_client(client, db, staff, tenant):
 def test_product_image_upload_is_saved_on_the_product(client, db, client_admin):
     _login(client, client_admin.email, "ClientSecret123")
 
-    image = (io.BytesIO(b"fake-png-bytes"), "dish.jpg")
+    image = (_real_image_bytes(), "dish.jpg")
     resp = client.post(
         "/products/new",
         data={
@@ -151,3 +163,52 @@ def test_product_image_upload_is_saved_on_the_product(client, db, client_admin):
     assert product is not None
     assert product.image_path is not None
     assert product.image_path.startswith("uploads/products/")
+
+
+def test_product_image_is_cropped_to_a_square_on_upload(client, db, client_admin):
+    _login(client, client_admin.email, "ClientSecret123")
+
+    # 800x400 - a wide, clearly non-square original.
+    image = (_real_image_bytes(width=800, height=400), "wide-dish.jpg")
+    client.post(
+        "/products/new",
+        data={
+            "name": "Mutton Rolls",
+            "description": "",
+            "hsn_or_sac_code": "2106",
+            "gst_rate": "5",
+            "unit": "plate",
+            "default_price": "90",
+            "image": image,
+        },
+        content_type="multipart/form-data",
+        follow_redirects=True,
+    )
+    product = Product.query.filter_by(name="Mutton Rolls").first()
+    assert product is not None
+    from flask import current_app
+
+    saved_path = f"{current_app.root_path}/static/{product.image_path}"
+    with Image.open(saved_path) as saved:
+        assert saved.size == (512, 512)
+
+
+def test_a_non_image_file_is_rejected_for_a_product_photo(client, db, client_admin):
+    _login(client, client_admin.email, "ClientSecret123")
+
+    image = (io.BytesIO(b"not actually an image"), "dish.png")
+    resp = client.post(
+        "/products/new",
+        data={
+            "name": "Fake Photo Item",
+            "description": "",
+            "hsn_or_sac_code": "2106",
+            "gst_rate": "5",
+            "unit": "plate",
+            "default_price": "90",
+            "image": image,
+        },
+        content_type="multipart/form-data",
+    )
+    assert resp.status_code == 200
+    assert Product.query.filter_by(name="Fake Photo Item").first() is None

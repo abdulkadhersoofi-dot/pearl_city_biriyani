@@ -19,6 +19,33 @@ def _b2b_customer(db, tenant):
     return customer
 
 
+def test_gstr1_treats_a_whitespace_only_gstin_as_b2c_not_b2b(db, tenant, client_admin):
+    # Regression: Optional() skips the Regexp check for blank input but
+    # doesn't clear field.data, so a stray space left in the GSTIN field
+    # used to survive as a truthy-but-blank value and get this customer
+    # wrongly classified as B2B, with an empty-looking GSTIN in that
+    # section of the report.
+    gstin = tenant.gstins.first()
+    customer = Customer(tenant_id=tenant.id, name="Walk-in Regular", gstin=" ", state_code="29", state_name="Karnataka")
+    db.session.add(customer)
+    db.session.flush()
+
+    create_invoice(
+        tenant, client_admin,
+        InvoiceInput(
+            gstin_id=gstin.id, document_type=DocumentType.TAX_INVOICE, customer_id=customer.id,
+            place_of_supply_state_code="29", invoice_date=date(2026, 10, 5), notes=None,
+            lines=[LineInput(description="Catering", hsn_or_sac_code="996331", qty=Decimal("1"), rate=Decimal("1000"), discount_percent=Decimal("0"), gst_rate=Decimal("18"))],
+        ),
+    )
+    db.session.commit()
+
+    data = gstr1_data(tenant, gstin, "2026-10")
+    assert data["b2b"] == []
+    assert len(data["b2c"]) == 1
+    assert data["b2c"][0].taxable_value == Decimal("1000.00")
+
+
 def test_month_bounds_handles_short_and_long_months():
     assert month_bounds("2026-02") == (date(2026, 2, 1), date(2026, 2, 28))
     assert month_bounds("2026-01") == (date(2026, 1, 1), date(2026, 1, 31))

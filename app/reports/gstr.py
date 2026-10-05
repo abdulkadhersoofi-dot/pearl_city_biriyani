@@ -38,6 +38,13 @@ class ReportPeriodError(Exception):
         self.message = message
 
 
+def normalized_customer_gstin(snapshot: dict | None) -> str | None:
+    """Blank-or-whitespace means "no GSTIN" (B2C), not a truthy string -
+    a frozen customer_snapshot can carry either depending on when it was
+    captured, so this is the one place that decides what counts as unset."""
+    return ((snapshot or {}).get("gstin") or "").strip() or None
+
+
 def month_bounds(period: str) -> tuple[date, date]:
     """period is 'YYYY-MM'. Returns (first day, last day) of that month."""
     try:
@@ -189,7 +196,7 @@ def _collect_supply_lines(tenant: Tenant, gstin: Gstin, period: str) -> tuple[li
                     doc_number=inv.invoice_number,
                     doc_date=inv.invoice_date,
                     customer_name=cust.get("name", ""),
-                    customer_gstin=cust.get("gstin") or None,
+                    customer_gstin=normalized_customer_gstin(cust),
                     place_of_supply=inv.place_of_supply_state_code,
                     hsn=l.hsn_or_sac_code or "",
                     gst_rate=l.gst_rate,
@@ -221,7 +228,7 @@ def _collect_supply_lines(tenant: Tenant, gstin: Gstin, period: str) -> tuple[li
                     doc_number=bill.bill_number or f"held-{bill.id}",
                     doc_date=bill.completed_at.date() if bill.completed_at else start,
                     customer_name=cust.get("name", "Walk-in"),
-                    customer_gstin=cust.get("gstin") or None,
+                    customer_gstin=normalized_customer_gstin(cust),
                     place_of_supply=bill.gstin.state_code if bill.gstin else gstin.state_code,
                     hsn=l.hsn_or_sac_code or "",
                     gst_rate=l.gst_rate,
@@ -241,7 +248,7 @@ def _collect_supply_lines(tenant: Tenant, gstin: Gstin, period: str) -> tuple[li
                         doc_number=f"{bill.bill_number or f'held-{bill.id}'} (refund)",
                         doc_date=bill.refunded_at.date() if bill.refunded_at else start,
                         customer_name=cust.get("name", "Walk-in"),
-                        customer_gstin=cust.get("gstin") or None,
+                        customer_gstin=normalized_customer_gstin(cust),
                         place_of_supply=bill.gstin.state_code if bill.gstin else gstin.state_code,
                         hsn=l.hsn_or_sac_code or "",
                         gst_rate=l.gst_rate,
@@ -265,7 +272,7 @@ def _collect_supply_lines(tenant: Tenant, gstin: Gstin, period: str) -> tuple[li
                     doc_number=note.note_number,
                     doc_date=note.note_date,
                     customer_name=cust.get("name", ""),
-                    customer_gstin=cust.get("gstin") or None,
+                    customer_gstin=normalized_customer_gstin(cust),
                     place_of_supply=note.place_of_supply_state_code,
                     hsn=l.hsn_or_sac_code or "",
                     gst_rate=l.gst_rate,
@@ -387,7 +394,7 @@ def gstr1_data(tenant: Tenant, gstin: Gstin, period: str) -> dict:
             "note_date": n.note_date,
             "document_type": n.document_type.value,
             "against_invoice": n.original_invoice.invoice_number if n.original_invoice else "",
-            "customer_gstin": (n.customer_snapshot or {}).get("gstin"),
+            "customer_gstin": normalized_customer_gstin(n.customer_snapshot),
             "customer_name": (n.customer_snapshot or {}).get("name", ""),
             "taxable_value": n.total_taxable_value,
             "cgst": n.total_cgst,

@@ -243,20 +243,27 @@ Gunicorn workers or add app servers behind Nginx as load grows.
   `/auth/login/<login_slug>` (shown on their Settings page), themed with
   their own logo.
 - **Per-tenant website theme** (`app/utils/theme.py`): Settings lets a
-  Client Admin set their button colour, page background colour, and body
-  font independently (`Tenant.primary_color` / `background_color` /
-  `font_family`), applied site-wide - nav, buttons, pages - and on their
-  branded sign-in page, not just the login screen. Rendered as a CSS
-  custom-property override injected after `app.css`; "surface" elements
-  (cards, inputs, the topbar) pin their own text color so they stay
-  readable regardless of the chosen page background, and the page-level
-  text color is picked automatically (light or dark) by contrast against
-  whatever background color the tenant chose. Font choice is a fixed set
-  of OS-available stacks, not a CDN font, to keep the app's offline
-  story intact.
+  Client Admin set their button colour, page background colour, page
+  text colour, and body font independently (`Tenant.primary_color` /
+  `background_color` / `text_color` / `font_family`), applied site-wide -
+  nav, buttons, pages - and on their branded sign-in page, not just the
+  login screen. Rendered as a CSS custom-property override injected
+  after `app.css`; "surface" elements (cards, inputs, the topbar) pin
+  their own text color so they stay readable regardless of the chosen
+  page background. `text_color` is fully explicit, never auto-derived -
+  a live preview in Settings is what catches a bad combination, not
+  silent magic; the migration that added it seeded a contrasting default
+  for tenants that already had a background set, so nobody already
+  themed went instantly unreadable. Font choice is a fixed set of
+  OS-available stacks, not a CDN font, to keep the app's offline story
+  intact.
 - **Uploaded images (tenant logos, product photos) are stored on local
   disk** under `app/static/uploads/<logos|products>/`, served free by
-  Flask's own static handler (see `app/utils/uploads.py`). This fits the
+  Flask's own static handler (see `app/utils/uploads.py`). Product
+  photos are center-cropped and resized to an exact 512x512 square on
+  upload (Pillow), so a POS tile always shows a cleanly filled square
+  regardless of the original's aspect ratio, instead of leaving that to
+  CSS `object-fit` at display time. This fits the
   app's self-hosted/offline design, but **is not durable on a host with
   an ephemeral filesystem** (e.g. Render's free tier) - uploaded images
   are lost on every redeploy or restart there. Swap in S3-compatible
@@ -278,6 +285,24 @@ Gunicorn workers or add app servers behind Nginx as load grows.
   as a credit note against an invoice. Refund is a Day-book row action
   (not on the receipt page), since that's where the two entries live
   together.
+- **Sales report** (`app/reports/sales.py`, Reports → Sales report) is a
+  document-level list - invoices and POS bills combined, any date range,
+  every GSTIN, any registration type (unlike GSTR-1/3B, which is one
+  calendar month, one GSTIN, Regular scheme only) - for a client's own
+  records, downloadable as Excel or PDF. The Day-book still covers one
+  day of POS activity only; this is the "what did I sell between these
+  two dates" view across both channels.
+- **A whitespace-only GSTIN counts as no GSTIN.** WTForms' `Optional()`
+  validator skips the format check on blank input but doesn't clear
+  `field.data`, so a stray space left in the customer GSTIN field used
+  to survive as a truthy-but-blank value - silently misclassifying that
+  customer as B2B (has a GSTIN) instead of B2C in the GSTR-1 report,
+  with an empty-looking GSTIN cell in that section. Fixed at both ends:
+  `CustomerForm.gstin` now normalizes (strip/uppercase/blank-to-`None`)
+  on input, and `app.reports.gstr.normalized_customer_gstin()` does the
+  same defensively when reading a (possibly historical) customer
+  snapshot, so existing bad data also reports correctly without a data
+  migration.
 
 ## Roadmap
 

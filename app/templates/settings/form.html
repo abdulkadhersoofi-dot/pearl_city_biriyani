@@ -22,6 +22,7 @@
     <div class="form-grid">
       {{ field(form.primary_color, help="Buttons and links.") }}
       {{ field(form.background_color, help="Page background.") }}
+      {{ field(form.text_color, help="Page text, over your background colour.") }}
       {{ field(form.font_family, help="Body text throughout the site.") }}
     </div>
     <div id="theme-preview" class="theme-preview">
@@ -60,16 +61,19 @@
   };
   var colorInput = document.getElementById('primary_color');
   var bgInput = document.getElementById('background_color');
+  var textInput = document.getElementById('text_color');
   var fontInput = document.getElementById('font_family');
   var preview = document.getElementById('theme-preview');
   var previewBtn = document.getElementById('theme-preview-btn');
+  var previewText = document.getElementById('theme-preview-text');
 
   function applyPreview() {
     if (colorInput) previewBtn.style.background = colorInput.value;
     if (bgInput) preview.style.background = bgInput.value;
+    if (textInput) previewText.style.color = textInput.value;
     if (fontInput) preview.style.fontFamily = FONT_STACKS[fontInput.value] || FONT_STACKS.system;
   }
-  [colorInput, bgInput, fontInput].forEach(function (el) {
+  [colorInput, bgInput, textInput, fontInput].forEach(function (el) {
     if (el) el.addEventListener('input', applyPreview);
   });
   applyPreview();

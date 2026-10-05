@@ -5,6 +5,27 @@
   <h1>Reports &amp; GST exports</h1>
 </div>
 
+<div class="card" style="max-width:480px; margin-bottom:20px;">
+  <h2 style="margin-top:0;">Sales report</h2>
+  <p class="text-muted">
+    Every invoice and POS bill between two dates, across all your GSTINs - downloadable as Excel or PDF.
+    Unlike the Day-book (one day, POS only), this covers any date range and both invoices and POS sales.
+  </p>
+  <form method="get" action="{{ url_for('reports.sales_view') }}" class="stack">
+    <div class="form-grid">
+      <div class="field">
+        <label class="field-label" for="sales_start">From</label>
+        <input type="date" name="start" id="sales_start" value="{{ sales_start.isoformat() }}" class="field-input">
+      </div>
+      <div class="field">
+        <label class="field-label" for="sales_end">To</label>
+        <input type="date" name="end" id="sales_end" value="{{ sales_end.isoformat() }}" class="field-input">
+      </div>
+    </div>
+    <button type="submit" class="btn btn-primary">View sales report</button>
+  </form>
+</div>
+
 {% if not_regular %}
 <div class="card" style="margin-bottom:20px;">
   <p class="text-muted mt-0" style="margin-bottom:0;">

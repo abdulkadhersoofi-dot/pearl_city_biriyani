@@ -1,0 +1,49 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @page { size: A4 landscape; margin: 14mm 12mm; }
+  body { font-family: "Helvetica Neue", Arial, sans-serif; color: #1f2a24; font-size: 9pt; }
+  h1 { font-size: 15pt; margin: 0 0 2px; }
+  .doc-type { font-size: 10pt; color: #5c6b62; margin: 0 0 12px; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+  th, td { border: 1px solid #d8ddd6; padding: 4px 6px; font-size: 8.5pt; text-align: left; }
+  th { background: #f0f2ee; }
+  td.num, th.num { text-align: right; }
+  tr.grand td { font-weight: 700; border-top: 1.5px solid #1f2a24; }
+</style>
+</head>
+<body>
+  <h1>{{ firm_name }} - Sales report</h1>
+  <p class="doc-type">{{ data.start.strftime('%d %b %Y') }} - {{ data.end.strftime('%d %b %Y') }} &middot; {{ data.invoice_count }} invoice(s), {{ data.pos_bill_count }} POS bill(s)</p>
+
+  <table>
+    <tr><th>Date</th><th>Type</th><th>Document no.</th><th>Billing GSTIN</th><th>Customer</th><th>Customer GSTIN</th><th>Payment</th><th class="num">Taxable</th><th class="num">CGST</th><th class="num">SGST</th><th class="num">IGST</th><th class="num">Total</th></tr>
+    {% for r in data.rows %}
+    <tr>
+      <td>{{ r.doc_date.strftime('%d %b %Y') }}</td>
+      <td>{{ r.doc_type }}</td>
+      <td>{{ r.doc_number }}</td>
+      <td>{{ r.billing_gstin }}</td>
+      <td>{{ r.customer_name }}</td>
+      <td>{{ r.customer_gstin or '' }}</td>
+      <td>{{ r.payment_mode|upper if r.payment_mode else '' }}</td>
+      <td class="num">{{ '%.2f'|format(r.sign * r.taxable_value) }}</td>
+      <td class="num">{{ '%.2f'|format(r.sign * r.cgst) }}</td>
+      <td class="num">{{ '%.2f'|format(r.sign * r.sgst) }}</td>
+      <td class="num">{{ '%.2f'|format(r.sign * r.igst) }}</td>
+      <td class="num">{{ '%.2f'|format(r.signed_total) }}</td>
+    </tr>
+    {% else %}<tr><td colspan="12">No sales in this date range.</td></tr>{% endfor %}
+    <tr class="grand">
+      <td colspan="7">Total</td>
+      <td class="num">{{ '%.2f'|format(data.totals.taxable_value) }}</td>
+      <td class="num">{{ '%.2f'|format(data.totals.cgst) }}</td>
+      <td class="num">{{ '%.2f'|format(data.totals.sgst) }}</td>
+      <td class="num">{{ '%.2f'|format(data.totals.igst) }}</td>
+      <td class="num">{{ '%.2f'|format(data.totals.total) }}</td>
+    </tr>
+  </table>
+</body>
+</html>

@@ -143,6 +143,43 @@ def to_json_bytes(data: dict) -> bytes:
     return json.dumps(_strip_non_serializable(data), default=_json_default, indent=2).encode("utf-8")
 
 
+def build_sales_workbook(data: dict) -> BytesIO:
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Sales"
+    ws.append([f"Sales report - {data['tenant'].display_name}"])
+    ws.append([f"{data['start'].isoformat()} to {data['end'].isoformat()}"])
+    ws.append([])
+    _write_header(
+        ws,
+        4,
+        [
+            "Date", "Document type", "Document no.", "Billing GSTIN", "Customer", "Customer GSTIN",
+            "Payment mode", "Taxable value", "CGST", "SGST", "IGST", "Total",
+        ],
+    )
+    for r in data["rows"]:
+        ws.append([
+            r.doc_date.isoformat(), r.doc_type, r.doc_number, r.billing_gstin, r.customer_name,
+            r.customer_gstin or "", (r.payment_mode or "").upper(),
+            _money(r.sign * r.taxable_value), _money(r.sign * r.cgst), _money(r.sign * r.sgst),
+            _money(r.sign * r.igst), _money(r.signed_total),
+        ])
+    ws.append([])
+    t = data["totals"]
+    ws.append(["", "", "", "", "", "", "Total", _money(t["taxable_value"]), _money(t["cgst"]), _money(t["sgst"]), _money(t["igst"]), _money(t["total"])])
+    _autosize(ws)
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf
+
+
+def render_sales_pdf(data: dict) -> bytes:
+    html = render_template("reports/sales_pdf.html", data=data, firm_name=data["tenant"].display_name)
+    return HTML(string=html, base_url=current_app.root_path).write_pdf()
+
+
 def render_gstr1_pdf(data: dict) -> bytes:
     html = render_template("reports/gstr1_pdf.html", data=data, firm_name=current_app.config["FIRM_NAME"])
     return HTML(string=html, base_url=current_app.root_path).write_pdf()

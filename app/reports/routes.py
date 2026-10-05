@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 from io import BytesIO
 
 from flask import abort, flash, redirect, render_template, request, send_file, url_for
@@ -11,11 +11,14 @@ from app.reports import reports_bp
 from app.reports.export import (
     build_gstr1_workbook,
     build_gstr3b_workbook,
+    build_sales_workbook,
     render_gstr1_pdf,
     render_gstr3b_pdf,
+    render_sales_pdf,
     to_json_bytes,
 )
 from app.reports.gstr import ReportPeriodError, gstr1_data, gstr3b_data
+from app.reports.sales import sales_report_data
 
 
 def _current_period() -> str:
@@ -37,8 +40,75 @@ def index():
     gstins = tenant.gstins.filter_by(is_active=True).all()
     period = request.args.get("period", _current_period())
     not_regular = tenant.registration_type != RegistrationType.REGULAR
+    sales_start, sales_end = _default_sales_range()
     return render_template(
-        "reports/index.html", tenant=tenant, gstins=gstins, period=period, not_regular=not_regular
+        "reports/index.html",
+        tenant=tenant,
+        gstins=gstins,
+        period=period,
+        not_regular=not_regular,
+        sales_start=sales_start,
+        sales_end=sales_end,
+    )
+
+
+def _default_sales_range() -> tuple[date, date]:
+    today = date.today()
+    return today - timedelta(days=30), today
+
+
+def _parse_sales_range():
+    """(start, end) from ?start=&end=, defaulting to the last 30 days;
+    swaps them if given backwards rather than erroring, and a bad/blank
+    date just falls back to its own default independently."""
+    default_start, default_end = _default_sales_range()
+
+    def _parse(value, fallback):
+        try:
+            return date.fromisoformat(value) if value else fallback
+        except ValueError:
+            return fallback
+
+    start = _parse(request.args.get("start"), default_start)
+    end = _parse(request.args.get("end"), default_end)
+    if start > end:
+        start, end = end, start
+    return start, end
+
+
+@reports_bp.route("/sales")
+@roles_required(UserRole.CLIENT_ADMIN)
+def sales_view():
+    start, end = _parse_sales_range()
+    data = sales_report_data(current_user.tenant, start, end)
+    return render_template("reports/sales.html", data=data)
+
+
+@reports_bp.route("/sales.xlsx")
+@roles_required(UserRole.CLIENT_ADMIN)
+def sales_xlsx():
+    start, end = _parse_sales_range()
+    data = sales_report_data(current_user.tenant, start, end)
+    buf = build_sales_workbook(data)
+    return send_file(
+        buf,
+        as_attachment=True,
+        download_name=f"Sales_{start.isoformat()}_to_{end.isoformat()}.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+@reports_bp.route("/sales.pdf")
+@roles_required(UserRole.CLIENT_ADMIN)
+def sales_pdf():
+    start, end = _parse_sales_range()
+    data = sales_report_data(current_user.tenant, start, end)
+    pdf_bytes = render_sales_pdf(data)
+    return send_file(
+        BytesIO(pdf_bytes),
+        as_attachment=False,
+        download_name=f"Sales_{start.isoformat()}_to_{end.isoformat()}.pdf",
+        mimetype="application/pdf",
     )
 
 

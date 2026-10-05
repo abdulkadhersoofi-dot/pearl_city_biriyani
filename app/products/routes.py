@@ -10,6 +10,11 @@ from app.products.forms import ProductForm
 from app.utils.tenant_scope import assert_owns, tenant_query
 from app.utils.uploads import UploadError, delete_uploaded_image, save_uploaded_image
 
+# POS tiles are square - crop/resize every product photo to match on
+# upload so it fills the tile cleanly instead of being cropped live by
+# CSS object-fit, whatever aspect ratio the original was.
+PRODUCT_IMAGE_SIZE = 512
+
 
 @products_bp.route("/")
 @roles_required(UserRole.CLIENT_ADMIN)
@@ -30,7 +35,7 @@ def new_product():
         product = Product(tenant_id=current_user.tenant_id)
         form.populate_obj(product)
         try:
-            product.image_path = save_uploaded_image(form.image.data, "products")
+            product.image_path = save_uploaded_image(form.image.data, "products", square_size=PRODUCT_IMAGE_SIZE)
         except UploadError as exc:
             flash(exc.message, "error")
             return render_template("products/form.html", form=form, product=None)
@@ -51,7 +56,7 @@ def edit_product(product_id):
         form.populate_obj(product)
         if form.image.data and form.image.data.filename:
             try:
-                new_image_path = save_uploaded_image(form.image.data, "products")
+                new_image_path = save_uploaded_image(form.image.data, "products", square_size=PRODUCT_IMAGE_SIZE)
             except UploadError as exc:
                 flash(exc.message, "error")
                 return render_template("products/form.html", form=form, product=product)

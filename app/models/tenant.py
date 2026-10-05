@@ -33,9 +33,10 @@ class Tenant(db.Model, TimestampMixin):
     # receipts, and (via login_slug) this client's own login page.
     logo_path = db.Column(db.String(255))  # relative to app/static/, e.g. "uploads/logos/xyz.png"
     # Site theme, each independently settable from Settings - see
-    # app/utils/theme.py for how these three turn into CSS.
+    # app/utils/theme.py for how these four turn into CSS.
     primary_color = db.Column(db.String(7), nullable=False, default="#1f7a4d")  # buttons/links
     background_color = db.Column(db.String(7), nullable=False, default="#f6f7f5")  # page background
+    text_color = db.Column(db.String(7), nullable=False, default="#1f2a24")  # body text on that background
     font_family = db.Column(db.String(20), nullable=False, default="system")
     login_slug = db.Column(db.String(64), unique=True)
     # 2in / 3in / a4 - app.pos.receipt.THERMAL_WIDTHS_IN keys, plus "a4".

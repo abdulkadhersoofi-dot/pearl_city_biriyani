@@ -28,6 +28,11 @@ class TenantSettingsForm(FlaskForm):
         validators=[DataRequired(), Regexp(HEX_COLOR_RE, message="Enter a valid colour, e.g. #f6f7f5")],
         render_kw={"type": "color"},
     )
+    text_color = StringField(
+        "Font colour",
+        validators=[DataRequired(), Regexp(HEX_COLOR_RE, message="Enter a valid colour, e.g. #1f2a24")],
+        render_kw={"type": "color"},
+    )
     font_family = SelectField("Font", choices=FONT_FAMILY_CHOICES, validators=[DataRequired()])
     default_receipt_format = SelectField(
         "Default print size", choices=RECEIPT_FORMAT_CHOICES, validators=[DataRequired()]

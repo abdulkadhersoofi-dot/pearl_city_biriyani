@@ -13,6 +13,7 @@ import os
 import uuid
 
 from flask import current_app
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 ALLOWED_IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp"}
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
@@ -24,10 +25,18 @@ class UploadError(Exception):
         self.message = message
 
 
-def save_uploaded_image(file_storage, subdir: str) -> str | None:
+def save_uploaded_image(file_storage, subdir: str, square_size: int | None = None) -> str | None:
     """Returns a path relative to app/static/ (for url_for('static', ...)
     and for direct filesystem use in WeasyPrint PDFs), or None if no file
-    was submitted."""
+    was submitted.
+
+    square_size, when given, center-crops and resizes the image down to
+    an exact square on the server (not just CSS object-fit on display) -
+    for product photos, so every POS tile shows a consistently filled
+    square regardless of what aspect ratio was uploaded, and so a huge
+    phone-camera original doesn't ship to the POS terminal as-is. Logos
+    are saved at their native aspect ratio (square_size omitted) since
+    forcing a wordmark logo into a square would crop it badly."""
     if not file_storage or not file_storage.filename:
         return None
 
@@ -44,8 +53,26 @@ def save_uploaded_image(file_storage, subdir: str) -> str | None:
     target_dir = os.path.join(current_app.root_path, "static", "uploads", subdir)
     os.makedirs(target_dir, exist_ok=True)
     filename = f"{uuid.uuid4().hex}.{ext}"
-    file_storage.save(os.path.join(target_dir, filename))
+    full_path = os.path.join(target_dir, filename)
+    file_storage.save(full_path)
+
+    if square_size:
+        _square_crop_in_place(full_path, square_size)
+
     return f"uploads/{subdir}/{filename}"
+
+
+def _square_crop_in_place(path: str, size: int) -> None:
+    try:
+        with Image.open(path) as img:
+            img = ImageOps.exif_transpose(img)  # phone photos often carry a rotation flag, not pixels
+            fitted = ImageOps.fit(img, (size, size), Image.LANCZOS)
+            if path.lower().endswith((".jpg", ".jpeg")) and fitted.mode in ("RGBA", "P", "LA"):
+                fitted = fitted.convert("RGB")
+            fitted.save(path)
+    except (UnidentifiedImageError, OSError) as exc:
+        os.remove(path)
+        raise UploadError("That file doesn't look like a valid image.") from exc
 
 
 def delete_uploaded_image(relative_path: str | None) -> None:

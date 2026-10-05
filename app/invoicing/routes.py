@@ -25,18 +25,21 @@ from app.utils.gst import allowed_document_types
 from app.utils.indian_states import STATE_NAME_BY_CODE
 from app.utils.tenant_scope import assert_owns, tenant_query
 
-INVOICING_DOCUMENT_TYPES = {
+# Order matters: this is also the dropdown's order, so Tax Invoice - the
+# common case - lands first/selected-by-default rather than whatever
+# order a set() happened to iterate in.
+INVOICING_DOCUMENT_TYPES = [
     DocumentType.TAX_INVOICE,
     DocumentType.BILL_OF_SUPPLY,
     DocumentType.EXPORT_INVOICE_IGST,
     DocumentType.EXPORT_INVOICE_LUT,
     DocumentType.RCM_INVOICE,
-}
+]
 
 
 def _tenant_document_type_choices():
-    allowed = allowed_document_types(current_user.tenant.registration_type) & INVOICING_DOCUMENT_TYPES
-    return [(dt.value, DOCUMENT_TYPE_LABELS[dt]) for dt in allowed]
+    allowed = allowed_document_types(current_user.tenant.registration_type)
+    return [(dt.value, DOCUMENT_TYPE_LABELS[dt]) for dt in INVOICING_DOCUMENT_TYPES if dt in allowed]
 
 
 @invoicing_bp.route("/")
