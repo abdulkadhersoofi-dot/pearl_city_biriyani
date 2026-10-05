@@ -9,7 +9,7 @@ from app.models.invoice import Invoice
 from app.models.tenant import Gstin, RegistrationType, Tenant
 from app.models.user import User, UserRole
 from app.tenants import tenants_bp
-from app.tenants.forms import OnboardClientForm
+from app.tenants.forms import AddGstinForm, OnboardClientForm
 from app.utils.audit import record_audit
 from app.utils.indian_states import STATE_NAME_BY_CODE
 
@@ -40,16 +40,19 @@ def onboard():
         db.session.add(tenant)
         db.session.flush()
 
-        if form.gstin.data:
-            gstin = Gstin(
-                tenant_id=tenant.id,
-                gstin=form.gstin.data.strip().upper(),
-                state_code=form.state_code.data,
-                state_name=STATE_NAME_BY_CODE.get(form.state_code.data, ""),
-                registered_address=form.registered_address.data,
-                is_primary=True,
-            )
-            db.session.add(gstin)
+        # Always create a business-location row, GSTIN or not - an
+        # unregistered client still has a state/address, it just has no
+        # GSTIN number. Without this row, POS checkout and invoicing have
+        # nothing to bill from for an unregistered client.
+        gstin = Gstin(
+            tenant_id=tenant.id,
+            gstin=(form.gstin.data or "").strip().upper() or None,
+            state_code=form.state_code.data,
+            state_name=STATE_NAME_BY_CODE.get(form.state_code.data, ""),
+            registered_address=form.registered_address.data,
+            is_primary=True,
+        )
+        db.session.add(gstin)
 
         admin_user = User(
             tenant_id=tenant.id,
@@ -102,7 +105,35 @@ def detail(tenant_id):
         .all()
     )
     users = User.query.filter_by(tenant_id=tenant.id).all()
-    return render_template("tenants/detail.html", tenant=tenant, invoices=invoices, users=users)
+    gstin_form = AddGstinForm()
+    return render_template(
+        "tenants/detail.html", tenant=tenant, invoices=invoices, users=users, gstin_form=gstin_form
+    )
+
+
+@tenants_bp.route("/clients/<int:tenant_id>/gstins/new", methods=["POST"])
+@roles_required(UserRole.SUPER_ADMIN)
+def add_gstin(tenant_id):
+    tenant = Tenant.query.get_or_404(tenant_id)
+    form = AddGstinForm()
+    if form.validate_on_submit():
+        gstin = Gstin(
+            tenant_id=tenant.id,
+            gstin=(form.gstin.data or "").strip().upper() or None,
+            state_code=form.state_code.data,
+            state_name=STATE_NAME_BY_CODE.get(form.state_code.data, ""),
+            registered_address=form.registered_address.data,
+            is_primary=tenant.gstins.count() == 0,
+        )
+        db.session.add(gstin)
+        record_audit(
+            current_user, "tenant_gstin_added", tenant_id=tenant.id, entity_type="tenant", entity_id=tenant.id
+        )
+        db.session.commit()
+        flash("Business location added.", "success")
+    else:
+        flash("Could not add that location - check the state and GSTIN format.", "error")
+    return redirect(url_for("tenants.detail", tenant_id=tenant.id))
 
 
 @tenants_bp.route("/clients/<int:tenant_id>/deactivate", methods=["POST"])

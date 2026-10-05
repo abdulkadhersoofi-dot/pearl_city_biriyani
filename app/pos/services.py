@@ -130,7 +130,9 @@ def _persist_lines(bill: POSBill, computed_lines: list[dict], charge_gst: bool) 
 def hold_cart(tenant: Tenant, created_by, cart: CartInput, label: str | None) -> POSBill:
     gstin = tenant.gstins.filter_by(is_active=True).first()
     if not gstin:
-        raise POSValidationError("This client has no active GSTIN on file.")
+        raise POSValidationError(
+            "This client has no business location on file. Ask the firm to add one from Clients -> this client."
+        )
 
     computed_lines = _compute_lines(tenant, cart.lines)
     totals = compute_invoice_totals(computed_lines)
@@ -159,7 +161,9 @@ def discard_held_bill(bill: POSBill) -> None:
 def checkout(tenant: Tenant, created_by, cart: CartInput, payment_mode: PaymentMode) -> POSBill:
     gstin = tenant.gstins.filter_by(is_active=True).first()
     if not gstin:
-        raise POSValidationError("This client has no active GSTIN on file.")
+        raise POSValidationError(
+            "This client has no business location on file. Ask the firm to add one from Clients -> this client."
+        )
 
     customer = None
     customer_snapshot = None

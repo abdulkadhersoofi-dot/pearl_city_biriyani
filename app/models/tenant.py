@@ -44,8 +44,15 @@ class Tenant(db.Model, TimestampMixin):
 
 
 class Gstin(db.Model, TimestampMixin):
-    """A GSTIN registration held by a tenant. A tenant may hold more than one
-    (e.g. one per state it operates in)."""
+    """A tenant's place of business in a given state. A tenant may hold more
+    than one (e.g. one per state it operates in).
+
+    `gstin` is nullable: an UNREGISTERED tenant (below the GST threshold, or
+    simply not registered) still has a real business location - a state it
+    operates from, maybe an address - it just has no GSTIN number to show on
+    it. Postgres treats multiple NULLs as distinct, so the unique constraint
+    on `gstin` still holds across any number of unregistered tenants.
+    """
 
     __tablename__ = "gstins"
 
@@ -53,12 +60,16 @@ class Gstin(db.Model, TimestampMixin):
     tenant_id = db.Column(
         db.Integer, db.ForeignKey("tenants.id"), nullable=False, index=True
     )
-    gstin = db.Column(db.String(15), nullable=False, unique=True)
+    gstin = db.Column(db.String(15), unique=True)
     state_code = db.Column(db.String(2), nullable=False)
     state_name = db.Column(db.String(64), nullable=False)
     registered_address = db.Column(db.Text)
     is_primary = db.Column(db.Boolean, nullable=False, default=False)
     is_active = db.Column(db.Boolean, nullable=False, default=True)
 
+    @property
+    def display_label(self) -> str:
+        return self.gstin or f"Unregistered - {self.state_name}"
+
     def __repr__(self):
-        return f"<Gstin {self.gstin}>"
+        return f"<Gstin {self.gstin or 'unregistered'}>"

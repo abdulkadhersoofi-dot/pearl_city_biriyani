@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "macros.html" import field %}
 {% block title %}{{ tenant.legal_name }} - {{ firm_name }}{% endblock %}
 {% block content %}
 <div class="page-header">
@@ -26,14 +27,21 @@
 </div>
 
 <div class="card" style="margin-bottom:20px;">
-  <h2 style="margin-top:0;">GSTINs</h2>
+  <h2 style="margin-top:0;">Business locations</h2>
   <ul>
     {% for g in tenant.gstins %}
-      <li>{{ g.gstin }} - {{ g.state_name }}{% if g.is_primary %} (primary){% endif %}</li>
+      <li>{{ g.display_label }}{% if g.is_primary %} (primary){% endif %}</li>
     {% else %}
-      <li class="text-muted">No GSTIN on file (unregistered).</li>
+      <li class="text-muted">No business location on file yet - POS and invoicing need at least one to bill from.</li>
     {% endfor %}
   </ul>
+  <form method="post" action="{{ url_for('tenants.add_gstin', tenant_id=tenant.id) }}" class="form-grid" style="margin-top:12px;">
+    {{ gstin_form.hidden_tag() }}
+    {{ field(gstin_form.gstin, help="Leave blank if this client isn't GST-registered.") }}
+    {{ field(gstin_form.state_code) }}
+    {{ field(gstin_form.registered_address) }}
+    <button type="submit" class="btn btn-secondary">+ Add location</button>
+  </form>
 </div>
 
 <div class="card" style="margin-bottom:20px;">

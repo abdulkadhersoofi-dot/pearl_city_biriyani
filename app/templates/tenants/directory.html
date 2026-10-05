@@ -15,7 +15,7 @@
       {% for tenant in tenants %}
       <tr>
         <td><a href="{{ url_for('tenants.detail', tenant_id=tenant.id) }}">{{ tenant.legal_name }}</a></td>
-        <td>{{ tenant.gstins.first().gstin if tenant.gstins.first() else '-' }}</td>
+        <td>{{ tenant.gstins.first().display_label if tenant.gstins.first() else '-' }}</td>
         <td>{{ tenant.registration_type.value|title }}</td>
         <td>
           {% if tenant.is_active %}<span class="status-badge status-issued">Active</span>

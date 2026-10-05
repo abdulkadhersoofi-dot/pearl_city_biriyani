@@ -32,3 +32,15 @@ class OnboardClientForm(FlaskForm):
         "Confirm password",
         validators=[DataRequired(), EqualTo("admin_password", message="Passwords must match")],
     )
+
+
+class AddGstinForm(FlaskForm):
+    """Backfills a business-location row for a tenant that was onboarded
+    before onboarding always created one (or simply has none yet)."""
+
+    gstin = StringField(
+        "GSTIN (leave blank if unregistered)",
+        validators=[Optional(), Regexp(GSTIN_REGEX, message="Enter a valid 15-character GSTIN")],
+    )
+    state_code = SelectField("State", choices=INDIAN_STATES, validators=[DataRequired()])
+    registered_address = StringField("Registered address", validators=[Optional()])

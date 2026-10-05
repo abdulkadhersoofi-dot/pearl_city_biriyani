@@ -34,7 +34,10 @@
     </div>
     <div class="firm">
       <strong>{{ firm_name }}</strong><br>
-      {% if invoice.gstin %}GSTIN: {{ invoice.gstin.gstin }}<br>{{ invoice.gstin.registered_address or '' }}{% endif %}
+      {% if invoice.gstin %}
+        {% if invoice.gstin.gstin %}GSTIN: {{ invoice.gstin.gstin }}<br>{% endif %}
+        {{ invoice.gstin.registered_address or '' }}
+      {% endif %}
     </div>
   </div>
 

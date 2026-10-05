@@ -1,8 +1,41 @@
+from app.models.tenant import Tenant
 from app.models.user import User, UserRole
 
 
 def _login(client, email, password):
     return client.post("/auth/login", data={"email": email, "password": password}, follow_redirects=True)
+
+
+def test_onboarding_without_gstin_still_creates_a_business_location(client, db, super_admin):
+    """An unregistered client has no GSTIN number, but still needs a
+    business-location row on file - without one, POS checkout and
+    invoicing have nothing to bill from and fail outright."""
+    _login(client, super_admin.email, "SuperSecret123")
+
+    resp = client.post(
+        "/admin/clients/new",
+        data={
+            "legal_name": "Street Biriyani Stall",
+            "registration_type": "unregistered",
+            "state_code": "27",
+            # gstin deliberately omitted - this client has none.
+            "admin_name": "Stall Admin",
+            "admin_email": "stall@example.com",
+            "admin_phone": "",
+            "admin_password": "InitialPass123",
+            "admin_confirm_password": "InitialPass123",
+        },
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+
+    tenant = Tenant.query.filter_by(legal_name="Street Biriyani Stall").first()
+    assert tenant is not None
+    gstin = tenant.gstins.first()
+    assert gstin is not None, "Onboarding without a GSTIN must still create a location row"
+    assert gstin.gstin is None
+    assert gstin.is_primary is True
+    assert gstin.state_code == "27"
 
 
 def test_super_admin_onboards_client_with_password_no_otp(client, db, super_admin):
@@ -35,6 +68,31 @@ def test_super_admin_onboards_client_with_password_no_otp(client, db, super_admi
     resp = _login(client, "newadmin@example.com", "InitialPass123")
     assert resp.status_code == 200
     assert b"change" in resp.data.lower() or resp.request.path == "/auth/change-password"
+
+
+def test_super_admin_can_backfill_a_missing_business_location(client, db, super_admin, tenant):
+    """Covers a tenant onboarded before this fix, or any other tenant that
+    somehow ended up with zero Gstin rows - the firm must be able to add
+    one without re-onboarding the client from scratch."""
+    from app.models.tenant import Gstin
+
+    Gstin.query.filter_by(tenant_id=tenant.id).delete()
+    db.session.commit()
+    assert tenant.gstins.count() == 0
+
+    _login(client, super_admin.email, "SuperSecret123")
+    resp = client.post(
+        f"/admin/clients/{tenant.id}/gstins/new",
+        data={"gstin": "", "state_code": "27", "registered_address": ""},
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+
+    db.session.refresh(tenant)
+    gstin = tenant.gstins.first()
+    assert gstin is not None
+    assert gstin.gstin is None
+    assert gstin.is_primary is True
 
 
 def test_super_admin_resets_client_admin_password_directly(client, db, super_admin, tenant, client_admin):

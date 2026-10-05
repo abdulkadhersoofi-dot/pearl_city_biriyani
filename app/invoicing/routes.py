@@ -65,7 +65,7 @@ def list_invoices():
 def new_invoice():
     tenant = current_user.tenant
     form = InvoiceHeaderForm()
-    form.gstin_id.choices = [(g.id, g.gstin) for g in tenant.gstins.filter_by(is_active=True)]
+    form.gstin_id.choices = [(g.id, g.display_label) for g in tenant.gstins.filter_by(is_active=True)]
     form.document_type.choices = _tenant_document_type_choices()
     form.customer_id.choices = [("new", "+ New customer")] + [
         (str(c.id), c.name) for c in tenant_query(Customer).filter_by(is_active=True).order_by(Customer.name)

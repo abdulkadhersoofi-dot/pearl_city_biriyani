@@ -75,6 +75,35 @@ def test_composition_tenant_never_charges_gst_at_pos(db, tenant, client_admin):
     assert bill.grand_total == Decimal("200.00")
 
 
+def test_unregistered_tenant_with_no_gstin_number_can_checkout(db, tenant, client_admin):
+    """An unregistered client's Gstin row has no GSTIN text (just a state/
+    location) - checkout must not treat that as 'no GSTIN on file'."""
+    from app.models.pos_bill import PaymentMode
+
+    tenant.registration_type = RegistrationType.UNREGISTERED
+    gstin = tenant.gstins.first()
+    gstin.gstin = None
+    db.session.commit()
+
+    bill = checkout(tenant, client_admin, _cart(), PaymentMode.CASH)
+    db.session.commit()
+
+    assert bill.total_cgst == Decimal("0.00")
+    assert bill.total_sgst == Decimal("0.00")
+    assert bill.grand_total == Decimal("200.00")
+
+
+def test_checkout_fails_cleanly_with_no_business_location_at_all(db, tenant, client_admin):
+    from app.models.pos_bill import PaymentMode
+    from app.models.tenant import Gstin
+
+    Gstin.query.filter_by(tenant_id=tenant.id).delete()
+    db.session.commit()
+
+    with pytest.raises(POSValidationError):
+        checkout(tenant, client_admin, _cart(), PaymentMode.CASH)
+
+
 def test_hold_then_discard(db, tenant, client_admin):
     bill = hold_cart(tenant, client_admin, _cart(), "Table 4")
     db.session.commit()
