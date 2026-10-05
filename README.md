@@ -241,7 +241,19 @@ Gunicorn workers or add app servers behind Nginx as load grows.
   instead - a client's customer never sees the platform's name on their
   bill. Each tenant also gets its own branded sign-in page at
   `/auth/login/<login_slug>` (shown on their Settings page), themed with
-  their own logo and `primary_color`.
+  their own logo.
+- **Per-tenant website theme** (`app/utils/theme.py`): Settings lets a
+  Client Admin set their button colour, page background colour, and body
+  font independently (`Tenant.primary_color` / `background_color` /
+  `font_family`), applied site-wide - nav, buttons, pages - and on their
+  branded sign-in page, not just the login screen. Rendered as a CSS
+  custom-property override injected after `app.css`; "surface" elements
+  (cards, inputs, the topbar) pin their own text color so they stay
+  readable regardless of the chosen page background, and the page-level
+  text color is picked automatically (light or dark) by contrast against
+  whatever background color the tenant chose. Font choice is a fixed set
+  of OS-available stacks, not a CDN font, to keep the app's offline
+  story intact.
 - **Uploaded images (tenant logos, product photos) are stored on local
   disk** under `app/static/uploads/<logos|products>/`, served free by
   Flask's own static handler (see `app/utils/uploads.py`). This fits the

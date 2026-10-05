@@ -23,8 +23,18 @@ body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   background: var(--color-bg);
-  color: var(--color-text);
+  /* --color-page-text is only ever set by a tenant theme override (see
+     app/utils/theme.py), computed for contrast against their chosen
+     --color-bg. Falls back to the normal text color otherwise. White
+     "surface" containers (cards, inputs, the topbar...) pin their own
+     color below instead of inheriting this, since --color-bg is a page
+     background only - their background stays white regardless. */
+  color: var(--color-page-text, var(--color-text));
   line-height: 1.5;
+}
+
+.card, .topbar, .auth-card, .cart-panel, .checkout-sheet, .totals-box, .product-tile, table {
+  color: var(--color-text);
 }
 
 a { color: var(--color-primary-dark); }
@@ -76,6 +86,12 @@ a { color: var(--color-primary-dark); }
 }
 .auth-brand { font-size: 1.3rem; margin: 0 0 20px; text-align: center; }
 .auth-logo { display: block; margin: 0 auto 16px; max-height: 72px; max-width: 220px; object-fit: contain; }
+
+.theme-preview {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 20px; border-radius: var(--radius); border: 1px solid var(--color-border);
+}
+.theme-preview button { border: none; }
 
 /* --- Flash messages --- */
 .flash-stack { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }

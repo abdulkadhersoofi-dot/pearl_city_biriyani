@@ -107,14 +107,21 @@ def _register_context_processors(app: Flask) -> None:
         # nav, page titles, and (passed explicitly) their printed documents.
         brand_name = app.config["FIRM_NAME"]
         brand_logo_path = None
+        brand_tenant = None
         if current_user.is_authenticated and not current_user.is_super_admin and current_user.tenant:
-            brand_name = current_user.tenant.display_name
-            brand_logo_path = current_user.tenant.logo_path
+            brand_tenant = current_user.tenant
+            brand_name = brand_tenant.display_name
+            brand_logo_path = brand_tenant.logo_path
         return {
             "firm_name": brand_name,
             "brand_logo_path": brand_logo_path,
+            "brand_tenant": brand_tenant,
             "platform_name": app.config["FIRM_NAME"],
         }
+
+    from app.utils.theme import tenant_theme_css
+
+    app.jinja_env.globals["tenant_theme_css"] = tenant_theme_css
 
     @app.template_filter("state_name")
     def state_name_filter(state_code: str) -> str:

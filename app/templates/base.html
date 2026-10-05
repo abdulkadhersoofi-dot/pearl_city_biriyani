@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5">
   <title>{% block title %}{{ firm_name }}{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+  {% if brand_tenant %}<style>{{ tenant_theme_css(brand_tenant) }}</style>{% endif %}
   {# Vendored locally, not loaded from a CDN: this app is self-hosted and
      must keep working on a client's LAN/offline network, or if a public
      CDN is ever blocked/down. #}

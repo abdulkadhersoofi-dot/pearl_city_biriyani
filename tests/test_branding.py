@@ -8,12 +8,17 @@ def _login(client, email, password):
     return client.post("/auth/login", data={"email": email, "password": password}, follow_redirects=True)
 
 
-def test_settings_page_updates_color_and_print_size(client, db, client_admin, tenant):
+def test_settings_page_updates_theme_and_print_size(client, db, client_admin, tenant):
     _login(client, client_admin.email, "ClientSecret123")
 
     resp = client.post(
         "/settings/",
-        data={"primary_color": "#ff8800", "default_receipt_format": "2in"},
+        data={
+            "primary_color": "#ff8800",
+            "background_color": "#202020",
+            "font_family": "serif",
+            "default_receipt_format": "2in",
+        },
         follow_redirects=True,
     )
     assert resp.status_code == 200
@@ -21,7 +26,38 @@ def test_settings_page_updates_color_and_print_size(client, db, client_admin, te
 
     db.session.refresh(tenant)
     assert tenant.primary_color == "#ff8800"
+    assert tenant.background_color == "#202020"
+    assert tenant.font_family == "serif"
     assert tenant.default_receipt_format == "2in"
+
+
+def test_settings_page_rejects_an_unknown_font_choice(client, db, client_admin, tenant):
+    _login(client, client_admin.email, "ClientSecret123")
+
+    resp = client.post(
+        "/settings/",
+        data={
+            "primary_color": "#ff8800",
+            "background_color": "#202020",
+            "font_family": "comic-sans",
+            "default_receipt_format": "2in",
+        },
+    )
+    assert resp.status_code == 200
+    db.session.refresh(tenant)
+    assert tenant.font_family == "system"
+
+
+def test_tenant_theme_is_applied_as_css_on_signed_in_pages(client, db, client_admin, tenant):
+    tenant.primary_color = "#ff00aa"
+    tenant.background_color = "#111111"
+    db.session.commit()
+    _login(client, client_admin.email, "ClientSecret123")
+
+    resp = client.get("/pos/")
+    assert resp.status_code == 200
+    assert b"#ff00aa" in resp.data
+    assert b"#111111" in resp.data
 
 
 def test_settings_page_accepts_a_logo_upload(client, db, client_admin, tenant):

@@ -5,9 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5">
   <title>{% block title %}{{ firm_name }}{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
-  {% if login_tenant and login_tenant.primary_color %}
-  <style>:root { --color-primary: {{ login_tenant.primary_color }}; --color-primary-dark: {{ login_tenant.primary_color }}; }</style>
-  {% endif %}
+  {% if login_tenant %}<style>{{ tenant_theme_css(login_tenant) }}</style>{% endif %}
 </head>
 <body class="auth-body">
   <div class="auth-wrap">

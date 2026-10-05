@@ -25,6 +25,8 @@ def index():
             tenant.logo_path = new_logo_path
 
         tenant.primary_color = form.primary_color.data
+        tenant.background_color = form.background_color.data
+        tenant.font_family = form.font_family.data
         tenant.default_receipt_format = form.default_receipt_format.data
         db.session.commit()
         flash("Settings updated.", "success")
