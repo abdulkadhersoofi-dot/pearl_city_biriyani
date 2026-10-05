@@ -5,9 +5,10 @@
 <script>
   const PRODUCTS = [
     {% for p in products %}
-    {id: {{ p.id }}, name: {{ p.name|tojson }}, hsn: {{ (p.hsn_or_sac_code or '')|tojson }}, rate: {{ p.default_price }}, gst_rate: {{ p.gst_rate }}, unit: {{ p.unit|tojson }}},
+    {id: {{ p.id }}, name: {{ p.name|tojson }}, hsn: {{ (p.hsn_or_sac_code or '')|tojson }}, rate: {{ p.default_price }}, gst_rate: {{ p.gst_rate }}, unit: {{ p.unit|tojson }}, image: {{ (url_for('static', filename=p.image_path) if p.image_path else '')|tojson }}},
     {% endfor %}
   ];
+  const DEFAULT_RECEIPT_FORMAT = {{ default_receipt_format|tojson }};
   const PREFILL_CART = [
     {% for l in (resume_bill.lines if resume_bill else []) %}
     {product_id: {{ l.product_id or 'null' }}, description: {{ l.description|tojson }}, hsn: {{ (l.hsn_or_sac_code or '')|tojson }}, rate: {{ l.rate }}, gst_rate: {{ l.gst_rate }}, unit: {{ (l.unit or 'pcs')|tojson }}, qty: {{ l.qty }}},
@@ -69,6 +70,10 @@
       <div class="product-grid">
         <template x-for="p in filteredProducts()" :key="p.id">
           <button type="button" class="product-tile" @click="addToCart(p)">
+            <div class="tile-image">
+              <template x-if="p.image"><img :src="p.image" :alt="p.name"></template>
+              <template x-if="!p.image"><span class="tile-image-placeholder" x-text="p.name.charAt(0)"></span></template>
+            </div>
             <span class="tile-name" x-text="p.name"></span>
             <span class="tile-price" x-text="'Rs. ' + p.rate.toFixed(2)"></span>
           </button>
@@ -80,7 +85,10 @@
     </div>
 
     <div class="cart-panel">
-      <h2 style="margin:0;">Cart</h2>
+      <div class="row" style="justify-content:space-between; align-items:center;">
+        <h2 style="margin:0;">Cart</h2>
+        <button type="button" class="btn btn-quiet" x-show="cart.length > 0" @click="clearCart()">Clear all</button>
+      </div>
       <div class="cart-items">
         <template x-if="cart.length === 0">
           <div class="cart-empty">Tap an item to add it to the cart.</div>
@@ -90,7 +98,8 @@
             <span class="cart-line-name" x-text="line.description"></span>
             <div class="qty-stepper">
               <button type="button" @click="decrement(i)">&minus;</button>
-              <span class="qty-value" x-text="line.qty"></span>
+              <input type="number" min="0" step="1" class="qty-input" x-model.number="line.qty"
+                     @change="setQty(i, line.qty)">
               <button type="button" @click="increment(i)">+</button>
             </div>
             <span class="cart-line-amount" x-text="'Rs. ' + lineTotal(line).toFixed(2)"></span>
@@ -124,7 +133,7 @@
     </div>
   </div>
 
-  <!-- 3-tap checkout: Checkout (above) -> pick payment mode -> Confirm -> pick paper size (prints immediately, no preview page) -->
+  <!-- 3-tap checkout: Checkout (above) -> pick payment mode -> Confirm -> prints immediately at the tenant's default paper size, no size prompt -->
   <div class="checkout-overlay" x-show="checkoutStep !== 'idle'" x-cloak>
     <div class="checkout-sheet" @click.outside="checkoutStep === 'payment' || checkoutStep === 'confirm' ? checkoutStep = 'idle' : null">
       <template x-if="checkoutStep === 'payment'">
@@ -148,18 +157,6 @@
             <span x-text="submitting ? 'Please wait...' : 'Confirm'"></span>
           </button>
           <button type="button" class="btn btn-quiet" style="margin-top:10px;" @click="checkoutStep = 'payment'" :disabled="submitting">Back</button>
-        </div>
-      </template>
-      <template x-if="checkoutStep === 'size'">
-        <div>
-          <h2>Print receipt</h2>
-          <p class="text-muted mt-0">Bill <strong x-text="completedBillNumber"></strong> - pick the paper in the printer. It prints immediately.</p>
-          <div class="payment-mode-grid">
-            <button type="button" class="payment-mode-btn" @click="printReceipt('2in')">2 inch roll</button>
-            <button type="button" class="payment-mode-btn" @click="printReceipt('3in')">3 inch roll</button>
-            <button type="button" class="payment-mode-btn" @click="printReceipt('a4')">A4 copy</button>
-          </div>
-          <button type="button" class="btn btn-primary btn-block" @click="newSale()">Done - new sale</button>
         </div>
       </template>
       <template x-if="checkoutStep === 'done'">
@@ -219,6 +216,11 @@ function posTerminal() {
       this.cart[i].qty -= 1;
       if (this.cart[i].qty <= 0) this.cart.splice(i, 1);
     },
+    setQty(i, qty) {
+      if (!qty || qty <= 0) { this.cart.splice(i, 1); return; }
+      this.cart[i].qty = qty;
+    },
+    clearCart() { this.cart = []; },
     lineTotal(line) {
       const taxable = line.qty * line.rate;
       const tax = taxable * (line.gst_rate || 0) / 100;
@@ -259,7 +261,7 @@ function posTerminal() {
         }
         this.completedBillId = data.bill_id;
         this.completedBillNumber = data.bill_number;
-        this.checkoutStep = "size";
+        this.printReceipt(DEFAULT_RECEIPT_FORMAT);
       } catch (e) {
         this.checkoutError = "Could not reach the server - check your connection and try again.";
       } finally {

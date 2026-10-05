@@ -5,11 +5,22 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5">
   <title>{% block title %}{{ firm_name }}{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+  {% if login_tenant and login_tenant.primary_color %}
+  <style>:root { --color-primary: {{ login_tenant.primary_color }}; --color-primary-dark: {{ login_tenant.primary_color }}; }</style>
+  {% endif %}
 </head>
 <body class="auth-body">
   <div class="auth-wrap">
     <div class="auth-card">
-      <h1 class="auth-brand">{{ firm_name }}</h1>
+      {% if login_tenant %}
+        {% if login_tenant.logo_path %}
+          <img src="{{ url_for('static', filename=login_tenant.logo_path) }}" alt="{{ login_tenant.display_name }}" class="auth-logo">
+        {% endif %}
+        <h1 class="auth-brand">{{ login_tenant.display_name }}</h1>
+      {% else %}
+        <img src="{{ url_for('static', filename='img/arfa-logo.jpg') }}" alt="ARFA" class="auth-logo">
+        <h1 class="auth-brand">{{ firm_name }}</h1>
+      {% endif %}
       {% include "_flashes.html" %}
       {% block content %}{% endblock %}
     </div>

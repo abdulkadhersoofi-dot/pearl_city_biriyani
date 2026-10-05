@@ -42,7 +42,8 @@ a { color: var(--color-primary-dark); }
   height: 64px;
 }
 
-.brand { font-weight: 700; font-size: 1.1rem; text-decoration: none; color: var(--color-text); }
+.brand { font-weight: 700; font-size: 1.1rem; text-decoration: none; color: var(--color-text); display: flex; align-items: center; gap: 10px; }
+.brand-logo { height: 36px; width: auto; max-width: 140px; object-fit: contain; border-radius: 4px; }
 
 .main-nav { display: flex; gap: 4px; flex: 1; flex-wrap: wrap; }
 .main-nav a {
@@ -74,6 +75,7 @@ a { color: var(--color-primary-dark); }
   max-width: 400px;
 }
 .auth-brand { font-size: 1.3rem; margin: 0 0 20px; text-align: center; }
+.auth-logo { display: block; margin: 0 auto 16px; max-height: 72px; max-width: 220px; object-fit: contain; }
 
 /* --- Flash messages --- */
 .flash-stack { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
@@ -158,21 +160,34 @@ tr:last-child td { border-bottom: none; }
   gap: 12px;
 }
 .product-tile {
-  min-height: 92px;
+  aspect-ratio: 1 / 1;
   border-radius: var(--radius);
   border: 1px solid var(--color-border);
   background: var(--color-surface);
-  padding: 12px;
+  padding: 10px;
   text-align: left;
   cursor: pointer;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  justify-content: flex-end;
   font-size: 1rem;
+  overflow: hidden;
 }
 .product-tile:active, .product-tile:hover { background: var(--color-success-bg); border-color: var(--color-primary); }
-.product-tile .tile-name { font-weight: 700; }
-.product-tile .tile-price { color: var(--color-text-muted); margin-top: 6px; }
+.product-tile .tile-image {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 8px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--color-bg);
+}
+.product-tile .tile-image img { width: 100%; height: 100%; object-fit: cover; }
+.product-tile .tile-image-placeholder { font-size: 1.6rem; font-weight: 800; color: var(--color-text-muted); }
+.product-tile .tile-name { font-weight: 700; line-height: 1.2; }
+.product-tile .tile-price { color: var(--color-text-muted); margin-top: 4px; }
 
 .cart-panel { position: sticky; top: 20px; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius); padding: 16px; display: flex; flex-direction: column; gap: 12px; max-height: calc(100vh - 100px); }
 .cart-items { overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 10px; }
@@ -186,6 +201,10 @@ tr:last-child td { border-bottom: none; }
   background: var(--color-bg); font-size: 1.1rem; font-weight: 700; cursor: pointer;
 }
 .qty-stepper .qty-value { min-width: 22px; text-align: center; font-weight: 700; }
+.qty-input {
+  width: 48px; height: 32px; border-radius: 8px; border: 1px solid var(--color-border);
+  text-align: center; font-weight: 700; font-size: 0.95rem; -moz-appearance: textfield;
+}
 .cart-total-row { display: flex; justify-content: space-between; font-size: 1.4rem; font-weight: 800; padding-top: 10px; border-top: 1px solid var(--color-border); }
 
 .checkout-overlay {

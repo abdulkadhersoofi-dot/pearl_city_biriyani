@@ -12,6 +12,7 @@ class Product(db.Model, TenantScopedMixin, TimestampMixin):
     gst_rate = db.Column(db.Numeric(5, 2), nullable=False, default=0)
     unit = db.Column(db.String(20), nullable=False, default="pcs")
     default_price = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    image_path = db.Column(db.String(255))  # relative to app/static/, shown on the POS tile
     is_active = db.Column(db.Boolean, nullable=False, default=True)
 
     def __repr__(self):

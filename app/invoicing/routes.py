@@ -67,9 +67,8 @@ def new_invoice():
     form = InvoiceHeaderForm()
     form.gstin_id.choices = [(g.id, g.display_label) for g in tenant.gstins.filter_by(is_active=True)]
     form.document_type.choices = _tenant_document_type_choices()
-    form.customer_id.choices = [("new", "+ New customer")] + [
-        (str(c.id), c.name) for c in tenant_query(Customer).filter_by(is_active=True).order_by(Customer.name)
-    ]
+    customers = tenant_query(Customer).filter_by(is_active=True).order_by(Customer.name).all()
+    form.customer_id.choices = [("new", "+ New customer")] + [(str(c.id), c.name) for c in customers]
 
     duplicate_from = None
     if request.method == "GET" and request.args.get("duplicate_from"):
@@ -142,7 +141,7 @@ def new_invoice():
 
     products = tenant_query(Product).filter_by(is_active=True).order_by(Product.name).all()
     return render_template(
-        "invoicing/form.html", form=form, products=products, duplicate_from=duplicate_from
+        "invoicing/form.html", form=form, products=products, customers=customers, duplicate_from=duplicate_from
     )
 
 

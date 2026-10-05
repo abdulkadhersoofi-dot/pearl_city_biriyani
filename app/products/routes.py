@@ -8,6 +8,7 @@ from app.models.user import UserRole
 from app.products import products_bp
 from app.products.forms import ProductForm
 from app.utils.tenant_scope import assert_owns, tenant_query
+from app.utils.uploads import UploadError, delete_uploaded_image, save_uploaded_image
 
 
 @products_bp.route("/")
@@ -28,6 +29,11 @@ def new_product():
     if form.validate_on_submit():
         product = Product(tenant_id=current_user.tenant_id)
         form.populate_obj(product)
+        try:
+            product.image_path = save_uploaded_image(form.image.data, "products")
+        except UploadError as exc:
+            flash(exc.message, "error")
+            return render_template("products/form.html", form=form, product=None)
         db.session.add(product)
         db.session.commit()
         flash(f"{product.name} added.", "success")
@@ -43,6 +49,14 @@ def edit_product(product_id):
     form = ProductForm(obj=product)
     if form.validate_on_submit():
         form.populate_obj(product)
+        if form.image.data and form.image.data.filename:
+            try:
+                new_image_path = save_uploaded_image(form.image.data, "products")
+            except UploadError as exc:
+                flash(exc.message, "error")
+                return render_template("products/form.html", form=form, product=product)
+            delete_uploaded_image(product.image_path)
+            product.image_path = new_image_path
         db.session.commit()
         flash(f"{product.name} updated.", "success")
         return redirect(url_for("products.list_products"))

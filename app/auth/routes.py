@@ -8,6 +8,7 @@ from app.auth.forms import ChangePasswordForm, LoginForm
 from app.extensions import db
 from app.models.audit_log import AuditLog
 from app.models.mixins import utcnow
+from app.models.tenant import Tenant
 from app.models.user import User
 from app.utils.audit import record_audit
 
@@ -30,8 +31,7 @@ def _post_login_redirect(user: User):
     return redirect(url_for("pos.terminal"))
 
 
-@auth_bp.route("/login", methods=["GET", "POST"])
-def login():
+def _login_view(login_tenant=None):
     if current_user.is_authenticated:
         return _post_login_redirect(current_user)
 
@@ -42,7 +42,7 @@ def login():
         window = current_app.config["LOGIN_RATE_LIMIT_WINDOW_MINUTES"]
         if _recent_failed_logins(email, window) >= limit:
             flash("Too many attempts. Please try again in a few minutes.", "error")
-            return render_template("auth/login.html", form=form)
+            return render_template("auth/login.html", form=form, login_tenant=login_tenant)
 
         user = User.query.filter_by(email=email).first()
         if user and user.is_active and user.check_password(form.password.data):
@@ -56,7 +56,21 @@ def login():
         db.session.commit()
         flash("Incorrect email or password.", "error")
 
-    return render_template("auth/login.html", form=form)
+    return render_template("auth/login.html", form=form, login_tenant=login_tenant)
+
+
+@auth_bp.route("/login", methods=["GET", "POST"])
+def login():
+    return _login_view()
+
+
+@auth_bp.route("/login/<slug>", methods=["GET", "POST"])
+def tenant_login(slug):
+    # Each client's own branded entry point (logo + color from Settings),
+    # distinct from the firm's generic /auth/login - same form, same
+    # credential check, just themed for this one tenant.
+    tenant = Tenant.query.filter_by(login_slug=slug, is_active=True).first_or_404()
+    return _login_view(login_tenant=tenant)
 
 
 @auth_bp.route("/logout")

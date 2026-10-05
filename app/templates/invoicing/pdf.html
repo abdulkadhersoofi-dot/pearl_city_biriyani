@@ -21,6 +21,7 @@
   .totals .grand td { border-top: 1.5px solid #1f2a24; font-weight: 700; font-size: 12pt; }
   .rcm-badge { display: inline-block; background: #fdecea; color: #b3261e; padding: 2px 8px; border-radius: 4px; font-size: 9pt; font-weight: 700; }
   .footer-note { margin-top: 24px; font-size: 9pt; color: #5c6b62; }
+  .firm-logo { max-height: 48px; max-width: 160px; object-fit: contain; margin-bottom: 6px; }
 </style>
 </head>
 <body>
@@ -33,6 +34,7 @@
       </p>
     </div>
     <div class="firm">
+      {% if logo_path %}<img class="firm-logo" src="file://{{ logo_path }}">{% endif %}
       <strong>{{ firm_name }}</strong><br>
       {% if invoice.gstin %}
         {% if invoice.gstin.gstin %}GSTIN: {{ invoice.gstin.gstin }}<br>{% endif %}

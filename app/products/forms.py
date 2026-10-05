@@ -1,6 +1,9 @@
 from flask_wtf import FlaskForm
+from flask_wtf.file import FileAllowed, FileField, FileSize
 from wtforms import DecimalField, StringField
 from wtforms.validators import DataRequired, InputRequired, Length, NumberRange, Optional
+
+from app.utils.uploads import ALLOWED_IMAGE_EXTENSIONS, MAX_IMAGE_BYTES
 
 
 class ProductForm(FlaskForm):
@@ -14,3 +17,10 @@ class ProductForm(FlaskForm):
     gst_rate = DecimalField("GST rate (%)", validators=[InputRequired(), NumberRange(min=0, max=28)])
     unit = StringField("Unit", validators=[DataRequired(), Length(max=20)], default="pcs")
     default_price = DecimalField("Default price", validators=[InputRequired(), NumberRange(min=0)])
+    image = FileField(
+        "Item image (optional)",
+        validators=[
+            FileAllowed(sorted(ALLOWED_IMAGE_EXTENSIONS), "PNG, JPG, GIF or WEBP only"),
+            FileSize(MAX_IMAGE_BYTES, message="Image is too large - 5 MB max."),
+        ],
+    )

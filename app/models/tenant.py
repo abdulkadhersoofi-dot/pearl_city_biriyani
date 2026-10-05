@@ -28,6 +28,16 @@ class Tenant(db.Model, TimestampMixin):
         db.Integer, db.ForeignKey("users.id", use_alter=True, name="fk_tenants_onboarded_by")
     )
 
+    # Branding: shown instead of the platform's own name/logo wherever a
+    # Client Admin or Staff user is signed in - the nav, invoice PDFs, POS
+    # receipts, and (via login_slug) this client's own login page.
+    logo_path = db.Column(db.String(255))  # relative to app/static/, e.g. "uploads/logos/xyz.png"
+    primary_color = db.Column(db.String(7), nullable=False, default="#1f7a4d")
+    login_slug = db.Column(db.String(64), unique=True)
+    # 2in / 3in / a4 - app.pos.receipt.THERMAL_WIDTHS_IN keys, plus "a4".
+    # Lets POS checkout print immediately without asking every time.
+    default_receipt_format = db.Column(db.String(10), nullable=False, default="3in")
+
     gstins = db.relationship(
         "Gstin", backref="tenant", cascade="all, delete-orphan", lazy="dynamic"
     )
@@ -38,6 +48,10 @@ class Tenant(db.Model, TimestampMixin):
         cascade="all, delete-orphan",
         lazy="dynamic",
     )
+
+    @property
+    def display_name(self) -> str:
+        return self.trade_name or self.legal_name
 
     def __repr__(self):
         return f"<Tenant {self.id} {self.legal_name}>"

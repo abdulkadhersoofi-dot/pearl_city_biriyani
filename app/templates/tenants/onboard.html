@@ -3,7 +3,7 @@
 {% block title %}Onboard client - {{ firm_name }}{% endblock %}
 {% block content %}
 <div class="page-header"><h1>Onboard a new client</h1></div>
-<form method="post" class="card stack" novalidate>
+<form method="post" class="card stack" novalidate enctype="multipart/form-data">
   {{ form.hidden_tag() }}
   <div class="form-grid">
     {{ field(form.legal_name) }}
@@ -13,6 +13,7 @@
     {{ field(form.state_code) }}
   </div>
   {{ field(form.registered_address) }}
+  {{ field(form.logo, help="Shown to this client's own users instead of the platform logo, and on their printed invoices/receipts.") }}
   <hr>
   <h2 style="font-size:1.05rem; margin:0;">Client Admin login</h2>
   <div class="form-grid">

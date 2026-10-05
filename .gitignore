@@ -11,3 +11,4 @@ instance/
 .flask_session/
 flask_session/
 dump.rdb
+app/static/uploads/

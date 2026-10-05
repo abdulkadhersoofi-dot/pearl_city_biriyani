@@ -225,13 +225,30 @@ Gunicorn workers or add app servers behind Nginx as load grows.
   lines and are editable, so a partial return/correction is as easy as a
   full one. Each gets its own numbering series (`CN`/`DN` prefixes) and is
   never hard-deleted - voiding works the same way as an invoice.
-- **POS checkout prints directly, no preview page.** Confirming a sale
-  posts via `fetch()` instead of a form submit, so the terminal can show
-  a paper-size picker (2"/3" thermal roll, or A4) in the same screen and
-  print immediately through a hidden iframe once a size is picked -
-  there's no separate "receipt preview" page in that path. A bill can
-  still be reprinted later (same direct-print buttons) from its receipt
-  page or the Day-book.
+- **POS checkout prints directly, no preview page or size prompt.**
+  Confirming a sale posts via `fetch()` instead of a form submit, then
+  prints immediately through a hidden iframe at the tenant's own
+  `default_receipt_format` (Settings) - there's no separate "receipt
+  preview" page, and no paper-size popup on every sale. A bill can still
+  be reprinted later on any size (2"/3" thermal roll, or A4) from its
+  receipt page or the Day-book.
+- **Platform branding vs. tenant branding.** `FIRM_NAME` (env var,
+  defaults to "ARFA") and `app/static/img/arfa-logo.jpg` are the
+  platform's own identity - shown to the Super Admin and on the generic
+  `/auth/login` page. Once a Client Admin or Staff user signs in, every
+  `firm_name` reference (nav, page titles) and every printed invoice/POS
+  receipt switches to that tenant's own `display_name` and uploaded logo
+  instead - a client's customer never sees the platform's name on their
+  bill. Each tenant also gets its own branded sign-in page at
+  `/auth/login/<login_slug>` (shown on their Settings page), themed with
+  their own logo and `primary_color`.
+- **Uploaded images (tenant logos, product photos) are stored on local
+  disk** under `app/static/uploads/<logos|products>/`, served free by
+  Flask's own static handler (see `app/utils/uploads.py`). This fits the
+  app's self-hosted/offline design, but **is not durable on a host with
+  an ephemeral filesystem** (e.g. Render's free tier) - uploaded images
+  are lost on every redeploy or restart there. Swap in S3-compatible
+  object storage before relying on uploads in that kind of deployment.
 - **Thermal receipts are sized in real inches, not a broken "auto".**
   `app/pos/receipt.py` renders at an actual 2.28in/3.15in page width -
   CSS Paged Media has no "fixed width, auto height" value, so an earlier

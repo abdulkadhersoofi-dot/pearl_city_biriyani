@@ -2,6 +2,7 @@ from flask import current_app, render_template
 from weasyprint import HTML
 
 from app.models.pos_bill import POSBill
+from app.models.tenant import Tenant
 
 # Keyed and labeled the way thermal paper is actually sold in a shop - by
 # roll width in inches ("2 inch roll", "3 inch roll") - not by the mm
@@ -61,10 +62,11 @@ def _render(bill: POSBill, page_size: str, as_document: bool = False):
     # wraps long values (the bill number especially) awkwardly - one size
     # doesn't fit both widths.
     is_narrow = is_thermal and page_size.startswith(f"{THERMAL_WIDTHS_IN['2in']}in")
+    tenant = Tenant.query.get(bill.tenant_id)
     html = render_template(
         "pos/receipt_print.html",
         bill=bill,
-        firm_name=current_app.config["FIRM_NAME"],
+        firm_name=tenant.display_name,
         page_size=page_size,
         is_thermal=is_thermal,
         is_narrow=is_narrow,

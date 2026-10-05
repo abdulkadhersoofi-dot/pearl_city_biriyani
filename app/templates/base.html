@@ -15,7 +15,14 @@
 <body>
   <div class="app-shell">
     <header class="topbar">
-      <a class="brand" href="{{ url_for('main.index') }}">{{ firm_name }}</a>
+      <a class="brand" href="{{ url_for('main.index') }}">
+        {% if brand_logo_path %}
+          <img src="{{ url_for('static', filename=brand_logo_path) }}" alt="{{ firm_name }}" class="brand-logo">
+        {% elif not current_user.is_authenticated or current_user.is_super_admin %}
+          <img src="{{ url_for('static', filename='img/arfa-logo.jpg') }}" alt="ARFA" class="brand-logo">
+        {% endif %}
+        <span>{{ firm_name }}</span>
+      </a>
       <nav class="main-nav">
         {% if current_user.is_super_admin %}
           <a href="{{ url_for('tenants.directory') }}" class="{{ 'active' if request.blueprint == 'tenants' }}">Clients</a>
@@ -29,6 +36,7 @@
           <a href="{{ url_for('products.list_products') }}" class="{{ 'active' if request.blueprint == 'products' }}">Items</a>
           <a href="{{ url_for('staff.list_staff') }}" class="{{ 'active' if request.blueprint == 'staff' }}">Staff</a>
           <a href="{{ url_for('reports.index') }}" class="{{ 'active' if request.blueprint == 'reports' }}">Reports</a>
+          <a href="{{ url_for('settings.index') }}" class="{{ 'active' if request.blueprint == 'settings' }}">Settings</a>
         {% else %}
           <a href="{{ url_for('pos.terminal') }}" class="active">POS</a>
         {% endif %}

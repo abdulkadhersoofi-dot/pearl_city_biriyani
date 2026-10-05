@@ -1,3 +1,4 @@
+import re
 from datetime import date
 from io import BytesIO
 from zipfile import ZIP_DEFLATED, ZipFile
@@ -22,6 +23,12 @@ from app.tenants import tenants_bp
 from app.tenants.forms import AddGstinForm, OnboardClientForm
 from app.utils.audit import record_audit
 from app.utils.indian_states import STATE_NAME_BY_CODE
+from app.utils.uploads import UploadError, save_uploaded_image
+
+
+def _make_login_slug(legal_name: str, tenant_id: int) -> str:
+    base = re.sub(r"[^a-z0-9]+", "-", legal_name.lower()).strip("-") or "client"
+    return f"{base}-{tenant_id}"
 
 
 @tenants_bp.route("/clients")
@@ -49,6 +56,13 @@ def onboard():
         )
         db.session.add(tenant)
         db.session.flush()
+
+        tenant.login_slug = _make_login_slug(tenant.legal_name, tenant.id)
+        try:
+            tenant.logo_path = save_uploaded_image(form.logo.data, "logos")
+        except UploadError as exc:
+            flash(exc.message, "error")
+            return render_template("tenants/onboard.html", form=form)
 
         # Always create a business-location row, GSTIN or not - an
         # unregistered client still has a state/address, it just has no

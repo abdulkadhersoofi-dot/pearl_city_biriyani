@@ -49,7 +49,7 @@ services:
           type: keyvalue
           property: connectionString
       - key: FIRM_NAME
-        value: Pearl City & Associates
+        value: ARFA
       - key: SUPER_ADMIN_NAME
         value: Firm Admin
       - key: SUPER_ADMIN_EMAIL

@@ -60,7 +60,11 @@ def terminal():
             held_bills = [hb for hb in held_bills if hb.id != resume_bill.id]
 
     return render_template(
-        "pos/terminal.html", products=products, held_bills=held_bills, resume_bill=resume_bill
+        "pos/terminal.html",
+        products=products,
+        held_bills=held_bills,
+        resume_bill=resume_bill,
+        default_receipt_format=tenant.default_receipt_format,
     )
 
 

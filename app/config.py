@@ -49,7 +49,7 @@ class Config:
 
     WTF_CSRF_ENABLED = True
 
-    FIRM_NAME = os.environ.get("FIRM_NAME", "Pearl City & Associates")
+    FIRM_NAME = os.environ.get("FIRM_NAME", "ARFA")
 
     LOGIN_RATE_LIMIT_ATTEMPTS = 8
     LOGIN_RATE_LIMIT_WINDOW_MINUTES = 15

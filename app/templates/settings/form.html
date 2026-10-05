@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% from "macros.html" import field %}
+{% block title %}Settings - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header"><h1>Settings</h1></div>
+
+<form method="post" class="card stack" novalidate enctype="multipart/form-data">
+  {{ form.hidden_tag() }}
+  {% if tenant.logo_path %}
+    <img src="{{ url_for('static', filename=tenant.logo_path) }}" alt="{{ tenant.display_name }}"
+         style="width:96px; height:96px; object-fit:contain; border-radius:var(--radius); border:1px solid var(--color-border); background:#fff;">
+  {% endif %}
+  {{ field(form.logo, help="Shown instead of the platform logo in your nav, and on your printed invoices and receipts.") }}
+  {{ field(form.primary_color, help="Used on your branded sign-in page below.") }}
+  {{ field(form.default_receipt_format, help="POS checkout prints straight to this size - no size prompt every sale.") }}
+  <button type="submit" class="btn btn-primary btn-lg">Save settings</button>
+</form>
+
+{% if tenant.login_slug %}
+<div class="card stack" style="margin-top:16px;">
+  <h2 style="margin:0; font-size:1.05rem;">Your branded sign-in page</h2>
+  <p class="text-muted mt-0">
+    Share this link with your staff instead of the general sign-in page - it shows your own logo and colour.
+  </p>
+  <p><code>{{ url_for('auth.tenant_login', slug=tenant.login_slug, _external=True) }}</code></p>
+</div>
+{% endif %}
+{% endblock %}

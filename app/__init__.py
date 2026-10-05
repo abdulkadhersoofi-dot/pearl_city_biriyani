@@ -61,6 +61,7 @@ def _register_blueprints(app: Flask) -> None:
     from app.pos import pos_bp
     from app.products import products_bp
     from app.reports import reports_bp
+    from app.settings import settings_bp
     from app.staff import staff_bp
     from app.tenants import tenants_bp
     from app.main import main_bp
@@ -74,6 +75,7 @@ def _register_blueprints(app: Flask) -> None:
     app.register_blueprint(pos_bp)
     app.register_blueprint(notes_bp)
     app.register_blueprint(reports_bp)
+    app.register_blueprint(settings_bp)
     app.register_blueprint(staff_bp)
     app.register_blueprint(api_bp)
 
@@ -98,7 +100,21 @@ def _register_error_handlers(app: Flask) -> None:
 def _register_context_processors(app: Flask) -> None:
     @app.context_processor
     def inject_globals():
-        return {"firm_name": app.config["FIRM_NAME"]}
+        from flask_login import current_user
+
+        # Platform identity (ARFA) everywhere by default. A signed-in
+        # Client Admin/Staff user sees their own tenant's branding instead -
+        # nav, page titles, and (passed explicitly) their printed documents.
+        brand_name = app.config["FIRM_NAME"]
+        brand_logo_path = None
+        if current_user.is_authenticated and not current_user.is_super_admin and current_user.tenant:
+            brand_name = current_user.tenant.display_name
+            brand_logo_path = current_user.tenant.logo_path
+        return {
+            "firm_name": brand_name,
+            "brand_logo_path": brand_logo_path,
+            "platform_name": app.config["FIRM_NAME"],
+        }
 
     @app.template_filter("state_name")
     def state_name_filter(state_code: str) -> str:

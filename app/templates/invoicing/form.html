@@ -5,6 +5,7 @@
 {% block head %}
 <script>
   const GSTIN_STATE = { {% for g in current_user.tenant.gstins %}{{ g.id }}: "{{ g.state_code }}",{% endfor %} };
+  const CUSTOMER_STATE = { {% for c in customers %}"{{ c.id }}": "{{ c.state_code or '' }}",{% endfor %} };
   const PRODUCTS_BY_NAME = { {% for p in products %}"{{ p.name|e }}": {hsn: "{{ p.hsn_or_sac_code }}", rate: {{ p.default_price }}, gst_rate: {{ p.gst_rate }}, unit: "{{ p.unit }}", id: {{ p.id }}},{% endfor %} };
   const BILL_OF_SUPPLY = "bill_of_supply";
   const PREFILL_LINES = [
@@ -42,7 +43,8 @@
   <div class="card" style="margin-bottom:20px;">
     <div class="field">
       {{ form.customer_id.label(class="field-label") }}
-      {{ form.customer_id(class="field-input", **{"x-model": "customerId"}) }}
+      {{ form.customer_id(class="field-input", **{"x-model": "customerId", "@change": "onCustomerChange()"}) }}
+      <p class="field-help" x-show="customerId !== 'new' && customerId !== ''">Place of supply is set from this customer's state - change it above if this sale ships to a different state.</p>
     </div>
     <template x-if="customerId === 'new'">
       <div class="form-grid" style="margin-top:12px;">
@@ -130,6 +132,14 @@ function invoiceForm() {
     placeOfSupply: document.querySelector('[name=place_of_supply_state_code]')?.value || '',
     totals: { taxable: 0, cgst: 0, sgst: 0, igst: 0, grand: 0 },
     init() { this.recalc(); },
+    // Not called from init(): duplicating an invoice already restores its
+    // original place of supply (routes.py), which must win over the
+    // customer's current state - this only fires on an actual pick.
+    onCustomerChange() {
+      const state = CUSTOMER_STATE[this.customerId];
+      if (state) this.placeOfSupply = state;
+      this.recalc();
+    },
     isIntraState() {
       const gstinSelect = document.querySelector('[name=gstin_id]');
       const gstinState = GSTIN_STATE[gstinSelect ? gstinSelect.value : ''] || '';

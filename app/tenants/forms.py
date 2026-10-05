@@ -1,9 +1,11 @@
 from flask_wtf import FlaskForm
+from flask_wtf.file import FileAllowed, FileField, FileSize
 from wtforms import PasswordField, SelectField, StringField
 from wtforms.validators import DataRequired, Email, EqualTo, Length, Optional, Regexp
 
 from app.models.tenant import RegistrationType
 from app.utils.indian_states import INDIAN_STATES
+from app.utils.uploads import ALLOWED_IMAGE_EXTENSIONS, MAX_IMAGE_BYTES
 
 GSTIN_REGEX = r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$"
 STATE_CODE_REGEX = r"^[0-9]{2}$"
@@ -31,6 +33,13 @@ class OnboardClientForm(FlaskForm):
     admin_confirm_password = PasswordField(
         "Confirm password",
         validators=[DataRequired(), EqualTo("admin_password", message="Passwords must match")],
+    )
+    logo = FileField(
+        "Client logo (optional)",
+        validators=[
+            FileAllowed(sorted(ALLOWED_IMAGE_EXTENSIONS), "PNG, JPG, GIF or WEBP only"),
+            FileSize(MAX_IMAGE_BYTES, message="Image is too large - 5 MB max."),
+        ],
     )
 
 
