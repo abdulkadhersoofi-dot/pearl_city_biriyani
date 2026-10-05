@@ -13,9 +13,31 @@
     <a href="{{ url_for('invoicing.invoice_pdf', invoice_id=invoice.id) }}" class="btn btn-secondary" target="_blank">Download PDF</a>
     {% if invoice.status.value == 'issued' %}
     <a href="{{ url_for('invoicing.new_invoice', duplicate_from=invoice.id) }}" class="btn btn-secondary">Duplicate</a>
+    <a href="{{ url_for('notes.new_note', invoice_id=invoice.id, type='credit') }}" class="btn btn-secondary">Credit note</a>
+    <a href="{{ url_for('notes.new_note', invoice_id=invoice.id, type='debit') }}" class="btn btn-secondary">Debit note</a>
     {% endif %}
   </div>
 </div>
+
+{% if invoice.credit_debit_notes %}
+<div class="card" style="margin-bottom:20px;">
+  <h2 style="margin-top:0;">Notes issued against this invoice</h2>
+  <table>
+    <thead><tr><th>Number</th><th>Type</th><th>Date</th><th>Status</th><th>Total</th></tr></thead>
+    <tbody>
+    {% for n in invoice.credit_debit_notes %}
+      <tr>
+        <td><a href="{{ url_for('notes.view_note', note_id=n.id) }}">{{ n.note_number }}</a></td>
+        <td>{{ 'Credit Note' if n.document_type.value == 'credit_note' else 'Debit Note' }}</td>
+        <td>{{ n.note_date.strftime('%d %b %Y') }}</td>
+        <td><span class="status-badge status-{{ n.status.value }}">{{ n.status.value|title }}</span></td>
+        <td>Rs. {{ '%.2f'|format(n.grand_total) }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
 
 <div class="card" style="margin-bottom:20px;">
   <div class="form-grid">

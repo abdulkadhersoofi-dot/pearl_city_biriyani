@@ -3,10 +3,12 @@
 Multi-tenant, GST-compliant billing and POS web application for a Chartered
 Accountant / GST practice firm to provide to its small-business clients.
 
-**Phase 1 (this release):** tenant/user setup, role-based access, and the
-Invoicing module with Tax Invoice / Bill of Supply PDFs. POS, Credit/Debit
-notes, the firm's admin console, and GST reports are stubbed in the nav and
-land in later phases (see [Roadmap](#roadmap)).
+**Shipped so far:** tenant/user setup and role-based access; Invoicing
+(Tax Invoice / Bill of Supply PDFs, every GST registration type including
+unregistered clients); POS (touchscreen checkout, thermal/A4 receipts,
+hold/resume, refunds, Z-report); Credit/Debit Notes issued against an
+existing invoice. The firm's admin console and GST reports are stubbed in
+the nav and land in later phases (see [Roadmap](#roadmap)).
 
 ## Stack
 
@@ -103,14 +105,16 @@ pytest
 ```
 app/
 ├── models/          # Tenant, Gstin, User, InvoiceSeries, Customer, Product,
-│                     # Invoice, InvoiceLine, AuditLog
+│                     # Invoice, InvoiceLine, POSBill(Line), CreditDebitNote,
+│                     # NoteLine, AuditLog
 ├── auth/            # login, change password, role decorators
 ├── tenants/         # Super Admin console: onboarding, directory, audit log
 ├── staff/           # Client Admin: create/deactivate/reset staff logins
-├── invoicing/        # Phase 1 core: form, PDF, GST calc, numbering
+├── invoicing/        # form, PDF, GST calc, numbering
 ├── customers/, products/   # tenant-scoped catalog CRUD
-├── pos/         # Phase 2 POS module
-├── notes/, reports/  # stubbed, ship in Phases 3/5
+├── pos/             # POS module: terminal, hold/resume, refunds, Z-report
+├── notes/           # Credit/Debit notes, created from an existing invoice
+├── reports/         # stubbed, ships in Phase 5
 ├── api/              # small JSON endpoints (product lookup today; POS
 │                     # cart/checkout from Phase 2) - kept separate so a
 │                     # future SPA frontend can reuse them
@@ -204,14 +208,27 @@ Gunicorn workers or add app servers behind Nginx as load grows.
 - **Invoice numbering** is per tenant, per GSTIN, per financial year, per
   document type, with its own editable prefix - allocated under a row lock
   (`SELECT ... FOR UPDATE`) so concurrent checkouts never collide.
+- **An unregistered client still needs a business location.** Onboarding
+  always creates a `Gstin` row (state + optional address) even when the
+  client has no actual GSTIN number (`gstin` is nullable) - POS and
+  invoicing bill from that row regardless of whether it carries a real
+  GSTIN. A Super Admin can backfill one from a client's detail page for
+  any tenant that somehow has none.
+- **Credit/Debit notes** are always created from an existing invoice, never
+  standalone - they inherit its GSTIN, place of supply, and GST treatment
+  (an unregistered/composition client's notes never carry GST, same as
+  their invoices). Lines default to a copy of the original invoice's
+  lines and are editable, so a partial return/correction is as easy as a
+  full one. Each gets its own numbering series (`CN`/`DN` prefixes) and is
+  never hard-deleted - voiding works the same way as an invoice.
 
 ## Roadmap
 
-- **Phase 2** - POS module: touchscreen checkout, thermal/A4 receipts, hold/
-  resume, refunds, Z-report.
-- **Phase 3** - Credit/Debit notes (created from an existing invoice) and
-  the remaining GST document types (Export, RCM, Delivery Challan, Receipt/
-  Refund Voucher).
+- **Remaining document types** - Delivery Challan and Receipt/Refund
+  Voucher don't fit the itemized-invoice shape the Invoicing module uses
+  (no GST calc the same way, or tied to an advance payment rather than a
+  sale) and still need their own flow. Tax Invoice, Bill of Supply, and
+  both Export/RCM variants already work through Invoicing today.
 - **Phase 4** - Admin console: cross-client drill-down, bulk GSTR-1/3B
   export for multiple clients in one action.
 - **Phase 5** - GSTR-1/3B report exports (Excel/PDF/JSON), consolidated

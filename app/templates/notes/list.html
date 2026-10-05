@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Credit/Debit notes - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Credit/Debit notes</h1>
+</div>
+<p class="text-muted mt-0">Notes are created from an invoice - open an issued invoice and use "Credit note" or "Debit note" there.</p>
+
+<form class="search-bar" method="get">
+  <select name="status" class="field-input" style="max-width:180px;">
+    <option value="">All statuses</option>
+    {% for s in NoteStatus %}
+      <option value="{{ s.value }}" {{ 'selected' if status == s.value }}>{{ s.value|title }}</option>
+    {% endfor %}
+  </select>
+  <button class="btn btn-secondary">Filter</button>
+</form>
+
+<div class="table-wrap card">
+  <table>
+    <thead><tr><th>Number</th><th>Date</th><th>Type</th><th>Against invoice</th><th>Customer</th><th>Status</th><th>Total</th></tr></thead>
+    <tbody>
+    {% for n in notes %}
+      <tr>
+        <td><a href="{{ url_for('notes.view_note', note_id=n.id) }}">{{ n.note_number }}</a></td>
+        <td>{{ n.note_date.strftime('%d %b %Y') }}</td>
+        <td>{{ DOCUMENT_TYPE_LABELS[n.document_type] }}</td>
+        <td><a href="{{ url_for('invoicing.view_invoice', invoice_id=n.original_invoice_id) }}">{{ n.original_invoice.invoice_number }}</a></td>
+        <td>{{ n.customer_snapshot.name }}</td>
+        <td><span class="status-badge status-{{ n.status.value }}">{{ n.status.value|title }}</span></td>
+        <td>Rs. {{ '%.2f'|format(n.grand_total) }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="7" class="empty-state">No notes yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
