@@ -61,6 +61,36 @@ def test_unknown_login_slug_is_404(client, db):
     assert resp.status_code == 404
 
 
+def test_super_admin_can_upload_a_logo_for_an_existing_client(client, db, super_admin, tenant):
+    _login(client, super_admin.email, "SuperSecret123")
+
+    assert tenant.logo_path is None
+    image = (io.BytesIO(b"fake-png-bytes"), "logo.png")
+    resp = client.post(
+        f"/admin/clients/{tenant.id}/logo",
+        data={"logo": image},
+        content_type="multipart/form-data",
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+    assert b"Logo updated" in resp.data
+
+    db.session.refresh(tenant)
+    assert tenant.logo_path is not None
+    assert tenant.logo_path.startswith("uploads/logos/")
+
+
+def test_staff_cannot_upload_a_logo_for_a_client(client, db, staff, tenant):
+    _login(client, staff.email, "CashierSecret123")
+    image = (io.BytesIO(b"fake-png-bytes"), "logo.png")
+    resp = client.post(
+        f"/admin/clients/{tenant.id}/logo",
+        data={"logo": image},
+        content_type="multipart/form-data",
+    )
+    assert resp.status_code == 403
+
+
 def test_product_image_upload_is_saved_on_the_product(client, db, client_admin):
     _login(client, client_admin.email, "ClientSecret123")
 

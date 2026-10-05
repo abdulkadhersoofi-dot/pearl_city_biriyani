@@ -27,6 +27,25 @@
 </div>
 
 <div class="card" style="margin-bottom:20px;">
+  <h2 style="margin-top:0;">Branding</h2>
+  <div class="row" style="align-items:center; gap:16px;">
+    {% if tenant.logo_path %}
+      <img src="{{ url_for('static', filename=tenant.logo_path) }}" alt="{{ tenant.legal_name }}"
+           style="width:72px; height:72px; object-fit:contain; border-radius:var(--radius); border:1px solid var(--color-border); background:#fff;">
+    {% else %}
+      <p class="text-muted mt-0">No logo uploaded yet - shown instead of the platform logo on this client's own
+        sign-in, nav, invoices and receipts.</p>
+    {% endif %}
+  </div>
+  <form method="post" action="{{ url_for('tenants.update_logo', tenant_id=tenant.id) }}"
+        enctype="multipart/form-data" style="margin-top:12px;" class="row">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="file" name="logo" accept=".png,.jpg,.jpeg,.gif,.webp" class="field-input" required>
+    <button type="submit" class="btn btn-secondary">{{ 'Replace logo' if tenant.logo_path else 'Upload logo' }}</button>
+  </form>
+</div>
+
+<div class="card" style="margin-bottom:20px;">
   <h2 style="margin-top:0;">Business locations</h2>
   <ul>
     {% for g in tenant.gstins %}

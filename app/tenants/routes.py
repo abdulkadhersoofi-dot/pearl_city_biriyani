@@ -23,7 +23,7 @@ from app.tenants import tenants_bp
 from app.tenants.forms import AddGstinForm, OnboardClientForm
 from app.utils.audit import record_audit
 from app.utils.indian_states import STATE_NAME_BY_CODE
-from app.utils.uploads import UploadError, save_uploaded_image
+from app.utils.uploads import UploadError, delete_uploaded_image, save_uploaded_image
 
 
 def _make_login_slug(legal_name: str, tenant_id: int) -> str:
@@ -182,6 +182,35 @@ def admin_invoice_pdf(tenant_id, invoice_id):
         as_attachment=False,
         download_name=f"{invoice.invoice_number.replace('/', '-')}.pdf",
     )
+
+
+@tenants_bp.route("/clients/<int:tenant_id>/logo", methods=["POST"])
+@roles_required(UserRole.SUPER_ADMIN)
+def update_logo(tenant_id):
+    # Lets the firm set/replace a client's logo on their behalf - clients
+    # onboarded before this feature existed otherwise have no way to get
+    # one in without a Client Admin visiting Settings themselves.
+    tenant = Tenant.query.get_or_404(tenant_id)
+    try:
+        new_logo_path = save_uploaded_image(request.files.get("logo"), "logos")
+    except UploadError as exc:
+        flash(exc.message, "error")
+        return redirect(url_for("tenants.detail", tenant_id=tenant.id))
+
+    if new_logo_path:
+        delete_uploaded_image(tenant.logo_path)
+        tenant.logo_path = new_logo_path
+        if not tenant.login_slug:
+            tenant.login_slug = _make_login_slug(tenant.legal_name, tenant.id)
+        record_audit(
+            current_user, "tenant_logo_updated", tenant_id=tenant.id, entity_type="tenant", entity_id=tenant.id
+        )
+        db.session.commit()
+        flash(f"Logo updated for {tenant.legal_name}.", "success")
+    else:
+        flash("Choose an image file first.", "error")
+
+    return redirect(url_for("tenants.detail", tenant_id=tenant.id))
 
 
 @tenants_bp.route("/clients/<int:tenant_id>/gstins/new", methods=["POST"])
