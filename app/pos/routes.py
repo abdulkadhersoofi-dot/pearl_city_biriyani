@@ -138,7 +138,9 @@ def checkout_route():
 def view_receipt(bill_id):
     bill = tenant_query(POSBill).filter_by(id=bill_id).first_or_404()
     assert_owns(bill)
-    return render_template("pos/receipt.html", bill=bill)
+    return render_template(
+        "pos/receipt.html", bill=bill, default_receipt_format=current_user.tenant.default_receipt_format
+    )
 
 
 @pos_bp.route("/bills/<int:bill_id>/receipt.pdf")
@@ -200,7 +202,12 @@ def day_book():
         .order_by(POSBill.completed_at.desc())
         .all()
     )
-    return render_template("pos/day_book.html", bills=bills, on_date=on_date)
+    return render_template(
+        "pos/day_book.html",
+        bills=bills,
+        on_date=on_date,
+        default_receipt_format=current_user.tenant.default_receipt_format,
+    )
 
 
 @pos_bp.route("/z-report")

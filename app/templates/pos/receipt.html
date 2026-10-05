@@ -41,11 +41,8 @@
   </div>
 </div>
 
-<p class="text-muted" style="margin-top:20px; margin-bottom:8px;">Reprint - prints immediately, no preview:</p>
-<div class="row">
-  <button type="button" class="btn btn-secondary" @click="printReceipt('2in')">2 inch roll</button>
-  <button type="button" class="btn btn-secondary" @click="printReceipt('3in')">3 inch roll</button>
-  <button type="button" class="btn btn-secondary" @click="printReceipt('a4')">A4 copy</button>
+<div class="row" style="margin-top:20px;">
+  <button type="button" class="btn btn-secondary" @click="printReceipt()">Reprint</button>
 </div>
 
 {% if bill.status.value != 'completed' %}
@@ -64,10 +61,10 @@
 <script>
 function receiptView() {
   return {
-    printReceipt(format) {
+    printReceipt() {
       const frame = document.getElementById("receipt-print-frame");
       frame.onload = () => { frame.contentWindow.print(); };
-      frame.src = "{{ url_for('pos.receipt_pdf', bill_id=bill.id) }}?format=" + format;
+      frame.src = "{{ url_for('pos.receipt_pdf', bill_id=bill.id) }}?format={{ default_receipt_format }}";
     }
   };
 }

@@ -209,6 +209,13 @@ Gunicorn workers or add app servers behind Nginx as load grows.
   Unregistered to the document types that registration is allowed to issue
   (e.g. Composition clients only ever see Bill of Supply, never Tax
   Invoice).
+- **An item's GST rate is a dropdown of the GST portal's own published
+  slabs** (`app.products.forms.GST_RATE_CHOICES`: 0, 0.1, 0.25, 1, 1.5,
+  3, 5, 6, 7.5, 12, 18, 28, 40%), not a free-typed number - a typo like
+  "2.8" meant to be "28" can't become a real, wrong tax rate on an item.
+  0% is a normal choice, not a validation failure: the field uses
+  `InputRequired`, not `DataRequired`, since `DataRequired` treats
+  `Decimal('0')` as falsy and would otherwise reject nil-rated items.
 - **Invoice numbering** is per tenant, per GSTIN, per financial year, per
   document type, with its own editable prefix - allocated under a row lock
   (`SELECT ... FOR UPDATE`) so concurrent checkouts never collide.
@@ -225,13 +232,17 @@ Gunicorn workers or add app servers behind Nginx as load grows.
   lines and are editable, so a partial return/correction is as easy as a
   full one. Each gets its own numbering series (`CN`/`DN` prefixes) and is
   never hard-deleted - voiding works the same way as an invoice.
-- **POS checkout prints directly, no preview page or size prompt.**
-  Confirming a sale posts via `fetch()` instead of a form submit, then
-  prints immediately through a hidden iframe at the tenant's own
-  `default_receipt_format` (Settings) - there's no separate "receipt
-  preview" page, and no paper-size popup on every sale. A bill can still
-  be reprinted later on any size (2"/3" thermal roll, or A4) from its
-  receipt page or the Day-book.
+- **POS checkout prints directly, no preview page or size prompt -
+  anywhere.** Confirming a sale posts via `fetch()` instead of a form
+  submit, then prints immediately through a hidden iframe at the
+  tenant's own `default_receipt_format` (Settings → Print sizes → "POS
+  bill print size"). There is deliberately no paper-size picker left in
+  the app at all - not after checkout, not on the Day-book, not on a
+  bill's own receipt page - every reprint button just reprints at that
+  same configured default. Invoices have no size setting to make since
+  they only ever render on A4; Settings shows that as a fixed,
+  non-editable value next to the POS one so both print sizes are visible
+  in one place.
 - **Platform branding vs. tenant branding.** `FIRM_NAME` (env var,
   defaults to "ARFA") and `app/static/img/arfa-logo.jpg` are the
   platform's own identity - shown to the Super Admin and on the generic

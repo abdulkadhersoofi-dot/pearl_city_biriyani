@@ -21,9 +21,7 @@
         <td><span class="status-badge status-issued">Completed</span></td>
         <td>Rs. {{ '%.2f'|format(b.grand_total) }}</td>
         <td class="row">
-          <button type="button" class="btn btn-quiet" @click="print({{ b.id }}, '2in')">2&quot;</button>
-          <button type="button" class="btn btn-quiet" @click="print({{ b.id }}, '3in')">3&quot;</button>
-          <button type="button" class="btn btn-quiet" @click="print({{ b.id }}, 'a4')">A4</button>
+          <button type="button" class="btn btn-quiet" @click="print({{ b.id }})">Reprint</button>
           {% if b.status.value == 'completed' %}
           <form method="post" action="{{ url_for('pos.refund_bill_route', bill_id=b.id) }}"
                 onsubmit="var r = prompt('Reason for refund:'); if (!r) { return false; } this.reason.value = r; return confirm('Refund Rs. {{ '%.2f'|format(b.grand_total) }} for {{ b.bill_number }}?');">
@@ -59,10 +57,10 @@
 <script>
 function dayBook() {
   return {
-    print(billId, format) {
+    print(billId) {
       const frame = document.getElementById("receipt-print-frame");
       frame.onload = () => { frame.contentWindow.print(); };
-      frame.src = "{{ url_for('pos.receipt_pdf', bill_id=0) }}".replace("/0/", "/" + billId + "/") + "?format=" + format;
+      frame.src = "{{ url_for('pos.receipt_pdf', bill_id=0) }}".replace("/0/", "/" + billId + "/") + "?format={{ default_receipt_format }}";
     }
   };
 }

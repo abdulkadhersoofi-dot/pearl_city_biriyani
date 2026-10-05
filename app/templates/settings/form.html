@@ -32,8 +32,15 @@
   </div>
 
   <div class="card stack" style="margin-top:16px;">
-    <h2 style="margin:0; font-size:1.05rem;">Receipts</h2>
-    {{ field(form.default_receipt_format, help="POS checkout prints straight to this size - no size prompt every sale.") }}
+    <h2 style="margin:0; font-size:1.05rem;">Print sizes</h2>
+    <div class="form-grid">
+      <div class="field">
+        <span class="field-label">Invoice print size</span>
+        <input class="field-input" value="A4" disabled>
+        <p class="field-help">Invoices always print on A4 - this isn't changeable.</p>
+      </div>
+      {{ field(form.default_receipt_format, help="POS checkout prints straight to this size - no size prompt every sale.") }}
+    </div>
   </div>
 
   <button type="submit" class="btn btn-primary btn-lg">Save settings</button>

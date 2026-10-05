@@ -35,5 +35,5 @@ class TenantSettingsForm(FlaskForm):
     )
     font_family = SelectField("Font", choices=FONT_FAMILY_CHOICES, validators=[DataRequired()])
     default_receipt_format = SelectField(
-        "Default print size", choices=RECEIPT_FORMAT_CHOICES, validators=[DataRequired()]
+        "POS bill print size", choices=RECEIPT_FORMAT_CHOICES, validators=[DataRequired()]
     )

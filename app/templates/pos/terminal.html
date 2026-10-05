@@ -162,13 +162,9 @@
       <template x-if="checkoutStep === 'done'">
         <div>
           <h2>Printed</h2>
-          <p class="text-muted mt-0">Bill <strong x-text="completedBillNumber"></strong> sent to the printer. Reprint on a different size, or start the next sale.</p>
-          <div class="payment-mode-grid">
-            <button type="button" class="payment-mode-btn" @click="printReceipt('2in')">2 inch roll</button>
-            <button type="button" class="payment-mode-btn" @click="printReceipt('3in')">3 inch roll</button>
-            <button type="button" class="payment-mode-btn" @click="printReceipt('a4')">A4 copy</button>
-          </div>
-          <button type="button" class="btn btn-primary btn-block" @click="newSale()">New sale</button>
+          <p class="text-muted mt-0">Bill <strong x-text="completedBillNumber"></strong> sent to the printer.</p>
+          <button type="button" class="btn btn-secondary btn-block" @click="printReceipt(DEFAULT_RECEIPT_FORMAT)">Reprint</button>
+          <button type="button" class="btn btn-primary btn-block" style="margin-top:10px;" @click="newSale()">New sale</button>
         </div>
       </template>
     </div>
