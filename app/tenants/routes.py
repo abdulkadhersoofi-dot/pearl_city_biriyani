@@ -1,13 +1,23 @@
-from flask import flash, redirect, render_template, url_for
+from datetime import date
+from io import BytesIO
+from zipfile import ZIP_DEFLATED, ZipFile
+
+from flask import abort, flash, redirect, render_template, request, send_file, url_for
 from flask_login import current_user
 
 from app.auth.decorators import roles_required
 from app.auth.forms import SetPasswordForm
 from app.extensions import db
+from app.invoicing.pdf import render_invoice_pdf
 from app.models.audit_log import AuditLog
 from app.models.invoice import Invoice
+from app.models.invoice_series import DOCUMENT_TYPE_LABELS
+from app.models.note import CreditDebitNote
+from app.models.pos_bill import POSBill
 from app.models.tenant import Gstin, RegistrationType, Tenant
 from app.models.user import User, UserRole
+from app.reports.export import build_gstr1_workbook, build_gstr3b_workbook
+from app.reports.gstr import ReportPeriodError, gstr1_data, gstr3b_data
 from app.tenants import tenants_bp
 from app.tenants.forms import AddGstinForm, OnboardClientForm
 from app.utils.audit import record_audit
@@ -104,10 +114,59 @@ def detail(tenant_id):
         .limit(50)
         .all()
     )
+    pos_bills = (
+        POSBill.query.filter_by(tenant_id=tenant.id)
+        .filter(POSBill.bill_number.isnot(None))
+        .order_by(POSBill.completed_at.desc())
+        .limit(50)
+        .all()
+    )
+    notes = (
+        CreditDebitNote.query.filter_by(tenant_id=tenant.id)
+        .order_by(CreditDebitNote.note_date.desc())
+        .limit(50)
+        .all()
+    )
     users = User.query.filter_by(tenant_id=tenant.id).all()
     gstin_form = AddGstinForm()
     return render_template(
-        "tenants/detail.html", tenant=tenant, invoices=invoices, users=users, gstin_form=gstin_form
+        "tenants/detail.html",
+        tenant=tenant,
+        invoices=invoices,
+        pos_bills=pos_bills,
+        notes=notes,
+        users=users,
+        gstin_form=gstin_form,
+    )
+
+
+@tenants_bp.route("/clients/<int:tenant_id>/invoices/<int:invoice_id>")
+@roles_required(UserRole.SUPER_ADMIN)
+def admin_view_invoice(tenant_id, invoice_id):
+    tenant = Tenant.query.get_or_404(tenant_id)
+    invoice = Invoice.query.filter_by(id=invoice_id, tenant_id=tenant_id).first_or_404()
+    record_audit(
+        current_user, "view_client_invoice", tenant_id=tenant_id, entity_type="invoice", entity_id=invoice.id
+    )
+    db.session.commit()
+    return render_template(
+        "tenants/view_invoice.html",
+        tenant=tenant,
+        invoice=invoice,
+        document_label=DOCUMENT_TYPE_LABELS[invoice.document_type],
+    )
+
+
+@tenants_bp.route("/clients/<int:tenant_id>/invoices/<int:invoice_id>/pdf")
+@roles_required(UserRole.SUPER_ADMIN)
+def admin_invoice_pdf(tenant_id, invoice_id):
+    invoice = Invoice.query.filter_by(id=invoice_id, tenant_id=tenant_id).first_or_404()
+    pdf_bytes = render_invoice_pdf(invoice)
+    return send_file(
+        BytesIO(pdf_bytes),
+        mimetype="application/pdf",
+        as_attachment=False,
+        download_name=f"{invoice.invoice_number.replace('/', '-')}.pdf",
     )
 
 
@@ -188,3 +247,66 @@ def reset_client_password(tenant_id, user_id):
 def audit_log():
     logs = AuditLog.query.order_by(AuditLog.created_at.desc()).limit(200).all()
     return render_template("tenants/audit_log.html", logs=logs)
+
+
+def _current_period() -> str:
+    today = date.today()
+    return f"{today.year:04d}-{today.month:02d}"
+
+
+def _exportable_tenants():
+    """Regular-scheme tenants with at least one active GSTIN - the only
+    ones GSTR-1/3B applies to, and the only ones with anything to bill
+    a report from."""
+    return [
+        t
+        for t in Tenant.query.filter_by(registration_type=RegistrationType.REGULAR).order_by(Tenant.legal_name).all()
+        if t.gstins.filter_by(is_active=True).count() > 0
+    ]
+
+
+@tenants_bp.route("/gst-exports")
+@roles_required(UserRole.SUPER_ADMIN)
+def gst_exports():
+    return render_template(
+        "tenants/gst_exports.html", tenants=_exportable_tenants(), period=_current_period()
+    )
+
+
+@tenants_bp.route("/gst-exports/download", methods=["POST"])
+@roles_required(UserRole.SUPER_ADMIN)
+def gst_exports_download():
+    period = request.form.get("period", _current_period())
+    tenant_ids = {int(v) for v in request.form.getlist("tenant_ids") if v.isdigit()}
+    eligible = {t.id: t for t in _exportable_tenants()}
+    selected = [eligible[tid] for tid in tenant_ids if tid in eligible]
+
+    if not selected:
+        flash("Pick at least one client to export.", "error")
+        return redirect(url_for("tenants.gst_exports"))
+
+    buf = BytesIO()
+    with ZipFile(buf, "w", ZIP_DEFLATED) as zf:
+        for tenant in selected:
+            gstin = tenant.gstins.filter_by(is_primary=True, is_active=True).first() or tenant.gstins.filter_by(is_active=True).first()
+            safe_name = "".join(c if c.isalnum() or c in " -_" else "_" for c in tenant.legal_name).strip() or f"tenant-{tenant.id}"
+            try:
+                g1 = gstr1_data(tenant, gstin, period)
+                g3b = gstr3b_data(tenant, gstin, period)
+            except ReportPeriodError as exc:
+                flash(exc.message, "error")
+                return redirect(url_for("tenants.gst_exports"))
+            zf.writestr(f"{safe_name}/GSTR1_{period}.xlsx", build_gstr1_workbook(g1).getvalue())
+            zf.writestr(f"{safe_name}/GSTR3B_{period}.xlsx", build_gstr3b_workbook(g3b).getvalue())
+    buf.seek(0)
+
+    record_audit(
+        current_user,
+        "bulk_gst_export",
+        details={"period": period, "tenant_count": len(selected), "tenant_ids": sorted(t.id for t in selected)},
+    )
+    db.session.commit()
+
+    return send_file(
+        buf, as_attachment=True, download_name=f"GST_exports_{period}.zip", mimetype="application/zip"
+    )

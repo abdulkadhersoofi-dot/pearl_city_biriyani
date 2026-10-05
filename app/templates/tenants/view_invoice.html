@@ -1,43 +1,19 @@
 {% extends "base.html" %}
-{% block title %}{{ invoice.invoice_number }} - {{ firm_name }}{% endblock %}
+{% block title %}{{ invoice.invoice_number }} - {{ tenant.legal_name }} - {{ firm_name }}{% endblock %}
 {% block content %}
 <div class="page-header">
   <div>
     <h1>{{ invoice.invoice_number }}</h1>
     <p class="text-muted mt-0">
-      {{ document_label }} ·
+      {{ tenant.legal_name }} · {{ document_label }} ·
       <span class="status-badge status-{{ invoice.status.value }}">{{ invoice.status.value|title }}</span>
     </p>
   </div>
   <div class="row">
-    <a href="{{ url_for('invoicing.invoice_pdf', invoice_id=invoice.id) }}" class="btn btn-secondary" target="_blank">Download PDF</a>
-    {% if invoice.status.value == 'issued' %}
-    <a href="{{ url_for('invoicing.new_invoice', duplicate_from=invoice.id) }}" class="btn btn-secondary">Duplicate</a>
-    <a href="{{ url_for('notes.new_note', invoice_id=invoice.id, type='credit') }}" class="btn btn-secondary">Credit note</a>
-    <a href="{{ url_for('notes.new_note', invoice_id=invoice.id, type='debit') }}" class="btn btn-secondary">Debit note</a>
-    {% endif %}
+    <a href="{{ url_for('tenants.admin_invoice_pdf', tenant_id=tenant.id, invoice_id=invoice.id) }}" class="btn btn-secondary" target="_blank">Download PDF</a>
+    <a href="{{ url_for('tenants.detail', tenant_id=tenant.id) }}" class="btn btn-quiet">Back to {{ tenant.legal_name }}</a>
   </div>
 </div>
-
-{% if invoice.credit_debit_notes %}
-<div class="card" style="margin-bottom:20px;">
-  <h2 style="margin-top:0;">Notes issued against this invoice</h2>
-  <table>
-    <thead><tr><th>Number</th><th>Type</th><th>Date</th><th>Status</th><th>Total</th></tr></thead>
-    <tbody>
-    {% for n in invoice.credit_debit_notes %}
-      <tr>
-        <td><a href="{{ url_for('notes.view_note', note_id=n.id) }}">{{ n.note_number }}</a></td>
-        <td>{{ 'Credit Note' if n.document_type.value == 'credit_note' else 'Debit Note' }}</td>
-        <td>{{ n.note_date.strftime('%d %b %Y') }}</td>
-        <td><span class="status-badge status-{{ n.status.value }}">{{ n.status.value|title }}</span></td>
-        <td>Rs. {{ '%.2f'|format(n.grand_total) }}</td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-</div>
-{% endif %}
 
 <div class="card" style="margin-bottom:20px;">
   <div class="form-grid">
@@ -83,25 +59,35 @@
   <h2 style="margin-top:0;">e-Invoice</h2>
   <p><strong>IRN:</strong> {{ invoice.irn }}</p>
   {% if invoice.irn_ack_number %}<p><strong>Ack No:</strong> {{ invoice.irn_ack_number }}{% if invoice.irn_ack_date %} &middot; {{ invoice.irn_ack_date.strftime('%d %b %Y %H:%M') }}{% endif %}</p>{% endif %}
-  {% if invoice.qr_code_data and invoice.qr_code_data.startswith('data:image') %}<img src="{{ invoice.qr_code_data }}" alt="e-Invoice QR code" style="width:140px; height:140px;">{% endif %}
 </div>
 {% endif %}
 
-{% if invoice.status.value == 'issued' %}
-<div class="card" style="margin-top:20px;">
-  <h2 style="margin-top:0;">Void this invoice</h2>
-  <p class="text-muted">Invoices are never deleted - voiding keeps it on record with the reason, for audit.</p>
-  <form method="post" action="{{ url_for('invoicing.void_invoice_route', invoice_id=invoice.id) }}"
-        onsubmit="return confirm('Void invoice {{ invoice.invoice_number }}? This cannot be undone.');" class="row">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <input type="text" name="reason" placeholder="Reason for voiding" required class="field-input" style="flex:1; min-width:200px;">
-    <button class="btn btn-danger">Void invoice</button>
-  </form>
-</div>
-{% elif invoice.status.value == 'void' %}
+{% if invoice.status.value == 'void' %}
 <div class="card" style="margin-top:20px;">
   <p><strong>Voided</strong> on {{ invoice.voided_at.strftime('%d %b %Y %H:%M') }} by {{ invoice.voided_by.name if invoice.voided_by else '-' }}.</p>
   <p class="text-muted">Reason: {{ invoice.void_reason }}</p>
 </div>
 {% endif %}
+
+{% if invoice.credit_debit_notes %}
+<div class="card" style="margin-top:20px;">
+  <h2 style="margin-top:0;">Notes issued against this invoice</h2>
+  <table>
+    <thead><tr><th>Number</th><th>Type</th><th>Date</th><th>Status</th><th>Total</th></tr></thead>
+    <tbody>
+    {% for n in invoice.credit_debit_notes %}
+      <tr>
+        <td>{{ n.note_number }}</td>
+        <td>{{ 'Credit Note' if n.document_type.value == 'credit_note' else 'Debit Note' }}</td>
+        <td>{{ n.note_date.strftime('%d %b %Y') }}</td>
+        <td><span class="status-badge status-{{ n.status.value }}">{{ n.status.value|title }}</span></td>
+        <td>Rs. {{ '%.2f'|format(n.grand_total) }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<p class="text-muted" style="margin-top:16px;">Read-only - the firm's console views client records but never edits them. This view was recorded in the audit log.</p>
 {% endblock %}

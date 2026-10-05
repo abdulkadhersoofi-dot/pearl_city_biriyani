@@ -64,14 +64,14 @@
   </table>
 </div>
 
-<div class="card">
+<div class="card" style="margin-bottom:20px;">
   <h2 style="margin-top:0;">Recent invoices (read-only)</h2>
   <table>
     <thead><tr><th>Number</th><th>Date</th><th>Customer</th><th>Status</th><th>Total</th></tr></thead>
     <tbody>
     {% for inv in invoices %}
       <tr>
-        <td>{{ inv.invoice_number }}</td>
+        <td><a href="{{ url_for('tenants.admin_view_invoice', tenant_id=tenant.id, invoice_id=inv.id) }}">{{ inv.invoice_number }}</a></td>
         <td>{{ inv.invoice_date.strftime('%d %b %Y') }}</td>
         <td>{{ inv.customer_snapshot.name }}</td>
         <td><span class="status-badge status-{{ inv.status.value }}">{{ inv.status.value|title }}</span></td>
@@ -79,6 +79,50 @@
       </tr>
     {% else %}
       <tr><td colspan="5" class="empty-state">No invoices yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="card" style="margin-bottom:20px;">
+  <h2 style="margin-top:0;">Recent POS bills (read-only)</h2>
+  <table>
+    <thead><tr><th>Bill</th><th>Date</th><th>Payment</th><th>Status</th><th>Total</th></tr></thead>
+    <tbody>
+    {% for b in pos_bills %}
+      <tr>
+        <td>{{ b.bill_number }}</td>
+        <td>{{ b.completed_at.strftime('%d %b %Y %H:%M') if b.completed_at else '-' }}</td>
+        <td>{{ b.payment_mode.value|upper if b.payment_mode else '-' }}</td>
+        <td>
+          {% if b.status.value == 'completed' %}<span class="status-badge status-issued">Completed</span>
+          {% else %}<span class="status-badge status-void">Refunded</span>{% endif %}
+        </td>
+        <td>Rs. {{ '%.2f'|format(b.grand_total) }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="5" class="empty-state">No POS bills yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0;">Recent notes (read-only)</h2>
+  <table>
+    <thead><tr><th>Number</th><th>Date</th><th>Type</th><th>Against</th><th>Status</th><th>Total</th></tr></thead>
+    <tbody>
+    {% for n in notes %}
+      <tr>
+        <td>{{ n.note_number }}</td>
+        <td>{{ n.note_date.strftime('%d %b %Y') }}</td>
+        <td>{{ 'Credit' if n.document_type.value == 'credit_note' else 'Debit' }}</td>
+        <td>{{ n.original_invoice.invoice_number if n.original_invoice else '-' }}</td>
+        <td><span class="status-badge status-{{ n.status.value }}">{{ n.status.value|title }}</span></td>
+        <td>Rs. {{ '%.2f'|format(n.grand_total) }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6" class="empty-state">No notes yet.</td></tr>
     {% endfor %}
     </tbody>
   </table>

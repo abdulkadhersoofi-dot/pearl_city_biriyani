@@ -1,0 +1,53 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @page { size: A4; margin: 16mm 14mm; }
+  body { font-family: "Helvetica Neue", Arial, sans-serif; color: #1f2a24; font-size: 10pt; }
+  h1 { font-size: 15pt; margin: 0 0 2px; }
+  .doc-type { font-size: 10pt; color: #5c6b62; margin: 0 0 12px; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+  th, td { border: 1px solid #d8ddd6; padding: 6px 8px; font-size: 9.5pt; text-align: left; }
+  th { background: #f0f2ee; }
+  td.num, th.num { text-align: right; }
+  .grand td { font-weight: 700; font-size: 11pt; }
+  .note { font-size: 9pt; color: #5c6b62; margin-top: 16px; }
+</style>
+</head>
+<body>
+  <h1>{{ firm_name }} - GSTR-3B working paper</h1>
+  <p class="doc-type">{{ data.gstin.display_label }} &middot; {{ data.period }} ({{ data.period_start.strftime('%d %b') }} - {{ data.period_end.strftime('%d %b %Y') }})</p>
+
+  <table>
+    <tr><th>3.1 Nature of supply</th><th class="num">Taxable value</th><th class="num">CGST</th><th class="num">SGST</th><th class="num">IGST</th></tr>
+    <tr>
+      <td>(a) Outward taxable supplies (other than zero-rated, nil-rated, exempted)</td>
+      <td class="num">{{ '%.2f'|format(data.outward_taxable.taxable_value) }}</td>
+      <td class="num">{{ '%.2f'|format(data.outward_taxable.cgst) }}</td>
+      <td class="num">{{ '%.2f'|format(data.outward_taxable.sgst) }}</td>
+      <td class="num">{{ '%.2f'|format(data.outward_taxable.igst) }}</td>
+    </tr>
+    <tr>
+      <td>(b) Outward taxable supplies (zero-rated)</td>
+      <td class="num">{{ '%.2f'|format(data.outward_zero_rated.taxable_value) }}</td>
+      <td class="num">{{ '%.2f'|format(data.outward_zero_rated.cgst) }}</td>
+      <td class="num">{{ '%.2f'|format(data.outward_zero_rated.sgst) }}</td>
+      <td class="num">{{ '%.2f'|format(data.outward_zero_rated.igst) }}</td>
+    </tr>
+    <tr>
+      <td>(c) Other outward supplies (nil-rated, exempted)</td>
+      <td class="num">{{ '%.2f'|format(data.outward_nil_rated.taxable_value) }}</td>
+      <td class="num">{{ '%.2f'|format(data.outward_nil_rated.cgst) }}</td>
+      <td class="num">{{ '%.2f'|format(data.outward_nil_rated.sgst) }}</td>
+      <td class="num">{{ '%.2f'|format(data.outward_nil_rated.igst) }}</td>
+    </tr>
+    <tr class="grand"><td>Gross output tax payable</td><td class="num" colspan="4">Rs. {{ '%.2f'|format(data.gross_tax_payable) }}</td></tr>
+  </table>
+
+  <p class="note">
+    Input Tax Credit is not tracked in this system - it records sales only. Add eligible ITC from
+    purchase records (table 4 of GSTR-3B) before arriving at the amount actually payable in cash.
+  </p>
+</body>
+</html>

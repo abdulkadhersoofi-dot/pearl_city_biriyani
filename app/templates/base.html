@@ -19,6 +19,7 @@
       <nav class="main-nav">
         {% if current_user.is_super_admin %}
           <a href="{{ url_for('tenants.directory') }}" class="{{ 'active' if request.blueprint == 'tenants' }}">Clients</a>
+          <a href="{{ url_for('tenants.gst_exports') }}">GST exports</a>
           <a href="{{ url_for('tenants.audit_log') }}">Audit log</a>
         {% elif current_user.is_client_admin %}
           <a href="{{ url_for('invoicing.list_invoices') }}" class="{{ 'active' if request.blueprint == 'invoicing' }}">Invoices</a>

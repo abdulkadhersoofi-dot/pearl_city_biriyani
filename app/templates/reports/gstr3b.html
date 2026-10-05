@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}GSTR-3B {{ data.period }} - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>GSTR-3B working paper</h1>
+    <p class="text-muted mt-0">{{ data.gstin.display_label }} · {{ data.period }} ({{ data.period_start.strftime('%d %b') }} - {{ data.period_end.strftime('%d %b %Y') }})</p>
+  </div>
+  <div class="row">
+    <a href="{{ url_for('reports.gstr3b_xlsx', gstin_id=data.gstin.id, period=data.period) }}" class="btn btn-secondary">Excel</a>
+    <a href="{{ url_for('reports.gstr3b_pdf', gstin_id=data.gstin.id, period=data.period) }}" class="btn btn-secondary" target="_blank">PDF</a>
+    <a href="{{ url_for('reports.gstr3b_json', gstin_id=data.gstin.id, period=data.period) }}" class="btn btn-secondary">JSON</a>
+    <a href="{{ url_for('reports.index') }}" class="btn btn-quiet">Back</a>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:20px;">
+  <h2 style="margin-top:0;">3.1 Outward supplies</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Nature of supply</th><th>Taxable value</th><th>CGST</th><th>SGST</th><th>IGST</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>(a) Outward taxable supplies (other than zero-rated, nil-rated, exempted)</td>
+          <td>{{ '%.2f'|format(data.outward_taxable.taxable_value) }}</td>
+          <td>{{ '%.2f'|format(data.outward_taxable.cgst) }}</td>
+          <td>{{ '%.2f'|format(data.outward_taxable.sgst) }}</td>
+          <td>{{ '%.2f'|format(data.outward_taxable.igst) }}</td>
+        </tr>
+        <tr>
+          <td>(b) Outward taxable supplies (zero-rated)</td>
+          <td>{{ '%.2f'|format(data.outward_zero_rated.taxable_value) }}</td>
+          <td>{{ '%.2f'|format(data.outward_zero_rated.cgst) }}</td>
+          <td>{{ '%.2f'|format(data.outward_zero_rated.sgst) }}</td>
+          <td>{{ '%.2f'|format(data.outward_zero_rated.igst) }}</td>
+        </tr>
+        <tr>
+          <td>(c) Other outward supplies (nil-rated, exempted)</td>
+          <td>{{ '%.2f'|format(data.outward_nil_rated.taxable_value) }}</td>
+          <td>{{ '%.2f'|format(data.outward_nil_rated.cgst) }}</td>
+          <td>{{ '%.2f'|format(data.outward_nil_rated.sgst) }}</td>
+          <td>{{ '%.2f'|format(data.outward_nil_rated.igst) }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="totals-panel">
+  <div class="totals-box" style="min-width:420px;">
+    <div class="totals-row grand"><span>Gross output tax payable</span><span>Rs. {{ '%.2f'|format(data.gross_tax_payable) }}</span></div>
+  </div>
+</div>
+
+<div class="card" style="margin-top:20px;">
+  <p class="text-muted mt-0" style="margin-bottom:0;">
+    <strong>Before computing net cash payable:</strong> Input Tax Credit isn't tracked in this
+    system - it only records sales, not purchases. Add your eligible ITC from purchase records
+    (table 4 of GSTR-3B) before arriving at the amount actually payable in cash.
+  </p>
+</div>
+{% endblock %}

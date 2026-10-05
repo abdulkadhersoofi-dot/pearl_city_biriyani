@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Reports - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Reports &amp; GST exports</h1>
+</div>
+
+{% if not_regular %}
+<div class="card" style="margin-bottom:20px;">
+  <p class="text-muted mt-0" style="margin-bottom:0;">
+    GSTR-1 and GSTR-3B apply to Regular scheme GSTINs. {{ tenant.legal_name }} is registered as
+    <strong>{{ tenant.registration_type.value|title }}</strong>, which doesn't file these returns.
+  </p>
+</div>
+{% elif not gstins %}
+<div class="card" style="margin-bottom:20px;">
+  <p class="text-muted mt-0" style="margin-bottom:0;">No active GSTIN on file yet - ask the firm to add one before running a GST report.</p>
+</div>
+{% else %}
+<div class="card" style="max-width:480px;">
+  <h2 style="margin-top:0;">GST return working papers</h2>
+  <p class="text-muted">
+    Taxable value, tax and HSN figures below come straight from your own invoices, POS bills and
+    notes. They're a working paper to make filing easier, not an auto-filer - always check the
+    numbers before submitting on the GST portal. Input Tax Credit isn't tracked here (this app
+    records sales only), so GSTR-3B shows gross output tax, not the net amount payable.
+  </p>
+  <form method="get" action="{{ url_for('reports.gstr1_view') }}" class="stack" id="report-form">
+    <div class="field">
+      <label class="field-label" for="gstin_id">GSTIN</label>
+      <select name="gstin_id" id="gstin_id" class="field-input" form="report-form">
+        {% for g in gstins %}<option value="{{ g.id }}">{{ g.display_label }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label class="field-label" for="period">Month</label>
+      <input type="month" name="period" id="period" value="{{ period }}" class="field-input" form="report-form">
+    </div>
+    <div class="row">
+      <button type="submit" formaction="{{ url_for('reports.gstr1_view') }}" class="btn btn-primary">View GSTR-1</button>
+      <button type="submit" formaction="{{ url_for('reports.gstr3b_view') }}" class="btn btn-secondary">View GSTR-3B</button>
+    </div>
+  </form>
+</div>
+{% endif %}
+{% endblock %}

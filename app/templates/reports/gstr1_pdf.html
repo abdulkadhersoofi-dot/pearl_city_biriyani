@@ -1,0 +1,94 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @page { size: A4; margin: 16mm 14mm; }
+  body { font-family: "Helvetica Neue", Arial, sans-serif; color: #1f2a24; font-size: 9.5pt; }
+  h1 { font-size: 15pt; margin: 0 0 2px; }
+  h2 { font-size: 11pt; margin: 18px 0 6px; }
+  .doc-type { font-size: 10pt; color: #5c6b62; margin: 0 0 12px; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+  th, td { border: 1px solid #d8ddd6; padding: 4px 6px; font-size: 8.5pt; text-align: left; }
+  th { background: #f0f2ee; }
+  td.num, th.num { text-align: right; }
+  .note { font-size: 8.5pt; color: #5c6b62; margin-top: 14px; }
+</style>
+</head>
+<body>
+  <h1>{{ firm_name }} - GSTR-1 working paper</h1>
+  <p class="doc-type">{{ data.gstin.display_label }} &middot; {{ data.period }} ({{ data.period_start.strftime('%d %b') }} - {{ data.period_end.strftime('%d %b %Y') }})</p>
+
+  <table>
+    <tr><th>Taxable value</th><th>CGST</th><th>SGST</th><th>IGST</th><th>Total</th></tr>
+    <tr>
+      <td class="num">{{ '%.2f'|format(data.totals.taxable_value) }}</td>
+      <td class="num">{{ '%.2f'|format(data.totals.cgst) }}</td>
+      <td class="num">{{ '%.2f'|format(data.totals.sgst) }}</td>
+      <td class="num">{{ '%.2f'|format(data.totals.igst) }}</td>
+      <td class="num">{{ '%.2f'|format(data.totals.total) }}</td>
+    </tr>
+  </table>
+
+  <h2>B2B</h2>
+  <table>
+    <tr><th>Customer</th><th>GSTIN</th><th>Document</th><th>Date</th><th>Taxable</th><th>CGST</th><th>SGST</th><th>IGST</th></tr>
+    {% for entry in data.b2b %}{% for d in entry.documents %}
+    <tr>
+      <td>{{ entry.customer_name }}</td><td>{{ entry.customer_gstin }}</td><td>{{ d.doc_number }}</td>
+      <td>{{ d.doc_date.strftime('%d %b %Y') }}</td>
+      <td class="num">{{ '%.2f'|format(d.taxable_value) }}</td><td class="num">{{ '%.2f'|format(d.cgst) }}</td>
+      <td class="num">{{ '%.2f'|format(d.sgst) }}</td><td class="num">{{ '%.2f'|format(d.igst) }}</td>
+    </tr>
+    {% endfor %}{% else %}<tr><td colspan="8">None this period.</td></tr>{% endfor %}
+  </table>
+
+  <h2>B2C (by place of supply &amp; rate)</h2>
+  <table>
+    <tr><th>Place of supply</th><th>Rate</th><th>Taxable</th><th>CGST</th><th>SGST</th><th>IGST</th></tr>
+    {% for b in data.b2c %}
+    <tr>
+      <td>{{ b.place_of_supply|state_name }}</td><td>{{ b.gst_rate }}%</td>
+      <td class="num">{{ '%.2f'|format(b.taxable_value) }}</td><td class="num">{{ '%.2f'|format(b.cgst) }}</td>
+      <td class="num">{{ '%.2f'|format(b.sgst) }}</td><td class="num">{{ '%.2f'|format(b.igst) }}</td>
+    </tr>
+    {% else %}<tr><td colspan="6">None this period.</td></tr>{% endfor %}
+  </table>
+
+  <h2>Credit / Debit notes</h2>
+  <table>
+    <tr><th>Note</th><th>Date</th><th>Type</th><th>Against</th><th>Customer</th><th>Total</th></tr>
+    {% for n in data.credit_debit_notes %}
+    <tr>
+      <td>{{ n.note_number }}</td><td>{{ n.note_date.strftime('%d %b %Y') }}</td>
+      <td>{{ 'Credit' if n.document_type == 'credit_note' else 'Debit' }}</td>
+      <td>{{ n.against_invoice }}</td><td>{{ n.customer_name }}</td>
+      <td class="num">{{ '%.2f'|format(n.total) }}</td>
+    </tr>
+    {% else %}<tr><td colspan="6">None this period.</td></tr>{% endfor %}
+  </table>
+
+  <h2>HSN/SAC summary</h2>
+  <table>
+    <tr><th>HSN/SAC</th><th>Rate</th><th>Unit</th><th>Qty</th><th>Taxable</th><th>CGST</th><th>SGST</th><th>IGST</th><th>Total</th></tr>
+    {% for h in data.hsn_summary %}
+    <tr>
+      <td>{{ h.hsn or '-' }}</td><td>{{ h.gst_rate }}%</td><td>{{ h.unit }}</td><td class="num">{{ h.qty }}</td>
+      <td class="num">{{ '%.2f'|format(h.taxable_value) }}</td><td class="num">{{ '%.2f'|format(h.cgst) }}</td>
+      <td class="num">{{ '%.2f'|format(h.sgst) }}</td><td class="num">{{ '%.2f'|format(h.igst) }}</td>
+      <td class="num">{{ '%.2f'|format(h.total) }}</td>
+    </tr>
+    {% else %}<tr><td colspan="9">None this period.</td></tr>{% endfor %}
+  </table>
+
+  <h2>Documents issued</h2>
+  <table>
+    <tr><th>Type</th><th>Series</th><th>From</th><th>To</th><th>Issued</th><th>Cancelled</th></tr>
+    {% for s in data.document_summary %}
+    <tr><td>{{ s.label }}</td><td>{{ s.prefix }}</td><td>{{ s.from_number }}</td><td>{{ s.to_number }}</td><td class="num">{{ s.total_count }}</td><td class="num">{{ s.cancelled_count }}</td></tr>
+    {% else %}<tr><td colspan="6">None this period.</td></tr>{% endfor %}
+  </table>
+
+  <p class="note">This is a working paper computed from this tenant's own records - verify before filing. B2C is aggregated, not split into Large/Small by the Rs. 2.5 lakh inter-state threshold.</p>
+</body>
+</html>

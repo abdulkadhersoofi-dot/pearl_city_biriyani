@@ -5,10 +5,12 @@ Accountant / GST practice firm to provide to its small-business clients.
 
 **Shipped so far:** tenant/user setup and role-based access; Invoicing
 (Tax Invoice / Bill of Supply PDFs, every GST registration type including
-unregistered clients); POS (touchscreen checkout, thermal/A4 receipts,
-hold/resume, refunds, Z-report); Credit/Debit Notes issued against an
-existing invoice. The firm's admin console and GST reports are stubbed in
-the nav and land in later phases (see [Roadmap](#roadmap)).
+unregistered clients); POS (touchscreen checkout, direct-to-printer thermal
+receipts, hold/resume, refunds, Z-report); Credit/Debit Notes issued
+against an existing invoice; GSTR-1/3B return working papers (Excel/PDF/
+JSON); a Super Admin console with cross-client drill-down and bulk GST
+exports. See [Roadmap](#roadmap) for what's still ahead and the explicit
+limits of the GST reports.
 
 ## Stack
 
@@ -108,13 +110,15 @@ app/
 │                     # Invoice, InvoiceLine, POSBill(Line), CreditDebitNote,
 │                     # NoteLine, AuditLog
 ├── auth/            # login, change password, role decorators
-├── tenants/         # Super Admin console: onboarding, directory, audit log
+├── tenants/         # Super Admin console: onboarding, directory, audit log,
+│                     # cross-client drill-down, bulk GST exports
 ├── staff/           # Client Admin: create/deactivate/reset staff logins
 ├── invoicing/        # form, PDF, GST calc, numbering
 ├── customers/, products/   # tenant-scoped catalog CRUD
 ├── pos/             # POS module: terminal, hold/resume, refunds, Z-report
 ├── notes/           # Credit/Debit notes, created from an existing invoice
-├── reports/         # stubbed, ships in Phase 5
+├── reports/         # gstr.py (aggregation), export.py (Excel/PDF/JSON) -
+│                     # GSTR-1/3B working papers, see Roadmap for scope
 ├── api/              # small JSON endpoints (product lookup today; POS
 │                     # cart/checkout from Phase 2) - kept separate so a
 │                     # future SPA frontend can reuse them
@@ -253,7 +257,34 @@ Gunicorn workers or add app servers behind Nginx as load grows.
   (no GST calc the same way, or tied to an advance payment rather than a
   sale) and still need their own flow. Tax Invoice, Bill of Supply, and
   both Export/RCM variants already work through Invoicing today.
-- **Phase 4** - Admin console: cross-client drill-down, bulk GSTR-1/3B
-  export for multiple clients in one action.
-- **Phase 5** - GSTR-1/3B report exports (Excel/PDF/JSON), consolidated
-  admin reports, onboarding walkthrough polish, e-invoice IRN/QR hook.
+- **Onboarding walkthrough polish** - still just the plain onboarding form;
+  a guided first-run checklist for a new Client Admin (add a product, add a
+  customer, issue the first invoice) hasn't been built.
+- **Done, with explicit scope limits:**
+  - **GSTR-1/3B** (`app/reports/gstr.py`) are *working papers* computed
+    from this tenant's own invoices/POS bills/notes, not an auto-filer or
+    an exact replica of the government JSON schema. Two things it can't
+    do: **Input Tax Credit isn't tracked** (this app records sales only,
+    so GSTR-3B shows gross output tax, not the net cash payable - add ITC
+    from purchase records before filing), and **B2C is one aggregated
+    bucket**, not split into Large/Small by GSTR-1's Rs. 2.5 lakh
+    inter-state threshold. Everything else - taxable value, CGST/SGST/
+    IGST, the B2B/B2C split by whether the customer has a GSTIN on file,
+    HSN-wise summary, and the document-number-series summary - is exact,
+    computed straight from the tenant's own records. Excel/PDF/JSON
+    export all three.
+  - **Admin console cross-client drill-down**: Super Admin can read a
+    client's invoices in full (line items, totals, linked notes, PDF) and
+    see recent POS bills/notes in summary, all audit-logged and never
+    editable from the admin side. POS bills and notes don't have their
+    own full drill-down pages yet - only invoices do.
+  - **Bulk GST export**: Super Admin picks a month and any number of
+    Regular-scheme clients with a GSTIN on file, downloads one ZIP with
+    a GSTR-1 and GSTR-3B workbook per client.
+  - **e-Invoice IRN/QR hook**: `Invoice.irn`/`irn_ack_number`/
+    `irn_ack_date`/`qr_code_data` columns exist and the invoice view/PDF
+    already render them when set - but nothing populates them. This is
+    deliberately just the extension point: a real integration needs NIC
+    IRP (government e-invoice portal) credentials this deployment doesn't
+    have, so there's no fake "generate e-Invoice" button pretending to
+    call an API that isn't there.

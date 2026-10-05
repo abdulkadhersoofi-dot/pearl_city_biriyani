@@ -95,6 +95,16 @@
 
   {% if invoice.notes %}<p>{{ invoice.notes }}</p>{% endif %}
 
+  {% if invoice.irn %}
+  <div style="margin-top:12px; display:flex; justify-content:space-between; align-items:flex-start;">
+    <div style="font-size:8.5pt;">
+      <strong>IRN:</strong> {{ invoice.irn }}<br>
+      {% if invoice.irn_ack_number %}<strong>Ack No:</strong> {{ invoice.irn_ack_number }}{% if invoice.irn_ack_date %} - {{ invoice.irn_ack_date.strftime('%d %b %Y %H:%M') }}{% endif %}{% endif %}
+    </div>
+    {% if invoice.qr_code_data and invoice.qr_code_data.startswith('data:image') %}<img src="{{ invoice.qr_code_data }}" alt="e-Invoice QR code" style="width:90px; height:90px;">{% endif %}
+  </div>
+  {% endif %}
+
   <p class="footer-note">
     This is a system-generated {{ document_label|lower }}{% if invoice.status.value == 'void' %} - VOID{% endif %}.
   </p>

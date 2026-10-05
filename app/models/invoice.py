@@ -57,6 +57,17 @@ class Invoice(db.Model, TenantScopedMixin, TimestampMixin):
     voided_by_id = db.Column(db.Integer, db.ForeignKey("users.id"))
     void_reason = db.Column(db.Text)
 
+    # e-Invoice (IRN/QR) hook - an extension point, not a working NIC IRP
+    # integration: this app has no e-invoice portal credentials to call
+    # that government API with. Nothing in this codebase writes these
+    # columns; they exist so a future integration has somewhere to put the
+    # IRN/ack/QR it gets back, and the invoice view/PDF already know how
+    # to show them once populated.
+    irn = db.Column(db.String(64))
+    irn_ack_number = db.Column(db.String(32))
+    irn_ack_date = db.Column(db.DateTime(timezone=True))
+    qr_code_data = db.Column(db.Text)
+
     gstin = db.relationship("Gstin")
     series = db.relationship("InvoiceSeries")
     customer = db.relationship("Customer")

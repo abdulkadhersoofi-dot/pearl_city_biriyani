@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}GST exports - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Bulk GST exports</h1>
+</div>
+
+<div class="card" style="max-width:640px;">
+  <p class="text-muted mt-0">
+    Download GSTR-1 and GSTR-3B working papers (Excel) for several clients in one go, zipped into
+    one file with a folder per client. Only Regular-scheme clients with an active GSTIN on file can
+    be exported - Composition and unregistered clients don't file these returns.
+  </p>
+
+  {% if not tenants %}
+  <p class="empty-state">No Regular-scheme clients with a GSTIN on file yet.</p>
+  {% else %}
+  <form method="post" action="{{ url_for('tenants.gst_exports_download') }}" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field">
+      <label class="field-label" for="period">Month</label>
+      <input type="month" name="period" id="period" value="{{ period }}" class="field-input">
+    </div>
+
+    <div class="field">
+      <label class="field-label">Clients</label>
+      <div class="table-wrap" style="max-height:320px; overflow-y:auto;">
+        <table>
+          <thead><tr><th style="width:36px;"><input type="checkbox" onclick="document.querySelectorAll('.client-check').forEach(c => c.checked = this.checked)"></th><th>Client</th><th>GSTIN</th></tr></thead>
+          <tbody>
+          {% for t in tenants %}
+            <tr>
+              <td><input type="checkbox" class="client-check" name="tenant_ids" value="{{ t.id }}"></td>
+              <td>{{ t.legal_name }}</td>
+              <td>{{ (t.gstins.filter_by(is_primary=True, is_active=True).first() or t.gstins.filter_by(is_active=True).first()).display_label }}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <button type="submit" class="btn btn-primary btn-lg">Download ZIP</button>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}
