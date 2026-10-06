@@ -404,6 +404,57 @@ Gunicorn workers or add app servers behind Nginx as load grows.
   link set never grows the header taller than the brand row, on desktop
   or mobile; `.user-name` hides under 640px purely to keep Sign out from
   crowding, not because it stopped mattering.
+- **Tenant access gating** (`app/utils/billing.py`, `Tenant.valid_until` /
+  `Tenant.next_billing_due`) - three independent gates, any one of which
+  cuts a tenant's Client Admin and every branch under it off from
+  signing in, checked both at login and on every request of an already
+  open session (`app.__init__._register_request_hooks`), not just at
+  login: a Super Admin's manual **pause** (`Tenant.is_active`, pre-existing,
+  now actually enforced - previously this flag was set by the
+  deactivate/activate routes but nothing ever checked it outside the
+  tenant's own login-slug lookup, so a deactivated client's users could
+  still sign in and work); a hard **expiry date** (`valid_until`, required
+  at onboarding, moved forward only by a Super Admin's "Renew / extend"
+  on the client's own page - nothing else changes it); and a recurring
+  **monthly billing reminder** (`next_billing_due`, set to one month from
+  onboarding and advanced by exactly one more month, from whatever it
+  already was, only by a Super Admin's "Mark this month paid" - a
+  calendar-correct `add_one_month()` so e.g. the 31st of a 31-day month
+  lands on the 28th/29th of February rather than overflowing into
+  March). Monthly billing has a `BILLING_GRACE_DAYS` (3) window after
+  the due date: an in-app banner (`billing_notice` in `base.html`, shown
+  to that tenant's own users on every page) warns during the grace
+  window without blocking anything; only once the grace window itself
+  elapses unpaid does it also block, the same way the other two gates
+  do. A tenant onboarded before this feature existed has both fields
+  unset and is never blocked on either until a Super Admin opts it in -
+  the migration adding these columns deliberately backfills nothing, so
+  shipping this never silently locks out an existing client.
+- **"Act as"** (`tenants.act_as` / `auth.stop_impersonating`) - full
+  Super Admin operational access to a client's own screens (issuing an
+  invoice as that client, billing a POS sale under a specific branch)
+  without a second, parallel set of admin-only forms to keep in sync
+  with the real ones. Clicking "Act as" on a user row in a client's admin
+  page signs the Super Admin in as that Client Admin or branch login
+  (`flask_login.login_user`), with the admin's own id stashed in
+  `session['impersonator_id']`; from that point on `current_user` really
+  is that tenant user, so every existing tenant-scoped route, template
+  and business-logic function (`tenant_query`, POS, invoicing, stock)
+  just works completely unmodified - no "pretend tenant_id" plumbing
+  threaded through the app. A banner on every page while this is active
+  ("Acting as X - signed in as <admin>") links to "Return to admin
+  console", which logs back in as the stashed admin and clears the
+  session key. Impersonation deliberately bypasses the tenant-access
+  gate above (`enforce_tenant_access` exempts a session carrying
+  `impersonator_id`) - the Super Admin needs to actually reach a paused
+  or expired client's screens to resolve the problem (e.g. mark them
+  paid), and the one gate they're there to lift must not also lock them
+  out. Both the start and the stop are written to `AuditLog`. A Super
+  Admin can also activate/deactivate any single user - a specific branch,
+  or the Client Admin itself - directly from the client's admin page
+  (`tenants.activate_user`/`deactivate_user`), the same `User.is_active`
+  flag the branch's own Client Admin already used from the Branches tab,
+  just reachable from the firm's side too now.
 
 ## Roadmap
 

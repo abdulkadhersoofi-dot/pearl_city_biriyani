@@ -45,6 +45,26 @@ class Tenant(db.Model, TimestampMixin):
     # Lets POS checkout print immediately without asking every time.
     default_receipt_format = db.Column(db.String(10), nullable=False, default="3in")
 
+    # Access gating - see app.utils.billing.tenant_access_status, which
+    # combines these with `is_active` (above) into one go/no-go check,
+    # enforced both at login and on every subsequent request. Nullable:
+    # a tenant onboarded before this feature existed has neither set, and
+    # is never blocked on either criterion until a Super Admin opts it in
+    # (set directly, or implicitly via the first "mark paid" action) -
+    # nobody already using the app gets silently cut off by a migration.
+    #
+    # A hard subscription end date - only a Super Admin can move it
+    # forward (see tenants.renew_access). Required on new clients at
+    # onboarding (app.tenants.forms.OnboardClientForm), but stored
+    # nullable since an existing client has none until one is set.
+    valid_until = db.Column(db.Date)
+    # The next monthly renewal date in the separate, recurring billing
+    # cycle - independent of valid_until. A Super Admin's "mark this
+    # month paid" (tenants.mark_billing_paid) advances it by exactly one
+    # calendar month from its current value; nothing else moves it. See
+    # app.utils.billing for the grace window this is checked against.
+    next_billing_due = db.Column(db.Date)
+
     gstins = db.relationship(
         "Gstin", backref="tenant", cascade="all, delete-orphan", lazy="dynamic"
     )

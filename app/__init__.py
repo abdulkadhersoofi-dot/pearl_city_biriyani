@@ -20,6 +20,7 @@ def create_app(config_object=None):
     _register_error_handlers(app)
     _register_cli(app)
     _register_context_processors(app)
+    _register_request_hooks(app)
 
     return app
 
@@ -100,7 +101,7 @@ def _register_error_handlers(app: Flask) -> None:
 def _register_context_processors(app: Flask) -> None:
     @app.context_processor
     def inject_globals():
-        from flask import url_for
+        from flask import session, url_for
         from flask_login import current_user
 
         # Platform identity (ARFA) everywhere by default. A signed-in
@@ -109,16 +110,38 @@ def _register_context_processors(app: Flask) -> None:
         brand_name = app.config["FIRM_NAME"]
         brand_logo_url = None
         brand_tenant = None
+        billing_notice = None
         if current_user.is_authenticated and not current_user.is_super_admin and current_user.tenant:
             brand_tenant = current_user.tenant
             brand_name = brand_tenant.display_name
             if brand_tenant.logo_image_id:
                 brand_logo_url = url_for("main.media", image_id=brand_tenant.logo_image_id)
+
+            from app.utils.billing import tenant_access_status
+
+            status = tenant_access_status(brand_tenant)
+            if status.billing_notice:
+                billing_notice = status.billing_notice_message
+
+        # Set only while a Super Admin is impersonating a tenant user (see
+        # tenants.act_as) - current_user IS that tenant user for the
+        # duration, so every other part of the app (tenant_query, POS,
+        # invoicing...) just works unmodified. This only drives the
+        # "Return to admin" banner in base.html.
+        impersonator_name = None
+        if session.get("impersonator_id"):
+            from app.models.user import User
+
+            admin = User.query.get(session["impersonator_id"])
+            impersonator_name = admin.name if admin else "Admin"
+
         return {
             "firm_name": brand_name,
             "brand_logo_url": brand_logo_url,
             "brand_tenant": brand_tenant,
             "platform_name": app.config["FIRM_NAME"],
+            "billing_notice": billing_notice,
+            "impersonator_name": impersonator_name,
         }
 
     from app.utils.theme import tenant_theme_css
@@ -130,6 +153,37 @@ def _register_context_processors(app: Flask) -> None:
         from app.utils.indian_states import STATE_NAME_BY_CODE
 
         return STATE_NAME_BY_CODE.get(state_code, state_code)
+
+
+def _register_request_hooks(app: Flask) -> None:
+    @app.before_request
+    def enforce_tenant_access():
+        from flask import flash, redirect, request, session, url_for
+        from flask_login import current_user, logout_user
+
+        if not current_user.is_authenticated or current_user.is_super_admin:
+            return None
+        if session.get("impersonator_id"):
+            # A Super Admin "acting as" this tenant's user is exempt -
+            # otherwise the one person who could fix a paused/expired
+            # tenant (e.g. by marking it paid) would be locked out of the
+            # very screens needed to do that.
+            return None
+        if current_user.tenant_id is None or request.endpoint in (None, "static", "auth.logout"):
+            return None
+
+        tenant = current_user.tenant
+        if tenant is None:
+            return None
+
+        from app.utils.billing import tenant_access_status
+
+        status = tenant_access_status(tenant)
+        if status.blocked:
+            logout_user()
+            flash(status.message, "error")
+            return redirect(url_for("auth.login"))
+        return None
 
 
 def _register_cli(app: Flask) -> None:

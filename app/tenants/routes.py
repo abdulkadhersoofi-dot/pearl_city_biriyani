@@ -3,8 +3,8 @@ from datetime import date
 from io import BytesIO
 from zipfile import ZIP_DEFLATED, ZipFile
 
-from flask import abort, flash, redirect, render_template, request, send_file, url_for
-from flask_login import current_user
+from flask import abort, flash, redirect, render_template, request, send_file, session, url_for
+from flask_login import current_user, login_user
 
 from app.auth.decorators import roles_required
 from app.auth.forms import SetPasswordForm
@@ -20,8 +20,9 @@ from app.models.user import User, UserRole
 from app.reports.export import build_gstr1_workbook, build_gstr3b_workbook
 from app.reports.gstr import ReportPeriodError, gstr1_data, gstr3b_data
 from app.tenants import tenants_bp
-from app.tenants.forms import AddGstinForm, OnboardClientForm
+from app.tenants.forms import AddGstinForm, OnboardClientForm, RenewAccessForm
 from app.utils.audit import record_audit
+from app.utils.billing import add_one_month, tenant_access_status
 from app.utils.indian_states import STATE_NAME_BY_CODE
 from app.utils.uploads import UploadError, delete_uploaded_image, save_uploaded_image
 
@@ -35,7 +36,8 @@ def _make_login_slug(legal_name: str, tenant_id: int) -> str:
 @roles_required(UserRole.SUPER_ADMIN)
 def directory():
     tenants = Tenant.query.order_by(Tenant.legal_name).all()
-    return render_template("tenants/directory.html", tenants=tenants)
+    access_statuses = {t.id: tenant_access_status(t) for t in tenants}
+    return render_template("tenants/directory.html", tenants=tenants, access_statuses=access_statuses)
 
 
 @tenants_bp.route("/clients/new", methods=["GET", "POST"])
@@ -53,6 +55,10 @@ def onboard():
             trade_name=(form.trade_name.data or "").strip() or None,
             registration_type=RegistrationType(form.registration_type.data),
             onboarded_by_id=current_user.id,
+            valid_until=form.valid_until.data,
+            # Starts the recurring monthly reminder cycle from today, so
+            # the first notice lands one month from onboarding.
+            next_billing_due=add_one_month(date.today()),
         )
         db.session.add(tenant)
         db.session.flush()
@@ -143,6 +149,7 @@ def detail(tenant_id):
     )
     users = User.query.filter_by(tenant_id=tenant.id).all()
     gstin_form = AddGstinForm()
+    renew_form = RenewAccessForm(valid_until=tenant.valid_until)
     return render_template(
         "tenants/detail.html",
         tenant=tenant,
@@ -151,6 +158,8 @@ def detail(tenant_id):
         notes=notes,
         users=users,
         gstin_form=gstin_form,
+        renew_form=renew_form,
+        access_status=tenant_access_status(tenant),
     )
 
 
@@ -264,6 +273,99 @@ def activate(tenant_id):
     db.session.commit()
     flash(f"{tenant.legal_name} reactivated.", "success")
     return redirect(url_for("tenants.detail", tenant_id=tenant.id))
+
+
+@tenants_bp.route("/clients/<int:tenant_id>/renew", methods=["POST"])
+@roles_required(UserRole.SUPER_ADMIN)
+def renew_access(tenant_id):
+    tenant = Tenant.query.get_or_404(tenant_id)
+    form = RenewAccessForm()
+    if form.validate_on_submit():
+        tenant.valid_until = form.valid_until.data
+        record_audit(
+            current_user, "client_access_renewed", tenant_id=tenant.id, entity_type="tenant", entity_id=tenant.id,
+            details={"valid_until": tenant.valid_until.isoformat()},
+        )
+        db.session.commit()
+        flash(f"{tenant.legal_name}'s access now runs until {tenant.valid_until.strftime('%d %b %Y')}.", "success")
+    else:
+        flash("Pick a valid date.", "error")
+    return redirect(url_for("tenants.detail", tenant_id=tenant.id))
+
+
+@tenants_bp.route("/clients/<int:tenant_id>/billing/mark-paid", methods=["POST"])
+@roles_required(UserRole.SUPER_ADMIN)
+def mark_billing_paid(tenant_id):
+    tenant = Tenant.query.get_or_404(tenant_id)
+    # Advances from whatever it already was (or from today, for a tenant
+    # that never had a cycle started) - never just "+1 month from today",
+    # so the due date stays anchored to the client's original cycle
+    # instead of drifting every time this is clicked.
+    tenant.next_billing_due = add_one_month(tenant.next_billing_due or date.today())
+    record_audit(
+        current_user, "client_billing_marked_paid", tenant_id=tenant.id, entity_type="tenant", entity_id=tenant.id,
+        details={"next_billing_due": tenant.next_billing_due.isoformat()},
+    )
+    db.session.commit()
+    flash(f"Marked paid - {tenant.legal_name}'s next renewal is due {tenant.next_billing_due.strftime('%d %b %Y')}.", "success")
+    return redirect(url_for("tenants.detail", tenant_id=tenant.id))
+
+
+@tenants_bp.route("/clients/<int:tenant_id>/users/<int:user_id>/act-as", methods=["POST"])
+@roles_required(UserRole.SUPER_ADMIN)
+def act_as(tenant_id, user_id):
+    # Full operational access to a client's own screens - billing a POS
+    # sale under a specific branch, issuing an invoice as that client -
+    # without a second, parallel set of admin-only forms to keep in sync
+    # with the real ones. current_user really becomes `target` for the
+    # duration, so every existing tenant-scoped route just works
+    # unmodified; auth.stop_impersonating switches back.
+    target = User.query.filter_by(id=user_id, tenant_id=tenant_id, is_active=True).first_or_404()
+    if target.role not in (UserRole.CLIENT_ADMIN, UserRole.STAFF):
+        abort(400)
+
+    admin_id = current_user.id
+    record_audit(
+        current_user, "impersonation_started", tenant_id=tenant_id, entity_type="user", entity_id=target.id,
+    )
+    db.session.commit()
+
+    login_user(target, remember=False)
+    session["impersonator_id"] = admin_id
+
+    # Never routes through change-password here even if must_change_password
+    # is set - this is the admin operating the client's screens, not the
+    # client managing their own account, and silently changing a password
+    # the client doesn't know about would lock them out of their own login.
+    if target.is_client_admin:
+        return redirect(url_for("invoicing.list_invoices"))
+    return redirect(url_for("pos.terminal"))
+
+
+@tenants_bp.route("/clients/<int:tenant_id>/users/<int:user_id>/deactivate", methods=["POST"])
+@roles_required(UserRole.SUPER_ADMIN)
+def deactivate_user(tenant_id, user_id):
+    user = User.query.filter_by(id=user_id, tenant_id=tenant_id).first_or_404()
+    user.is_active = False
+    record_audit(
+        current_user, "client_user_deactivated_by_firm", tenant_id=tenant_id, entity_type="user", entity_id=user.id,
+    )
+    db.session.commit()
+    flash(f"{user.name} deactivated.", "success")
+    return redirect(url_for("tenants.detail", tenant_id=tenant_id))
+
+
+@tenants_bp.route("/clients/<int:tenant_id>/users/<int:user_id>/activate", methods=["POST"])
+@roles_required(UserRole.SUPER_ADMIN)
+def activate_user(tenant_id, user_id):
+    user = User.query.filter_by(id=user_id, tenant_id=tenant_id).first_or_404()
+    user.is_active = True
+    record_audit(
+        current_user, "client_user_activated_by_firm", tenant_id=tenant_id, entity_type="user", entity_id=user.id,
+    )
+    db.session.commit()
+    flash(f"{user.name} reactivated.", "success")
+    return redirect(url_for("tenants.detail", tenant_id=tenant_id))
 
 
 @tenants_bp.route("/clients/<int:tenant_id>/users/<int:user_id>/reset-password", methods=["GET", "POST"])

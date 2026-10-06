@@ -112,6 +112,14 @@ a { color: var(--color-primary-dark); }
 .flash-error { background: var(--color-danger-bg); color: var(--color-danger); }
 .flash-info { background: var(--color-info-bg); color: #2b4a7a; }
 
+/* --- Account-status banners (outside .app-main, so they span full width
+   and sit below the topbar on every page, not scoped to page content) --- */
+.notice-bar { display: flex; align-items: center; justify-content: center; gap: 14px; flex-wrap: wrap; padding: 10px 20px; font-weight: 600; text-align: center; }
+.notice-impersonating { background: #2b4a7a; color: #fff; }
+.notice-impersonating .btn-quiet { background: rgba(255,255,255,0.15); color: #fff; }
+.notice-billing { background: #fff3cd; color: #7a5a00; }
+.btn-sm { padding: 6px 12px; min-height: auto; font-size: 0.85rem; }
+
 /* --- Cards / page headers --- */
 .page-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
 .page-header h1 { margin: 0; font-size: 1.5rem; }

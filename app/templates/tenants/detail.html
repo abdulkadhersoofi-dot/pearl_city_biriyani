@@ -2,27 +2,57 @@
 {% from "macros.html" import field %}
 {% block title %}{{ tenant.legal_name }} - {{ firm_name }}{% endblock %}
 {% block content %}
+{% set badge = {'paused': 'status-void', 'expired': 'status-void', 'billing_overdue': 'status-void'} %}
 <div class="page-header">
   <div>
     <h1>{{ tenant.legal_name }}</h1>
     <p class="text-muted mt-0">{{ tenant.registration_type.value|title }}
-      {% if tenant.is_active %}· <span class="status-badge status-issued">Active</span>
-      {% else %}· <span class="status-badge status-void">Inactive</span>{% endif %}
+      {% if access_status.blocked %}· <span class="status-badge {{ badge.get(access_status.reason, 'status-void') }}">{{ access_status.reason|replace('_', ' ')|title }} - access cut off</span>
+      {% elif access_status.billing_notice %}· <span class="status-badge status-void">Renewal due</span>
+      {% else %}· <span class="status-badge status-issued">Active</span>{% endif %}
     </p>
   </div>
   <div class="row">
     {% if tenant.is_active %}
     <form method="post" action="{{ url_for('tenants.deactivate', tenant_id=tenant.id) }}"
-          onsubmit="return confirm('Deactivate {{ tenant.legal_name }}? They will no longer be able to sign in.');">
+          onsubmit="return confirm('Pause {{ tenant.legal_name }}? They and every branch under them will no longer be able to sign in, until resumed.');">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button class="btn btn-danger">Deactivate</button>
+      <button class="btn btn-danger">Pause access</button>
     </form>
     {% else %}
     <form method="post" action="{{ url_for('tenants.activate', tenant_id=tenant.id) }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button class="btn btn-secondary">Reactivate</button>
+      <button class="btn btn-secondary">Resume access</button>
     </form>
     {% endif %}
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:20px;">
+  <h2 style="margin-top:0;">Access &amp; billing</h2>
+  {% if access_status.blocked %}
+  <p class="flash flash-error" style="margin-top:0;">{{ access_status.message }}</p>
+  {% elif access_status.billing_notice %}
+  <p class="flash flash-info" style="margin-top:0;">{{ access_status.billing_notice_message }}</p>
+  {% endif %}
+  <div class="form-grid">
+    <div>
+      <p class="text-muted" style="margin:0 0 4px;">Hard expiry</p>
+      <p style="margin:0;"><strong>{{ tenant.valid_until.strftime('%d %b %Y') if tenant.valid_until else 'Not set' }}</strong></p>
+      <form method="post" action="{{ url_for('tenants.renew_access', tenant_id=tenant.id) }}" class="row" style="margin-top:8px;">
+        {{ renew_form.hidden_tag() }}
+        {{ renew_form.valid_until(class="field-input") }}
+        <button type="submit" class="btn btn-secondary">Renew / extend</button>
+      </form>
+    </div>
+    <div>
+      <p class="text-muted" style="margin:0 0 4px;">Monthly renewal due</p>
+      <p style="margin:0;"><strong>{{ tenant.next_billing_due.strftime('%d %b %Y') if tenant.next_billing_due else 'Not tracked' }}</strong></p>
+      <form method="post" action="{{ url_for('tenants.mark_billing_paid', tenant_id=tenant.id) }}" style="margin-top:8px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-secondary">Mark this month paid</button>
+      </form>
+    </div>
   </div>
 </div>
 
@@ -65,6 +95,9 @@
 
 <div class="card" style="margin-bottom:20px;">
   <h2 style="margin-top:0;">Users</h2>
+  <p class="text-muted mt-0">"Act as" signs you in as that login - the client admin's own invoicing, or a
+    branch's own POS - so you can bill on their behalf exactly as they would. "Return to admin console" at the
+    top of the page switches you back.</p>
   <table>
     <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th></th></tr></thead>
     <tbody>
@@ -74,8 +107,28 @@
         <td>{{ u.email }}</td>
         <td>{{ u.role.value|replace('_',' ')|title }}</td>
         <td>{{ 'Active' if u.is_active else 'Inactive' }}</td>
-        <td>
+        <td class="row">
+          {% if u.role.value in ('client_admin', 'staff') %}
+          {% if u.is_active %}
+          <form method="post" action="{{ url_for('tenants.act_as', tenant_id=tenant.id, user_id=u.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-secondary">Act as</button>
+          </form>
+          {% endif %}
           <a href="{{ url_for('tenants.reset_client_password', tenant_id=tenant.id, user_id=u.id) }}" class="btn btn-quiet">Reset password</a>
+          {% if u.is_active %}
+          <form method="post" action="{{ url_for('tenants.deactivate_user', tenant_id=tenant.id, user_id=u.id) }}"
+                onsubmit="return confirm('Deactivate {{ u.name }}? They will no longer be able to sign in.');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-quiet">Deactivate</button>
+          </form>
+          {% else %}
+          <form method="post" action="{{ url_for('tenants.activate_user', tenant_id=tenant.id, user_id=u.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-quiet">Reactivate</button>
+          </form>
+          {% endif %}
+          {% endif %}
         </td>
       </tr>
     {% endfor %}

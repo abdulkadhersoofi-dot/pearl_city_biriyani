@@ -53,6 +53,15 @@
       {% endif %}
     </header>
 
+    {% if impersonator_name %}
+    <div class="notice-bar notice-impersonating">
+      Acting as <strong>{{ current_user.name }}</strong> ({{ brand_tenant.display_name if brand_tenant else '' }}) - signed in as {{ impersonator_name }}.
+      <a href="{{ url_for('auth.stop_impersonating') }}" class="btn btn-quiet btn-sm">Return to admin console</a>
+    </div>
+    {% elif billing_notice %}
+    <div class="notice-bar notice-billing">{{ billing_notice }}</div>
+    {% endif %}
+
     <main class="app-main">
       {% include "_flashes.html" %}
       {% block content %}{% endblock %}

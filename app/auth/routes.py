@@ -1,6 +1,6 @@
 from datetime import timedelta
 
-from flask import current_app, flash, redirect, render_template, url_for
+from flask import current_app, flash, redirect, render_template, session, url_for
 from flask_login import current_user, login_required, login_user, logout_user
 
 from app.auth import auth_bp
@@ -11,6 +11,7 @@ from app.models.mixins import utcnow
 from app.models.tenant import Tenant
 from app.models.user import User
 from app.utils.audit import record_audit
+from app.utils.billing import tenant_access_status
 
 
 def _recent_failed_logins(email: str, window_minutes: int) -> int:
@@ -46,6 +47,17 @@ def _login_view(login_tenant=None):
 
         user = User.query.filter_by(email=email).first()
         if user and user.is_active and user.check_password(form.password.data):
+            if user.tenant_id is not None:
+                status = tenant_access_status(user.tenant)
+                if status.blocked:
+                    record_audit(
+                        user, "login_blocked_tenant_access", tenant_id=user.tenant_id,
+                        details={"reason": status.reason},
+                    )
+                    db.session.commit()
+                    flash(status.message, "error")
+                    return render_template("auth/login.html", form=form, login_tenant=login_tenant)
+
             login_user(user, remember=False)
             user.last_login_at = utcnow()
             record_audit(user, "login_success", tenant_id=user.tenant_id)
@@ -79,7 +91,33 @@ def logout():
     record_audit(current_user, "logout", tenant_id=current_user.tenant_id)
     db.session.commit()
     logout_user()
+    session.pop("impersonator_id", None)
     return redirect(url_for("auth.login"))
+
+
+@auth_bp.route("/stop-impersonating")
+@login_required
+def stop_impersonating():
+    # Whoever is signed in right now - the tenant user a Super Admin
+    # switched into via tenants.act_as - switches back to that admin.
+    # Needs no role check: only tenants.act_as ever sets this session
+    # key, and only after verifying the caller really was a Super Admin.
+    admin_id = session.pop("impersonator_id", None)
+    if not admin_id:
+        return redirect(url_for("auth.login"))
+
+    acting_as_tenant_id = current_user.tenant_id
+    admin = User.query.get(admin_id)
+    if not admin or not admin.is_super_admin:
+        logout_user()
+        flash("Could not return to the admin console - sign in again.", "error")
+        return redirect(url_for("auth.login"))
+
+    record_audit(admin, "impersonation_stopped", tenant_id=acting_as_tenant_id, entity_type="user", entity_id=current_user.id)
+    logout_user()
+    login_user(admin, remember=False)
+    db.session.commit()
+    return redirect(url_for("tenants.directory"))
 
 
 @auth_bp.route("/change-password", methods=["GET", "POST"])

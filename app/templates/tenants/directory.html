@@ -18,8 +18,10 @@
         <td>{{ tenant.gstins.first().display_label if tenant.gstins.first() else '-' }}</td>
         <td>{{ tenant.registration_type.value|title }}</td>
         <td>
-          {% if tenant.is_active %}<span class="status-badge status-issued">Active</span>
-          {% else %}<span class="status-badge status-void">Inactive</span>{% endif %}
+          {% set status = access_statuses[tenant.id] %}
+          {% if status.blocked %}<span class="status-badge status-void">{{ status.reason|replace('_', ' ')|title }}</span>
+          {% elif status.billing_notice %}<span class="status-badge status-void">Renewal due</span>
+          {% else %}<span class="status-badge status-issued">Active</span>{% endif %}
         </td>
         <td>{{ tenant.created_at.strftime('%d %b %Y') }}</td>
         <td><a href="{{ url_for('tenants.detail', tenant_id=tenant.id) }}">View</a></td>
