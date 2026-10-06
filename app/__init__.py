@@ -55,6 +55,7 @@ def _init_extensions(app: Flask) -> None:
 def _register_blueprints(app: Flask) -> None:
     from app.api import api_bp
     from app.auth import auth_bp
+    from app.branches import branches_bp
     from app.customers import customers_bp
     from app.invoicing import invoicing_bp
     from app.notes import notes_bp
@@ -62,7 +63,6 @@ def _register_blueprints(app: Flask) -> None:
     from app.products import products_bp
     from app.reports import reports_bp
     from app.settings import settings_bp
-    from app.staff import staff_bp
     from app.tenants import tenants_bp
     from app.main import main_bp
 
@@ -76,7 +76,7 @@ def _register_blueprints(app: Flask) -> None:
     app.register_blueprint(notes_bp)
     app.register_blueprint(reports_bp)
     app.register_blueprint(settings_bp)
-    app.register_blueprint(staff_bp)
+    app.register_blueprint(branches_bp)
     app.register_blueprint(api_bp)
 
 

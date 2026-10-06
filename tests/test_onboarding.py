@@ -114,7 +114,7 @@ def test_client_admin_creates_staff_with_password_no_otp(client, db, client_admi
     _login(client, client_admin.email, "ClientSecret123")
 
     resp = client.post(
-        "/staff/new",
+        "/branches/new",
         data={
             "name": "New Cashier",
             "email": "newcashier@example.com",
@@ -142,7 +142,7 @@ def test_client_admin_resets_staff_password_directly(client, db, client_admin, s
     _login(client, client_admin.email, "ClientSecret123")
 
     resp = client.post(
-        f"/staff/{staff.id}/reset-password",
+        f"/branches/{staff.id}/reset-password",
         data={"new_password": "StaffResetPass123", "confirm_password": "StaffResetPass123"},
         follow_redirects=True,
     )
@@ -172,7 +172,7 @@ def test_client_admin_cannot_reset_another_tenants_staff(client, db, client_admi
 
     _login(client, client_admin.email, "ClientSecret123")
     resp = client.post(
-        f"/staff/{other_staff.id}/reset-password",
+        f"/branches/{other_staff.id}/reset-password",
         data={"new_password": "ShouldNotWork123", "confirm_password": "ShouldNotWork123"},
     )
     assert resp.status_code == 404

@@ -1,7 +1,7 @@
 from flask_wtf import FlaskForm
 from flask_wtf.file import FileAllowed, FileField, FileSize
-from wtforms import SelectField, StringField
-from wtforms.validators import DataRequired, Regexp
+from wtforms import IntegerField, SelectField, StringField
+from wtforms.validators import DataRequired, NumberRange, Regexp
 
 from app.pos.receipt import THERMAL_WIDTHS_IN
 from app.utils.theme import FONT_FAMILY_CHOICES, HEX_COLOR_RE
@@ -36,4 +36,8 @@ class TenantSettingsForm(FlaskForm):
     font_family = SelectField("Font", choices=FONT_FAMILY_CHOICES, validators=[DataRequired()])
     default_receipt_format = SelectField(
         "POS bill print size", choices=RECEIPT_FORMAT_CHOICES, validators=[DataRequired()]
+    )
+    stock_grace_qty = IntegerField(
+        "Branch stock grace buffer",
+        validators=[DataRequired(), NumberRange(min=0, max=100)],
     )

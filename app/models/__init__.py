@@ -7,6 +7,7 @@ from app.models.invoice import Invoice, InvoiceLine, InvoiceStatus
 from app.models.pos_bill import POSBill, POSBillLine, POSBillStatus, PaymentMode
 from app.models.note import CreditDebitNote, NoteLine, NoteStatus
 from app.models.audit_log import AuditLog
+from app.models.stock import BranchStockAllocation
 
 __all__ = [
     "Tenant",
@@ -30,4 +31,5 @@ __all__ = [
     "NoteLine",
     "NoteStatus",
     "AuditLog",
+    "BranchStockAllocation",
 ]

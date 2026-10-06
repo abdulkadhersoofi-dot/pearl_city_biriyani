@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Branches - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Branches</h1>
+  <a href="{{ url_for('branches.new_branch') }}" class="btn btn-primary">+ Add branch</a>
+</div>
+
+<div class="table-wrap card">
+  <table>
+    <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+    {% for u in branches %}
+      <tr>
+        <td>{{ u.name }}</td>
+        <td>{{ u.email }}</td>
+        <td>{{ u.phone or '-' }}</td>
+        <td>{{ 'Active' if u.is_active else 'Inactive' }}</td>
+        <td class="row">
+          <a href="{{ url_for('branches.branch_stock', user_id=u.id) }}">Stock</a>
+          <a href="{{ url_for('branches.reset_branch_password', user_id=u.id) }}">Reset password</a>
+          {% if u.is_active %}
+          <form method="post" action="{{ url_for('branches.deactivate_branch', user_id=u.id) }}"
+                onsubmit="return confirm('Deactivate {{ u.name }}? They will no longer be able to sign in.');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-quiet">Deactivate</button>
+          </form>
+          {% else %}
+          <form method="post" action="{{ url_for('branches.activate_branch', user_id=u.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-quiet">Reactivate</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      <tr>
+        <td colspan="5" style="padding:0;">
+          <details class="card" style="margin:0 0 12px 0;">
+            <summary>Today's stock{% if stock_by_branch[u.id] %} ({{ stock_by_branch[u.id]|length }} item{{ 's' if stock_by_branch[u.id]|length != 1 }}){% endif %}</summary>
+            {% set status = stock_by_branch[u.id] %}
+            {% if status %}
+            <table style="margin-top:10px;">
+              <thead><tr><th>Item</th><th>Sent</th><th>Sold</th><th>Remaining</th></tr></thead>
+              <tbody>
+              {% for s in status %}
+                <tr>
+                  <td>{{ s.product_name }}</td>
+                  <td>{{ s.allocated }} {{ s.unit }}</td>
+                  <td>{{ s.sold }} {{ s.unit }}</td>
+                  <td>{{ s.remaining }} {{ s.unit }}</td>
+                </tr>
+              {% endfor %}
+              </tbody>
+            </table>
+            {% else %}
+            <p class="text-muted" style="margin:10px 0 0;">No stock sent to this branch yet today.</p>
+            {% endif %}
+          </details>
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="5" class="empty-state">No branches yet. Add your first one.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

@@ -304,6 +304,36 @@ Gunicorn workers or add app servers behind Nginx as load grows.
   as a credit note against an invoice. Refund is a Day-book row action
   (not on the receipt page), since that's where the two entries live
   together.
+- **Branch stock counters** (`app/pos/stock.py`, `app/models/stock.py`,
+  "Staff" renamed to "Branches" throughout). A kitchen-style tenant (one
+  Client Admin cooking in bulk, billed out through several Staff/Branch
+  logins) sends each branch a daily quantity of each item from
+  Branches → a branch's Stock page; that branch's own POS terminal then
+  shows a collapsible "Today's stock" counter and refuses to check out
+  past it, while the Client Admin's Branches list shows the same counter
+  for every branch at once, for tracking stock availability and whether a
+  branch is actually selling. The model is an append-only ledger
+  (`BranchStockAllocation`: branch, product, qty, date) rather than one
+  mutable row - a second delivery the same day is a second row, so
+  "resets daily" falls out of every query being scoped to today's date
+  and nothing needs a nightly reset job. "Sold" is the sum of
+  `POSBillLine.qty` across that branch login's own `COMPLETED` bills
+  today; a refund doesn't currently restore the counter, since this app
+  tracks refunds by amount, not by original line quantity. Because
+  serving sizes vary a little branch to branch, the real limit enforced
+  at checkout is allocated + a per-tenant grace buffer
+  (`Tenant.stock_grace_qty`, Settings → Branch stock, default 10) - the
+  displayed "remaining" count still floors at zero so the till never
+  shows a confusing negative number, even though a few more sales are
+  quietly still possible past that point. Only products a branch has an
+  actual allocation for today are tracked at all; anything else, and the
+  Client Admin's own direct POS use, sells with no limit, same as before
+  this feature existed. The terminal's cart math is optimistic
+  client-side JS mirroring the same allocated+grace-sold formula so a
+  cashier sees an item go to zero before they try to bill it, but the
+  server (`check_cart_against_stock`, called from `pos.services.checkout`)
+  is always the real gate - a request that bypasses the UI still gets
+  blocked.
 - **Sales report** (`app/reports/sales.py`, Reports → Sales report) is a
   document-level list - invoices and POS bills combined, any date range,
   every GSTIN, any registration type (unlike GSTR-1/3B, which is one

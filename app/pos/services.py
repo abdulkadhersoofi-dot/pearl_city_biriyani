@@ -8,6 +8,7 @@ from app.models.invoice_series import DocumentType
 from app.models.mixins import utcnow
 from app.models.pos_bill import PaymentMode, POSBill, POSBillLine, POSBillStatus
 from app.models.tenant import RegistrationType, Tenant
+from app.pos.stock import StockLimitError, check_cart_against_stock
 from app.utils.financial_year import financial_year_for
 from app.utils.gst import compute_invoice_totals, compute_line
 from app.utils.numbering import allocate_number, get_or_create_series
@@ -164,6 +165,14 @@ def checkout(tenant: Tenant, created_by, cart: CartInput, payment_mode: PaymentM
         raise POSValidationError(
             "This client has no business location on file. Ask the firm to add one from Clients -> this client."
         )
+
+    # Branch stock counters only apply to a branch's own login (Staff) -
+    # the kitchen's own Client Admin isn't limited by what it sent itself.
+    if created_by.is_staff:
+        try:
+            check_cart_against_stock(created_by.id, cart.lines, tenant.stock_grace_qty)
+        except StockLimitError as exc:
+            raise POSValidationError(exc.message)
 
     customer = None
     customer_snapshot = None

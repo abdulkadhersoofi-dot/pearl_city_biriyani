@@ -21,6 +21,7 @@ from app.pos.services import (
     refund_bill,
     z_report,
 )
+from app.pos.stock import branch_stock_status
 from app.utils.audit import record_audit
 from app.utils.tenant_scope import assert_owns, tenant_query
 
@@ -59,12 +60,15 @@ def terminal():
             db.session.commit()
             held_bills = [hb for hb in held_bills if hb.id != resume_bill.id]
 
+    stock_status = branch_stock_status(current_user.id, tenant.stock_grace_qty) if current_user.is_staff else []
+
     return render_template(
         "pos/terminal.html",
         products=products,
         held_bills=held_bills,
         resume_bill=resume_bill,
         default_receipt_format=tenant.default_receipt_format,
+        stock_status=stock_status,
     )
 
 

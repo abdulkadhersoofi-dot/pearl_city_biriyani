@@ -43,6 +43,25 @@ def test_settings_page_updates_theme_and_print_size(client, db, client_admin, te
     assert tenant.default_receipt_format == "2in"
 
 
+def test_settings_page_updates_branch_stock_grace_qty(client, db, client_admin, tenant):
+    _login(client, client_admin.email, "ClientSecret123")
+
+    resp = client.post(
+        "/settings/",
+        data={
+            "primary_color": "#ff8800",
+            "background_color": "#202020",
+            "font_family": "serif",
+            "default_receipt_format": "2in",
+            "stock_grace_qty": "25",
+        },
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+    db.session.refresh(tenant)
+    assert tenant.stock_grace_qty == 25
+
+
 def test_settings_page_rejects_an_unknown_font_choice(client, db, client_admin, tenant):
     _login(client, client_admin.email, "ClientSecret123")
 
