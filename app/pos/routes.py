@@ -60,7 +60,7 @@ def terminal():
             db.session.commit()
             held_bills = [hb for hb in held_bills if hb.id != resume_bill.id]
 
-    stock_status = branch_stock_status(current_user.id) if current_user.is_staff else []
+    stock_status = branch_stock_status(current_user.tenant_id, current_user.id) if current_user.is_staff else []
 
     return render_template(
         "pos/terminal.html",
@@ -127,7 +127,23 @@ def checkout_route():
         )
         db.session.commit()
         if wants_json:
-            return jsonify({"bill_id": bill.id, "bill_number": bill.bill_number})
+            response = {"bill_id": bill.id, "bill_number": bill.bill_number}
+            if current_user.is_staff:
+                # The terminal's own stock counter is rendered once at page
+                # load - without this, it only reflects what was just sold
+                # after a manual reload. Sending the fresh numbers back
+                # here lets the page update itself immediately instead.
+                response["stock_status"] = [
+                    {
+                        "product_id": s.product_id,
+                        "name": s.product_name,
+                        "unit": s.unit,
+                        "allocated": float(s.allocated),
+                        "sold": float(s.sold),
+                    }
+                    for s in branch_stock_status(current_user.tenant_id, current_user.id)
+                ]
+            return jsonify(response)
         return redirect(url_for("pos.view_receipt", bill_id=bill.id))
     except POSValidationError as exc:
         db.session.rollback()

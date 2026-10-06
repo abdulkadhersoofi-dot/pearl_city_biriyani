@@ -43,19 +43,29 @@ a { color: var(--color-primary-dark); }
 .app-shell { display: flex; flex-direction: column; min-height: 100vh; }
 
 .topbar {
-  display: flex;
-  align-items: center;
-  gap: 24px;
   background: var(--color-surface);
   border-bottom: 1px solid var(--color-border);
+}
+
+/* Brand (left) and sign-out (right) always share one row, top right, on
+   every screen size - the brand shrinks/truncates before this ever wraps. */
+.topbar-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
   padding: 0 20px;
   height: 64px;
 }
 
-.brand { font-weight: 700; font-size: 1.1rem; text-decoration: none; color: var(--color-text); display: flex; align-items: center; gap: 10px; }
-.brand-logo { height: 36px; width: auto; max-width: 140px; object-fit: contain; border-radius: 4px; }
+.brand { font-weight: 700; font-size: 1.1rem; text-decoration: none; color: var(--color-text); display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1 1 auto; overflow: hidden; }
+.brand span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.brand-logo { height: 36px; width: auto; max-width: 140px; object-fit: contain; border-radius: 4px; flex-shrink: 0; }
 
-.main-nav { display: flex; gap: 4px; flex: 1; flex-wrap: wrap; }
+/* A second row, only rendered when there's a nav to show (never for a
+   branch login) - scrolls horizontally instead of wrapping into several
+   rows, so it never grows the header taller than it needs to be. */
+.main-nav { display: flex; gap: 4px; padding: 0 16px 10px; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: thin; }
 .main-nav a {
   padding: 10px 14px;
   min-height: var(--touch);
@@ -65,10 +75,12 @@ a { color: var(--color-primary-dark); }
   text-decoration: none;
   color: var(--color-text-muted);
   font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .main-nav a.active, .main-nav a:hover { background: var(--color-success-bg); color: var(--color-primary-dark); }
 
-.user-menu { display: flex; align-items: center; gap: 12px; }
+.user-menu { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
 .user-name { color: var(--color-text-muted); font-size: 0.9rem; }
 
 .app-main { flex: 1; padding: 24px 20px 64px; max-width: 1100px; width: 100%; margin: 0 auto; }
@@ -249,9 +261,13 @@ tr:last-child td { border-bottom: none; }
 .search-bar { display: flex; gap: 10px; margin-bottom: 16px; }
 
 @media (max-width: 640px) {
-  .topbar { flex-wrap: wrap; height: auto; padding: 12px 16px; }
-  /* flex-basis (from the base rule's `flex: 1`) beats `width`, so it has
-     to be reset here too, or this never actually wraps onto its own row. */
-  .main-nav { order: 3; flex: 1 1 100%; }
+  .topbar-row { padding: 0 14px; height: 56px; gap: 10px; }
+  .brand { font-size: 1rem; gap: 8px; }
+  .brand-logo { height: 30px; }
+  /* Secondary info - the brand/page already gives enough context on a
+     small screen, so this makes room for Sign out to sit comfortably at
+     top right instead of crowding or wrapping. */
+  .user-name { display: none; }
+  .main-nav { padding: 0 10px 8px; }
   .app-main { padding: 16px 14px 48px; }
 }

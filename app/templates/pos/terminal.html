@@ -290,6 +290,7 @@ function posTerminal() {
         }
         this.completedBillId = data.bill_id;
         this.completedBillNumber = data.bill_number;
+        if (data.stock_status) this.stock = data.stock_status;
         this.printReceipt(DEFAULT_RECEIPT_FORMAT);
       } catch (e) {
         this.checkoutError = "Could not reach the server - check your connection and try again.";

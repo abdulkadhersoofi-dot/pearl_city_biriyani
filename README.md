@@ -344,6 +344,16 @@ Gunicorn workers or add app servers behind Nginx as load grows.
   for an ordinary Customer; `CreditDebitNote.customer_id` is required) -
   `create_note` raises a clear error and the invoice view page hides
   those buttons for a branch invoice; voiding still works normally.
+  `branch_stock_status()` lists every active product in the tenant's
+  catalog, allocated today or not (at 0 sent/0 remaining when not) -
+  it used to only list products with an allocation, so an item that had
+  never been sent to a branch was silently missing instead of visibly at
+  zero. The POS terminal's own counter also refreshes itself the instant
+  checkout completes - `checkout_route`'s JSON response carries the
+  branch's freshly recomputed `stock_status` alongside the bill it just
+  created, and the terminal's own Alpine state is overwritten with it, so
+  a cashier doesn't need to reload the page to see what they just sold
+  reflected in the running total.
 - **Sales report** (`app/reports/sales.py`, Reports → Sales report) is a
   document-level list - invoices and POS bills combined, any date range,
   every GSTIN, any registration type (unlike GSTR-1/3B, which is one
@@ -381,6 +391,19 @@ Gunicorn workers or add app servers behind Nginx as load grows.
   these documents. A migration moved any pre-existing RCM invoices' tax
   out of the shared columns into the new ones so historical data reports
   correctly too.
+- **The topbar is two rows, the second only when there's a nav to show.**
+  `app/templates/base.html`'s header is a brand+sign-out row (`.topbar-row`,
+  always `justify-content: space-between`, so Sign out sits at top right
+  on every screen size - the brand shrinks and truncates with an ellipsis
+  before this ever wraps) plus a second `<nav>` row rendered only for a
+  Super Admin or Client Admin. A branch (Staff) login only ever has one
+  destination, POS, so it gets no nav at all rather than a single link on
+  its own row - on a narrow phone that used to read as a floating "POS"
+  pill with a half-empty header above it. `.main-nav` scrolls
+  horizontally instead of wrapping onto several rows, so an admin's full
+  link set never grows the header taller than the brand row, on desktop
+  or mobile; `.user-name` hides under 640px purely to keep Sign out from
+  crowding, not because it stopped mattering.
 
 ## Roadmap
 

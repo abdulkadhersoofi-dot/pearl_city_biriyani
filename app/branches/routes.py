@@ -16,7 +16,7 @@ from app.utils.tenant_scope import assert_owns, tenant_query
 @roles_required(UserRole.CLIENT_ADMIN)
 def list_branches():
     branches = tenant_query(User).filter_by(role=UserRole.STAFF).order_by(User.name).all()
-    stock_by_branch = {b.id: branch_stock_status(b.id) for b in branches}
+    stock_by_branch = {b.id: branch_stock_status(current_user.tenant_id, b.id) for b in branches}
     return render_template("branches/list.html", branches=branches, stock_by_branch=stock_by_branch)
 
 
@@ -98,5 +98,5 @@ def branch_stock(user_id):
     # only tracks today's running total, it never sends stock itself.
     branch = tenant_query(User).filter_by(id=user_id, role=UserRole.STAFF).first_or_404()
     assert_owns(branch)
-    status = branch_stock_status(branch.id)
+    status = branch_stock_status(current_user.tenant_id, branch.id)
     return render_template("branches/stock.html", branch=branch, status=status)

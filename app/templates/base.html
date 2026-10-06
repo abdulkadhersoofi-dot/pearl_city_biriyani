@@ -16,20 +16,30 @@
 <body>
   <div class="app-shell">
     <header class="topbar">
-      <a class="brand" href="{{ url_for('main.index') }}">
-        {% if brand_logo_url %}
-          <img src="{{ brand_logo_url }}" alt="{{ firm_name }}" class="brand-logo">
-        {% elif not current_user.is_authenticated or current_user.is_super_admin %}
-          <img src="{{ url_for('static', filename='img/arfa-logo.jpg') }}" alt="ARFA" class="brand-logo">
-        {% endif %}
-        <span>{{ firm_name }}</span>
-      </a>
+      <div class="topbar-row">
+        <a class="brand" href="{{ url_for('main.index') }}">
+          {% if brand_logo_url %}
+            <img src="{{ brand_logo_url }}" alt="{{ firm_name }}" class="brand-logo">
+          {% elif not current_user.is_authenticated or current_user.is_super_admin %}
+            <img src="{{ url_for('static', filename='img/arfa-logo.jpg') }}" alt="ARFA" class="brand-logo">
+          {% endif %}
+          <span>{{ firm_name }}</span>
+        </a>
+        <div class="user-menu">
+          <span class="user-name">{{ current_user.name }}</span>
+          <a href="{{ url_for('auth.logout') }}" class="btn btn-quiet">Sign out</a>
+        </div>
+      </div>
+      {# A branch (Staff) login only ever has POS, so there's nothing to
+         pick between - no nav row at all for that case, rather than a
+         single-link row with nowhere else to go. #}
+      {% if current_user.is_super_admin or current_user.is_client_admin %}
       <nav class="main-nav">
         {% if current_user.is_super_admin %}
           <a href="{{ url_for('tenants.directory') }}" class="{{ 'active' if request.blueprint == 'tenants' }}">Clients</a>
           <a href="{{ url_for('tenants.gst_exports') }}">GST exports</a>
           <a href="{{ url_for('tenants.audit_log') }}">Audit log</a>
-        {% elif current_user.is_client_admin %}
+        {% else %}
           <a href="{{ url_for('invoicing.list_invoices') }}" class="{{ 'active' if request.blueprint == 'invoicing' }}">Invoices</a>
           <a href="{{ url_for('notes.list_notes') }}" class="{{ 'active' if request.blueprint == 'notes' }}">Notes</a>
           <a href="{{ url_for('pos.terminal') }}" class="{{ 'active' if request.blueprint == 'pos' }}">POS</a>
@@ -38,14 +48,9 @@
           <a href="{{ url_for('branches.list_branches') }}" class="{{ 'active' if request.blueprint == 'branches' }}">Branches</a>
           <a href="{{ url_for('reports.index') }}" class="{{ 'active' if request.blueprint == 'reports' }}">Reports</a>
           <a href="{{ url_for('settings.index') }}" class="{{ 'active' if request.blueprint == 'settings' }}">Settings</a>
-        {% else %}
-          <a href="{{ url_for('pos.terminal') }}" class="active">POS</a>
         {% endif %}
       </nav>
-      <div class="user-menu">
-        <span class="user-name">{{ current_user.name }}</span>
-        <a href="{{ url_for('auth.logout') }}" class="btn btn-quiet">Sign out</a>
-      </div>
+      {% endif %}
     </header>
 
     <main class="app-main">

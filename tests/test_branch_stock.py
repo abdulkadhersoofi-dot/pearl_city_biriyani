@@ -172,7 +172,12 @@ def test_allocation_dated_by_invoice_date_not_wall_clock(db, tenant, client_admi
     db.session.commit()
 
     assert today_allocations(owned_branch.id) == {}
-    assert branch_stock_status(owned_branch.id) == []
+    # Still listed (every active product always is), just at 0 - not
+    # carried over from yesterday's allocation.
+    status = branch_stock_status(tenant.id, owned_branch.id)
+    assert len(status) == 1
+    assert status[0].product_id == biriyani.id
+    assert status[0].allocated == Decimal("0")
 
 
 def test_branch_stock_status_remaining_can_go_negative(db, tenant, client_admin, owned_branch, biriyani):
@@ -192,7 +197,7 @@ def test_branch_stock_status_remaining_can_go_negative(db, tenant, client_admin,
     db.session.commit()
     assert bill.status == POSBillStatus.COMPLETED
 
-    status = branch_stock_status(owned_branch.id)
+    status = branch_stock_status(tenant.id, owned_branch.id)
     assert status[0].allocated == Decimal("10")
     assert status[0].sold == Decimal("15")
     assert status[0].remaining == Decimal("-5")
@@ -289,3 +294,84 @@ def test_invoicing_form_bills_owned_branch_as_delivery_challan_end_to_end(client
     assert invoice.total_cgst == Decimal("0.00")
     assert BranchStockAllocation.query.filter_by(branch_user_id=owned_branch.id).count() == 1
     assert today_allocations(owned_branch.id) == {biriyani.id: Decimal("30")}
+
+
+def test_branch_stock_status_lists_every_active_product_even_unallocated(db, tenant, client_admin, owned_branch, biriyani):
+    # Soda has never been sent to this branch - it should still show up,
+    # at 0 sent / 0 remaining, not be silently missing.
+    soda = Product(tenant_id=tenant.id, name="Soda", hsn_or_sac_code="22021010", unit="bottle", default_price=Decimal("20"))
+    inactive = Product(
+        tenant_id=tenant.id, name="Discontinued Item", hsn_or_sac_code="12345678", unit="pcs",
+        default_price=Decimal("10"), is_active=False,
+    )
+    db.session.add_all([soda, inactive])
+    allocate_stock(tenant.id, owned_branch.id, client_admin.id, [(biriyani.id, Decimal("50"))])
+    db.session.commit()
+
+    status = branch_stock_status(tenant.id, owned_branch.id)
+    names = {s.product_name for s in status}
+    assert names == {"Chicken Biriyani", "Soda"}  # inactive product excluded
+
+    soda_status = next(s for s in status if s.product_name == "Soda")
+    assert soda_status.allocated == Decimal("0")
+    assert soda_status.sold == Decimal("0")
+    assert soda_status.remaining == Decimal("0")
+
+    biriyani_status = next(s for s in status if s.product_name == "Chicken Biriyani")
+    assert biriyani_status.allocated == Decimal("50")
+
+
+def test_checkout_json_response_includes_refreshed_stock_for_a_branch(client, db, tenant, client_admin, owned_branch, biriyani):
+    allocate_stock(tenant.id, owned_branch.id, client_admin.id, [(biriyani.id, Decimal("100"))])
+    db.session.commit()
+
+    _login(client, owned_branch.email, "BranchSecret123")
+    resp = client.post(
+        "/pos/checkout",
+        data={
+            "payment_mode": "cash",
+            "line_description[]": "Chicken Biriyani",
+            "line_hsn[]": "996331",
+            "line_qty[]": "10",
+            "line_rate[]": "100",
+            "line_gst_rate[]": "18",
+            "line_product_id[]": str(biriyani.id),
+            "line_unit[]": "plate",
+        },
+        headers={"X-Requested-With": "XMLHttpRequest"},
+    )
+    assert resp.status_code == 200
+    payload = resp.get_json()
+    assert "stock_status" in payload
+    biriyani_entry = next(s for s in payload["stock_status"] if s["product_id"] == biriyani.id)
+    assert biriyani_entry["allocated"] == 100.0
+    assert biriyani_entry["sold"] == 10.0
+
+
+def test_checkout_json_response_has_no_stock_status_for_client_admin(client, db, tenant, client_admin, biriyani):
+    _login(client, client_admin.email, "ClientSecret123")
+    resp = client.post(
+        "/pos/checkout",
+        data={
+            "payment_mode": "cash",
+            "line_description[]": "Chicken Biriyani",
+            "line_hsn[]": "996331",
+            "line_qty[]": "1",
+            "line_rate[]": "100",
+            "line_gst_rate[]": "18",
+            "line_product_id[]": str(biriyani.id),
+            "line_unit[]": "plate",
+        },
+        headers={"X-Requested-With": "XMLHttpRequest"},
+    )
+    assert resp.status_code == 200
+    assert "stock_status" not in resp.get_json()
+
+
+def test_branch_login_header_has_no_nav_but_still_has_sign_out(client, db, owned_branch):
+    _login(client, owned_branch.email, "BranchSecret123")
+    resp = client.get("/pos/")
+    assert resp.status_code == 200
+    body = resp.data.decode()
+    assert "<nav" not in body
+    assert "Sign out" in body
