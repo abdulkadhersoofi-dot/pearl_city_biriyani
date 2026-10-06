@@ -119,6 +119,7 @@ def test_client_admin_creates_staff_with_password_no_otp(client, db, client_admi
             "name": "New Cashier",
             "email": "newcashier@example.com",
             "phone": "",
+            "branch_type": "third_party",
             "password": "CashierInit123",
             "confirm_password": "CashierInit123",
         },

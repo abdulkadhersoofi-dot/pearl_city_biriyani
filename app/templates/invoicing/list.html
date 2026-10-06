@@ -26,7 +26,7 @@
         <td><a href="{{ url_for('invoicing.view_invoice', invoice_id=inv.id) }}">{{ inv.invoice_number }}</a></td>
         <td>{{ inv.invoice_date.strftime('%d %b %Y') }}</td>
         <td>{{ DOCUMENT_TYPE_LABELS[inv.document_type] }}</td>
-        <td>{{ inv.customer_snapshot.name }}</td>
+        <td>{{ inv.customer_snapshot.name }}{% if inv.branch_user_id %} <span class="text-muted">(branch)</span>{% endif %}</td>
         <td><span class="status-badge status-{{ inv.status.value }}">{{ inv.status.value|title }}</span></td>
         <td>Rs. {{ '%.2f'|format(inv.grand_total) }}</td>
       </tr>

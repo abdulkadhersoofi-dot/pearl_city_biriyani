@@ -19,7 +19,7 @@ from app.models.invoice import Invoice, InvoiceStatus
 from app.models.invoice_series import DOCUMENT_TYPE_LABELS, DocumentType
 from app.models.product import Product
 from app.models.tenant import Gstin
-from app.models.user import UserRole
+from app.models.user import BranchType, User, UserRole
 from app.utils.audit import record_audit
 from app.utils.gst import allowed_document_types
 from app.utils.indian_states import STATE_NAME_BY_CODE
@@ -72,6 +72,8 @@ def new_invoice():
     form.document_type.choices = _tenant_document_type_choices()
     customers = tenant_query(Customer).filter_by(is_active=True).order_by(Customer.name).all()
     form.customer_id.choices = [("new", "+ New customer")] + [(str(c.id), c.name) for c in customers]
+    branches = tenant_query(User).filter_by(role=UserRole.STAFF, is_active=True).order_by(User.name).all()
+    form.branch_user_id.choices = [("", "")] + [(str(b.id), b.name) for b in branches]
 
     duplicate_from = None
     if request.method == "GET" and request.args.get("duplicate_from"):
@@ -79,29 +81,38 @@ def new_invoice():
         if duplicate_from:
             form.gstin_id.data = duplicate_from.gstin_id
             form.document_type.data = duplicate_from.document_type.value
-            form.customer_id.data = str(duplicate_from.customer_id)
+            if duplicate_from.branch_user_id:
+                form.branch_user_id.data = str(duplicate_from.branch_user_id)
+            else:
+                form.customer_id.data = str(duplicate_from.customer_id)
             form.place_of_supply_state_code.data = duplicate_from.place_of_supply_state_code
             form.notes.data = duplicate_from.notes
 
     if form.validate_on_submit():
         try:
-            customer_id = form.customer_id.data
-            if customer_id == "new":
-                if not form.new_customer_name.data:
-                    raise InvoiceValidationError("Enter the new customer's name.")
-                customer = Customer(
-                    tenant_id=tenant.id,
-                    name=form.new_customer_name.data.strip(),
-                    gstin=form.new_customer_gstin.data,  # already normalized/validated by the form field
-                    address_line1=form.new_customer_address.data,
-                    state_code=form.new_customer_state_code.data or form.place_of_supply_state_code.data,
-                )
-                customer.state_name = STATE_NAME_BY_CODE.get(customer.state_code, "")
-                db.session.add(customer)
-                db.session.flush()
-                customer_id = customer.id
+            branch_id = form.branch_user_id.data or None
+            if branch_id:
+                customer_id = None
             else:
-                customer_id = int(customer_id)
+                customer_id = form.customer_id.data
+                if not customer_id:
+                    raise InvoiceValidationError("Select a customer or a branch to bill.")
+                if customer_id == "new":
+                    if not form.new_customer_name.data:
+                        raise InvoiceValidationError("Enter the new customer's name.")
+                    customer = Customer(
+                        tenant_id=tenant.id,
+                        name=form.new_customer_name.data.strip(),
+                        gstin=form.new_customer_gstin.data,  # already normalized/validated by the form field
+                        address_line1=form.new_customer_address.data,
+                        state_code=form.new_customer_state_code.data or form.place_of_supply_state_code.data,
+                    )
+                    customer.state_name = STATE_NAME_BY_CODE.get(customer.state_code, "")
+                    db.session.add(customer)
+                    db.session.flush()
+                    customer_id = customer.id
+                else:
+                    customer_id = int(customer_id)
 
             lines = parse_line_arrays(
                 request.form.getlist("line_description[]"),
@@ -121,6 +132,7 @@ def new_invoice():
                     gstin_id=form.gstin_id.data,
                     document_type=DocumentType(form.document_type.data),
                     customer_id=customer_id,
+                    branch_user_id=int(branch_id) if branch_id else None,
                     place_of_supply_state_code=form.place_of_supply_state_code.data,
                     invoice_date=form.invoice_date.data,
                     notes=form.notes.data,
@@ -133,7 +145,7 @@ def new_invoice():
                 tenant_id=tenant.id,
                 entity_type="invoice",
                 entity_id=invoice.id,
-                details={"invoice_number": invoice.invoice_number},
+                details={"invoice_number": invoice.invoice_number, "branch_user_id": invoice.branch_user_id},
             )
             db.session.commit()
             flash(f"Invoice {invoice.invoice_number} created.", "success")
@@ -144,7 +156,12 @@ def new_invoice():
 
     products = tenant_query(Product).filter_by(is_active=True).order_by(Product.name).all()
     return render_template(
-        "invoicing/form.html", form=form, products=products, customers=customers, duplicate_from=duplicate_from
+        "invoicing/form.html",
+        form=form,
+        products=products,
+        customers=customers,
+        branches=branches,
+        duplicate_from=duplicate_from
     )
 
 

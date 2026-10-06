@@ -18,7 +18,11 @@ class InvoiceHeaderForm(FlaskForm):
     gstin_id = SelectField("Billing from (your GSTIN)", coerce=int, validators=[DataRequired()])
     document_type = SelectField("Document type", validators=[DataRequired()])
 
-    customer_id = SelectField("Customer", validators=[DataRequired()])
+    # Exactly one of these is used - which one is picked in the UI via the
+    # "Bill to" toggle (customer vs. branch). branch_user_id blank means
+    # "billing a customer"; routes.py/create_invoice decide which applies.
+    branch_user_id = SelectField("Branch", validators=[Optional()])
+    customer_id = SelectField("Customer", validators=[Optional()])
     new_customer_name = StringField("New customer name", validators=[Optional(), Length(max=255)])
     new_customer_gstin = StringField(
         "New customer GSTIN (optional)",

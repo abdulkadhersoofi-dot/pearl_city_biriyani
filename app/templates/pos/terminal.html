@@ -11,7 +11,7 @@
   const DEFAULT_RECEIPT_FORMAT = {{ default_receipt_format|tojson }};
   const STOCK_STATUS = [
     {% for s in stock_status %}
-    {product_id: {{ s.product_id }}, name: {{ s.product_name|tojson }}, unit: {{ s.unit|tojson }}, allocated: {{ s.allocated }}, sold: {{ s.sold }}, grace: {{ s.grace }}},
+    {product_id: {{ s.product_id }}, name: {{ s.product_name|tojson }}, unit: {{ s.unit|tojson }}, allocated: {{ s.allocated }}, sold: {{ s.sold }}},
     {% endfor %}
   ];
   const PREFILL_CART = [
@@ -102,7 +102,6 @@
       <p class="text-muted" x-show="filteredProducts().length === 0" style="margin-top:20px;">
         No items match "<span x-text="search"></span>".
       </p>
-      <p x-show="stockBlockedMsg" x-text="stockBlockedMsg" style="color:var(--color-danger); margin-top:12px;"></p>
     </div>
 
     <div class="cart-panel">
@@ -202,7 +201,6 @@ function posTerminal() {
     search: "",
     cart: [],
     stock: STOCK_STATUS,
-    stockBlockedMsg: "",
     showHeld: false,
     checkoutStep: "idle",
     paymentMode: "",
@@ -222,53 +220,33 @@ function posTerminal() {
       if (!q) return PRODUCTS;
       return PRODUCTS.filter(p => p.name.toLowerCase().includes(q));
     },
-    // Stock counters are optimistic/client-side only - the till shows the
-    // same math the server (check_cart_against_stock) will enforce at
-    // checkout, so a cashier sees a sold-out item before they try to bill
-    // it rather than after. The server always has the final say.
+    // Live stock counter only - never blocks a sale. A branch can keep
+    // billing past its allocation (serving sizes vary too much to enforce
+    // a hard stop); this just shows the running total going negative.
     stockEntry(productId) { return this.stock.find(s => s.product_id === productId); },
-    cartQtyFor(productId, excludeIndex) {
-      return this.cart.reduce((sum, l, i) => (l.product_id === productId && i !== excludeIndex ? sum + (l.qty || 0) : sum), 0);
+    cartQtyFor(productId) {
+      return this.cart.reduce((sum, l) => (l.product_id === productId ? sum + (l.qty || 0) : sum), 0);
     },
     stockRemaining(productId) {
       const s = this.stockEntry(productId);
       if (!s) return 0;
-      return Math.max(0, s.allocated - s.sold - this.cartQtyFor(productId));
-    },
-    stockAvailable(productId, excludeIndex) {
-      const s = this.stockEntry(productId);
-      if (!s) return Infinity;
-      return s.allocated + s.grace - s.sold - this.cartQtyFor(productId, excludeIndex);
+      return s.allocated - s.sold - this.cartQtyFor(productId);
     },
     addToCart(p) {
       const existing = this.cart.find(l => l.product_id === p.id);
-      const nextQty = (existing ? existing.qty : 0) + 1;
-      if (this.stockEntry(p.id) && nextQty > this.stockAvailable(p.id, this.cart.indexOf(existing))) {
-        this.stockBlockedMsg = `${p.name} is sold out for today's stock.`;
-        return;
-      }
-      this.stockBlockedMsg = "";
       if (existing) {
         existing.qty += 1;
       } else {
         this.cart.push({product_id: p.id, description: p.name, hsn: p.hsn, rate: p.rate, gst_rate: p.gst_rate, unit: p.unit, qty: 1});
       }
     },
-    increment(i) { this.setQty(i, this.cart[i].qty + 1); },
+    increment(i) { this.cart[i].qty += 1; },
     decrement(i) {
       this.cart[i].qty -= 1;
       if (this.cart[i].qty <= 0) this.cart.splice(i, 1);
     },
     setQty(i, qty) {
       if (!qty || qty <= 0) { this.cart.splice(i, 1); return; }
-      const productId = this.cart[i].product_id;
-      if (productId && qty > this.stockAvailable(productId, i)) {
-        this.stockBlockedMsg = `${this.cart[i].description} is sold out for today's stock.`;
-        qty = Math.max(1, Math.floor(this.stockAvailable(productId, i)));
-        if (qty <= 0) { this.cart.splice(i, 1); return; }
-      } else {
-        this.stockBlockedMsg = "";
-      }
       this.cart[i].qty = qty;
     },
     clearCart() { this.cart = []; },

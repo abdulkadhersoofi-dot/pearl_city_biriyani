@@ -6,6 +6,7 @@
 <script>
   const GSTIN_STATE = { {% for g in current_user.tenant.gstins %}{{ g.id }}: "{{ g.state_code }}",{% endfor %} };
   const CUSTOMER_STATE = { {% for c in customers %}"{{ c.id }}": "{{ c.state_code or '' }}",{% endfor %} };
+  const BRANCH_TYPE = { {% for b in branches %}"{{ b.id }}": "{{ b.branch_type.value }}",{% endfor %} };
   const PRODUCTS_BY_NAME = { {% for p in products %}"{{ p.name|e }}": {hsn: "{{ p.hsn_or_sac_code }}", rate: {{ p.default_price }}, gst_rate: {{ p.gst_rate }}, unit: "{{ p.unit }}", id: {{ p.id }}},{% endfor %} };
   const BILL_OF_SUPPLY = "bill_of_supply";
   const PREFILL_LINES = [
@@ -28,27 +29,45 @@
         {{ form.gstin_id.label(class="field-label") }}
         {{ form.gstin_id(class="field-input", **{"@change": "recalc()"}) }}
       </div>
-      <div class="field {{ 'field-error' if form.document_type.errors }}">
+      <div class="field {{ 'field-error' if form.document_type.errors }}" x-show="billTo === 'customer'">
         {{ form.document_type.label(class="field-label") }}
         {{ form.document_type(class="field-input", **{"@change": "recalc()"}) }}
+      </div>
+      <div class="field" x-show="billTo === 'branch'">
+        <span class="field-label">Document type</span>
+        <input class="field-input" disabled :value="autoDocType()">
+        <p class="field-help">Automatic - set by the branch's type below.</p>
       </div>
       {{ field(form.invoice_date) }}
     </div>
   </div>
 
   <div class="card" style="margin-bottom:20px;">
+    <div class="field">
+      <span class="field-label">Bill to</span>
+      <div class="row">
+        <label class="row" style="gap:6px;"><input type="radio" value="customer" x-model="billTo" @change="recalc()"> Customer</label>
+        <label class="row" style="gap:6px;"><input type="radio" value="branch" x-model="billTo" @change="onBranchChange()"> Branch</label>
+      </div>
+    </div>
+
     <div class="form-grid">
-      <div class="field">
+      <div class="field" x-show="billTo === 'customer'">
         {{ form.customer_id.label(class="field-label") }}
         {{ form.customer_id(class="field-input", **{"x-model": "customerId", "@change": "onCustomerChange()"}) }}
         <p class="field-help" x-show="customerId !== 'new' && customerId !== ''">Place of supply is set from this customer's state below - change it if this sale ships to a different state.</p>
+      </div>
+      <div class="field" x-show="billTo === 'branch'">
+        {{ form.branch_user_id.label(class="field-label") }}
+        {{ form.branch_user_id(class="field-input", **{"x-model": "branchId", "@change": "onBranchChange()"}) }}
+        <p class="field-help" x-show="branchId" x-text="autoDocType()"></p>
       </div>
       <div class="field">
         {{ form.place_of_supply_state_code.label(class="field-label") }}
         {{ form.place_of_supply_state_code(class="field-input", **{"x-model": "placeOfSupply", "@change": "recalc()"}) }}
       </div>
     </div>
-    <template x-if="customerId === 'new'">
+    <template x-if="billTo === 'customer' && customerId === 'new'">
       <div class="form-grid" style="margin-top:12px;">
         {{ field(form.new_customer_name) }}
         {{ field(form.new_customer_gstin) }}
@@ -130,7 +149,9 @@
 function invoiceForm() {
   return {
     lines: PREFILL_LINES.length ? PREFILL_LINES : [{description:'', hsn:'', qty:1, rate:0, discount:0, gst_rate:0, unit:'pcs', product_id:null}],
+    billTo: document.querySelector('[name=branch_user_id]')?.value ? 'branch' : 'customer',
     customerId: document.querySelector('[name=customer_id]')?.value || '',
+    branchId: document.querySelector('[name=branch_user_id]')?.value || '',
     placeOfSupply: document.querySelector('[name=place_of_supply_state_code]')?.value || '',
     totals: { taxable: 0, cgst: 0, sgst: 0, igst: 0, grand: 0 },
     init() { this.recalc(); },
@@ -142,12 +163,27 @@ function invoiceForm() {
       if (state) this.placeOfSupply = state;
       this.recalc();
     },
+    // A branch has no state of its own on file - default to the GSTIN
+    // being billed from (an internal/local transfer is almost always
+    // intra-state); the operator can still change it for a genuinely
+    // out-of-state third-party branch.
+    onBranchChange() {
+      const gstinSelect = document.querySelector('[name=gstin_id]');
+      const gstinState = GSTIN_STATE[gstinSelect ? gstinSelect.value : ''] || '';
+      if (gstinState) this.placeOfSupply = gstinState;
+      this.recalc();
+    },
+    autoDocType() {
+      if (!this.branchId) return 'Select a branch';
+      return BRANCH_TYPE[this.branchId] === 'owned' ? 'Delivery Challan - no GST, stock transfers automatically' : 'Tax Invoice - GST applies, stock transfers automatically';
+    },
     isIntraState() {
       const gstinSelect = document.querySelector('[name=gstin_id]');
       const gstinState = GSTIN_STATE[gstinSelect ? gstinSelect.value : ''] || '';
       return gstinState && gstinState === this.placeOfSupply;
     },
     chargesGst() {
+      if (this.billTo === 'branch') return BRANCH_TYPE[this.branchId] !== 'owned';
       const docType = document.querySelector('[name=document_type]');
       return !docType || docType.value !== BILL_OF_SUPPLY;
     },

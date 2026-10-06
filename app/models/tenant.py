@@ -44,11 +44,6 @@ class Tenant(db.Model, TimestampMixin):
     # 2in / 3in / a4 - app.pos.receipt.THERMAL_WIDTHS_IN keys, plus "a4".
     # Lets POS checkout print immediately without asking every time.
     default_receipt_format = db.Column(db.String(10), nullable=False, default="3in")
-    # Branch stock counters (see app/pos/stock.py): a branch can still
-    # check out this many units past its allocated+sold limit before the
-    # POS actually blocks the sale - different branches serve slightly
-    # different portion sizes, so the exact count is never precise.
-    stock_grace_qty = db.Column(db.Integer, nullable=False, default=10)
 
     gstins = db.relationship(
         "Gstin", backref="tenant", cascade="all, delete-orphan", lazy="dynamic"

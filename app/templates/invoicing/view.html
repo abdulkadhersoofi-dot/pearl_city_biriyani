@@ -13,8 +13,10 @@
     <a href="{{ url_for('invoicing.invoice_pdf', invoice_id=invoice.id) }}" class="btn btn-secondary" target="_blank">Download PDF</a>
     {% if invoice.status.value == 'issued' %}
     <a href="{{ url_for('invoicing.new_invoice', duplicate_from=invoice.id) }}" class="btn btn-secondary">Duplicate</a>
+    {% if invoice.customer_id %}
     <a href="{{ url_for('notes.new_note', invoice_id=invoice.id, type='credit') }}" class="btn btn-secondary">Credit note</a>
     <a href="{{ url_for('notes.new_note', invoice_id=invoice.id, type='debit') }}" class="btn btn-secondary">Debit note</a>
+    {% endif %}
     {% endif %}
   </div>
 </div>
@@ -41,7 +43,8 @@
 
 <div class="card" style="margin-bottom:20px;">
   <div class="form-grid">
-    <div><strong>Customer</strong><p>{{ invoice.customer_snapshot.name }}<br>
+    <div><strong>{{ 'Billed to (branch)' if invoice.branch_user_id else 'Customer' }}</strong><p>{{ invoice.customer_snapshot.name }}<br>
+      {% if invoice.branch_user_id %}{{ 'PCB-owned branch - stock transfer, no GST' if invoice.branch_user.branch_type.value == 'owned' else 'Third-party branch' }}<br>{% endif %}
       {% if invoice.customer_snapshot.gstin %}GSTIN: {{ invoice.customer_snapshot.gstin }}<br>{% endif %}
       {{ invoice.customer_snapshot.state_name }}</p></div>
     <div><strong>Invoice date</strong><p>{{ invoice.invoice_date.strftime('%d %b %Y') }}</p></div>

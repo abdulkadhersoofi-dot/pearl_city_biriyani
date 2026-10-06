@@ -8,6 +8,8 @@ from app.models.invoice import Invoice, InvoiceLine, InvoiceStatus
 from app.models.invoice_series import DocumentType
 from app.models.mixins import utcnow
 from app.models.tenant import Gstin, Tenant
+from app.models.user import BranchType, User, UserRole
+from app.pos.stock import allocate_stock
 from app.utils.financial_year import financial_year_for
 from app.utils.gst import allowed_document_types, compute_invoice_totals, compute_line
 from app.utils.numbering import allocate_number, get_or_create_series
@@ -35,10 +37,16 @@ class LineInput:
 class InvoiceInput:
     gstin_id: int
     document_type: DocumentType
-    customer_id: int
     place_of_supply_state_code: str
     invoice_date: date
     notes: str | None
+    customer_id: int | None = None
+    # Billing a branch instead of an ordinary Customer - exactly one of
+    # customer_id/branch_user_id is set (create_invoice enforces this).
+    # The document type and GST treatment below are never trusted from
+    # the caller for a branch invoice - create_invoice resolves them
+    # itself from the branch's own branch_type.
+    branch_user_id: int | None = None
     lines: list[LineInput] = field(default_factory=list)
 
 
@@ -93,7 +101,23 @@ def parse_line_arrays(
 
 
 def create_invoice(tenant: Tenant, created_by, data: InvoiceInput) -> Invoice:
-    if data.document_type not in allowed_document_types(tenant.registration_type):
+    branch = None
+    if data.branch_user_id:
+        branch = User.query.filter_by(id=data.branch_user_id, tenant_id=tenant.id, role=UserRole.STAFF).first()
+        if not branch:
+            raise InvoiceValidationError("Select a valid branch.")
+        # Never the operator's choice: a PCB-owned branch is an internal
+        # stock transfer (Delivery Challan, no GST); a third-party branch
+        # is a real sale (Tax Invoice, GST as normal). Whatever document
+        # type the caller passed in is overridden here so this can never
+        # drift from the branch's own type.
+        document_type = DocumentType.DELIVERY_CHALLAN if branch.branch_type == BranchType.OWNED else DocumentType.TAX_INVOICE
+    elif data.customer_id:
+        document_type = data.document_type
+    else:
+        raise InvoiceValidationError("Select a customer or a branch to bill.")
+
+    if document_type not in allowed_document_types(tenant.registration_type):
         raise InvoiceValidationError(
             f"{tenant.legal_name} is registered as {tenant.registration_type.value} "
             "and cannot issue this document type."
@@ -103,11 +127,36 @@ def create_invoice(tenant: Tenant, created_by, data: InvoiceInput) -> Invoice:
     if not gstin:
         raise InvoiceValidationError("Select a valid GSTIN to bill from.")
 
-    customer = Customer.query.filter_by(id=data.customer_id, tenant_id=tenant.id).first()
-    if not customer:
-        raise InvoiceValidationError("Select a valid customer.")
+    customer = None
+    if branch:
+        customer_snapshot = {
+            "name": branch.name,
+            "gstin": None,
+            "address_line1": "",
+            "address_line2": "",
+            "city": "",
+            "state_code": "",
+            "state_name": "",
+            "pincode": "",
+        }
+    else:
+        customer = Customer.query.filter_by(id=data.customer_id, tenant_id=tenant.id).first()
+        if not customer:
+            raise InvoiceValidationError("Select a valid customer.")
+        customer_snapshot = {
+            "name": customer.name,
+            "gstin": customer.gstin,
+            "address_line1": customer.address_line1,
+            "address_line2": customer.address_line2,
+            "city": customer.city,
+            "state_code": customer.state_code,
+            "state_name": customer.state_name,
+            "pincode": customer.pincode,
+        }
 
-    charge_gst = data.document_type != DocumentType.BILL_OF_SUPPLY
+    # A branch-owned (internal) transfer never carries GST, same as a
+    # Bill of Supply - everything else charges GST as normal.
+    charge_gst = document_type not in (DocumentType.BILL_OF_SUPPLY, DocumentType.DELIVERY_CHALLAN)
     is_intra_state = data.place_of_supply_state_code == gstin.state_code
 
     computed_lines = []
@@ -125,7 +174,7 @@ def create_invoice(tenant: Tenant, created_by, data: InvoiceInput) -> Invoice:
     totals = compute_invoice_totals(computed_lines)
 
     series = get_or_create_series(
-        tenant.id, gstin.id, data.document_type, financial_year_for(data.invoice_date)
+        tenant.id, gstin.id, document_type, financial_year_for(data.invoice_date)
     )
     invoice_number = allocate_number(series)
 
@@ -134,18 +183,10 @@ def create_invoice(tenant: Tenant, created_by, data: InvoiceInput) -> Invoice:
         gstin_id=gstin.id,
         invoice_series_id=series.id,
         invoice_number=invoice_number,
-        document_type=data.document_type,
-        customer_id=customer.id,
-        customer_snapshot={
-            "name": customer.name,
-            "gstin": customer.gstin,
-            "address_line1": customer.address_line1,
-            "address_line2": customer.address_line2,
-            "city": customer.city,
-            "state_code": customer.state_code,
-            "state_name": customer.state_name,
-            "pincode": customer.pincode,
-        },
+        document_type=document_type,
+        customer_id=customer.id if customer else None,
+        branch_user_id=branch.id if branch else None,
+        customer_snapshot=customer_snapshot,
         place_of_supply_state_code=data.place_of_supply_state_code,
         invoice_date=data.invoice_date,
         status=InvoiceStatus.ISSUED,
@@ -178,6 +219,15 @@ def create_invoice(tenant: Tenant, created_by, data: InvoiceInput) -> Invoice:
                 sort_order=order,
             )
         )
+
+    if branch:
+        # Billing this invoice to a branch is how stock physically reaches
+        # it - this is the only place that happens, there is no separate
+        # "send stock" action any more. An ad-hoc line (no catalog
+        # product) has nothing to track against, so it's skipped.
+        stock_lines = [(line.product_id, line.qty) for line in data.lines if line.product_id]
+        if stock_lines:
+            allocate_stock(tenant.id, branch.id, created_by.id, stock_lines, on_date=data.invoice_date)
 
     return invoice
 

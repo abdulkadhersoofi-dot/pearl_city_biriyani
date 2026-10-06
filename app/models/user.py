@@ -16,6 +16,18 @@ class UserRole(str, enum.Enum):
     STAFF = "staff"
 
 
+class BranchType(str, enum.Enum):
+    """Only meaningful for a Staff (branch) login - see app/pos/stock.py
+    and app/invoicing/services.py. An OWNED branch is part of the kitchen
+    tenant itself, so stock sent to it is an internal transfer (Delivery
+    Challan, no GST); a THIRD_PARTY branch is an independent buyer who
+    resells the stock, so it's billed as a real sale (Tax Invoice, GST
+    applies)."""
+
+    OWNED = "owned"
+    THIRD_PARTY = "third_party"
+
+
 class User(db.Model, UserMixin, TimestampMixin):
     __tablename__ = "users"
 
@@ -28,6 +40,8 @@ class User(db.Model, UserMixin, TimestampMixin):
     phone = db.Column(db.String(20))
     password_hash = db.Column(db.String(255), nullable=False)
     role = db.Column(db.Enum(UserRole, name="user_role"), nullable=False)
+    # Only set for role=STAFF (a branch login) - see BranchType above.
+    branch_type = db.Column(db.Enum(BranchType, name="branch_type"))
     is_active = db.Column(db.Boolean, nullable=False, default=True)
     must_change_password = db.Column(db.Boolean, nullable=False, default=True)
     last_login_at = db.Column(db.DateTime(timezone=True))

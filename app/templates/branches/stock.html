@@ -1,86 +1,38 @@
 {% extends "base.html" %}
 {% block title %}Stock - {{ branch.name }} - {{ firm_name }}{% endblock %}
 
-{% block head %}
-<script>
-  const STOCK_PRODUCTS = [
-    {% for p in products %}
-    {id: {{ p.id }}, name: {{ p.name|tojson }}, unit: {{ p.unit|tojson }}},
-    {% endfor %}
-  ];
-</script>
-{% endblock %}
-
 {% block content %}
-<div x-data="stockForm()">
-  <div class="page-header">
-    <h1>Stock - {{ branch.name }}</h1>
-    <a href="{{ url_for('branches.list_branches') }}" class="btn btn-quiet">Back to branches</a>
-  </div>
-
-  <div class="card">
-    <h2 style="margin-top:0;">Today so far</h2>
-    {% if status %}
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>Item</th><th>Sent today</th><th>Sold today</th><th>Remaining</th></tr></thead>
-        <tbody>
-        {% for s in status %}
-          <tr>
-            <td>{{ s.product_name }}</td>
-            <td>{{ s.allocated }} {{ s.unit }}</td>
-            <td>{{ s.sold }} {{ s.unit }}</td>
-            <td>{{ s.remaining }} {{ s.unit }}</td>
-          </tr>
-        {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    {% else %}
-    <p class="text-muted">No stock sent to {{ branch.name }} yet today.</p>
-    {% endif %}
-  </div>
-
-  <div class="card">
-    <h2 style="margin-top:0;">Send stock</h2>
-    <form method="post">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>Item</th><th style="width:140px;">Quantity</th><th></th></tr></thead>
-          <tbody>
-            <template x-for="(line, i) in lines" :key="i">
-              <tr>
-                <td>
-                  <select :name="'product_id[]'" x-model="line.product_id" class="field-input">
-                    <option value="">Select item...</option>
-                    <template x-for="p in STOCK_PRODUCTS" :key="p.id">
-                      <option :value="p.id" x-text="p.name + ' (' + p.unit + ')'"></option>
-                    </template>
-                  </select>
-                </td>
-                <td><input type="number" step="0.001" min="0" :name="'qty[]'" x-model.number="line.qty" class="field-input"></td>
-                <td><button type="button" class="btn btn-quiet" @click="removeLine(i)" x-show="lines.length > 1">&times;</button></td>
-              </tr>
-            </template>
-          </tbody>
-        </table>
-      </div>
-      <button type="button" class="btn btn-secondary" style="margin-top:12px;" @click="addLine()">+ Add item</button>
-      <button type="submit" class="btn btn-primary btn-lg btn-block" style="margin-top:16px;">Send stock to {{ branch.name }}</button>
-    </form>
-  </div>
+<div class="page-header">
+  <h1>Stock - {{ branch.name }}</h1>
+  <a href="{{ url_for('branches.list_branches') }}" class="btn btn-quiet">Back to branches</a>
 </div>
-{% endblock %}
 
-{% block scripts %}
-<script>
-function stockForm() {
-  return {
-    lines: [{product_id: '', qty: ''}],
-    addLine() { this.lines.push({product_id: '', qty: ''}); },
-    removeLine(i) { this.lines.splice(i, 1); }
-  };
-}
-</script>
+<p class="text-muted">
+  This page only tracks {{ branch.name }}'s stock - stock reaches a branch by billing an invoice to it from
+  <a href="{{ url_for('invoicing.new_invoice') }}">Invoicing -> New invoice</a>, which transfers it automatically
+  once the invoice is saved.
+</p>
+
+<div class="card">
+  <h2 style="margin-top:0;">Today so far</h2>
+  {% if status %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Item</th><th>Sent today</th><th>Sold today</th><th>Remaining</th></tr></thead>
+      <tbody>
+      {% for s in status %}
+        <tr{% if s.remaining < 0 %} style="color:var(--color-danger);"{% endif %}>
+          <td>{{ s.product_name }}</td>
+          <td>{{ s.allocated }} {{ s.unit }}</td>
+          <td>{{ s.sold }} {{ s.unit }}</td>
+          <td>{{ s.remaining }} {{ s.unit }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="text-muted">No stock sent to {{ branch.name }} yet today.</p>
+  {% endif %}
+</div>
 {% endblock %}

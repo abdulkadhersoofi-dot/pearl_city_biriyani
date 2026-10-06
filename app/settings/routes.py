@@ -34,7 +34,6 @@ def index():
         tenant.text_color = form.text_color.data
         tenant.font_family = form.font_family.data
         tenant.default_receipt_format = form.default_receipt_format.data
-        tenant.stock_grace_qty = form.stock_grace_qty.data
         db.session.commit()
         flash("Settings updated.", "success")
         return redirect(url_for("settings.index"))

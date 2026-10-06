@@ -29,10 +29,15 @@ class Invoice(db.Model, TenantScopedMixin, TimestampMixin):
     invoice_number = db.Column(db.String(64), nullable=False, index=True)
     document_type = db.Column(db.Enum(DocumentType, name="document_type"), nullable=False)
 
-    customer_id = db.Column(db.Integer, db.ForeignKey("customers.id"), nullable=False)
-    # Frozen copy of the customer's name/GSTIN/address at issue time, so a
-    # later edit to the customer master never rewrites history on a past
-    # invoice.
+    # Exactly one of customer_id/branch_user_id is set - an invoice bills
+    # either an ordinary Customer or a branch (see app/invoicing/services.py
+    # create_invoice, which enforces this and resolves the branch case
+    # automatically to the right document type and GST treatment).
+    customer_id = db.Column(db.Integer, db.ForeignKey("customers.id"))
+    branch_user_id = db.Column(db.Integer, db.ForeignKey("users.id"), index=True)
+    # Frozen copy of the customer's (or branch's) name/GSTIN/address at
+    # issue time, so a later edit to the customer master, or renaming a
+    # branch, never rewrites history on a past invoice.
     customer_snapshot = db.Column(db.JSON, nullable=False)
 
     place_of_supply_state_code = db.Column(db.String(2), nullable=False)
@@ -71,6 +76,7 @@ class Invoice(db.Model, TenantScopedMixin, TimestampMixin):
     gstin = db.relationship("Gstin")
     series = db.relationship("InvoiceSeries")
     customer = db.relationship("Customer")
+    branch_user = db.relationship("User", foreign_keys=[branch_user_id])
     created_by = db.relationship("User", foreign_keys=[created_by_id])
     voided_by = db.relationship("User", foreign_keys=[voided_by_id])
     lines = db.relationship(

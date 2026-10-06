@@ -43,15 +43,6 @@
     </div>
   </div>
 
-  <div class="card stack" style="margin-top:16px;">
-    <h2 style="margin:0; font-size:1.05rem;">Branch stock</h2>
-    <p class="text-muted mt-0">
-      Each branch's POS counts down the stock you send it today and blocks billing once it's used up.
-      Since serving sizes vary a little by branch, this many extra sales are still allowed past that point.
-    </p>
-    {{ field(form.stock_grace_qty, help="Extra sales allowed once a branch's daily stock reaches zero.") }}
-  </div>
-
   <button type="submit" class="btn btn-primary btn-lg">Save settings</button>
 </form>
 

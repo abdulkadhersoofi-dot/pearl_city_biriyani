@@ -60,7 +60,7 @@ def terminal():
             db.session.commit()
             held_bills = [hb for hb in held_bills if hb.id != resume_bill.id]
 
-    stock_status = branch_stock_status(current_user.id, tenant.stock_grace_qty) if current_user.is_staff else []
+    stock_status = branch_stock_status(current_user.id) if current_user.is_staff else []
 
     return render_template(
         "pos/terminal.html",

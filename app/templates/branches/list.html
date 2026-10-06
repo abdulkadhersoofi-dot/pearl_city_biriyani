@@ -8,11 +8,12 @@
 
 <div class="table-wrap card">
   <table>
-    <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Status</th><th></th></tr></thead>
+    <thead><tr><th>Name</th><th>Type</th><th>Email</th><th>Phone</th><th>Status</th><th></th></tr></thead>
     <tbody>
     {% for u in branches %}
       <tr>
         <td>{{ u.name }}</td>
+        <td>{{ 'PCB-owned' if u.branch_type.value == 'owned' else 'Third-party' if u.branch_type else '-' }}</td>
         <td>{{ u.email }}</td>
         <td>{{ u.phone or '-' }}</td>
         <td>{{ 'Active' if u.is_active else 'Inactive' }}</td>
@@ -34,7 +35,7 @@
         </td>
       </tr>
       <tr>
-        <td colspan="5" style="padding:0;">
+        <td colspan="6" style="padding:0;">
           <details class="card" style="margin:0 0 12px 0;">
             <summary>Today's stock{% if stock_by_branch[u.id] %} ({{ stock_by_branch[u.id]|length }} item{{ 's' if stock_by_branch[u.id]|length != 1 }}){% endif %}</summary>
             {% set status = stock_by_branch[u.id] %}
@@ -43,7 +44,7 @@
               <thead><tr><th>Item</th><th>Sent</th><th>Sold</th><th>Remaining</th></tr></thead>
               <tbody>
               {% for s in status %}
-                <tr>
+                <tr{% if s.remaining < 0 %} style="color:var(--color-danger);"{% endif %}>
                   <td>{{ s.product_name }}</td>
                   <td>{{ s.allocated }} {{ s.unit }}</td>
                   <td>{{ s.sold }} {{ s.unit }}</td>
@@ -53,13 +54,13 @@
               </tbody>
             </table>
             {% else %}
-            <p class="text-muted" style="margin:10px 0 0;">No stock sent to this branch yet today.</p>
+            <p class="text-muted" style="margin:10px 0 0;">No stock sent to this branch yet today. Bill an invoice to this branch from Invoicing to send some.</p>
             {% endif %}
           </details>
         </td>
       </tr>
     {% else %}
-      <tr><td colspan="5" class="empty-state">No branches yet. Add your first one.</td></tr>
+      <tr><td colspan="6" class="empty-state">No branches yet. Add your first one.</td></tr>
     {% endfor %}
     </tbody>
   </table>

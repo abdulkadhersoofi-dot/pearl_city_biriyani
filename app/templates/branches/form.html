@@ -8,6 +8,7 @@
   {{ field(form.name) }}
   {{ field(form.email) }}
   {{ field(form.phone) }}
+  {{ field(form.branch_type, help="Decides how invoices billed to this branch are automatically handled - see Invoicing -> New invoice -> Bill to a branch.") }}
   {{ field(form.password, help="Share this with them yourself - they'll be asked to change it on first sign-in.") }}
   {{ field(form.confirm_password) }}
   <button type="submit" class="btn btn-primary btn-lg">Add branch</button>

@@ -304,36 +304,46 @@ Gunicorn workers or add app servers behind Nginx as load grows.
   as a credit note against an invoice. Refund is a Day-book row action
   (not on the receipt page), since that's where the two entries live
   together.
-- **Branch stock counters** (`app/pos/stock.py`, `app/models/stock.py`,
-  "Staff" renamed to "Branches" throughout). A kitchen-style tenant (one
-  Client Admin cooking in bulk, billed out through several Staff/Branch
-  logins) sends each branch a daily quantity of each item from
-  Branches → a branch's Stock page; that branch's own POS terminal then
-  shows a collapsible "Today's stock" counter and refuses to check out
-  past it, while the Client Admin's Branches list shows the same counter
-  for every branch at once, for tracking stock availability and whether a
-  branch is actually selling. The model is an append-only ledger
-  (`BranchStockAllocation`: branch, product, qty, date) rather than one
-  mutable row - a second delivery the same day is a second row, so
-  "resets daily" falls out of every query being scoped to today's date
-  and nothing needs a nightly reset job. "Sold" is the sum of
-  `POSBillLine.qty` across that branch login's own `COMPLETED` bills
-  today; a refund doesn't currently restore the counter, since this app
-  tracks refunds by amount, not by original line quantity. Because
-  serving sizes vary a little branch to branch, the real limit enforced
-  at checkout is allocated + a per-tenant grace buffer
-  (`Tenant.stock_grace_qty`, Settings → Branch stock, default 10) - the
-  displayed "remaining" count still floors at zero so the till never
-  shows a confusing negative number, even though a few more sales are
-  quietly still possible past that point. Only products a branch has an
-  actual allocation for today are tracked at all; anything else, and the
-  Client Admin's own direct POS use, sells with no limit, same as before
-  this feature existed. The terminal's cart math is optimistic
-  client-side JS mirroring the same allocated+grace-sold formula so a
-  cashier sees an item go to zero before they try to bill it, but the
-  server (`check_cart_against_stock`, called from `pos.services.checkout`)
-  is always the real gate - a request that bypasses the UI still gets
-  blocked.
+- **Branches, and stock that transfers through Invoicing, not a separate
+  "send stock" screen** (`app/models/user.py` BranchType, `app/models/stock.py`,
+  `app/pos/stock.py`, `app/invoicing/services.py`, "Staff" renamed to
+  "Branches" throughout). A kitchen-style tenant (one Client Admin cooking
+  in bulk, billed out through several branch logins) bills a branch the
+  same way it bills any customer - New invoice → Bill to → Branch - and
+  that invoice *is* the stock transfer: saving it both issues the
+  document and adds to that branch's running stock total for the day, in
+  one step, no separate action. A branch is one of two types
+  (`User.branch_type`, set when the branch is created): **PCB-owned** is
+  the kitchen's own branch, so its invoice is always forced to a
+  **Delivery Challan with no GST**, whatever document type was picked in
+  the form; **third-party** is an independent reseller, so its invoice is
+  always forced to a **Tax Invoice with GST applied as normal**. This
+  override happens in `create_invoice` itself, not the route, so it can
+  never be the operator's choice or drift from the branch's own type.
+  Stock is an append-only ledger (`BranchStockAllocation`: branch,
+  product, qty, date) rather than one mutable row - a second invoice to
+  the same branch the same day adds to, not replaces, the running total,
+  so "resets daily" falls out of every query being scoped to the
+  invoice's own date and nothing needs a nightly reset job. "Sold" is the
+  sum of `POSBillLine.qty` across that branch login's own `COMPLETED`
+  POS bills that day; a refund doesn't currently restore the counter,
+  since this app tracks refunds by amount, not by original line
+  quantity, and voiding a branch invoice doesn't reverse the transfer
+  either - both are documented simplifications, not silent bugs. **There
+  is no checkout limit at all**: a branch can keep billing on its POS
+  past its allocation - portion sizes vary too much, branch to branch, to
+  enforce a hard stop - so the branch's own terminal and the Client
+  Admin's Branches list both show a collapsible "Today's stock" counter
+  that's purely a tracking signal, and its `remaining` is allowed to go
+  negative (shown in red) rather than floored at zero, so an oversell is
+  visible rather than hidden. The Branches tab itself is view-only for
+  stock now - it tracks and displays, it never sends; the only two ways a
+  number there changes are a branch invoice (adds to it) and a POS sale
+  on that branch's own login (subtracts from it). Credit/debit notes
+  aren't supported against a branch invoice (`customer_id` is only set
+  for an ordinary Customer; `CreditDebitNote.customer_id` is required) -
+  `create_note` raises a clear error and the invoice view page hides
+  those buttons for a branch invoice; voiding still works normally.
 - **Sales report** (`app/reports/sales.py`, Reports → Sales report) is a
   document-level list - invoices and POS bills combined, any date range,
   every GSTIN, any registration type (unlike GSTR-1/3B, which is one
