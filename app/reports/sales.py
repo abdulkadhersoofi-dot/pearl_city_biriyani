@@ -79,9 +79,13 @@ def sales_report_data(tenant: Tenant, start: date, end: date) -> dict:
                 customer_gstin=normalized_customer_gstin(cust),
                 payment_mode=None,
                 taxable_value=inv.total_taxable_value,
-                cgst=inv.total_cgst,
-                sgst=inv.total_sgst,
-                igst=inv.total_igst,
+                # An RCM invoice carries its tax in total_rcgst/rsgst/rigst
+                # instead (see app.models.invoice.Invoice) - folded back in
+                # here since this report is just "what did I sell", not a
+                # tax-liability figure.
+                cgst=inv.total_cgst + inv.total_rcgst,
+                sgst=inv.total_sgst + inv.total_rsgst,
+                igst=inv.total_igst + inv.total_rigst,
                 total=inv.grand_total,
             )
         )

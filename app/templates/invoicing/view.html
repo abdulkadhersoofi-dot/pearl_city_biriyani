@@ -76,6 +76,9 @@
     {% if invoice.total_cgst %}<div class="totals-row"><span>CGST</span><span>Rs. {{ '%.2f'|format(invoice.total_cgst) }}</span></div>{% endif %}
     {% if invoice.total_sgst %}<div class="totals-row"><span>SGST</span><span>Rs. {{ '%.2f'|format(invoice.total_sgst) }}</span></div>{% endif %}
     {% if invoice.total_igst %}<div class="totals-row"><span>IGST</span><span>Rs. {{ '%.2f'|format(invoice.total_igst) }}</span></div>{% endif %}
+    {% if invoice.total_rcgst %}<div class="totals-row"><span>RCGST (reverse charge)</span><span>Rs. {{ '%.2f'|format(invoice.total_rcgst) }}</span></div>{% endif %}
+    {% if invoice.total_rsgst %}<div class="totals-row"><span>RSGST (reverse charge)</span><span>Rs. {{ '%.2f'|format(invoice.total_rsgst) }}</span></div>{% endif %}
+    {% if invoice.total_rigst %}<div class="totals-row"><span>RIGST (reverse charge)</span><span>Rs. {{ '%.2f'|format(invoice.total_rigst) }}</span></div>{% endif %}
     <div class="totals-row"><span>Round off</span><span>Rs. {{ '%.2f'|format(invoice.round_off) }}</span></div>
     <div class="totals-row grand"><span>Total</span><span>Rs. {{ '%.2f'|format(invoice.grand_total) }}</span></div>
   </div>

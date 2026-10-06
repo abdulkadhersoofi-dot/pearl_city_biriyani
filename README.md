@@ -362,6 +362,25 @@ Gunicorn workers or add app servers behind Nginx as load grows.
   same defensively when reading a (possibly historical) customer
   snapshot, so existing bad data also reports correctly without a data
   migration.
+- **A Reverse Charge Invoice's GST lives in its own columns, never
+  `cgst_amount`/`sgst_amount`/`igst_amount`.** Under RCM the recipient
+  pays the tax directly to the government, not this tenant - mixing it
+  into the same columns a Tax Invoice uses would overstate this tenant's
+  own GSTR-3B output tax payable. `Invoice`/`InvoiceLine` carry a second,
+  parallel set of columns (`total_rcgst`/`rsgst`/`rigst` and
+  `rcgst_amount`/`rsgst_amount`/`rigst_amount`) exclusively for
+  `RCM_INVOICE` documents; `create_invoice` computes the tax the normal
+  way and then routes it into one set of columns or the other based on
+  the resolved document type, never both. `gstr3b_data` deliberately
+  sums only the plain columns, so RCM tax correctly never inflates
+  `gross_tax_payable`; `gstr1_data` and the sales report fold the two
+  sets back together, since GSTR-1 still has to disclose an RCM supply's
+  tax for reconciliation and the sales report is just "what did I sell",
+  not a liability figure. The invoice view/PDF show a separate
+  "RCGST/RSGST/RIGST (reverse charge)" row instead of CGST/SGST/IGST for
+  these documents. A migration moved any pre-existing RCM invoices' tax
+  out of the shared columns into the new ones so historical data reports
+  correctly too.
 
 ## Roadmap
 

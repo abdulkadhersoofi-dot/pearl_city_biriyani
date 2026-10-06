@@ -59,12 +59,17 @@
     </div>
   </div>
 
+  {% set is_rcm = invoice.document_type.value == 'rcm_invoice' %}
   <table>
     <thead>
       <tr>
         <th>#</th><th>Description</th><th>HSN/SAC</th><th class="num">Qty</th><th class="num">Rate</th>
         <th class="num">Discount</th><th class="num">Taxable</th>
-        {% if invoice.total_igst %}<th class="num">IGST</th>{% else %}<th class="num">CGST</th><th class="num">SGST</th>{% endif %}
+        {% if is_rcm %}
+          {% if invoice.total_rigst %}<th class="num">RIGST</th>{% else %}<th class="num">RCGST</th><th class="num">RSGST</th>{% endif %}
+        {% else %}
+          {% if invoice.total_igst %}<th class="num">IGST</th>{% else %}<th class="num">CGST</th><th class="num">SGST</th>{% endif %}
+        {% endif %}
         <th class="num">Total</th>
       </tr>
     </thead>
@@ -78,8 +83,13 @@
         <td class="num">{{ '%.2f'|format(l.rate) }}</td>
         <td class="num">{{ '%.2f'|format(l.discount_amount) }}</td>
         <td class="num">{{ '%.2f'|format(l.taxable_value) }}</td>
-        {% if invoice.total_igst %}<td class="num">{{ '%.2f'|format(l.igst_amount) }}</td>
-        {% else %}<td class="num">{{ '%.2f'|format(l.cgst_amount) }}</td><td class="num">{{ '%.2f'|format(l.sgst_amount) }}</td>{% endif %}
+        {% if is_rcm %}
+          {% if invoice.total_rigst %}<td class="num">{{ '%.2f'|format(l.rigst_amount) }}</td>
+          {% else %}<td class="num">{{ '%.2f'|format(l.rcgst_amount) }}</td><td class="num">{{ '%.2f'|format(l.rsgst_amount) }}</td>{% endif %}
+        {% else %}
+          {% if invoice.total_igst %}<td class="num">{{ '%.2f'|format(l.igst_amount) }}</td>
+          {% else %}<td class="num">{{ '%.2f'|format(l.cgst_amount) }}</td><td class="num">{{ '%.2f'|format(l.sgst_amount) }}</td>{% endif %}
+        {% endif %}
         <td class="num">{{ '%.2f'|format(l.line_total) }}</td>
       </tr>
       {% endfor %}
@@ -91,6 +101,9 @@
     {% if invoice.total_cgst %}<tr><td>CGST</td><td class="num">Rs. {{ '%.2f'|format(invoice.total_cgst) }}</td></tr>{% endif %}
     {% if invoice.total_sgst %}<tr><td>SGST</td><td class="num">Rs. {{ '%.2f'|format(invoice.total_sgst) }}</td></tr>{% endif %}
     {% if invoice.total_igst %}<tr><td>IGST</td><td class="num">Rs. {{ '%.2f'|format(invoice.total_igst) }}</td></tr>{% endif %}
+    {% if invoice.total_rcgst %}<tr><td>RCGST (reverse charge)</td><td class="num">Rs. {{ '%.2f'|format(invoice.total_rcgst) }}</td></tr>{% endif %}
+    {% if invoice.total_rsgst %}<tr><td>RSGST (reverse charge)</td><td class="num">Rs. {{ '%.2f'|format(invoice.total_rsgst) }}</td></tr>{% endif %}
+    {% if invoice.total_rigst %}<tr><td>RIGST (reverse charge)</td><td class="num">Rs. {{ '%.2f'|format(invoice.total_rigst) }}</td></tr>{% endif %}
     <tr><td>Round off</td><td class="num">Rs. {{ '%.2f'|format(invoice.round_off) }}</td></tr>
     <tr class="grand"><td>Total</td><td class="num">Rs. {{ '%.2f'|format(invoice.grand_total) }}</td></tr>
   </table>

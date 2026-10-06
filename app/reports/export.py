@@ -113,6 +113,7 @@ def build_gstr3b_workbook(data: dict) -> BytesIO:
     ws.append([])
     ws.append(["Input Tax Credit is not tracked in this system - this app records sales only."])
     ws.append(["Add eligible ITC from purchase records before computing net cash payable."])
+    ws.append(["Reverse Charge Invoices are excluded above - the recipient pays that tax directly, not this tenant."])
     _autosize(ws)
     buf = BytesIO()
     wb.save(buf)

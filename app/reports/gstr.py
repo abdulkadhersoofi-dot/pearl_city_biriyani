@@ -78,6 +78,14 @@ class SupplyLine:
     cgst: Decimal
     sgst: Decimal
     igst: Decimal
+    # Reverse-charge tax (RCM_INVOICE only) - this tenant's recipient pays
+    # it, not this tenant, so it's tracked separately from cgst/sgst/igst
+    # above: gstr1_data folds it back in for disclosure (a GSTR-1 B2B row
+    # still reports an RCM supply's tax), gstr3b_data deliberately doesn't
+    # (it isn't this tenant's own output tax payable).
+    rcgst: Decimal = ZERO
+    rsgst: Decimal = ZERO
+    rigst: Decimal = ZERO
     sign: int = 1
 
     @property
@@ -86,7 +94,7 @@ class SupplyLine:
 
     @property
     def total(self) -> Decimal:
-        return self.sign * (self.taxable_value + self.cgst + self.sgst + self.igst)
+        return self.sign * (self.taxable_value + self.cgst + self.sgst + self.igst + self.rcgst + self.rsgst + self.rigst)
 
 
 @dataclass
@@ -206,6 +214,9 @@ def _collect_supply_lines(tenant: Tenant, gstin: Gstin, period: str) -> tuple[li
                     cgst=l.cgst_amount,
                     sgst=l.sgst_amount,
                     igst=l.igst_amount,
+                    rcgst=l.rcgst_amount,
+                    rsgst=l.rsgst_amount,
+                    rigst=l.rigst_amount,
                     sign=1,
                 )
             )
@@ -341,13 +352,22 @@ def gstr1_data(tenant: Tenant, gstin: Gstin, period: str) -> dict:
     hsn: dict[tuple, HsnBucket] = {}
 
     for l in lines:
+        # GSTR-1 still has to disclose an RCM supply's tax (a B2B invoice
+        # row reports it, flagged reverse-charge, same as any other tax
+        # amount) even though GSTR-3B must not count it as this tenant's
+        # own payable - so here, unlike gstr3b_data below, rcgst/rsgst/
+        # rigst are folded back into the ordinary cgst/sgst/igst figures.
+        eff_cgst = l.cgst + l.rcgst
+        eff_sgst = l.sgst + l.rsgst
+        eff_igst = l.igst + l.rigst
+
         hkey = (l.hsn, l.gst_rate, l.unit)
         hb = hsn.setdefault(hkey, HsnBucket(hsn=l.hsn, gst_rate=l.gst_rate, unit=l.unit))
         hb.qty += l.sign * l.qty
         hb.taxable_value += l.sign * l.taxable_value
-        hb.cgst += l.sign * l.cgst
-        hb.sgst += l.sign * l.sgst
-        hb.igst += l.sign * l.igst
+        hb.cgst += l.sign * eff_cgst
+        hb.sgst += l.sign * eff_sgst
+        hb.igst += l.sign * eff_igst
 
         if l.is_b2b:
             entry = b2b_by_customer.setdefault(
@@ -367,16 +387,16 @@ def gstr1_data(tenant: Tenant, gstin: Gstin, period: str) -> dict:
                 },
             )
             doc["taxable_value"] += l.sign * l.taxable_value
-            doc["cgst"] += l.sign * l.cgst
-            doc["sgst"] += l.sign * l.sgst
-            doc["igst"] += l.sign * l.igst
+            doc["cgst"] += l.sign * eff_cgst
+            doc["sgst"] += l.sign * eff_sgst
+            doc["igst"] += l.sign * eff_igst
         else:
             bkey = (l.place_of_supply, l.gst_rate)
             bb = b2c.setdefault(bkey, B2CBucket(place_of_supply=l.place_of_supply, gst_rate=l.gst_rate))
             bb.taxable_value += l.sign * l.taxable_value
-            bb.cgst += l.sign * l.cgst
-            bb.sgst += l.sign * l.sgst
-            bb.igst += l.sign * l.igst
+            bb.cgst += l.sign * eff_cgst
+            bb.sgst += l.sign * eff_sgst
+            bb.igst += l.sign * eff_igst
 
     b2b = []
     for entry in b2b_by_customer.values():
@@ -407,9 +427,9 @@ def gstr1_data(tenant: Tenant, gstin: Gstin, period: str) -> dict:
 
     totals = {
         "taxable_value": sum((l.sign * l.taxable_value for l in lines), ZERO),
-        "cgst": sum((l.sign * l.cgst for l in lines), ZERO),
-        "sgst": sum((l.sign * l.sgst for l in lines), ZERO),
-        "igst": sum((l.sign * l.igst for l in lines), ZERO),
+        "cgst": sum((l.sign * (l.cgst + l.rcgst) for l in lines), ZERO),
+        "sgst": sum((l.sign * (l.sgst + l.rsgst) for l in lines), ZERO),
+        "igst": sum((l.sign * (l.igst + l.rigst) for l in lines), ZERO),
     }
     totals["total"] = totals["taxable_value"] + totals["cgst"] + totals["sgst"] + totals["igst"]
 
@@ -440,6 +460,11 @@ _NOTE_DOC_TYPES = {DocumentType.CREDIT_NOTE, DocumentType.DEBIT_NOTE}
 def gstr3b_data(tenant: Tenant, gstin: Gstin, period: str) -> dict:
     lines, raw = _collect_supply_lines(tenant, gstin, period)
 
+    # Deliberately sums only l.cgst/sgst/igst below, never l.rcgst/rsgst/
+    # rigst - an RCM_INVOICE's tax is the recipient's liability, not this
+    # tenant's, so it must not inflate gross_tax_payable (this tenant's
+    # own output tax). The taxable value still counts normally; only the
+    # tax itself is excluded. Contrast gstr1_data, which does disclose it.
     buckets = {
         "taxable": {"taxable_value": ZERO, "cgst": ZERO, "sgst": ZERO, "igst": ZERO},
         "zero_rated": {"taxable_value": ZERO, "cgst": ZERO, "sgst": ZERO, "igst": ZERO},

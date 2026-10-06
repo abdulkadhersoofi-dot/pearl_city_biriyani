@@ -157,6 +157,12 @@ def create_invoice(tenant: Tenant, created_by, data: InvoiceInput) -> Invoice:
     # A branch-owned (internal) transfer never carries GST, same as a
     # Bill of Supply - everything else charges GST as normal.
     charge_gst = document_type not in (DocumentType.BILL_OF_SUPPLY, DocumentType.DELIVERY_CHALLAN)
+    # Under reverse charge, the recipient - not this tenant - pays the tax
+    # shown on this invoice. It's still computed the normal way below, but
+    # kept out of the cgst/sgst/igst columns a Tax Invoice uses (those feed
+    # GSTR-3B's own output-tax-payable figure) and stored in the separate
+    # rcgst/rsgst/rigst columns instead.
+    is_rcm = document_type == DocumentType.RCM_INVOICE
     is_intra_state = data.place_of_supply_state_code == gstin.state_code
 
     computed_lines = []
@@ -172,6 +178,17 @@ def create_invoice(tenant: Tenant, created_by, data: InvoiceInput) -> Invoice:
         computed_lines.append({**computed, "input": line})
 
     totals = compute_invoice_totals(computed_lines)
+    if is_rcm:
+        totals["total_rcgst"] = totals.pop("total_cgst")
+        totals["total_rsgst"] = totals.pop("total_sgst")
+        totals["total_rigst"] = totals.pop("total_igst")
+        totals["total_cgst"] = Decimal("0.00")
+        totals["total_sgst"] = Decimal("0.00")
+        totals["total_igst"] = Decimal("0.00")
+    else:
+        totals["total_rcgst"] = Decimal("0.00")
+        totals["total_rsgst"] = Decimal("0.00")
+        totals["total_rigst"] = Decimal("0.00")
 
     series = get_or_create_series(
         tenant.id, gstin.id, document_type, financial_year_for(data.invoice_date)
@@ -199,6 +216,12 @@ def create_invoice(tenant: Tenant, created_by, data: InvoiceInput) -> Invoice:
 
     for order, item in enumerate(computed_lines):
         line_in = item["input"]
+        cgst_amount = sgst_amount = igst_amount = Decimal("0.00")
+        rcgst_amount = rsgst_amount = rigst_amount = Decimal("0.00")
+        if is_rcm:
+            rcgst_amount, rsgst_amount, rigst_amount = item["cgst_amount"], item["sgst_amount"], item["igst_amount"]
+        else:
+            cgst_amount, sgst_amount, igst_amount = item["cgst_amount"], item["sgst_amount"], item["igst_amount"]
         db.session.add(
             InvoiceLine(
                 invoice_id=invoice.id,
@@ -212,9 +235,12 @@ def create_invoice(tenant: Tenant, created_by, data: InvoiceInput) -> Invoice:
                 discount_amount=item["discount_amount"],
                 taxable_value=item["taxable_value"],
                 gst_rate=line_in.gst_rate if charge_gst else Decimal("0"),
-                cgst_amount=item["cgst_amount"],
-                sgst_amount=item["sgst_amount"],
-                igst_amount=item["igst_amount"],
+                cgst_amount=cgst_amount,
+                sgst_amount=sgst_amount,
+                igst_amount=igst_amount,
+                rcgst_amount=rcgst_amount,
+                rsgst_amount=rsgst_amount,
+                rigst_amount=rigst_amount,
                 line_total=item["line_total"],
                 sort_order=order,
             )

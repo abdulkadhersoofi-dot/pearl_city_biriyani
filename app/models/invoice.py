@@ -52,6 +52,15 @@ class Invoice(db.Model, TenantScopedMixin, TimestampMixin):
     total_cgst = db.Column(db.Numeric(12, 2), nullable=False, default=0)
     total_sgst = db.Column(db.Numeric(12, 2), nullable=False, default=0)
     total_igst = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    # A Reverse Charge Invoice's tax is never charged by/payable to this
+    # tenant - the recipient self-assesses and pays it directly to the
+    # government - so it's never mixed into total_cgst/sgst/igst above
+    # (which GSTR-3B sums as this tenant's own output tax payable). It's
+    # disclosed here instead, exclusively for RCM_INVOICE documents - see
+    # app.invoicing.services.create_invoice.
+    total_rcgst = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    total_rsgst = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    total_rigst = db.Column(db.Numeric(12, 2), nullable=False, default=0)
     round_off = db.Column(db.Numeric(12, 2), nullable=False, default=0)
     grand_total = db.Column(db.Numeric(12, 2), nullable=False, default=0)
 
@@ -114,6 +123,11 @@ class InvoiceLine(db.Model, TimestampMixin):
     cgst_amount = db.Column(db.Numeric(12, 2), nullable=False, default=0)
     sgst_amount = db.Column(db.Numeric(12, 2), nullable=False, default=0)
     igst_amount = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    # Reverse-charge counterpart of the three columns above - see
+    # Invoice.total_rcgst.
+    rcgst_amount = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    rsgst_amount = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    rigst_amount = db.Column(db.Numeric(12, 2), nullable=False, default=0)
     line_total = db.Column(db.Numeric(12, 2), nullable=False, default=0)
 
     sort_order = db.Column(db.Integer, nullable=False, default=0)
