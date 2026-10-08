@@ -549,6 +549,41 @@ Gunicorn workers or add app servers behind Nginx as load grows.
   existed (the role was introduced one migration earlier), for the same
   "don't retroactively lock out someone already set up" reason as the
   tenant backfill.
+- **"Mark this period paid" is idempotent, and never disabled.** The
+  original version advanced `next_billing_due` by one cycle on every
+  single click with no idempotency check at all, so an accidental
+  double/triple-click (or four) silently skipped the tenant several
+  cycles into the future - a real billing bug, not a cosmetic one. The
+  fix adds `Tenant.last_paid_on`/`User.last_paid_on` (same field on
+  both, same reason as every other billing column they share) recording
+  the live-calendar date the cycle was last actually advanced, and
+  `tenants.mark_billing_paid`/`mark_auditor_billing_paid` check it
+  first: `last_paid_on == today` means "already recorded a payment just
+  now", a flat no-op regardless of what the date math says. That catches
+  the one case a plain `next_billing_due > today` comparison can't - a
+  tenant overdue by exactly one cycle length advances, on its one
+  legitimate click, to a due date that lands exactly on today, not in
+  the future, so a same-day repeat click would otherwise slip through.
+  `next_billing_due > today` is still checked too, for "paid ahead,
+  come back another day". Importantly, the button itself is never
+  hidden, disabled, or swapped for plain text in either state - it's
+  always safe to click, so there's nothing to get wrong by trying to
+  tell whether now is "the right time" to show it.
+- **"Resync to live calendar"** (`tenants.resync_billing_cycle` /
+  `resync_auditor_billing_cycle`) is a separate, explicit repair action
+  for a tenant/Auditor whose `next_billing_due` has already drifted -
+  from the bug above, a hand edit, or anything else. Unlike
+  `mark_billing_paid`, which always advances relative to whatever
+  `next_billing_due` currently holds (correct for an undrifted cycle,
+  but compounds a bad value if it already drifted), this recomputes
+  from the one date that never drifts: `cycle_anchor_date`.
+  `app.utils.billing.next_due_after(anchor, cycle, today)` walks forward
+  from the anchor in whole cycle steps to the smallest boundary still in
+  the future - a true resync to where the cycle should actually be
+  today, not another relative nudge that could compound an existing
+  mistake. Requires both `billing_cycle` and `cycle_anchor_date` to
+  already be set (there's nothing to resync against otherwise) and is
+  Ultra-Admin-only, same as every other billing action.
 
 ## Roadmap
 

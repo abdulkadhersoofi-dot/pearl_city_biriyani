@@ -244,6 +244,27 @@ def test_mark_billing_paid_starts_a_cycle_when_none_tracked(client, db, super_ad
     assert tenant.next_billing_due == add_one_month(date.today())
 
 
+def test_mark_billing_paid_records_last_paid_on(client, db, super_admin, tenant):
+    tenant.next_billing_due = date.today() - timedelta(days=1)
+    tenant.last_paid_on = None
+    db.session.commit()
+    _login(client, super_admin.email, "SuperSecret123")
+    client.post(f"/admin/clients/{tenant.id}/billing/mark-paid")
+    db.session.refresh(tenant)
+    assert tenant.last_paid_on == date.today()
+
+
+def test_mark_billing_paid_button_is_never_hidden_even_when_already_paid_ahead(client, db, super_admin, tenant):
+    # The button stays clickable at all times - no plain-text swap - the
+    # route's own idempotency guards are what make repeat clicks safe.
+    tenant.next_billing_due = date.today() + timedelta(days=20)
+    db.session.commit()
+    _login(client, super_admin.email, "SuperSecret123")
+    resp = client.get(f"/admin/clients/{tenant.id}")
+    assert b"Mark this period paid" in resp.data
+    assert b"Resync to live calendar" in resp.data
+
+
 def test_mark_billing_paid_is_idempotent_against_repeated_clicks(client, db, super_admin, tenant):
     # The bug this guards against: clicking "mark paid" 4 times in a row
     # (e.g. a double-click, or an impatient admin) must advance the
@@ -267,7 +288,25 @@ def test_mark_billing_paid_second_click_shows_already_paid_message(client, db, s
 
     client.post(f"/admin/clients/{tenant.id}/billing/mark-paid")
     resp = client.post(f"/admin/clients/{tenant.id}/billing/mark-paid", follow_redirects=True)
+    # last_paid_on == today fires first, ahead of the next_billing_due
+    # comparison - both are "nothing to do" outcomes, but this is the
+    # more specific one.
+    assert b"already marked paid today" in resp.data.lower()
+
+
+def test_mark_billing_paid_already_paid_ahead_shows_the_future_due_date(client, db, super_admin, tenant):
+    # A later day's click, once the tenant is genuinely paid ahead into
+    # the future and last_paid_on is no longer today - exercises the
+    # next_billing_due > today guard specifically.
+    tenant.next_billing_due = date.today() + timedelta(days=20)
+    tenant.last_paid_on = date.today() - timedelta(days=10)
+    db.session.commit()
+    _login(client, super_admin.email, "SuperSecret123")
+
+    resp = client.post(f"/admin/clients/{tenant.id}/billing/mark-paid", follow_redirects=True)
     assert b"already paid up" in resp.data.lower()
+    db.session.refresh(tenant)
+    assert tenant.next_billing_due == date.today() + timedelta(days=20)
 
 
 def test_mark_billing_paid_blocks_a_same_day_repeat_even_when_the_advance_lands_on_today(client, db, super_admin, tenant):
@@ -299,6 +338,57 @@ def test_mark_billing_paid_blocks_a_same_day_repeat_even_when_the_advance_lands_
     db.session.refresh(tenant)
     assert tenant.next_billing_due == today, "a same-day repeat click must never advance a second time"
     assert b"already marked paid today" in resp.data.lower()
+
+
+# --- Resync to live calendar ------------------------------------------------
+
+def test_resync_billing_cycle_recomputes_from_the_anchor(client, db, super_admin, tenant):
+    # Simulate a "mashed up" cycle - many cycles ahead of where it should
+    # legitimately be - and confirm resync snaps it back to the correct
+    # live value, counting forward from the anchor rather than trusting
+    # whatever next_billing_due currently (wrongly) holds.
+    tenant.cycle_anchor_date = date(2026, 1, 8)
+    tenant.next_billing_due = date(2030, 1, 8)  # badly drifted
+    db.session.commit()
+
+    _login(client, super_admin.email, "SuperSecret123")
+    resp = client.post(f"/admin/clients/{tenant.id}/billing/resync", follow_redirects=True)
+    assert resp.status_code == 200
+
+    db.session.refresh(tenant)
+    # The correct live value: the smallest monthly boundary from the
+    # anchor that's still in the future relative to today.
+    expected = tenant.cycle_anchor_date
+    while expected <= date.today():
+        expected = add_one_month(expected)
+    assert tenant.next_billing_due == expected
+    assert tenant.last_paid_on == date.today()
+    assert b"resynced to the live calendar" in resp.data.lower()
+
+
+def test_resync_billing_cycle_requires_a_billing_cycle(client, db, super_admin, tenant):
+    tenant.billing_cycle = None
+    tenant.cycle_anchor_date = date(2026, 1, 8)
+    db.session.commit()
+    _login(client, super_admin.email, "SuperSecret123")
+    resp = client.post(f"/admin/clients/{tenant.id}/billing/resync", follow_redirects=True)
+    assert b"set a billing cycle" in resp.data.lower()
+
+
+def test_resync_billing_cycle_requires_a_started_cycle(client, db, super_admin, tenant):
+    tenant.cycle_anchor_date = None
+    db.session.commit()
+    _login(client, super_admin.email, "SuperSecret123")
+    resp = client.post(f"/admin/clients/{tenant.id}/billing/resync", follow_redirects=True)
+    assert b"nothing to resync" in resp.data.lower()
+
+
+def test_client_admin_cannot_resync_their_own_billing_cycle(client, db, tenant, client_admin):
+    tenant.cycle_anchor_date = date(2026, 1, 8)
+    db.session.commit()
+    _login(client, client_admin.email, "ClientSecret123")
+    resp = client.post(f"/admin/clients/{tenant.id}/billing/resync")
+    assert resp.status_code == 403
 
 
 # --- Act as (impersonation) -----------------------------------------------

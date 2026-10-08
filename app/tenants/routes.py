@@ -33,7 +33,12 @@ from app.utils.auditor_scope import (
     auditor_tenant_ids,
     visible_auditors,
 )
-from app.utils.billing import advance_billing_cycle, auditor_access_status, tenant_access_status
+from app.utils.billing import (
+    advance_billing_cycle,
+    auditor_access_status,
+    next_due_after,
+    tenant_access_status,
+)
 from app.utils.indian_states import STATE_NAME_BY_CODE
 from app.utils.uploads import UploadError, delete_uploaded_image, save_uploaded_image
 
@@ -41,26 +46,6 @@ from app.utils.uploads import UploadError, delete_uploaded_image, save_uploaded_
 def _make_login_slug(legal_name: str, tenant_id: int) -> str:
     base = re.sub(r"[^a-z0-9]+", "-", legal_name.lower()).strip("-") or "client"
     return f"{base}-{tenant_id}"
-
-
-def _marked_paid_already_today(action: str, **match) -> bool:
-    """True if the most recent `action` audit row matching `match` (e.g.
-    tenant_id=... or entity_id=...) was written today.
-
-    Closes an edge case a plain `next_billing_due > today` check misses:
-    if a tenant/auditor is overdue by exactly one cycle length, advancing
-    once lands the new due date exactly on today - `> today` is then
-    False, so a second same-day click would slip through and advance a
-    second time. The audit trail (already written on every mark-paid)
-    is the one thing that reliably distinguishes "already paid, just
-    now" from "genuinely due again" without adding a new column.
-    """
-    latest = (
-        AuditLog.query.filter_by(action=action, **match)
-        .order_by(AuditLog.created_at.desc())
-        .first()
-    )
-    return latest is not None and latest.created_at.astimezone().date() == date.today()
 
 
 def _scoped_tenant_query():
@@ -199,7 +184,6 @@ def detail(tenant_id):
     return render_template(
         "tenants/detail.html",
         tenant=tenant,
-        today=date.today(),
         invoices=invoices,
         pos_bills=pos_bills,
         notes=notes,
@@ -403,15 +387,21 @@ def activate(tenant_id):
 @roles_required(UserRole.SUPER_ADMIN)
 def mark_billing_paid(tenant_id):
     tenant = Tenant.query.get_or_404(tenant_id)
-    # Idempotent for the period that's currently due - clicking this 4
-    # times in one sitting must mean "paid, once", never "paid 4 periods
-    # ahead". Two guards: (1) next_billing_due already in the future
-    # means it was already paid ahead, full stop; (2) a tenant overdue
-    # by exactly one cycle length lands its new due date on today after
-    # one advance, which guard (1) alone can't catch - the audit-log
-    # check closes that so a same-day repeat click is always a no-op
-    # regardless of where the date math happens to land.
+    # Idempotent for the period that's currently due, tracked against
+    # the live calendar - clicking this 4 times in one sitting must mean
+    # "paid, once", never "paid 4 periods ahead". The button itself is
+    # never hidden or disabled; it's always safe to click, because of
+    # two checks: (1) `last_paid_on == today` catches "I already
+    # recorded a payment for this just now" directly, which is the one
+    # case a plain date comparison can't - a tenant overdue by exactly
+    # one cycle length lands its new due date on today after advancing
+    # once, so `next_billing_due > today` alone wouldn't block a second
+    # same-day click; (2) `next_billing_due > today` catches every other
+    # "already paid ahead" case, any day after the one it was paid on.
     today = date.today()
+    if tenant.last_paid_on == today:
+        flash(f"{tenant.legal_name} was already marked paid today. Nothing more to do.", "info")
+        return redirect(url_for("tenants.detail", tenant_id=tenant.id))
     if tenant.next_billing_due and tenant.next_billing_due > today:
         flash(
             f"{tenant.legal_name} is already paid up - next renewal isn't due until "
@@ -420,22 +410,64 @@ def mark_billing_paid(tenant_id):
         )
         return redirect(url_for("tenants.detail", tenant_id=tenant.id))
 
-    if _marked_paid_already_today("client_billing_marked_paid", tenant_id=tenant.id):
-        flash(f"{tenant.legal_name} was already marked paid today. Nothing more to do.", "info")
-        return redirect(url_for("tenants.detail", tenant_id=tenant.id))
-
     # Advances from whatever it already was (or from today, for a tenant
     # that never had a cycle started) - never just "+1 period from
     # today", so the due date stays anchored to the client's original
     # cycle instead of drifting. Steps by one month or one year
     # depending on the client's own billing_cycle.
     tenant.next_billing_due = advance_billing_cycle(tenant, tenant.next_billing_due or today)
+    tenant.last_paid_on = today
     record_audit(
         current_user, "client_billing_marked_paid", tenant_id=tenant.id, entity_type="tenant", entity_id=tenant.id,
         details={"next_billing_due": tenant.next_billing_due.isoformat()},
     )
     db.session.commit()
     flash(f"Marked paid - {tenant.legal_name}'s next renewal is due {tenant.next_billing_due.strftime('%d %b %Y')}.", "success")
+    return redirect(url_for("tenants.detail", tenant_id=tenant.id))
+
+
+@tenants_bp.route("/clients/<int:tenant_id>/billing/resync", methods=["POST"])
+@roles_required(UserRole.SUPER_ADMIN)
+def resync_billing_cycle(tenant_id):
+    # An explicit repair action for a tenant whose next_billing_due has
+    # already drifted - from the old mark-paid bug, from a hand edit, or
+    # anything else - back onto the live calendar. Unlike mark_billing_paid
+    # (which always advances relative to the tenant's own current due
+    # date), this recomputes from the one date that never drifts -
+    # cycle_anchor_date - so it's a true resync rather than another
+    # relative nudge that could compound an existing mistake.
+    tenant = Tenant.query.get_or_404(tenant_id)
+    if tenant.billing_cycle is None:
+        flash(f"Set a billing cycle for {tenant.legal_name} first.", "error")
+        return redirect(url_for("tenants.detail", tenant_id=tenant.id))
+    if tenant.cycle_anchor_date is None:
+        flash(
+            f"{tenant.legal_name}'s cycle hasn't started yet (no login since verification) - nothing to resync.",
+            "error",
+        )
+        return redirect(url_for("tenants.detail", tenant_id=tenant.id))
+
+    today = date.today()
+    old_due = tenant.next_billing_due
+    tenant.next_billing_due = next_due_after(tenant.cycle_anchor_date, tenant.billing_cycle, today)
+    tenant.last_paid_on = today
+    record_audit(
+        current_user,
+        "client_billing_cycle_resynced",
+        tenant_id=tenant.id,
+        entity_type="tenant",
+        entity_id=tenant.id,
+        details={
+            "old_next_billing_due": old_due.isoformat() if old_due else None,
+            "new_next_billing_due": tenant.next_billing_due.isoformat(),
+        },
+    )
+    db.session.commit()
+    flash(
+        f"{tenant.legal_name}'s billing cycle resynced to the live calendar - "
+        f"next renewal is {tenant.next_billing_due.strftime('%d %b %Y')}.",
+        "success",
+    )
     return redirect(url_for("tenants.detail", tenant_id=tenant.id))
 
 
@@ -660,7 +692,6 @@ def auditor_detail(auditor_id):
     return render_template(
         "tenants/auditor_detail.html",
         auditor=auditor,
-        today=date.today(),
         clients=clients,
         access_statuses=access_statuses,
         sub_auditors=sub_auditors,
@@ -703,10 +734,11 @@ def set_auditor_billing_cycle(auditor_id):
 @roles_required(UserRole.SUPER_ADMIN)
 def mark_auditor_billing_paid(auditor_id):
     auditor = User.query.filter(User.id == auditor_id, User.role.in_([UserRole.AUDITOR, UserRole.SUB_AUDITOR])).first_or_404()
-    # Same idempotency guard as tenants.mark_billing_paid - see there for
-    # why. Without it, a repeated click here skips the auditor's own
-    # renewal just as many cycles ahead.
+    # Same idempotency guards as tenants.mark_billing_paid - see there for why.
     today = date.today()
+    if auditor.last_paid_on == today:
+        flash(f"{auditor.name} was already marked paid today. Nothing more to do.", "info")
+        return redirect(url_for("tenants.auditor_detail", auditor_id=auditor.id))
     if auditor.next_billing_due and auditor.next_billing_due > today:
         flash(
             f"{auditor.name} is already paid up - next renewal isn't due until "
@@ -715,17 +747,52 @@ def mark_auditor_billing_paid(auditor_id):
         )
         return redirect(url_for("tenants.auditor_detail", auditor_id=auditor.id))
 
-    if _marked_paid_already_today("auditor_billing_marked_paid", entity_id=auditor.id):
-        flash(f"{auditor.name} was already marked paid today. Nothing more to do.", "info")
-        return redirect(url_for("tenants.auditor_detail", auditor_id=auditor.id))
-
     auditor.next_billing_due = advance_billing_cycle(auditor, auditor.next_billing_due or today)
+    auditor.last_paid_on = today
     record_audit(
         current_user, "auditor_billing_marked_paid", entity_type="user", entity_id=auditor.id,
         details={"next_billing_due": auditor.next_billing_due.isoformat()},
     )
     db.session.commit()
     flash(f"Marked paid - {auditor.name}'s next renewal is due {auditor.next_billing_due.strftime('%d %b %Y')}.", "success")
+    return redirect(url_for("tenants.auditor_detail", auditor_id=auditor.id))
+
+
+@tenants_bp.route("/auditors/<int:auditor_id>/billing/resync", methods=["POST"])
+@roles_required(UserRole.SUPER_ADMIN)
+def resync_auditor_billing_cycle(auditor_id):
+    # Same repair action as tenants.resync_billing_cycle - see there for why.
+    auditor = User.query.filter(User.id == auditor_id, User.role.in_([UserRole.AUDITOR, UserRole.SUB_AUDITOR])).first_or_404()
+    if auditor.billing_cycle is None:
+        flash(f"Set a billing cycle for {auditor.name} first.", "error")
+        return redirect(url_for("tenants.auditor_detail", auditor_id=auditor.id))
+    if auditor.cycle_anchor_date is None:
+        flash(
+            f"{auditor.name}'s cycle hasn't started yet (no login since verification) - nothing to resync.",
+            "error",
+        )
+        return redirect(url_for("tenants.auditor_detail", auditor_id=auditor.id))
+
+    today = date.today()
+    old_due = auditor.next_billing_due
+    auditor.next_billing_due = next_due_after(auditor.cycle_anchor_date, auditor.billing_cycle, today)
+    auditor.last_paid_on = today
+    record_audit(
+        current_user,
+        "auditor_billing_cycle_resynced",
+        entity_type="user",
+        entity_id=auditor.id,
+        details={
+            "old_next_billing_due": old_due.isoformat() if old_due else None,
+            "new_next_billing_due": auditor.next_billing_due.isoformat(),
+        },
+    )
+    db.session.commit()
+    flash(
+        f"{auditor.name}'s billing cycle resynced to the live calendar - "
+        f"next renewal is {auditor.next_billing_due.strftime('%d %b %Y')}.",
+        "success",
+    )
     return redirect(url_for("tenants.auditor_detail", auditor_id=auditor.id))
 
 

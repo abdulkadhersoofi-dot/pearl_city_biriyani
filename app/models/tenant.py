@@ -72,6 +72,17 @@ class Tenant(db.Model, TimestampMixin):
     # it. See app.utils.billing for the grace window this is checked
     # against.
     next_billing_due = db.Column(db.Date)
+    # The date "mark this period paid" (tenants.mark_billing_paid) last
+    # actually advanced the cycle - the live-calendar record of "when the
+    # amount was paid last". Lets that action recognize "I already did
+    # this today" and decline a same-day repeat even in the one case a
+    # plain `next_billing_due > today` check can't catch on its own (an
+    # overdue tenant whose single legitimate advance happens to land
+    # the new due date exactly on today). Also what
+    # tenants.resync_billing_cycle uses, together with
+    # `cycle_anchor_date`, to recompute a cycle that's already drifted
+    # back onto the live calendar.
+    last_paid_on = db.Column(db.Date)
     # Set by the Ultra Admin (tenants.set_billing_cycle) - MONTHLY or
     # YEARLY, changeable at any time (e.g. a client moving from monthly to
     # yearly). Null means "pending verification": a client created by

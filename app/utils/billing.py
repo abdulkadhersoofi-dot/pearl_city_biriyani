@@ -73,6 +73,33 @@ def advance_billing_cycle(subject, on_date: date) -> date:
     return add_one_month(on_date)
 
 
+def next_due_after(anchor: date, cycle, on_date: date) -> date:
+    """The smallest cycle-boundary date, counting forward from `anchor`
+    in steps of `cycle`, that is strictly after `on_date`.
+
+    Used only by tenants.resync_billing_cycle/resync_auditor_billing_cycle -
+    an explicit, Ultra-Admin-triggered repair action for a `next_billing_due`
+    that's drifted from reality (e.g. a tenant whose cycle got "mashed up"
+    by repeated clicks before mark_billing_paid's idempotency guards
+    existed). It recomputes from the one date that never drifts - the
+    fixed `cycle_anchor_date` - rather than compounding onto whatever
+    `next_billing_due` currently holds, so it's a true resync, not
+    another relative nudge. Never called from the ordinary per-payment
+    `mark_billing_paid` flow, which deliberately keeps advancing from the
+    tenant's own established due date (see there for why).
+    """
+    from app.models.tenant import BillingCycle
+
+    step = add_one_year if cycle == BillingCycle.YEARLY else add_one_month
+    candidate = anchor
+    # A sane upper bound - even a decade-old monthly cycle is ~120 steps.
+    for _ in range(2000):
+        if candidate > on_date:
+            return candidate
+        candidate = step(candidate)
+    return candidate
+
+
 @dataclass
 class TenantAccessStatus:
     blocked: bool

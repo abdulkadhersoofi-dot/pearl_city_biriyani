@@ -615,6 +615,65 @@ def test_mark_auditor_billing_paid_is_idempotent_against_repeated_clicks(client,
     assert auditor.next_billing_due == expected
 
 
+def test_mark_auditor_billing_paid_records_last_paid_on(client, db, super_admin):
+    auditor = _make_auditor(db, "lastpaidauditor@example.com", billing_cycle=BillingCycle.MONTHLY)
+    auditor.next_billing_due = date.today() - timedelta(days=1)
+    db.session.commit()
+    _login(client, super_admin.email, "SuperSecret123")
+    client.post(f"/admin/auditors/{auditor.id}/billing/mark-paid")
+    db.session.refresh(auditor)
+    assert auditor.last_paid_on == date.today()
+
+
+def test_auditor_mark_paid_button_is_never_hidden(client, db, super_admin):
+    auditor = _make_auditor(db, "neverhiddenauditor@example.com", billing_cycle=BillingCycle.MONTHLY)
+    auditor.next_billing_due = date.today() + timedelta(days=20)
+    db.session.commit()
+    _login(client, super_admin.email, "SuperSecret123")
+    resp = client.get(f"/admin/auditors/{auditor.id}")
+    assert b"Mark this period paid" in resp.data
+    assert b"Resync to live calendar" in resp.data
+
+
+def test_resync_auditor_billing_cycle_recomputes_from_the_anchor(client, db, super_admin):
+    from app.utils.billing import add_one_month
+
+    auditor = _make_auditor(db, "resyncauditor@example.com", billing_cycle=BillingCycle.MONTHLY)
+    auditor.cycle_anchor_date = date(2026, 1, 8)
+    auditor.next_billing_due = date(2030, 1, 8)  # badly drifted
+    db.session.commit()
+
+    _login(client, super_admin.email, "SuperSecret123")
+    resp = client.post(f"/admin/auditors/{auditor.id}/billing/resync", follow_redirects=True)
+    assert resp.status_code == 200
+
+    db.session.refresh(auditor)
+    expected = auditor.cycle_anchor_date
+    while expected <= date.today():
+        expected = add_one_month(expected)
+    assert auditor.next_billing_due == expected
+    assert auditor.last_paid_on == date.today()
+    assert b"resynced to the live calendar" in resp.data.lower()
+
+
+def test_resync_auditor_billing_cycle_requires_a_started_cycle(client, db, super_admin):
+    auditor = _make_auditor(db, "nostartauditor@example.com", billing_cycle=BillingCycle.MONTHLY)
+    auditor.cycle_anchor_date = None
+    db.session.commit()
+    _login(client, super_admin.email, "SuperSecret123")
+    resp = client.post(f"/admin/auditors/{auditor.id}/billing/resync", follow_redirects=True)
+    assert b"nothing to resync" in resp.data.lower()
+
+
+def test_auditor_cannot_resync_their_own_billing_cycle(client, db):
+    auditor = _make_auditor(db, "selfresyncauditor@example.com", billing_cycle=BillingCycle.MONTHLY)
+    auditor.cycle_anchor_date = date(2026, 1, 8)
+    db.session.commit()
+    _login(client, auditor.email, "AuditorPass123")
+    resp = client.post(f"/admin/auditors/{auditor.id}/billing/resync")
+    assert resp.status_code == 403
+
+
 def test_ultra_admin_triggers_and_mutes_an_auditors_alarm(client, db, super_admin):
     auditor = _make_auditor(db, "alarmauditor2@example.com", billing_cycle=BillingCycle.MONTHLY)
     _login(client, super_admin.email, "SuperSecret123")

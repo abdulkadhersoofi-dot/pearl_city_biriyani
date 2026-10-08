@@ -93,6 +93,9 @@ class User(db.Model, UserMixin, TimestampMixin):
     # tenant.
     cycle_anchor_date = db.Column(db.Date)
     next_billing_due = db.Column(db.Date)
+    # Same "when was this last actually marked paid" record a Tenant has
+    # (see app.models.tenant.Tenant.last_paid_on) - same reason.
+    last_paid_on = db.Column(db.Date)
     manual_alarm_active = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
 
     def set_password(self, raw_password: str) -> None:
