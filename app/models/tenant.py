@@ -10,6 +10,11 @@ class RegistrationType(str, enum.Enum):
     UNREGISTERED = "unregistered"
 
 
+class BillingCycle(str, enum.Enum):
+    MONTHLY = "monthly"
+    YEARLY = "yearly"
+
+
 class Tenant(db.Model, TimestampMixin):
     """A client business of the CA firm. One shared database, tenant_id everywhere."""
 
@@ -26,6 +31,15 @@ class Tenant(db.Model, TimestampMixin):
     # constraint is added via a separate ALTER TABLE after both tables exist.
     onboarded_by_id = db.Column(
         db.Integer, db.ForeignKey("users.id", use_alter=True, name="fk_tenants_onboarded_by")
+    )
+    # Which Auditor (or Sub-Auditor) this client is currently allocated to -
+    # null means unallocated (Ultra-Admin-onboarded and not yet handed off,
+    # or a client who left their auditor). Only the Ultra Admin can set or
+    # change this (tenants.reassign_auditor); an Auditor allocating one of
+    # their own clients to their own Sub-Auditor also writes it, but only
+    # within tenants already scoped to them - see app.utils.auditor_scope.
+    auditor_id = db.Column(
+        db.Integer, db.ForeignKey("users.id", use_alter=True, name="fk_tenants_auditor"), index=True
     )
 
     # Branding: shown instead of the platform's own name/logo wherever a
@@ -53,17 +67,37 @@ class Tenant(db.Model, TimestampMixin):
     # (set directly, or implicitly via the first "mark paid" action) -
     # nobody already using the app gets silently cut off by a migration.
     #
-    # A hard subscription end date - only a Super Admin can move it
-    # forward (see tenants.renew_access). Required on new clients at
-    # onboarding (app.tenants.forms.OnboardClientForm), but stored
-    # nullable since an existing client has none until one is set.
+    # A hard subscription end date - only the Ultra Admin can move it
+    # forward (see tenants.renew_access), and only ever sets it at
+    # verification time (tenants.verify_client) or renewal, never at
+    # onboarding - stored nullable since an existing client has none
+    # until one is set.
     valid_until = db.Column(db.Date)
-    # The next monthly renewal date in the separate, recurring billing
-    # cycle - independent of valid_until. A Super Admin's "mark this
-    # month paid" (tenants.mark_billing_paid) advances it by exactly one
-    # calendar month from its current value; nothing else moves it. See
-    # app.utils.billing for the grace window this is checked against.
+    # The next renewal date in the separate, recurring billing cycle -
+    # independent of valid_until. A monthly or yearly reminder depending
+    # on `billing_cycle` below. The Ultra Admin's "mark this period paid"
+    # (tenants.mark_billing_paid) advances it by one month or one year
+    # from its current value; nothing else moves it. See app.utils.billing
+    # for the grace window this is checked against.
     next_billing_due = db.Column(db.Date)
+    # Set once by the Ultra Admin at verification (tenants.verify_client) -
+    # MONTHLY or YEARLY. Null means "pending verification": a client
+    # created by anyone (Ultra Admin or Auditor) starts with no billing
+    # cycle at all and cannot be signed into until the Ultra Admin
+    # verifies it and picks one. This selection always stays with the
+    # Ultra Admin, even when an Auditor created the client.
+    billing_cycle = db.Column(db.Enum(BillingCycle, name="billing_cycle"))
+    # The anchor the recurring cycle counts from. Deliberately NOT set at
+    # onboarding or verification - only on the Client Admin's first
+    # successful login after changing the initial password Ultra Admin
+    # set for them (see app.auth.routes.change_password). Null until then,
+    # even for an already-verified, active tenant.
+    cycle_anchor_date = db.Column(db.Date)
+    # The Ultra Admin's manual override of the billing-due notice banner -
+    # ring it on command regardless of where the calendar cycle actually
+    # is, or silence a notice that's already ringing. Does not by itself
+    # block access; pause (`is_active`) still does that.
+    manual_alarm_active = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
 
     gstins = db.relationship(
         "Gstin", backref="tenant", cascade="all, delete-orphan", lazy="dynamic"
@@ -74,6 +108,9 @@ class Tenant(db.Model, TimestampMixin):
         foreign_keys="User.tenant_id",
         cascade="all, delete-orphan",
         lazy="dynamic",
+    )
+    auditor = db.relationship(
+        "User", foreign_keys=[auditor_id], backref=db.backref("allocated_tenants", lazy="select")
     )
 
     @property

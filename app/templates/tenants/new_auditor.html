@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% from "macros.html" import field %}
+{% block title %}New auditor - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header"><h1>{{ 'Create a Sub-Auditor' if current_user.is_auditor else 'Create an Auditor or Sub-Auditor' }}</h1></div>
+<form method="post" class="card stack" novalidate>
+  {{ form.hidden_tag() }}
+  {% if current_user.is_super_admin %}
+  <div class="form-grid">
+    <div>
+      <label>Role</label>
+      <select name="role" class="field-input" id="role-select" onchange="document.getElementById('parent-row').style.display = this.value === 'sub_auditor' ? '' : 'none';">
+        <option value="auditor" {% if default_role == 'auditor' %}selected{% endif %}>Auditor</option>
+        <option value="sub_auditor" {% if default_role == 'sub_auditor' %}selected{% endif %}>Sub-Auditor</option>
+      </select>
+    </div>
+    <div id="parent-row" style="{% if default_role != 'sub_auditor' %}display:none;{% endif %}">
+      <label>Parent Auditor (for a Sub-Auditor)</label>
+      <select name="parent_auditor_id" class="field-input">
+        {% for a in all_auditors %}
+        <option value="{{ a.id }}">{{ a.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  </div>
+  {% else %}
+  <p class="text-muted mt-0">This Sub-Auditor will be created within your own office - you'll be able to
+    allocate any of your clients to them from that client's page.</p>
+  {% endif %}
+  <div class="form-grid">
+    {{ field(form.name) }}
+    {{ field(form.email) }}
+    {{ field(form.phone) }}
+    {{ field(form.password, help="Share this with them yourself - they'll be asked to change it on first sign-in.") }}
+    {{ field(form.confirm_password) }}
+  </div>
+  <button type="submit" class="btn btn-primary btn-lg">Create</button>
+</form>
+{% endblock %}

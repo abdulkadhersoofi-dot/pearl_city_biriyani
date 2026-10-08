@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}{{ auditor.name }} - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>{{ auditor.name }}</h1>
+    <p class="text-muted mt-0">{{ auditor.role_label }} · {{ auditor.email }}
+      {% if auditor.parent_auditor %}· Sub-Auditor of {{ auditor.parent_auditor.name }}{% endif %}
+    </p>
+  </div>
+  <div class="row">
+    {% if auditor.is_active %}
+    <form method="post" action="{{ url_for('tenants.act_as_auditor', auditor_id=auditor.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="btn btn-secondary">Act as</button>
+    </form>
+    {% endif %}
+    {% if current_user.is_super_admin %}
+    {% if auditor.is_active %}
+    <form method="post" action="{{ url_for('tenants.deactivate_auditor', auditor_id=auditor.id) }}"
+          onsubmit="return confirm('Deactivate {{ auditor.name }}? They will no longer be able to sign in.');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn btn-quiet">Deactivate</button>
+    </form>
+    {% else %}
+    <form method="post" action="{{ url_for('tenants.activate_auditor', auditor_id=auditor.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn btn-quiet">Reactivate</button>
+    </form>
+    {% endif %}
+    {% endif %}
+  </div>
+</div>
+
+{% if auditor.is_auditor %}
+<div class="card" style="margin-bottom:20px;">
+  <h2 style="margin-top:0;">Sub-Auditors ({{ sub_auditors|length }})</h2>
+  <table>
+    <thead><tr><th>Name</th><th>Email</th><th>Clients</th><th></th></tr></thead>
+    <tbody>
+      {% for s in sub_auditors %}
+      <tr>
+        <td><a href="{{ url_for('tenants.auditor_detail', auditor_id=s.id) }}">{{ s.name }}</a></td>
+        <td>{{ s.email }}</td>
+        <td>{{ s.allocated_tenants|length }}</td>
+        <td><a href="{{ url_for('tenants.auditor_detail', auditor_id=s.id) }}">View</a></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="4" class="empty-state">No Sub-Auditors yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<div class="table-wrap card">
+  <h2 style="margin-top:0;">Clients ({{ clients|length }})</h2>
+  <table>
+    <thead><tr><th>Business</th><th>GSTIN</th><th>Status</th><th>Onboarded</th><th></th></tr></thead>
+    <tbody>
+      {% for tenant in clients %}
+      <tr>
+        <td><a href="{{ url_for('tenants.detail', tenant_id=tenant.id) }}">{{ tenant.legal_name }}</a></td>
+        <td>{{ tenant.gstins.first().display_label if tenant.gstins.first() else '-' }}</td>
+        <td>
+          {% set status = access_statuses[tenant.id] %}
+          {% if status.blocked %}<span class="status-badge status-void">{{ status.reason|replace('_', ' ')|title }}</span>
+          {% elif status.billing_notice %}<span class="status-badge status-void">Renewal due</span>
+          {% else %}<span class="status-badge status-issued">Active</span>{% endif %}
+        </td>
+        <td>{{ tenant.created_at.strftime('%d %b %Y') }}</td>
+        <td><a href="{{ url_for('tenants.detail', tenant_id=tenant.id) }}">View</a></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" class="empty-state">No clients allocated yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

@@ -162,9 +162,11 @@ def test_super_admin_browsing_is_never_cut_off(client, db, super_admin):
 
 # --- Onboarding sets validity fields --------------------------------------
 
-def test_onboarding_sets_valid_until_from_form(client, db, super_admin):
+def test_onboarding_leaves_the_client_pending_with_no_billing_cycle(client, db, super_admin):
+    # Billing selection always stays with the Ultra Admin, even when the
+    # Ultra Admin themselves is the one onboarding - it only happens at
+    # verification, never at onboarding.
     _login(client, super_admin.email, "SuperSecret123")
-    future = (date.today() + timedelta(days=200)).isoformat()
     client.post(
         "/admin/clients/new",
         data={
@@ -172,7 +174,6 @@ def test_onboarding_sets_valid_until_from_form(client, db, super_admin):
             "registration_type": "regular",
             "state_code": "27",
             "gstin": "",
-            "valid_until": future,
             "admin_name": "Admin",
             "admin_email": "validity@example.com",
             "admin_phone": "",
@@ -182,28 +183,53 @@ def test_onboarding_sets_valid_until_from_form(client, db, super_admin):
     )
     tenant = Tenant.query.filter_by(legal_name="Validity Test Co").first()
     assert tenant is not None
+    assert tenant.billing_cycle is None
+    assert tenant.valid_until is None
+    assert tenant.next_billing_due is None
+
+
+def test_verify_client_sets_billing_cycle_and_valid_until(client, db, super_admin, tenant):
+    tenant.billing_cycle = None
+    tenant.valid_until = None
+    db.session.commit()
+
+    _login(client, super_admin.email, "SuperSecret123")
+    future = (date.today() + timedelta(days=200)).isoformat()
+    resp = client.post(
+        f"/admin/clients/{tenant.id}/verify",
+        data={"billing_cycle": "monthly", "valid_until": future},
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+
+    db.session.refresh(tenant)
+    assert tenant.billing_cycle.value == "monthly"
     assert tenant.valid_until == date.today() + timedelta(days=200)
-    assert tenant.next_billing_due == add_one_month(date.today())
+    # The recurring due date is still not set - that only happens on the
+    # Client Admin's first post-password-change login.
+    assert tenant.next_billing_due is None
 
 
-def test_onboarding_rejects_a_blank_valid_until(client, db, super_admin):
+def test_verify_client_rejects_a_blank_valid_until(client, db, super_admin, tenant):
+    tenant.billing_cycle = None
+    db.session.commit()
+
     _login(client, super_admin.email, "SuperSecret123")
     client.post(
-        "/admin/clients/new",
-        data={
-            "legal_name": "No Validity Co",
-            "registration_type": "regular",
-            "state_code": "27",
-            "gstin": "",
-            "valid_until": "",
-            "admin_name": "Admin",
-            "admin_email": "novalidity@example.com",
-            "admin_phone": "",
-            "admin_password": "InitialPass123",
-            "admin_confirm_password": "InitialPass123",
-        },
+        f"/admin/clients/{tenant.id}/verify",
+        data={"billing_cycle": "monthly", "valid_until": ""},
     )
-    assert Tenant.query.filter_by(legal_name="No Validity Co").first() is None
+    db.session.refresh(tenant)
+    assert tenant.billing_cycle is None
+
+
+def test_pending_verification_blocks_login(client, db, super_admin, tenant, client_admin):
+    tenant.billing_cycle = None
+    client_admin.must_change_password = False
+    db.session.commit()
+
+    resp = _login(client, client_admin.email, "ClientSecret123")
+    assert b"awaiting verification" in resp.data.lower()
 
 
 # --- Super Admin renewal / billing actions --------------------------------
@@ -276,7 +302,7 @@ def test_stop_impersonating_returns_to_admin_console(client, db, super_admin, te
 
     resp = client.get("/auth/stop-impersonating", follow_redirects=True)
     assert resp.status_code == 200
-    assert resp.request.path == "/admin/clients"
+    assert resp.request.path == "/admin/auditors"
 
     # Back to being the super admin - can reach the admin console again.
     resp = client.get("/admin/clients")

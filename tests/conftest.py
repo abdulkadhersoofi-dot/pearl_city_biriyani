@@ -3,7 +3,7 @@ import pytest
 from app import create_app
 from app.config import TestingConfig
 from app.extensions import db as _db
-from app.models.tenant import Gstin, RegistrationType, Tenant
+from app.models.tenant import BillingCycle, Gstin, RegistrationType, Tenant
 from app.models.user import User, UserRole
 
 
@@ -42,6 +42,9 @@ def tenant(db, super_admin):
         legal_name="Acme Traders",
         registration_type=RegistrationType.REGULAR,
         onboarded_by_id=super_admin.id,
+        # Already-verified, like every tenant that existed before the
+        # Auditor/verification workflow - not pending.
+        billing_cycle=BillingCycle.MONTHLY,
     )
     db.session.add(t)
     db.session.flush()

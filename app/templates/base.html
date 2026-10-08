@@ -26,19 +26,25 @@
           <span>{{ firm_name }}</span>
         </a>
         <div class="user-menu">
-          <span class="user-name">{{ current_user.name }}</span>
+          <span class="user-name">{{ current_user.name }}{% if current_user.is_admin_hierarchy %} ({{ current_user.role_label }}){% endif %}</span>
           <a href="{{ url_for('auth.logout') }}" class="btn btn-quiet">Sign out</a>
         </div>
       </div>
       {# A branch (Staff) login only ever has POS, so there's nothing to
          pick between - no nav row at all for that case, rather than a
          single-link row with nowhere else to go. #}
-      {% if current_user.is_super_admin or current_user.is_client_admin %}
+      {% if current_user.is_admin_hierarchy or current_user.is_client_admin %}
       <nav class="main-nav">
         {% if current_user.is_super_admin %}
-          <a href="{{ url_for('tenants.directory') }}" class="{{ 'active' if request.blueprint == 'tenants' }}">Clients</a>
+          <a href="{{ url_for('tenants.auditors_directory') }}" class="{{ 'active' if request.endpoint in ('tenants.auditors_directory', 'tenants.auditor_detail', 'tenants.new_auditor') }}">Auditors</a>
+          <a href="{{ url_for('tenants.directory') }}" class="{{ 'active' if request.endpoint in ('tenants.directory', 'tenants.detail', 'tenants.onboard') }}">All clients</a>
           <a href="{{ url_for('tenants.gst_exports') }}">GST exports</a>
           <a href="{{ url_for('tenants.audit_log') }}">Audit log</a>
+        {% elif current_user.is_auditor %}
+          <a href="{{ url_for('tenants.directory') }}" class="{{ 'active' if request.endpoint in ('tenants.directory', 'tenants.detail', 'tenants.onboard') }}">Clients</a>
+          <a href="{{ url_for('tenants.auditors_directory') }}" class="{{ 'active' if request.endpoint in ('tenants.auditors_directory', 'tenants.auditor_detail', 'tenants.new_auditor') }}">Sub-Auditors</a>
+        {% elif current_user.is_sub_auditor %}
+          <a href="{{ url_for('tenants.directory') }}" class="{{ 'active' if request.blueprint == 'tenants' }}">Clients</a>
         {% else %}
           <a href="{{ url_for('invoicing.list_invoices') }}" class="{{ 'active' if request.blueprint == 'invoicing' }}">Invoices</a>
           <a href="{{ url_for('notes.list_notes') }}" class="{{ 'active' if request.blueprint == 'notes' }}">Notes</a>

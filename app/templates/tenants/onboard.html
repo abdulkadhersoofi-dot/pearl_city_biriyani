@@ -14,7 +14,8 @@
   </div>
   {{ field(form.registered_address) }}
   {{ field(form.logo, help="Shown to this client's own users instead of the platform logo, and on their printed invoices/receipts.") }}
-  {{ field(form.valid_until, help="This client (and every branch under it) loses access to ARFA the day after this date - only a Super Admin can move it forward, from the client's own page.") }}
+  <p class="flash flash-info">This client will be created pending verification - it cannot sign in until the
+    Ultra Admin reviews it and sets a billing cycle.</p>
   <hr>
   <h2 style="font-size:1.05rem; margin:0;">Client Admin login</h2>
   <div class="form-grid">

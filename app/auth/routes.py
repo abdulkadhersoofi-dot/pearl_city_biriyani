@@ -11,7 +11,7 @@ from app.models.mixins import utcnow
 from app.models.tenant import Tenant
 from app.models.user import User
 from app.utils.audit import record_audit
-from app.utils.billing import tenant_access_status
+from app.utils.billing import advance_billing_cycle, tenant_access_status
 
 
 def _recent_failed_logins(email: str, window_minutes: int) -> int:
@@ -26,6 +26,8 @@ def _post_login_redirect(user: User):
     if user.must_change_password:
         return redirect(url_for("auth.change_password"))
     if user.is_super_admin:
+        return redirect(url_for("tenants.auditors_directory"))
+    if user.is_admin_hierarchy:
         return redirect(url_for("tenants.directory"))
     if user.is_client_admin:
         return redirect(url_for("invoicing.list_invoices"))
@@ -98,26 +100,28 @@ def logout():
 @auth_bp.route("/stop-impersonating")
 @login_required
 def stop_impersonating():
-    # Whoever is signed in right now - the tenant user a Super Admin
-    # switched into via tenants.act_as - switches back to that admin.
-    # Needs no role check: only tenants.act_as ever sets this session
-    # key, and only after verifying the caller really was a Super Admin.
+    # Whoever is signed in right now - the tenant user (or auditor-
+    # hierarchy account) an admin switched into via tenants.act_as /
+    # tenants.act_as_auditor - switches back to that admin. Needs no role
+    # check: only those two routes ever set this session key, and only
+    # after verifying the caller was allowed to.
     admin_id = session.pop("impersonator_id", None)
     if not admin_id:
         return redirect(url_for("auth.login"))
 
     acting_as_tenant_id = current_user.tenant_id
+    acting_as_id = current_user.id
     admin = User.query.get(admin_id)
-    if not admin or not admin.is_super_admin:
+    if not admin or not admin.is_admin_hierarchy:
         logout_user()
         flash("Could not return to the admin console - sign in again.", "error")
         return redirect(url_for("auth.login"))
 
-    record_audit(admin, "impersonation_stopped", tenant_id=acting_as_tenant_id, entity_type="user", entity_id=current_user.id)
+    record_audit(admin, "impersonation_stopped", tenant_id=acting_as_tenant_id, entity_type="user", entity_id=acting_as_id)
     logout_user()
     login_user(admin, remember=False)
     db.session.commit()
-    return redirect(url_for("tenants.directory"))
+    return _post_login_redirect(admin)
 
 
 @auth_bp.route("/change-password", methods=["GET", "POST"])
@@ -130,6 +134,17 @@ def change_password():
         else:
             current_user.set_password(form.new_password.data)
             current_user.must_change_password = False
+
+            # The billing cycle's anchor date - deliberately not set at
+            # onboarding or verification, only here, on the Client Admin's
+            # first successful login after changing the initial password
+            # the Ultra Admin set for them. Never for Staff/branch logins,
+            # and never re-stamped on a later password change.
+            if current_user.is_client_admin and current_user.tenant and current_user.tenant.cycle_anchor_date is None:
+                tenant = current_user.tenant
+                tenant.cycle_anchor_date = utcnow().date()
+                tenant.next_billing_due = advance_billing_cycle(tenant, tenant.cycle_anchor_date)
+
             record_audit(current_user, "password_changed", tenant_id=current_user.tenant_id)
             db.session.commit()
             flash("Password updated.", "success")

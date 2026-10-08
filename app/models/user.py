@@ -11,9 +11,35 @@ _hasher = PasswordHasher()
 
 
 class UserRole(str, enum.Enum):
+    # Stored value kept as "super_admin" for DB/enum stability - displayed
+    # everywhere in the UI as "Ultra Admin" (see ROLE_LABELS below). The
+    # one account above the whole Auditor hierarchy: unrestricted access
+    # to every tenant, every auditor, and the only role that can set a
+    # tenant's billing cycle or verify a pending client.
     SUPER_ADMIN = "super_admin"
+    # Same operational power as Ultra Admin (create/pause/act-as clients,
+    # create branches via act-as) but scoped to only the tenants allocated
+    # to them (app.utils.auditor_scope.auditor_tenant_ids) - and never the
+    # billing cycle, which always stays with the Ultra Admin.
+    AUDITOR = "auditor"
+    # Created by an Auditor "within their office" - scoped to only the
+    # tenants that Auditor explicitly allocates to them (never their
+    # parent's full pool). parent_auditor_id names the Auditor who created
+    # them.
+    SUB_AUDITOR = "sub_auditor"
     CLIENT_ADMIN = "client_admin"
     STAFF = "staff"
+
+
+# Display label only - never the stored enum value, so the Postgres enum
+# type and every `role ==` comparison in the codebase stay untouched.
+ROLE_LABELS = {
+    UserRole.SUPER_ADMIN: "Ultra Admin",
+    UserRole.AUDITOR: "Auditor",
+    UserRole.SUB_AUDITOR: "Sub-Auditor",
+    UserRole.CLIENT_ADMIN: "Client Admin",
+    UserRole.STAFF: "Branch",
+}
 
 
 class BranchType(str, enum.Enum):
@@ -32,8 +58,14 @@ class User(db.Model, UserMixin, TimestampMixin):
     __tablename__ = "users"
 
     id = db.Column(db.Integer, primary_key=True)
-    # Null tenant_id => Super Admin (the firm), not attached to any one client.
+    # Null tenant_id => an admin-hierarchy login (Ultra Admin, Auditor or
+    # Sub-Auditor), not attached to any one client.
     tenant_id = db.Column(db.Integer, db.ForeignKey("tenants.id"), index=True)
+    # Only set for role=SUB_AUDITOR - the Auditor who created this
+    # Sub-Auditor account. Scopes the Sub-Auditor to only whichever of
+    # that Auditor's own tenants get explicitly allocated to them (see
+    # app.utils.auditor_scope).
+    parent_auditor_id = db.Column(db.Integer, db.ForeignKey("users.id", use_alter=True, name="fk_users_parent_auditor"), index=True)
 
     name = db.Column(db.String(255), nullable=False)
     email = db.Column(db.String(255), nullable=False, unique=True, index=True)
@@ -58,9 +90,30 @@ class User(db.Model, UserMixin, TimestampMixin):
             self.password_hash = _hasher.hash(raw_password)
         return valid
 
+    sub_auditors = db.relationship(
+        "User",
+        backref=db.backref("parent_auditor", remote_side="User.id"),
+        foreign_keys=[parent_auditor_id],
+    )
+
     @property
     def is_super_admin(self) -> bool:
         return self.role == UserRole.SUPER_ADMIN
+
+    @property
+    def is_auditor(self) -> bool:
+        return self.role == UserRole.AUDITOR
+
+    @property
+    def is_sub_auditor(self) -> bool:
+        return self.role == UserRole.SUB_AUDITOR
+
+    @property
+    def is_admin_hierarchy(self) -> bool:
+        """True for any of the three roles that manage clients rather than
+        being one (Ultra Admin, Auditor, Sub-Auditor) - the shared admin
+        console is reachable by all three, scoped differently per role."""
+        return self.role in (UserRole.SUPER_ADMIN, UserRole.AUDITOR, UserRole.SUB_AUDITOR)
 
     @property
     def is_client_admin(self) -> bool:
@@ -69,6 +122,10 @@ class User(db.Model, UserMixin, TimestampMixin):
     @property
     def is_staff(self) -> bool:
         return self.role == UserRole.STAFF
+
+    @property
+    def role_label(self) -> str:
+        return ROLE_LABELS.get(self.role, self.role.value)
 
     def get_id(self):
         # Flask-Login identity; kept explicit and separate from any JWT subject.

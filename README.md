@@ -27,7 +27,9 @@ limits of the GST reports.
 
 | Role | Access |
 |---|---|
-| Super Admin (the firm) | Onboard/deactivate clients, read-only cross-tenant view + export, full audit log, sets/resets Client Admin passwords directly |
+| Super Admin ("Ultra Admin" in the UI - the stored role name is unchanged) | Unrestricted: every Auditor, every client, every branch. Only role that verifies a pending client and sets its billing cycle, reassigns a client between auditors, or triggers/mutes the manual billing alarm. Full audit log, GST exports. |
+| Auditor | Same operational power as the Ultra Admin (onboard/pause/"act as" clients, create branches via "act as") but scoped to only the clients allocated to them (`auditor_id`) plus their own Sub-Auditors' clients. Never sets a billing cycle - every client they onboard lands pending until the Ultra Admin verifies it. Can create their own Sub-Auditors and allocate any of their own clients to one. |
+| Sub-Auditor | Created by one Auditor ("within their office"), scoped to only the clients that Auditor explicitly allocates to them - never their parent's full pool. Otherwise the same console as an Auditor. |
 | Client Admin (business owner) | Own GSTIN(s), invoice numbering, catalog, staff logins, full invoicing/POS/reports, sets/resets Staff passwords directly |
 | Staff/Cashier | POS billing screen only |
 
@@ -455,6 +457,65 @@ Gunicorn workers or add app servers behind Nginx as load grows.
   (`tenants.activate_user`/`deactivate_user`), the same `User.is_active`
   flag the branch's own Client Admin already used from the Branches tab,
   just reachable from the firm's side too now.
+- **Auditor / Sub-Auditor hierarchy and the billing-cycle overhaul**
+  replaced the old "every client is billed monthly from onboarding" model,
+  which the firm rejected outright. The role enum gained `AUDITOR` and
+  `SUB_AUDITOR` (`ALTER TYPE user_role ADD VALUE` inside Alembic's
+  `autocommit_block()`, since Postgres can't add an enum value inside a
+  normal transaction) sitting between Super Admin ("Ultra Admin") and
+  Client Admin/Staff. `User.parent_auditor_id` (self-referential) names
+  the Auditor who created a Sub-Auditor; `Tenant.auditor_id` names which
+  Auditor/Sub-Auditor a client is currently allocated to (null =
+  unallocated). `app.utils.auditor_scope.auditor_tenant_ids(user)` is the
+  admin-console counterpart to `tenant_scope.tenant_query` - `None` for an
+  unrestricted Ultra Admin, or the concrete set of tenant ids an
+  Auditor/Sub-Auditor may see (an Auditor's own clients plus every client
+  allocated to any of their Sub-Auditors; a Sub-Auditor's own direct
+  allocation only) - and every admin-console route checks it via
+  `assert_auditor_owns_tenant`/`assert_auditor_owns_auditor` before acting.
+  The shared console (`admin_or_auditor_required`) renders the exact same
+  `tenants/directory.html` for an Auditor as it always did for the Super
+  Admin, just pre-filtered by scope; the Ultra Admin's equivalent nav slot
+  becomes an "Auditors" tab (`tenants/auditors_directory.html`) listing
+  every Auditor plus the pending-verification and unallocated-client
+  queues. **Billing selection always stays with the Ultra Admin, whoever
+  onboards the client.** `tenants.onboard()` behaves identically no matter
+  who calls it - it never sets `Tenant.billing_cycle`, so every new client
+  starts in a third, highest-priority gate in
+  `tenant_access_status()` ("pending verification",
+  `billing_cycle IS NULL`) that blocks sign-in outright, separate from the
+  pre-existing pause/expiry/overdue gates - only `tenants.verify_client`
+  (Ultra Admin only) sets `billing_cycle` (`MONTHLY`/`YEARLY`,
+  `app.models.tenant.BillingCycle`) and `valid_until`, lifting it. The
+  migration backfills `billing_cycle='MONTHLY'` for every tenant that
+  existed before this feature, so nobody already active gets retroactively
+  locked out pending verification. The recurring cycle's anchor
+  deliberately isn't stamped at onboarding or verification: `Tenant.
+  cycle_anchor_date` is set, and the first `next_billing_due` computed
+  (`app.utils.billing.advance_billing_cycle` - one month or one year,
+  whichever `billing_cycle` says), only inside `auth.change_password` on
+  the Client Admin's first successful login after changing the initial
+  password the Ultra Admin set for them - never re-stamped on a later
+  password change, and never set at all for a Staff/branch login.
+  `Tenant.manual_alarm_active` lets the Ultra Admin force the billing
+  banner on (`tenants.trigger_alarm`) or silence it
+  (`tenants.mute_alarm`) at any time regardless of where the calendar
+  cycle actually is - it only ever affects the notice, pause already
+  covers an actual cutoff. An Auditor allocating one of their own clients
+  to one of their own Sub-Auditors (`tenants.allocate_client_to_sub_
+  auditor`) is scoped on both ends - the tenant must already be
+  `auditor_id == current_user.id`, and the target must be a Sub-Auditor
+  with `parent_auditor_id == current_user.id` - so an Auditor can never
+  hand a client to someone outside their own office. Reassigning a client
+  to any Auditor/Sub-Auditor, or back to unallocated, is otherwise an
+  Ultra-Admin-only action (`tenants.reassign_auditor`) from the client's
+  own page. "Act as" extends unchanged to the new roles - an Auditor
+  impersonating their own Client Admin reaches the existing branch-
+  creation route exactly as the Ultra Admin always could, so "Auditor can
+  create branches for companies they manage" needed no new UI at all -
+  plus a second impersonation path, `tenants.act_as_auditor`, lets the
+  Ultra Admin (or an Auditor, for their own Sub-Auditors only) sign
+  straight into an Auditor-hierarchy account the same way.
 
 ## Roadmap
 

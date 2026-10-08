@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Auditors - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>{{ 'Auditors' if current_user.is_super_admin else 'Your Sub-Auditors' }}</h1>
+  <a href="{{ url_for('tenants.new_auditor') }}" class="btn btn-primary">
+    + {{ 'Create auditor' if current_user.is_super_admin else 'Create sub-auditor' }}
+  </a>
+</div>
+
+{% if current_user.is_super_admin and pending_tenants %}
+<div class="card" style="margin-bottom:20px; border-color: var(--color-danger, #b23b3b);">
+  <h2 style="margin-top:0;">Awaiting verification ({{ pending_tenants|length }})</h2>
+  <table>
+    <thead><tr><th>Business</th><th>Onboarded by</th><th>Created</th><th></th></tr></thead>
+    <tbody>
+      {% for t in pending_tenants %}
+      <tr>
+        <td>{{ t.legal_name }}</td>
+        <td>{{ t.auditor.name if t.auditor else 'Ultra Admin' }}</td>
+        <td>{{ t.created_at.strftime('%d %b %Y') }}</td>
+        <td><a href="{{ url_for('tenants.detail', tenant_id=t.id) }}" class="btn btn-quiet">Verify</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% if current_user.is_super_admin and unallocated_tenants %}
+<div class="card" style="margin-bottom:20px;">
+  <h2 style="margin-top:0;">Unallocated clients ({{ unallocated_tenants|length }})</h2>
+  <table>
+    <thead><tr><th>Business</th><th></th></tr></thead>
+    <tbody>
+      {% for t in unallocated_tenants %}
+      <tr><td>{{ t.legal_name }}</td><td><a href="{{ url_for('tenants.detail', tenant_id=t.id) }}" class="btn btn-quiet">Allot</a></td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<div class="table-wrap card">
+  <table>
+    <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Clients</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+      {% for a in auditors %}
+      <tr>
+        <td><a href="{{ url_for('tenants.auditor_detail', auditor_id=a.id) }}">{{ a.name }}</a></td>
+        <td>{{ a.email }}</td>
+        <td>{{ a.role_label }}</td>
+        <td>{{ a.allocated_tenants|length }}</td>
+        <td>{{ 'Active' if a.is_active else 'Inactive' }}</td>
+        <td><a href="{{ url_for('tenants.auditor_detail', auditor_id=a.id) }}">View</a></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" class="empty-state">No auditors yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

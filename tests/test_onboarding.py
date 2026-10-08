@@ -63,7 +63,27 @@ def test_super_admin_onboards_client_with_password_no_otp(client, db, super_admi
     assert admin.must_change_password is True
     assert admin.check_password("InitialPass123")
 
-    # Logs straight in with the password the Super Admin set - no OTP, no email.
+    new_tenant = Tenant.query.filter_by(legal_name="New Traders").first()
+    assert new_tenant.billing_cycle is None, "A freshly onboarded client starts pending verification"
+
+    # Can't sign in yet - the Ultra Admin hasn't verified/picked a billing
+    # cycle for this client.
+    client.get("/auth/logout")
+    resp = _login(client, "newadmin@example.com", "InitialPass123")
+    assert b"awaiting verification" in resp.data.lower()
+
+    # Ultra Admin verifies and picks a billing cycle.
+    _login(client, super_admin.email, "SuperSecret123")
+    resp = client.post(
+        f"/admin/clients/{new_tenant.id}/verify",
+        data={"billing_cycle": "monthly", "valid_until": "2030-01-01"},
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+    db.session.refresh(new_tenant)
+    assert new_tenant.billing_cycle is not None
+
+    # Now logs straight in with the password the Ultra Admin set - no OTP, no email.
     client.get("/auth/logout")
     resp = _login(client, "newadmin@example.com", "InitialPass123")
     assert resp.status_code == 200
