@@ -75,8 +75,8 @@ def test_super_admin_onboards_client_with_password_no_otp(client, db, super_admi
     # Ultra Admin verifies and picks a billing cycle.
     _login(client, super_admin.email, "SuperSecret123")
     resp = client.post(
-        f"/admin/clients/{new_tenant.id}/verify",
-        data={"billing_cycle": "monthly", "valid_until": "2030-01-01"},
+        f"/admin/clients/{new_tenant.id}/billing/set-cycle",
+        data={"billing_cycle": "monthly"},
         follow_redirects=True,
     )
     assert resp.status_code == 200

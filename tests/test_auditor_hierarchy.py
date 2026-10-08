@@ -10,8 +10,17 @@ def _login(client, email, password):
     return client.post("/auth/login", data={"email": email, "password": password}, follow_redirects=True)
 
 
-def _make_auditor(db, email, role=UserRole.AUDITOR, parent_auditor_id=None, name="Auditor One", password="AuditorPass123"):
-    user = User(name=name, email=email, role=role, parent_auditor_id=parent_auditor_id, must_change_password=False)
+def _make_auditor(
+    db, email, role=UserRole.AUDITOR, parent_auditor_id=None, name="Auditor One", password="AuditorPass123",
+    billing_cycle=BillingCycle.MONTHLY,
+):
+    # Already-verified by default, like every pre-existing auditor after
+    # the migration backfill - tests that care about the pending gate
+    # itself pass billing_cycle=None explicitly.
+    user = User(
+        name=name, email=email, role=role, parent_auditor_id=parent_auditor_id, must_change_password=False,
+        billing_cycle=billing_cycle,
+    )
     user.set_password(password)
     db.session.add(user)
     db.session.commit()
@@ -508,3 +517,108 @@ def test_auditor_sees_clients_tab(client, db):
     _login(client, auditor.email, "AuditorPass123")
     resp = client.get("/admin/clients")
     assert b">Clients<" in resp.data
+
+
+# --- auditors have the exact same billing-cycle system as clients --------
+
+def test_pending_auditor_blocks_login(client, db):
+    auditor = _make_auditor(db, "pendingauditor@example.com", billing_cycle=None)
+    resp = _login(client, auditor.email, "AuditorPass123")
+    assert b"awaiting a billing cycle" in resp.data.lower()
+
+
+def test_ultra_admin_sets_a_pending_auditors_billing_cycle(client, db, super_admin):
+    auditor = _make_auditor(db, "setcycleauditor@example.com", billing_cycle=None)
+    _login(client, super_admin.email, "SuperSecret123")
+    resp = client.post(
+        f"/admin/auditors/{auditor.id}/billing/set-cycle",
+        data={"billing_cycle": "monthly"},
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+    db.session.refresh(auditor)
+    assert auditor.billing_cycle.value == "monthly"
+
+    # Now unblocked.
+    client.get("/auth/logout")
+    resp = _login(client, auditor.email, "AuditorPass123")
+    assert resp.status_code == 200
+    assert b"awaiting a billing cycle" not in resp.data.lower()
+
+
+def test_ultra_admin_changes_an_auditors_cycle_from_monthly_to_yearly(client, db, super_admin):
+    auditor = _make_auditor(db, "changecycleauditor@example.com", billing_cycle=BillingCycle.MONTHLY)
+    _login(client, super_admin.email, "SuperSecret123")
+    resp = client.post(
+        f"/admin/auditors/{auditor.id}/billing/set-cycle",
+        data={"billing_cycle": "yearly"},
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+    db.session.refresh(auditor)
+    assert auditor.billing_cycle.value == "yearly"
+
+
+def test_auditor_cannot_change_their_own_billing_cycle(client, db):
+    auditor = _make_auditor(db, "selfchangeauditor@example.com")
+    _login(client, auditor.email, "AuditorPass123")
+    resp = client.post(f"/admin/auditors/{auditor.id}/billing/set-cycle", data={"billing_cycle": "yearly"})
+    assert resp.status_code == 403
+
+
+def test_auditor_cycle_anchor_set_on_first_login_after_password_change(client, db):
+    auditor = _make_auditor(db, "anchorauditor@example.com", billing_cycle=BillingCycle.MONTHLY)
+    auditor.must_change_password = True
+    auditor.cycle_anchor_date = None
+    db.session.commit()
+
+    _login(client, auditor.email, "AuditorPass123")
+    resp = client.post(
+        "/auth/change-password",
+        data={
+            "current_password": "AuditorPass123",
+            "new_password": "AuditorNewPass123",
+            "confirm_password": "AuditorNewPass123",
+        },
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+    db.session.refresh(auditor)
+    assert auditor.cycle_anchor_date == date.today()
+    assert auditor.next_billing_due is not None
+
+
+def test_mark_auditor_billing_paid_advances_the_cycle(client, db, super_admin):
+    auditor = _make_auditor(db, "markpaidauditor@example.com", billing_cycle=BillingCycle.MONTHLY)
+    auditor.next_billing_due = date(2026, 1, 15)
+    db.session.commit()
+
+    _login(client, super_admin.email, "SuperSecret123")
+    client.post(f"/admin/auditors/{auditor.id}/billing/mark-paid")
+    db.session.refresh(auditor)
+    assert auditor.next_billing_due == date(2026, 2, 15)
+
+
+def test_ultra_admin_triggers_and_mutes_an_auditors_alarm(client, db, super_admin):
+    auditor = _make_auditor(db, "alarmauditor2@example.com", billing_cycle=BillingCycle.MONTHLY)
+    _login(client, super_admin.email, "SuperSecret123")
+
+    client.post(f"/admin/auditors/{auditor.id}/billing/trigger-alarm")
+    db.session.refresh(auditor)
+    assert auditor.manual_alarm_active is True
+
+    client.post(f"/admin/auditors/{auditor.id}/billing/mute-alarm")
+    db.session.refresh(auditor)
+    assert auditor.manual_alarm_active is False
+
+
+def test_pending_auditors_listed_on_the_auditors_directory(client, db, super_admin):
+    _make_auditor(db, "pendinglist@example.com", billing_cycle=None, name="Pending Listed Auditor")
+    _login(client, super_admin.email, "SuperSecret123")
+    resp = client.get("/admin/auditors")
+    assert b"Pending Listed Auditor" in resp.data
+    assert b"awaiting verification" in resp.data.lower()
+
+
+def test_tenant_no_longer_has_a_hard_expiry_field(tenant):
+    assert not hasattr(tenant, "valid_until")

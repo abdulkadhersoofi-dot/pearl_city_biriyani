@@ -34,6 +34,8 @@
     {{ field(form.password, help="Share this with them yourself - they'll be asked to change it on first sign-in.") }}
     {{ field(form.confirm_password) }}
   </div>
+  <p class="flash flash-info">This account will be created pending verification - it cannot sign in until the
+    Ultra Admin sets a billing cycle for it.</p>
   <button type="submit" class="btn btn-primary btn-lg">Create</button>
 </form>
 {% endblock %}

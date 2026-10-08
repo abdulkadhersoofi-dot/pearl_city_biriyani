@@ -2,7 +2,7 @@
 {% from "macros.html" import field %}
 {% block title %}{{ tenant.legal_name }} - {{ firm_name }}{% endblock %}
 {% block content %}
-{% set badge = {'paused': 'status-void', 'expired': 'status-void', 'billing_overdue': 'status-void', 'pending_verification': 'status-void'} %}
+{% set badge = {'paused': 'status-void', 'billing_overdue': 'status-void', 'pending_verification': 'status-void'} %}
 <div class="page-header">
   <div>
     <h1>{{ tenant.legal_name }}</h1>
@@ -34,12 +34,11 @@
 {% if tenant.billing_cycle is none %}
 <div class="card" style="margin-bottom:20px; border-color: var(--color-danger, #b23b3b);">
   <h2 style="margin-top:0;">Awaiting verification</h2>
-  <p class="text-muted mt-0">This client cannot sign in until you pick a billing cycle and a valid-until date.
+  <p class="text-muted mt-0">This client cannot sign in until you pick a billing cycle.
     {% if tenant.onboarded_by_id and tenant.auditor %}Onboarded by {{ tenant.auditor.name }} ({{ tenant.auditor.role_label }}).{% endif %}</p>
-  <form method="post" action="{{ url_for('tenants.verify_client', tenant_id=tenant.id) }}" class="form-grid">
-    {{ verify_form.hidden_tag() }}
-    {{ field(verify_form.billing_cycle) }}
-    {{ field(verify_form.valid_until) }}
+  <form method="post" action="{{ url_for('tenants.set_billing_cycle', tenant_id=tenant.id) }}" class="row">
+    {{ billing_form.hidden_tag() }}
+    {{ billing_form.billing_cycle(class="field-input") }}
     <button type="submit" class="btn btn-primary">Verify &amp; activate</button>
   </form>
 </div>
@@ -55,20 +54,19 @@
   <div class="form-grid">
     <div>
       <p class="text-muted" style="margin:0 0 4px;">Billing cycle</p>
-      <p style="margin:0;"><strong>{{ tenant.billing_cycle.value|title if tenant.billing_cycle else 'Not set' }}</strong></p>
+      {% if tenant.billing_cycle is not none %}
+      <form method="post" action="{{ url_for('tenants.set_billing_cycle', tenant_id=tenant.id) }}" class="row">
+        {{ billing_form.hidden_tag() }}
+        {{ billing_form.billing_cycle(class="field-input") }}
+        <button type="submit" class="btn btn-secondary">Change</button>
+      </form>
+      {% else %}
+      <p style="margin:0;"><strong>Not set</strong></p>
+      {% endif %}
     </div>
     <div>
       <p class="text-muted" style="margin:0 0 4px;">Cycle started</p>
       <p style="margin:0;"><strong>{{ tenant.cycle_anchor_date.strftime('%d %b %Y') if tenant.cycle_anchor_date else 'Not yet - starts on first login after password change' }}</strong></p>
-    </div>
-    <div>
-      <p class="text-muted" style="margin:0 0 4px;">Hard expiry</p>
-      <p style="margin:0;"><strong>{{ tenant.valid_until.strftime('%d %b %Y') if tenant.valid_until else 'Not set' }}</strong></p>
-      <form method="post" action="{{ url_for('tenants.renew_access', tenant_id=tenant.id) }}" class="row" style="margin-top:8px;">
-        {{ renew_form.hidden_tag() }}
-        {{ renew_form.valid_until(class="field-input") }}
-        <button type="submit" class="btn btn-secondary">Renew / extend</button>
-      </form>
     </div>
     <div>
       <p class="text-muted" style="margin:0 0 4px;">Renewal due</p>

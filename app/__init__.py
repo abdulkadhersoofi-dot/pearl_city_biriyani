@@ -122,6 +122,12 @@ def _register_context_processors(app: Flask) -> None:
             status = tenant_access_status(brand_tenant)
             if status.billing_notice:
                 billing_notice = status.billing_notice_message
+        elif current_user.is_authenticated and (current_user.is_auditor or current_user.is_sub_auditor):
+            from app.utils.billing import auditor_access_status
+
+            status = auditor_access_status(current_user)
+            if status.billing_notice:
+                billing_notice = status.billing_notice_message
 
         # Set only while a Super Admin is impersonating a tenant user (see
         # tenants.act_as) - current_user IS that tenant user for the
@@ -164,21 +170,28 @@ def _register_request_hooks(app: Flask) -> None:
         if not current_user.is_authenticated or current_user.is_super_admin:
             return None
         if session.get("impersonator_id"):
-            # A Super Admin "acting as" this tenant's user is exempt -
-            # otherwise the one person who could fix a paused/expired
-            # tenant (e.g. by marking it paid) would be locked out of the
-            # very screens needed to do that.
+            # An admin "acting as" this tenant user or Auditor/Sub-Auditor
+            # is exempt - otherwise the one person who could fix a paused
+            # or overdue account (e.g. by marking it paid) would be locked
+            # out of the very screens needed to do that.
             return None
-        if current_user.tenant_id is None or request.endpoint in (None, "static", "auth.logout"):
-            return None
-
-        tenant = current_user.tenant
-        if tenant is None:
+        if request.endpoint in (None, "static", "auth.logout"):
             return None
 
-        from app.utils.billing import tenant_access_status
+        if current_user.tenant_id is not None:
+            tenant = current_user.tenant
+            if tenant is None:
+                return None
+            from app.utils.billing import tenant_access_status
 
-        status = tenant_access_status(tenant)
+            status = tenant_access_status(tenant)
+        elif current_user.is_auditor or current_user.is_sub_auditor:
+            from app.utils.billing import auditor_access_status
+
+            status = auditor_access_status(current_user)
+        else:
+            return None
+
         if status.blocked:
             logout_user()
             flash(status.message, "error")

@@ -1,8 +1,6 @@
-from datetime import date, timedelta
-
 from flask_wtf import FlaskForm
 from flask_wtf.file import FileAllowed, FileField, FileSize
-from wtforms import DateField, PasswordField, SelectField, StringField
+from wtforms import PasswordField, SelectField, StringField
 from wtforms.validators import DataRequired, Email, EqualTo, Length, Optional, Regexp
 
 from app.models.tenant import BillingCycle, RegistrationType
@@ -11,12 +9,6 @@ from app.utils.indian_states import INDIAN_STATES
 from app.utils.uploads import ALLOWED_IMAGE_EXTENSIONS, MAX_IMAGE_BYTES
 
 STATE_CODE_REGEX = r"^[0-9]{2}$"
-
-
-def _default_valid_until() -> date:
-    # A one-year suggestion, not a policy - the Ultra Admin picks the
-    # real date; this just saves re-typing the common case.
-    return date.today() + timedelta(days=365)
 
 
 class OnboardClientForm(FlaskForm):
@@ -35,10 +27,10 @@ class OnboardClientForm(FlaskForm):
     state_code = SelectField("State", choices=INDIAN_STATES, validators=[DataRequired()])
     registered_address = StringField("Registered address", validators=[Optional()])
 
-    # No valid_until/billing_cycle field here, whoever is filling this in
-    # (Ultra Admin or Auditor) - billing selection always stays with the
-    # Ultra Admin, set later at verification (tenants.verify_client), not
-    # at onboarding. Every new client starts pending either way.
+    # No billing_cycle field here, whoever is filling this in (Ultra Admin
+    # or Auditor) - billing selection always stays with the Ultra Admin,
+    # set later (tenants.set_billing_cycle), not at onboarding. Every new
+    # client starts pending either way.
 
     admin_name = StringField("Client Admin - full name", validators=[DataRequired(), Length(max=255)])
     admin_email = StringField("Client Admin - email", validators=[DataRequired(), Email()])
@@ -57,27 +49,19 @@ class OnboardClientForm(FlaskForm):
     )
 
 
-class RenewAccessForm(FlaskForm):
-    """Only the Ultra Admin ever fills this in (tenants.renew_access) - it
-    moves a tenant's hard expiry date, nothing else can."""
-
-    valid_until = DateField("New access valid-until date", validators=[DataRequired()])
-
-
-class VerifyClientForm(FlaskForm):
-    """Only the Ultra Admin ever fills this in (tenants.verify_client) -
-    the one point where a pending client (billing_cycle is None,
-    whoever onboarded it) gets its billing cycle picked and is allowed
-    to go live. This selection never belongs to the Auditor who may have
-    onboarded the client."""
+class BillingCycleForm(FlaskForm):
+    """Only the Ultra Admin ever fills this in (tenants.set_billing_cycle /
+    tenants.set_auditor_billing_cycle) - sets or changes a client's or an
+    Auditor's billing cycle (Monthly/Yearly). A pending (billing_cycle is
+    None) client/Auditor, whoever onboarded it, can't sign in until this
+    is set for the first time; it can also be changed later (e.g.
+    Monthly -> Yearly). This selection never belongs to an Auditor, even
+    for a client or Sub-Auditor they created themselves."""
 
     billing_cycle = SelectField(
         "Billing cycle",
         choices=[(c.value, c.name.title()) for c in BillingCycle],
         validators=[DataRequired()],
-    )
-    valid_until = DateField(
-        "Access valid until", validators=[DataRequired()], default=_default_valid_until
     )
 
 

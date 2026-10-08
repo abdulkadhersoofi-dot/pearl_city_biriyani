@@ -22,10 +22,9 @@ from app.reports.gstr import ReportPeriodError, gstr1_data, gstr3b_data
 from app.tenants import tenants_bp
 from app.tenants.forms import (
     AddGstinForm,
+    BillingCycleForm,
     CreateAuditorForm,
     OnboardClientForm,
-    RenewAccessForm,
-    VerifyClientForm,
 )
 from app.utils.audit import record_audit
 from app.utils.auditor_scope import (
@@ -34,7 +33,7 @@ from app.utils.auditor_scope import (
     auditor_tenant_ids,
     visible_auditors,
 )
-from app.utils.billing import advance_billing_cycle, tenant_access_status
+from app.utils.billing import advance_billing_cycle, auditor_access_status, tenant_access_status
 from app.utils.indian_states import STATE_NAME_BY_CODE
 from app.utils.uploads import UploadError, delete_uploaded_image, save_uploaded_image
 
@@ -80,7 +79,7 @@ def onboard():
             # directly. Billing cycle is deliberately never set here -
             # every new client starts pending verification regardless of
             # who created it (see app.utils.billing.tenant_access_status)
-            # and only the Ultra Admin's verify_client sets it.
+            # and only the Ultra Admin's set_billing_cycle sets it.
             auditor_id=current_user.id if current_user.is_admin_hierarchy and not current_user.is_super_admin else None,
         )
         db.session.add(tenant)
@@ -175,8 +174,7 @@ def detail(tenant_id):
     )
     users = User.query.filter_by(tenant_id=tenant.id).all()
     gstin_form = AddGstinForm()
-    renew_form = RenewAccessForm(valid_until=tenant.valid_until)
-    verify_form = VerifyClientForm()
+    billing_form = BillingCycleForm(billing_cycle=tenant.billing_cycle.value if tenant.billing_cycle else None)
     auditors = visible_auditors(current_user) if current_user.is_super_admin else []
     return render_template(
         "tenants/detail.html",
@@ -186,8 +184,7 @@ def detail(tenant_id):
         notes=notes,
         users=users,
         gstin_form=gstin_form,
-        renew_form=renew_form,
-        verify_form=verify_form,
+        billing_form=billing_form,
         auditors=auditors,
         access_status=tenant_access_status(tenant),
     )
@@ -226,33 +223,41 @@ def admin_invoice_pdf(tenant_id, invoice_id):
     )
 
 
-@tenants_bp.route("/clients/<int:tenant_id>/verify", methods=["POST"])
+@tenants_bp.route("/clients/<int:tenant_id>/billing/set-cycle", methods=["POST"])
 @roles_required(UserRole.SUPER_ADMIN)
-def verify_client(tenant_id):
-    # The one point where a pending client - onboarded by anyone, Ultra
-    # Admin or Auditor - gets its billing cycle picked and goes live.
-    # This selection always stays with the Ultra Admin.
+def set_billing_cycle(tenant_id):
+    # Sets a pending client's billing cycle for the first time (which is
+    # what lifts the pending-verification gate and lets it go live), or
+    # changes an already-active client's cycle later - e.g. Monthly to
+    # Yearly. Either way this selection always stays with the Ultra
+    # Admin, even for a client an Auditor onboarded.
     tenant = Tenant.query.get_or_404(tenant_id)
-    form = VerifyClientForm()
+    form = BillingCycleForm()
     if form.validate_on_submit():
+        was_pending = tenant.billing_cycle is None
         tenant.billing_cycle = BillingCycle(form.billing_cycle.data)
-        tenant.valid_until = form.valid_until.data
-        # next_billing_due/cycle_anchor_date deliberately left unset here -
-        # the recurring cycle only starts on the Client Admin's first
+        # next_billing_due/cycle_anchor_date are never touched here - the
+        # recurring cycle only starts on the Client Admin's first
         # successful login after changing their initial password (see
-        # app.auth.routes.change_password), not at verification.
+        # app.auth.routes.change_password), and only moves from
+        # mark_billing_paid after that. Changing the cycle type just
+        # changes how long the *next* step will be.
         record_audit(
             current_user,
-            "client_verified",
+            "client_verified" if was_pending else "client_billing_cycle_changed",
             tenant_id=tenant.id,
             entity_type="tenant",
             entity_id=tenant.id,
-            details={"billing_cycle": tenant.billing_cycle.value, "valid_until": tenant.valid_until.isoformat()},
+            details={"billing_cycle": tenant.billing_cycle.value},
         )
         db.session.commit()
-        flash(f"{tenant.legal_name} verified and active.", "success")
+        flash(
+            f"{tenant.legal_name} is now on the {tenant.billing_cycle.value} cycle"
+            + (" and active." if was_pending else "."),
+            "success",
+        )
     else:
-        flash("Pick a billing cycle and a valid-until date.", "error")
+        flash("Pick a billing cycle.", "error")
     return redirect(url_for("tenants.detail", tenant_id=tenant.id))
 
 
@@ -370,24 +375,6 @@ def activate(tenant_id):
     )
     db.session.commit()
     flash(f"{tenant.legal_name} reactivated.", "success")
-    return redirect(url_for("tenants.detail", tenant_id=tenant.id))
-
-
-@tenants_bp.route("/clients/<int:tenant_id>/renew", methods=["POST"])
-@roles_required(UserRole.SUPER_ADMIN)
-def renew_access(tenant_id):
-    tenant = Tenant.query.get_or_404(tenant_id)
-    form = RenewAccessForm()
-    if form.validate_on_submit():
-        tenant.valid_until = form.valid_until.data
-        record_audit(
-            current_user, "client_access_renewed", tenant_id=tenant.id, entity_type="tenant", entity_id=tenant.id,
-            details={"valid_until": tenant.valid_until.isoformat()},
-        )
-        db.session.commit()
-        flash(f"{tenant.legal_name}'s access now runs until {tenant.valid_until.strftime('%d %b %Y')}.", "success")
-    else:
-        flash("Pick a valid date.", "error")
     return redirect(url_for("tenants.detail", tenant_id=tenant.id))
 
 
@@ -535,6 +522,7 @@ def auditors_directory():
     auditors = visible_auditors(current_user)
     pending_tenants = []
     unallocated_tenants = []
+    pending_auditors = []
     if current_user.is_super_admin:
         pending_tenants = Tenant.query.filter_by(billing_cycle=None).order_by(Tenant.created_at.desc()).all()
         unallocated_tenants = (
@@ -542,11 +530,15 @@ def auditors_directory():
             .order_by(Tenant.legal_name)
             .all()
         )
+        pending_auditors = [a for a in auditors if a.billing_cycle is None]
+    access_statuses = {a.id: auditor_access_status(a) for a in auditors}
     return render_template(
         "tenants/auditors_directory.html",
         auditors=auditors,
         pending_tenants=pending_tenants,
         unallocated_tenants=unallocated_tenants,
+        pending_auditors=pending_auditors,
+        access_statuses=access_statuses,
     )
 
 
@@ -622,13 +614,82 @@ def auditor_detail(auditor_id):
     clients = Tenant.query.filter_by(auditor_id=auditor.id).order_by(Tenant.legal_name).all()
     access_statuses = {t.id: tenant_access_status(t) for t in clients}
     sub_auditors = list(auditor.sub_auditors) if auditor.is_auditor else []
+    billing_form = BillingCycleForm(billing_cycle=auditor.billing_cycle.value if auditor.billing_cycle else None)
     return render_template(
         "tenants/auditor_detail.html",
         auditor=auditor,
         clients=clients,
         access_statuses=access_statuses,
         sub_auditors=sub_auditors,
+        billing_form=billing_form,
+        auditor_access_status=auditor_access_status(auditor),
     )
+
+
+@tenants_bp.route("/auditors/<int:auditor_id>/billing/set-cycle", methods=["POST"])
+@roles_required(UserRole.SUPER_ADMIN)
+def set_auditor_billing_cycle(auditor_id):
+    # Same system as a client's (tenants.set_billing_cycle) - sets a
+    # pending Auditor/Sub-Auditor's cycle for the first time (lifting the
+    # pending-verification gate) or changes an already-active one's
+    # cycle later.
+    auditor = User.query.filter(User.id == auditor_id, User.role.in_([UserRole.AUDITOR, UserRole.SUB_AUDITOR])).first_or_404()
+    form = BillingCycleForm()
+    if form.validate_on_submit():
+        was_pending = auditor.billing_cycle is None
+        auditor.billing_cycle = BillingCycle(form.billing_cycle.data)
+        record_audit(
+            current_user,
+            "auditor_verified" if was_pending else "auditor_billing_cycle_changed",
+            entity_type="user",
+            entity_id=auditor.id,
+            details={"billing_cycle": auditor.billing_cycle.value},
+        )
+        db.session.commit()
+        flash(
+            f"{auditor.name} is now on the {auditor.billing_cycle.value} cycle"
+            + (" and active." if was_pending else "."),
+            "success",
+        )
+    else:
+        flash("Pick a billing cycle.", "error")
+    return redirect(url_for("tenants.auditor_detail", auditor_id=auditor.id))
+
+
+@tenants_bp.route("/auditors/<int:auditor_id>/billing/mark-paid", methods=["POST"])
+@roles_required(UserRole.SUPER_ADMIN)
+def mark_auditor_billing_paid(auditor_id):
+    auditor = User.query.filter(User.id == auditor_id, User.role.in_([UserRole.AUDITOR, UserRole.SUB_AUDITOR])).first_or_404()
+    auditor.next_billing_due = advance_billing_cycle(auditor, auditor.next_billing_due or date.today())
+    record_audit(
+        current_user, "auditor_billing_marked_paid", entity_type="user", entity_id=auditor.id,
+        details={"next_billing_due": auditor.next_billing_due.isoformat()},
+    )
+    db.session.commit()
+    flash(f"Marked paid - {auditor.name}'s next renewal is due {auditor.next_billing_due.strftime('%d %b %Y')}.", "success")
+    return redirect(url_for("tenants.auditor_detail", auditor_id=auditor.id))
+
+
+@tenants_bp.route("/auditors/<int:auditor_id>/billing/trigger-alarm", methods=["POST"])
+@roles_required(UserRole.SUPER_ADMIN)
+def trigger_auditor_alarm(auditor_id):
+    auditor = User.query.filter(User.id == auditor_id, User.role.in_([UserRole.AUDITOR, UserRole.SUB_AUDITOR])).first_or_404()
+    auditor.manual_alarm_active = True
+    record_audit(current_user, "auditor_billing_alarm_triggered", entity_type="user", entity_id=auditor.id)
+    db.session.commit()
+    flash(f"Billing reminder turned on for {auditor.name}.", "success")
+    return redirect(url_for("tenants.auditor_detail", auditor_id=auditor.id))
+
+
+@tenants_bp.route("/auditors/<int:auditor_id>/billing/mute-alarm", methods=["POST"])
+@roles_required(UserRole.SUPER_ADMIN)
+def mute_auditor_alarm(auditor_id):
+    auditor = User.query.filter(User.id == auditor_id, User.role.in_([UserRole.AUDITOR, UserRole.SUB_AUDITOR])).first_or_404()
+    auditor.manual_alarm_active = False
+    record_audit(current_user, "auditor_billing_alarm_muted", entity_type="user", entity_id=auditor.id)
+    db.session.commit()
+    flash(f"Billing reminder turned off for {auditor.name}.", "success")
+    return redirect(url_for("tenants.auditor_detail", auditor_id=auditor.id))
 
 
 @tenants_bp.route("/auditors/<int:auditor_id>/act-as", methods=["POST"])

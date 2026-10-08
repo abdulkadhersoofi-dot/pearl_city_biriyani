@@ -406,32 +406,26 @@ Gunicorn workers or add app servers behind Nginx as load grows.
   link set never grows the header taller than the brand row, on desktop
   or mobile; `.user-name` hides under 640px purely to keep Sign out from
   crowding, not because it stopped mattering.
-- **Tenant access gating** (`app/utils/billing.py`, `Tenant.valid_until` /
-  `Tenant.next_billing_due`) - three independent gates, any one of which
-  cuts a tenant's Client Admin and every branch under it off from
-  signing in, checked both at login and on every request of an already
-  open session (`app.__init__._register_request_hooks`), not just at
-  login: a Super Admin's manual **pause** (`Tenant.is_active`, pre-existing,
+- **Tenant access gating** (`app/utils/billing.py`) - see the Auditor/
+  Sub-Auditor hierarchy bullet below for the full current gate order
+  (pending verification, pause, billing overdue - there is deliberately
+  no hard expiry date). Checked both at login and on every request of an
+  already open session (`app.__init__._register_request_hooks`), not
+  just at login. A Super Admin's manual **pause** (`Tenant.is_active`,
   now actually enforced - previously this flag was set by the
   deactivate/activate routes but nothing ever checked it outside the
   tenant's own login-slug lookup, so a deactivated client's users could
-  still sign in and work); a hard **expiry date** (`valid_until`, required
-  at onboarding, moved forward only by a Super Admin's "Renew / extend"
-  on the client's own page - nothing else changes it); and a recurring
-  **monthly billing reminder** (`next_billing_due`, set to one month from
-  onboarding and advanced by exactly one more month, from whatever it
-  already was, only by a Super Admin's "Mark this month paid" - a
-  calendar-correct `add_one_month()` so e.g. the 31st of a 31-day month
+  still sign in and work) and a recurring **billing reminder**
+  (`Tenant.next_billing_due`, monthly or yearly per `Tenant.billing_cycle`,
+  advanced by exactly one more period, from whatever it already was,
+  only by the Ultra Admin's "Mark this period paid" - a calendar-correct
+  `add_one_month()`/`add_one_year()` so e.g. the 31st of a 31-day month
   lands on the 28th/29th of February rather than overflowing into
-  March). Monthly billing has a `BILLING_GRACE_DAYS` (3) window after
-  the due date: an in-app banner (`billing_notice` in `base.html`, shown
-  to that tenant's own users on every page) warns during the grace
-  window without blocking anything; only once the grace window itself
-  elapses unpaid does it also block, the same way the other two gates
-  do. A tenant onboarded before this feature existed has both fields
-  unset and is never blocked on either until a Super Admin opts it in -
-  the migration adding these columns deliberately backfills nothing, so
-  shipping this never silently locks out an existing client.
+  March) share a `BILLING_GRACE_DAYS` (3) window after the due date: an
+  in-app banner (`billing_notice` in `base.html`, shown to that tenant's
+  own users on every page) warns during the grace window without
+  blocking anything; only once the grace window itself elapses unpaid
+  does it also block.
 - **"Act as"** (`tenants.act_as` / `auth.stop_impersonating`) - full
   Super Admin operational access to a client's own screens (issuing an
   invoice as that client, billing a POS sale under a specific branch)
@@ -481,12 +475,13 @@ Gunicorn workers or add app servers behind Nginx as load grows.
   queues. **Billing selection always stays with the Ultra Admin, whoever
   onboards the client.** `tenants.onboard()` behaves identically no matter
   who calls it - it never sets `Tenant.billing_cycle`, so every new client
-  starts in a third, highest-priority gate in
+  starts in the highest-priority gate in
   `tenant_access_status()` ("pending verification",
-  `billing_cycle IS NULL`) that blocks sign-in outright, separate from the
-  pre-existing pause/expiry/overdue gates - only `tenants.verify_client`
-  (Ultra Admin only) sets `billing_cycle` (`MONTHLY`/`YEARLY`,
-  `app.models.tenant.BillingCycle`) and `valid_until`, lifting it. The
+  `billing_cycle IS NULL`) that blocks sign-in outright, ahead of the
+  pause/billing-overdue gates - only `tenants.set_billing_cycle` (Ultra
+  Admin only) sets `billing_cycle` (`MONTHLY`/`YEARLY`,
+  `app.models.tenant.BillingCycle`), lifting it; the same action changes
+  an already-active client's cycle later too (see the next bullet). The
   migration backfills `billing_cycle='MONTHLY'` for every tenant that
   existed before this feature, so nobody already active gets retroactively
   locked out pending verification. The recurring cycle's anchor
@@ -516,6 +511,44 @@ Gunicorn workers or add app servers behind Nginx as load grows.
   plus a second impersonation path, `tenants.act_as_auditor`, lets the
   Ultra Admin (or an Auditor, for their own Sub-Auditors only) sign
   straight into an Auditor-hierarchy account the same way.
+- **Hard expiry removed; billing cycle is changeable; Auditors are
+  billed too.** Three follow-up changes to the round above, all driven
+  by the firm's own feedback. First, `Tenant.valid_until` is gone
+  entirely (column dropped in the migration, along with
+  `tenants.renew_access` and the "Renew / extend" box on a client's
+  page) - the firm doesn't want a hard subscription end date at all, only
+  pending/paused/billing-overdue. Second, `tenants.verify_client` became
+  `tenants.set_billing_cycle`: the same one route and the same always-
+  visible "Billing cycle [Monthly/Yearly] [Change]" control on a client's
+  page both lifts the initial pending gate *and* changes an already-
+  active client's cycle at any later time (e.g. Monthly -> Yearly) -
+  it's no longer a one-time "verify" step. Third, an Auditor or
+  Sub-Auditor's own account now carries the exact same four billing
+  fields a `Tenant` does (`User.billing_cycle`/`cycle_anchor_date`/
+  `next_billing_due`/`manual_alarm_active`) - the firm bills an
+  Auditor's office the same way it bills a client. `app.utils.billing`
+  was generalized accordingly: `_billing_status(subject, ...)` runs the
+  same pending/paused/overdue logic against either a `Tenant` or a
+  `User`, with `tenant_access_status`/`auditor_access_status` as the two
+  thin wrappers that supply the right messages; `advance_billing_cycle`
+  already took a generic `subject` so needed no change. Enforcement
+  follows the same pattern throughout - `app.auth.routes._login_view`
+  and `app.__init__._register_request_hooks` now branch on whether the
+  signed-in user is tenant-scoped or is an Auditor/Sub-Auditor and call
+  the matching status function; `auth.change_password` stamps
+  `cycle_anchor_date`/`next_billing_due` on whichever of "the Client
+  Admin's tenant" or "the Auditor's own account" actually applies,
+  instead of only ever checking the tenant. A new Auditor or Sub-Auditor
+  - created by the Ultra Admin or by another Auditor - starts pending
+  (`billing_cycle` null) exactly like a new client, with its own
+  "Auditors awaiting verification" queue on the Auditors tab and its own
+  verify/change-cycle/mark-paid/trigger-alarm/mute-alarm actions on
+  `tenants/auditor_detail.html`, all Ultra-Admin-only, mirroring the
+  client-side ones exactly. The migration backfills
+  `billing_cycle='MONTHLY'` for any Auditor/Sub-Auditor that already
+  existed (the role was introduced one migration earlier), for the same
+  "don't retroactively lock out someone already set up" reason as the
+  tenant backfill.
 
 ## Roadmap
 

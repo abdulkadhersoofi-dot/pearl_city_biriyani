@@ -61,31 +61,24 @@ class Tenant(db.Model, TimestampMixin):
 
     # Access gating - see app.utils.billing.tenant_access_status, which
     # combines these with `is_active` (above) into one go/no-go check,
-    # enforced both at login and on every subsequent request. Nullable:
-    # a tenant onboarded before this feature existed has neither set, and
-    # is never blocked on either criterion until a Super Admin opts it in
-    # (set directly, or implicitly via the first "mark paid" action) -
-    # nobody already using the app gets silently cut off by a migration.
+    # enforced both at login and on every subsequent request. There is
+    # deliberately no hard expiry date any more - only the pending/paused/
+    # overdue gates below.
     #
-    # A hard subscription end date - only the Ultra Admin can move it
-    # forward (see tenants.renew_access), and only ever sets it at
-    # verification time (tenants.verify_client) or renewal, never at
-    # onboarding - stored nullable since an existing client has none
-    # until one is set.
-    valid_until = db.Column(db.Date)
-    # The next renewal date in the separate, recurring billing cycle -
-    # independent of valid_until. A monthly or yearly reminder depending
-    # on `billing_cycle` below. The Ultra Admin's "mark this period paid"
-    # (tenants.mark_billing_paid) advances it by one month or one year
-    # from its current value; nothing else moves it. See app.utils.billing
-    # for the grace window this is checked against.
+    # The next renewal date in the recurring billing cycle - a monthly or
+    # yearly reminder depending on `billing_cycle` below. The Ultra Admin's
+    # "mark this period paid" (tenants.mark_billing_paid) advances it by
+    # one month or one year from its current value; nothing else moves
+    # it. See app.utils.billing for the grace window this is checked
+    # against.
     next_billing_due = db.Column(db.Date)
-    # Set once by the Ultra Admin at verification (tenants.verify_client) -
-    # MONTHLY or YEARLY. Null means "pending verification": a client
-    # created by anyone (Ultra Admin or Auditor) starts with no billing
-    # cycle at all and cannot be signed into until the Ultra Admin
-    # verifies it and picks one. This selection always stays with the
-    # Ultra Admin, even when an Auditor created the client.
+    # Set by the Ultra Admin (tenants.set_billing_cycle) - MONTHLY or
+    # YEARLY, changeable at any time (e.g. a client moving from monthly to
+    # yearly). Null means "pending verification": a client created by
+    # anyone (Ultra Admin or Auditor) starts with no billing cycle at all
+    # and cannot be signed into until the Ultra Admin sets one. This
+    # selection always stays with the Ultra Admin, even when an Auditor
+    # created the client.
     billing_cycle = db.Column(db.Enum(BillingCycle, name="billing_cycle"))
     # The anchor the recurring cycle counts from. Deliberately NOT set at
     # onboarding or verification - only on the Client Admin's first

@@ -6,6 +6,7 @@ from flask_login import UserMixin
 
 from app.extensions import db
 from app.models.mixins import TimestampMixin
+from app.models.tenant import BillingCycle
 
 _hasher = PasswordHasher()
 
@@ -77,6 +78,22 @@ class User(db.Model, UserMixin, TimestampMixin):
     is_active = db.Column(db.Boolean, nullable=False, default=True)
     must_change_password = db.Column(db.Boolean, nullable=False, default=True)
     last_login_at = db.Column(db.DateTime(timezone=True))
+
+    # Billing for an Auditor/Sub-Auditor login - the same system a Tenant
+    # has (see app.models.tenant.Tenant and app.utils.billing), just
+    # billing the Auditor's own office instead of a client. Null/unused
+    # for Ultra Admin, Client Admin and Staff. Null billing_cycle means
+    # "pending verification" - a newly created Auditor/Sub-Auditor, by
+    # the Ultra Admin or by another Auditor, can't sign in until the
+    # Ultra Admin sets one (tenants.set_auditor_billing_cycle).
+    billing_cycle = db.Column(db.Enum(BillingCycle, name="billing_cycle"))
+    # Anchor for the recurring cycle - stamped only on this Auditor's own
+    # first successful login after changing their initial password (see
+    # app.auth.routes.change_password), exactly like a Client Admin's
+    # tenant.
+    cycle_anchor_date = db.Column(db.Date)
+    next_billing_due = db.Column(db.Date)
+    manual_alarm_active = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
 
     def set_password(self, raw_password: str) -> None:
         self.password_hash = _hasher.hash(raw_password)

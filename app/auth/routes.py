@@ -11,7 +11,7 @@ from app.models.mixins import utcnow
 from app.models.tenant import Tenant
 from app.models.user import User
 from app.utils.audit import record_audit
-from app.utils.billing import advance_billing_cycle, tenant_access_status
+from app.utils.billing import advance_billing_cycle, auditor_access_status, tenant_access_status
 
 
 def _recent_failed_logins(email: str, window_minutes: int) -> int:
@@ -55,6 +55,15 @@ def _login_view(login_tenant=None):
                     record_audit(
                         user, "login_blocked_tenant_access", tenant_id=user.tenant_id,
                         details={"reason": status.reason},
+                    )
+                    db.session.commit()
+                    flash(status.message, "error")
+                    return render_template("auth/login.html", form=form, login_tenant=login_tenant)
+            elif user.is_auditor or user.is_sub_auditor:
+                status = auditor_access_status(user)
+                if status.blocked:
+                    record_audit(
+                        user, "login_blocked_auditor_access", details={"reason": status.reason},
                     )
                     db.session.commit()
                     flash(status.message, "error")
@@ -136,14 +145,25 @@ def change_password():
             current_user.must_change_password = False
 
             # The billing cycle's anchor date - deliberately not set at
-            # onboarding or verification, only here, on the Client Admin's
-            # first successful login after changing the initial password
-            # the Ultra Admin set for them. Never for Staff/branch logins,
-            # and never re-stamped on a later password change.
-            if current_user.is_client_admin and current_user.tenant and current_user.tenant.cycle_anchor_date is None:
-                tenant = current_user.tenant
-                tenant.cycle_anchor_date = utcnow().date()
-                tenant.next_billing_due = advance_billing_cycle(tenant, tenant.cycle_anchor_date)
+            # onboarding or verification, only here, on the first
+            # successful login after changing the initial password the
+            # Ultra Admin set. Never for Staff/branch logins, and never
+            # re-stamped on a later password change. A Client Admin's
+            # tenant and an Auditor/Sub-Auditor's own account share the
+            # exact same billing fields (see app.models.tenant.Tenant /
+            # app.models.user.User, app.utils.billing), so the same logic
+            # covers both.
+            billing_subject = None
+            if current_user.is_client_admin and current_user.tenant:
+                billing_subject = current_user.tenant
+            elif current_user.is_auditor or current_user.is_sub_auditor:
+                billing_subject = current_user
+
+            if billing_subject is not None and billing_subject.cycle_anchor_date is None:
+                billing_subject.cycle_anchor_date = utcnow().date()
+                billing_subject.next_billing_due = advance_billing_cycle(
+                    billing_subject, billing_subject.cycle_anchor_date
+                )
 
             record_audit(current_user, "password_changed", tenant_id=current_user.tenant_id)
             db.session.commit()

@@ -2,7 +2,7 @@ from datetime import date, timedelta
 
 import pytest
 
-from app.models.tenant import Tenant
+from app.models.tenant import BillingCycle, Tenant
 from app.models.user import User, UserRole
 from app.utils.billing import BILLING_GRACE_DAYS, add_one_month, tenant_access_status
 
@@ -44,19 +44,6 @@ def test_access_status_paused_blocks(tenant):
     assert status.reason == "paused"
 
 
-def test_access_status_expired_blocks(tenant):
-    tenant.valid_until = date.today() - timedelta(days=1)
-    status = tenant_access_status(tenant)
-    assert status.blocked is True
-    assert status.reason == "expired"
-
-
-def test_access_status_valid_until_in_future_does_not_block(tenant):
-    tenant.valid_until = date.today() + timedelta(days=1)
-    status = tenant_access_status(tenant)
-    assert status.blocked is False
-
-
 def test_access_status_billing_due_within_grace_is_a_notice_not_a_block(tenant):
     tenant.next_billing_due = date.today() - timedelta(days=1)
     status = tenant_access_status(tenant)
@@ -79,17 +66,16 @@ def test_access_status_billing_due_exactly_on_grace_boundary_not_blocked(tenant)
     assert status.billing_notice is True
 
 
-def test_access_status_none_fields_never_block(tenant):
-    tenant.valid_until = None
+def test_access_status_none_next_billing_due_never_blocks(tenant):
     tenant.next_billing_due = None
     status = tenant_access_status(tenant)
     assert status.blocked is False
     assert status.billing_notice is False
 
 
-def test_paused_takes_priority_reason_over_expired(tenant):
+def test_paused_takes_priority_reason_over_billing_overdue(tenant):
     tenant.is_active = False
-    tenant.valid_until = date.today() - timedelta(days=5)
+    tenant.next_billing_due = date.today() - timedelta(days=BILLING_GRACE_DAYS + 5)
     status = tenant_access_status(tenant)
     assert status.reason == "paused"
 
@@ -103,14 +89,6 @@ def test_paused_tenant_client_admin_cannot_log_in(client, db, tenant, client_adm
     assert resp.status_code == 200
     assert b"paused" in resp.data.lower()
     assert resp.request.path == "/auth/login"
-
-
-def test_expired_tenant_branch_cannot_log_in(client, db, tenant, staff):
-    tenant.valid_until = date.today() - timedelta(days=1)
-    db.session.commit()
-    resp = _login(client, staff.email, "CashierSecret123")
-    assert resp.status_code == 200
-    assert b"expired" in resp.data.lower()
 
 
 def test_billing_overdue_past_grace_blocks_login(client, db, tenant, client_admin):
@@ -184,43 +162,57 @@ def test_onboarding_leaves_the_client_pending_with_no_billing_cycle(client, db, 
     tenant = Tenant.query.filter_by(legal_name="Validity Test Co").first()
     assert tenant is not None
     assert tenant.billing_cycle is None
-    assert tenant.valid_until is None
     assert tenant.next_billing_due is None
 
 
-def test_verify_client_sets_billing_cycle_and_valid_until(client, db, super_admin, tenant):
+def test_set_billing_cycle_verifies_a_pending_client(client, db, super_admin, tenant):
     tenant.billing_cycle = None
-    tenant.valid_until = None
     db.session.commit()
 
     _login(client, super_admin.email, "SuperSecret123")
-    future = (date.today() + timedelta(days=200)).isoformat()
     resp = client.post(
-        f"/admin/clients/{tenant.id}/verify",
-        data={"billing_cycle": "monthly", "valid_until": future},
+        f"/admin/clients/{tenant.id}/billing/set-cycle",
+        data={"billing_cycle": "monthly"},
         follow_redirects=True,
     )
     assert resp.status_code == 200
 
     db.session.refresh(tenant)
     assert tenant.billing_cycle.value == "monthly"
-    assert tenant.valid_until == date.today() + timedelta(days=200)
     # The recurring due date is still not set - that only happens on the
     # Client Admin's first post-password-change login.
     assert tenant.next_billing_due is None
 
 
-def test_verify_client_rejects_a_blank_valid_until(client, db, super_admin, tenant):
+def test_set_billing_cycle_rejects_a_blank_cycle(client, db, super_admin, tenant):
     tenant.billing_cycle = None
     db.session.commit()
 
     _login(client, super_admin.email, "SuperSecret123")
-    client.post(
-        f"/admin/clients/{tenant.id}/verify",
-        data={"billing_cycle": "monthly", "valid_until": ""},
-    )
+    client.post(f"/admin/clients/{tenant.id}/billing/set-cycle", data={"billing_cycle": ""})
     db.session.refresh(tenant)
     assert tenant.billing_cycle is None
+
+
+def test_set_billing_cycle_changes_an_already_active_client_from_monthly_to_yearly(client, db, super_admin, tenant):
+    tenant.billing_cycle = BillingCycle.MONTHLY
+    db.session.commit()
+
+    _login(client, super_admin.email, "SuperSecret123")
+    resp = client.post(
+        f"/admin/clients/{tenant.id}/billing/set-cycle",
+        data={"billing_cycle": "yearly"},
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+    db.session.refresh(tenant)
+    assert tenant.billing_cycle.value == "yearly"
+
+
+def test_client_admin_cannot_change_their_own_billing_cycle(client, db, tenant, client_admin):
+    _login(client, client_admin.email, "ClientSecret123")
+    resp = client.post(f"/admin/clients/{tenant.id}/billing/set-cycle", data={"billing_cycle": "yearly"})
+    assert resp.status_code == 403
 
 
 def test_pending_verification_blocks_login(client, db, super_admin, tenant, client_admin):
@@ -232,26 +224,7 @@ def test_pending_verification_blocks_login(client, db, super_admin, tenant, clie
     assert b"awaiting verification" in resp.data.lower()
 
 
-# --- Super Admin renewal / billing actions --------------------------------
-
-def test_super_admin_can_renew_access(client, db, super_admin, tenant):
-    _login(client, super_admin.email, "SuperSecret123")
-    new_date = (date.today() + timedelta(days=400)).isoformat()
-    resp = client.post(
-        f"/admin/clients/{tenant.id}/renew", data={"valid_until": new_date}, follow_redirects=True
-    )
-    assert resp.status_code == 200
-    db.session.refresh(tenant)
-    assert tenant.valid_until == date.today() + timedelta(days=400)
-
-
-def test_client_admin_cannot_renew_their_own_access(client, db, tenant, client_admin):
-    _login(client, client_admin.email, "ClientSecret123")
-    resp = client.post(
-        f"/admin/clients/{tenant.id}/renew", data={"valid_until": "2099-01-01"}
-    )
-    assert resp.status_code == 403
-
+# --- Super Admin billing actions -------------------------------------------
 
 def test_mark_billing_paid_advances_from_current_due_date_not_today(client, db, super_admin, tenant):
     tenant.next_billing_due = date(2026, 1, 15)
