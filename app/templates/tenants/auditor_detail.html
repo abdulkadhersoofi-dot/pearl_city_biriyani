@@ -76,10 +76,14 @@
     <div>
       <p class="text-muted" style="margin:0 0 4px;">Renewal due</p>
       <p style="margin:0;"><strong>{{ auditor.next_billing_due.strftime('%d %b %Y') if auditor.next_billing_due else 'Not tracked yet' }}</strong></p>
+      {% if auditor.next_billing_due and auditor.next_billing_due > today %}
+      <p class="text-muted" style="margin:8px 0 0;">Already paid up for this period - nothing to do until it's due.</p>
+      {% else %}
       <form method="post" action="{{ url_for('tenants.mark_auditor_billing_paid', auditor_id=auditor.id) }}" style="margin-top:8px;">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="btn btn-secondary">Mark this period paid</button>
       </form>
+      {% endif %}
     </div>
     <div>
       <p class="text-muted" style="margin:0 0 4px;">Manual reminder</p>

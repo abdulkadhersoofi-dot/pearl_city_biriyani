@@ -599,6 +599,22 @@ def test_mark_auditor_billing_paid_advances_the_cycle(client, db, super_admin):
     assert auditor.next_billing_due == date(2026, 2, 15)
 
 
+def test_mark_auditor_billing_paid_is_idempotent_against_repeated_clicks(client, db, super_admin):
+    auditor = _make_auditor(db, "repeatclickauditor@example.com", billing_cycle=BillingCycle.MONTHLY)
+    auditor.next_billing_due = date.today() - timedelta(days=1)
+    db.session.commit()
+    from app.utils.billing import add_one_month
+
+    expected = add_one_month(auditor.next_billing_due)
+
+    _login(client, super_admin.email, "SuperSecret123")
+    for _ in range(4):
+        client.post(f"/admin/auditors/{auditor.id}/billing/mark-paid")
+        db.session.refresh(auditor)
+
+    assert auditor.next_billing_due == expected
+
+
 def test_ultra_admin_triggers_and_mutes_an_auditors_alarm(client, db, super_admin):
     auditor = _make_auditor(db, "alarmauditor2@example.com", billing_cycle=BillingCycle.MONTHLY)
     _login(client, super_admin.email, "SuperSecret123")

@@ -244,6 +244,63 @@ def test_mark_billing_paid_starts_a_cycle_when_none_tracked(client, db, super_ad
     assert tenant.next_billing_due == add_one_month(date.today())
 
 
+def test_mark_billing_paid_is_idempotent_against_repeated_clicks(client, db, super_admin, tenant):
+    # The bug this guards against: clicking "mark paid" 4 times in a row
+    # (e.g. a double-click, or an impatient admin) must advance the
+    # cycle once, not 4 times.
+    tenant.next_billing_due = date.today() - timedelta(days=1)
+    db.session.commit()
+    expected = add_one_month(tenant.next_billing_due)
+
+    _login(client, super_admin.email, "SuperSecret123")
+    for _ in range(4):
+        client.post(f"/admin/clients/{tenant.id}/billing/mark-paid", follow_redirects=True)
+        db.session.refresh(tenant)
+
+    assert tenant.next_billing_due == expected
+
+
+def test_mark_billing_paid_second_click_shows_already_paid_message(client, db, super_admin, tenant):
+    tenant.next_billing_due = date.today() - timedelta(days=1)
+    db.session.commit()
+    _login(client, super_admin.email, "SuperSecret123")
+
+    client.post(f"/admin/clients/{tenant.id}/billing/mark-paid")
+    resp = client.post(f"/admin/clients/{tenant.id}/billing/mark-paid", follow_redirects=True)
+    assert b"already paid up" in resp.data.lower()
+
+
+def test_mark_billing_paid_blocks_a_same_day_repeat_even_when_the_advance_lands_on_today(client, db, super_admin, tenant):
+    # The exact edge case a plain "next_billing_due > today" check
+    # misses: a tenant overdue by precisely one cycle length advances,
+    # on the first click, to a new due date that is itself exactly
+    # today - not in the future - so a naive date-only guard would let
+    # a second same-day click slip through and advance a second time.
+    import calendar as _calendar
+
+    today = date.today()
+    if today.month == 1:
+        last_day = _calendar.monthrange(today.year - 1, 12)[1]
+        one_month_ago = date(today.year - 1, 12, min(today.day, last_day))
+    else:
+        last_day = _calendar.monthrange(today.year, today.month - 1)[1]
+        one_month_ago = date(today.year, today.month - 1, min(today.day, last_day))
+    assert add_one_month(one_month_ago) == today  # sanity-check the fixture date
+
+    tenant.next_billing_due = one_month_ago
+    db.session.commit()
+    _login(client, super_admin.email, "SuperSecret123")
+
+    client.post(f"/admin/clients/{tenant.id}/billing/mark-paid")
+    db.session.refresh(tenant)
+    assert tenant.next_billing_due == today
+
+    resp = client.post(f"/admin/clients/{tenant.id}/billing/mark-paid", follow_redirects=True)
+    db.session.refresh(tenant)
+    assert tenant.next_billing_due == today, "a same-day repeat click must never advance a second time"
+    assert b"already marked paid today" in resp.data.lower()
+
+
 # --- Act as (impersonation) -----------------------------------------------
 
 def test_super_admin_can_act_as_client_admin_and_reach_invoicing(client, db, super_admin, tenant, client_admin):
