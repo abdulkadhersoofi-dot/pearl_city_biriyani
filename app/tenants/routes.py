@@ -883,6 +883,30 @@ def activate_auditor(auditor_id):
     return redirect(url_for("tenants.auditor_detail", auditor_id=auditor.id))
 
 
+@tenants_bp.route("/auditors/<int:auditor_id>/reset-password", methods=["GET", "POST"])
+@roles_required(UserRole.SUPER_ADMIN)
+def reset_auditor_password(auditor_id):
+    # Ultra-Admin-only, same as deactivate/activate_auditor - this isn't
+    # scoped through assert_auditor_owns_auditor, so it covers every
+    # Auditor and every one of their Sub-Auditors, not just the ones an
+    # Auditor manages themselves.
+    auditor = User.query.filter(User.id == auditor_id, User.role.in_([UserRole.AUDITOR, UserRole.SUB_AUDITOR])).first_or_404()
+    form = SetPasswordForm()
+    if form.validate_on_submit():
+        auditor.set_password(form.new_password.data)
+        auditor.must_change_password = True
+        record_audit(
+            current_user,
+            "auditor_password_reset_by_ultra_admin",
+            entity_type="user",
+            entity_id=auditor.id,
+        )
+        db.session.commit()
+        flash(f"Password updated for {auditor.email}. Share it with them directly.", "success")
+        return redirect(url_for("tenants.auditor_detail", auditor_id=auditor.id))
+    return render_template("tenants/reset_auditor_password.html", form=form, auditor=auditor)
+
+
 @tenants_bp.route("/clients/<int:tenant_id>/allocate-sub-auditor", methods=["POST"])
 @admin_or_auditor_required
 def allocate_client_to_sub_auditor(tenant_id):

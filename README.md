@@ -597,6 +597,18 @@ Gunicorn workers or add app servers behind Nginx as load grows.
   already-started cycle (`cycle_anchor_date` already set) rather than a
   first-time verification - recomputed from the anchor under the *new*
   cadence, not left stale or compounded onto the old due date.
+- **Ultra Admin resets an Auditor's (or any of their Sub-Auditors') own
+  login password** (`tenants.reset_auditor_password`) - the same direct,
+  no-OTP "set it yourself, they change it on next sign-in" pattern
+  `tenants.reset_client_password` already uses for a Client Admin/Staff
+  login, just for the Auditor-hierarchy accounts themselves.
+  Ultra-Admin-only and unscoped (no `assert_auditor_owns_auditor` check,
+  unlike viewing/act-as) - deliberately reachable for *any* Auditor or
+  Sub-Auditor, not just ones an Auditor manages themselves, since this
+  is the same kind of action billing already is: it always stays with
+  the Ultra Admin regardless of who created or allocated the account.
+  Reachable from the auditor's own page and, for an Auditor's view of
+  their Sub-Auditors table, from each Sub-Auditor's row directly.
 
 ## Roadmap
 

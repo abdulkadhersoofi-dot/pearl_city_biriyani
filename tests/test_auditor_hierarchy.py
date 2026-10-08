@@ -710,6 +710,51 @@ def test_ultra_admin_triggers_and_mutes_an_auditors_alarm(client, db, super_admi
     assert auditor.manual_alarm_active is False
 
 
+# --- Ultra Admin resets an auditor's (and their sub-auditors') password --
+
+def test_ultra_admin_resets_an_auditors_password(client, db, super_admin):
+    auditor = _make_auditor(db, "resetpwauditor@example.com")
+    _login(client, super_admin.email, "SuperSecret123")
+    resp = client.post(
+        f"/admin/auditors/{auditor.id}/reset-password",
+        data={"new_password": "BrandNewAuditorPass123", "confirm_password": "BrandNewAuditorPass123"},
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+    db.session.refresh(auditor)
+    assert auditor.check_password("BrandNewAuditorPass123")
+    assert auditor.must_change_password is True
+
+
+def test_ultra_admin_resets_a_sub_auditors_password(client, db, super_admin):
+    auditor = _make_auditor(db, "parentforreset@example.com")
+    sub = _make_auditor(db, "subforreset@example.com", role=UserRole.SUB_AUDITOR, parent_auditor_id=auditor.id)
+    _login(client, super_admin.email, "SuperSecret123")
+    resp = client.post(
+        f"/admin/auditors/{sub.id}/reset-password",
+        data={"new_password": "BrandNewSubPass123", "confirm_password": "BrandNewSubPass123"},
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+    db.session.refresh(sub)
+    assert sub.check_password("BrandNewSubPass123")
+    assert sub.must_change_password is True
+
+
+def test_auditor_cannot_reset_their_own_sub_auditors_password(client, db):
+    # Password reset for the Auditor-hierarchy itself always stays with
+    # the Ultra Admin, same as billing - unlike client/branch password
+    # resets, which an Auditor can do within their own scope.
+    auditor = _make_auditor(db, "noselfreset@example.com")
+    sub = _make_auditor(db, "noselfresetsub@example.com", role=UserRole.SUB_AUDITOR, parent_auditor_id=auditor.id)
+    _login(client, auditor.email, "AuditorPass123")
+    resp = client.post(
+        f"/admin/auditors/{sub.id}/reset-password",
+        data={"new_password": "ShouldNotWork123", "confirm_password": "ShouldNotWork123"},
+    )
+    assert resp.status_code == 403
+
+
 def test_pending_auditors_listed_on_the_auditors_directory(client, db, super_admin):
     _make_auditor(db, "pendinglist@example.com", billing_cycle=None, name="Pending Listed Auditor")
     _login(client, super_admin.email, "SuperSecret123")

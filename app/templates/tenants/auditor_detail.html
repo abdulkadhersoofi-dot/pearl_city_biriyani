@@ -20,6 +20,7 @@
     </form>
     {% endif %}
     {% if current_user.is_super_admin %}
+    <a href="{{ url_for('tenants.reset_auditor_password', auditor_id=auditor.id) }}" class="btn btn-quiet">Reset password</a>
     {% if auditor.is_active %}
     <form method="post" action="{{ url_for('tenants.deactivate_auditor', auditor_id=auditor.id) }}"
           onsubmit="return confirm('Deactivate {{ auditor.name }}? They will no longer be able to sign in.');">
@@ -116,7 +117,12 @@
         <td><a href="{{ url_for('tenants.auditor_detail', auditor_id=s.id) }}">{{ s.name }}</a></td>
         <td>{{ s.email }}</td>
         <td>{{ s.allocated_tenants|length }}</td>
-        <td><a href="{{ url_for('tenants.auditor_detail', auditor_id=s.id) }}">View</a></td>
+        <td class="row">
+          <a href="{{ url_for('tenants.auditor_detail', auditor_id=s.id) }}">View</a>
+          {% if current_user.is_super_admin %}
+          <a href="{{ url_for('tenants.reset_auditor_password', auditor_id=s.id) }}" class="btn btn-quiet">Reset password</a>
+          {% endif %}
+        </td>
       </tr>
       {% else %}
       <tr><td colspan="4" class="empty-state">No Sub-Auditors yet.</td></tr>
