@@ -559,6 +559,29 @@ def test_ultra_admin_changes_an_auditors_cycle_from_monthly_to_yearly(client, db
     assert auditor.billing_cycle.value == "yearly"
 
 
+def test_set_auditor_billing_cycle_recomputes_the_renewal_date(client, db, super_admin):
+    from app.utils.billing import add_one_year
+
+    auditor = _make_auditor(db, "recomputeauditor@example.com", billing_cycle=BillingCycle.MONTHLY)
+    auditor.cycle_anchor_date = date(2026, 1, 8)
+    auditor.next_billing_due = date(2026, 11, 8)  # stale monthly-cadence due date
+    db.session.commit()
+
+    _login(client, super_admin.email, "SuperSecret123")
+    client.post(
+        f"/admin/auditors/{auditor.id}/billing/set-cycle",
+        data={"billing_cycle": "yearly"},
+        follow_redirects=True,
+    )
+    db.session.refresh(auditor)
+    assert auditor.billing_cycle.value == "yearly"
+    expected = auditor.cycle_anchor_date
+    while expected <= date.today():
+        expected = add_one_year(expected)
+    assert auditor.next_billing_due == expected
+    assert auditor.next_billing_due != date(2026, 11, 8)
+
+
 def test_auditor_cannot_change_their_own_billing_cycle(client, db):
     auditor = _make_auditor(db, "selfchangeauditor@example.com")
     _login(client, auditor.email, "AuditorPass123")

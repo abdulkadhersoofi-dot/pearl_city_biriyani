@@ -241,26 +241,38 @@ def set_billing_cycle(tenant_id):
     if form.validate_on_submit():
         was_pending = tenant.billing_cycle is None
         tenant.billing_cycle = BillingCycle(form.billing_cycle.data)
-        # next_billing_due/cycle_anchor_date are never touched here - the
-        # recurring cycle only starts on the Client Admin's first
-        # successful login after changing their initial password (see
-        # app.auth.routes.change_password), and only moves from
-        # mark_billing_paid after that. Changing the cycle type just
-        # changes how long the *next* step will be.
+        # cycle_anchor_date is never touched here - the recurring cycle
+        # only starts on the Client Admin's first successful login after
+        # changing their initial password (see app.auth.routes.
+        # change_password). But if the cycle has already started
+        # (anchor set) and this is a change, not the first-time pick,
+        # next_billing_due must be recomputed against the *new* cycle
+        # length right now - otherwise switching Monthly -> Yearly left
+        # the old monthly due date sitting there unchanged, same bug as
+        # resync_billing_cycle exists to fix, just triggered differently.
+        due_date_changed = not was_pending and tenant.cycle_anchor_date is not None
+        if due_date_changed:
+            tenant.next_billing_due = next_due_after(tenant.cycle_anchor_date, tenant.billing_cycle, date.today())
         record_audit(
             current_user,
             "client_verified" if was_pending else "client_billing_cycle_changed",
             tenant_id=tenant.id,
             entity_type="tenant",
             entity_id=tenant.id,
-            details={"billing_cycle": tenant.billing_cycle.value},
+            details={
+                "billing_cycle": tenant.billing_cycle.value,
+                "next_billing_due": tenant.next_billing_due.isoformat() if tenant.next_billing_due else None,
+            },
         )
         db.session.commit()
-        flash(
-            f"{tenant.legal_name} is now on the {tenant.billing_cycle.value} cycle"
-            + (" and active." if was_pending else "."),
-            "success",
-        )
+        message = f"{tenant.legal_name} is now on the {tenant.billing_cycle.value} cycle"
+        if was_pending:
+            message += " and active."
+        elif due_date_changed:
+            message += f" - next renewal is now {tenant.next_billing_due.strftime('%d %b %Y')}."
+        else:
+            message += "."
+        flash(message, "success")
     else:
         flash("Pick a billing cycle.", "error")
     return redirect(url_for("tenants.detail", tenant_id=tenant.id))
@@ -712,19 +724,29 @@ def set_auditor_billing_cycle(auditor_id):
     if form.validate_on_submit():
         was_pending = auditor.billing_cycle is None
         auditor.billing_cycle = BillingCycle(form.billing_cycle.data)
+        # Same recompute as tenants.set_billing_cycle - see there for why.
+        due_date_changed = not was_pending and auditor.cycle_anchor_date is not None
+        if due_date_changed:
+            auditor.next_billing_due = next_due_after(auditor.cycle_anchor_date, auditor.billing_cycle, date.today())
         record_audit(
             current_user,
             "auditor_verified" if was_pending else "auditor_billing_cycle_changed",
             entity_type="user",
             entity_id=auditor.id,
-            details={"billing_cycle": auditor.billing_cycle.value},
+            details={
+                "billing_cycle": auditor.billing_cycle.value,
+                "next_billing_due": auditor.next_billing_due.isoformat() if auditor.next_billing_due else None,
+            },
         )
         db.session.commit()
-        flash(
-            f"{auditor.name} is now on the {auditor.billing_cycle.value} cycle"
-            + (" and active." if was_pending else "."),
-            "success",
-        )
+        message = f"{auditor.name} is now on the {auditor.billing_cycle.value} cycle"
+        if was_pending:
+            message += " and active."
+        elif due_date_changed:
+            message += f" - next renewal is now {auditor.next_billing_due.strftime('%d %b %Y')}."
+        else:
+            message += "."
+        flash(message, "success")
     else:
         flash("Pick a billing cycle.", "error")
     return redirect(url_for("tenants.auditor_detail", auditor_id=auditor.id))

@@ -584,6 +584,19 @@ Gunicorn workers or add app servers behind Nginx as load grows.
   mistake. Requires both `billing_cycle` and `cycle_anchor_date` to
   already be set (there's nothing to resync against otherwise) and is
   Ultra-Admin-only, same as every other billing action.
+- **Switching Monthly <-> Yearly now actually moves the renewal date.**
+  `tenants.set_billing_cycle`/`set_auditor_billing_cycle` used to only
+  write the new `billing_cycle` value and leave `next_billing_due`
+  exactly where it was - correct for the first-time pick (nothing to
+  recompute yet, the cycle hasn't started), but wrong for changing an
+  already-running cycle: the due date kept reflecting the old cadence
+  until the next `mark_billing_paid` click, so a client moved from
+  Monthly to Yearly still showed next month's date instead of next
+  year's. Both routes now call the same `next_due_after(anchor, new_cycle,
+  today)` `resync_billing_cycle` uses whenever the change is to an
+  already-started cycle (`cycle_anchor_date` already set) rather than a
+  first-time verification - recomputed from the anchor under the *new*
+  cadence, not left stale or compounded onto the old due date.
 
 ## Roadmap
 

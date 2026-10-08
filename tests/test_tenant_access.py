@@ -4,7 +4,7 @@ import pytest
 
 from app.models.tenant import BillingCycle, Tenant
 from app.models.user import User, UserRole
-from app.utils.billing import BILLING_GRACE_DAYS, add_one_month, tenant_access_status
+from app.utils.billing import BILLING_GRACE_DAYS, add_one_month, add_one_year, tenant_access_status
 
 
 def _login(client, email, password):
@@ -207,6 +207,51 @@ def test_set_billing_cycle_changes_an_already_active_client_from_monthly_to_year
     assert resp.status_code == 200
     db.session.refresh(tenant)
     assert tenant.billing_cycle.value == "yearly"
+
+
+def test_set_billing_cycle_recomputes_the_renewal_date_when_switching_monthly_to_yearly(client, db, super_admin, tenant):
+    # The reported bug: a client running monthly decides to switch to
+    # yearly, the Ultra Admin picks Yearly and clicks Change, and the
+    # renewal due date just sat there unchanged - still reflecting the
+    # old monthly cadence instead of the new yearly one.
+    tenant.billing_cycle = BillingCycle.MONTHLY
+    tenant.cycle_anchor_date = date(2026, 1, 8)
+    tenant.next_billing_due = date(2026, 11, 8)  # the old monthly-cadence due date
+    db.session.commit()
+
+    _login(client, super_admin.email, "SuperSecret123")
+    resp = client.post(
+        f"/admin/clients/{tenant.id}/billing/set-cycle",
+        data={"billing_cycle": "yearly"},
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+    db.session.refresh(tenant)
+    assert tenant.billing_cycle.value == "yearly"
+    # Recomputed from the anchor under the new (yearly) cadence - the
+    # next yearly boundary after today, not the stale monthly one.
+    expected = tenant.cycle_anchor_date
+    while expected <= date.today():
+        expected = add_one_year(expected)
+    assert tenant.next_billing_due == expected
+    assert tenant.next_billing_due != date(2026, 11, 8)
+    assert tenant.next_billing_due.strftime("%d %b %Y") in resp.data.decode()
+
+
+def test_set_billing_cycle_leaves_due_date_alone_when_cycle_hasnt_started(client, db, super_admin, tenant):
+    # If the cycle never started (no login yet, no anchor), there's
+    # nothing to recompute against - next_billing_due stays whatever it
+    # already was (None, for a freshly verified client).
+    tenant.billing_cycle = BillingCycle.MONTHLY
+    tenant.cycle_anchor_date = None
+    tenant.next_billing_due = None
+    db.session.commit()
+
+    _login(client, super_admin.email, "SuperSecret123")
+    client.post(f"/admin/clients/{tenant.id}/billing/set-cycle", data={"billing_cycle": "yearly"})
+    db.session.refresh(tenant)
+    assert tenant.billing_cycle.value == "yearly"
+    assert tenant.next_billing_due is None
 
 
 def test_client_admin_cannot_change_their_own_billing_cycle(client, db, tenant, client_admin):
