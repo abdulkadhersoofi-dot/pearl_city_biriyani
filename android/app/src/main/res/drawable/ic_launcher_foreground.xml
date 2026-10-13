@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A plain receipt/bill glyph - white body with the brand green used
+     for the "printed lines", sized to sit inside the adaptive icon's
+     safe zone (the inner ~66dp circle of the 108dp canvas) so it isn't
+     clipped on launchers that mask icons to a circle or squircle. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M30,25 L78,25 L78,85 L71,80 L64,85 L57,80 L50,85 L43,80 L36,85 L30,80 Z" />
+    <path
+        android:fillColor="#1F7A4D"
+        android:pathData="M39,38 L69,38 L69,43 L39,43 Z" />
+    <path
+        android:fillColor="#1F7A4D"
+        android:pathData="M39,50 L69,50 L69,55 L39,55 Z" />
+    <path
+        android:fillColor="#1F7A4D"
+        android:pathData="M39,62 L58,62 L58,67 L39,67 Z" />
+</vector>

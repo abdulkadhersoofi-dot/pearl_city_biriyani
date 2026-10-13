@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">ARFA POS</string>
+    <string name="error_title">Can\'t reach the server</string>
+    <string name="error_body">Check your internet connection and try again.</string>
+    <string name="retry">Retry</string>
+    <string name="branch_only_title">Branch logins only</string>
+    <string name="branch_only_body">This app is for branch (POS) staff logins only. Sign in with a branch account, or use the website for other logins.</string>
+    <string name="ok">OK</string>
+    <string name="exit_confirm">Press back again to exit</string>
+</resources>

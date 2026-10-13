@@ -415,10 +415,20 @@ function posTerminal() {
     },
     printReceipt(format) {
       if (!this.completedBillId) return;
-      const frame = document.getElementById("receipt-print-frame");
       const url = RECEIPT_PDF_URL_TEMPLATE.replace("/0/", "/" + this.completedBillId + "/") + "?format=" + format;
-      frame.onload = () => { frame.contentWindow.print(); };
-      frame.src = url;
+      // The Android branch app injects window.AndroidPrint (see
+      // android/app/.../MainActivity.kt) since its WebView has no
+      // built-in PDF viewer or window.print() support to drive the
+      // iframe trick below - everywhere else (every desktop/mobile
+      // browser) this object doesn't exist, so behavior there is
+      // unchanged.
+      if (window.AndroidPrint && window.AndroidPrint.printReceipt) {
+        window.AndroidPrint.printReceipt(url);
+      } else {
+        const frame = document.getElementById("receipt-print-frame");
+        frame.onload = () => { frame.contentWindow.print(); };
+        frame.src = url;
+      }
       this.checkoutStep = "done";
     },
     newSale() {

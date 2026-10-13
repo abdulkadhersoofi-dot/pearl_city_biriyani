@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- HTTPS only, everywhere - this app never talks to a plaintext
+     server, so cleartext traffic stays disabled (the platform default
+     on API 28+, stated explicitly here so it holds on older devices
+     too, down to this app's minSdk 24). -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

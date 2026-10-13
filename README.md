@@ -131,6 +131,8 @@ app/
 migrations/           # Alembic, via Flask-Migrate
 tests/
 deploy/               # nginx.conf, gunicorn.conf.py
+android/              # ARFA POS - native Android wrapper for branch
+                      # (Staff) logins only, see android/README.md
 ```
 
 ## Deployment
@@ -678,6 +680,38 @@ Gunicorn workers or add app servers behind Nginx as load grows.
   invoices - a live floor dashboard is about till activity), and the
   stock panel reuses `app.reports.stock.stock_report_data` for today,
   all branches.
+- **Fixed the POS cart row's misalignment** - traced to a global form-
+  reset rule, `input[type="number"] { width: 100%; min-height: 48px }`
+  (`app/static/css/app.css`), which combines an attribute selector with
+  the element type and so outranks the single-class `.qty-input`
+  selector that was supposed to size it, silently stretching the
+  quantity box to fill the row regardless of what was written there.
+  `.cart-line` moved from flex to a `minmax(0, 1fr) <fixed> <fixed>`
+  grid with the item name ellipsis-truncated to one line (so a long
+  name can't make just that row taller than its neighbors), and the
+  quantity input is now scoped as `.qty-stepper .qty-input` - two
+  classes, enough specificity to actually win.
+- **`android/` - ARFA POS, a native Android wrapper for branch logins
+  only.** A full-screen WebView around the same server-rendered POS
+  pages (not a reimplementation - see `android/README.md`), gated so
+  only a Staff login is let in: `MainActivity.kt` reads which page
+  `app.auth.routes._post_login_redirect` actually sent the signed-in
+  user to (a branch login always lands on `/pos/`) and signs anyone
+  else straight back out, rather than duplicating the server's role
+  logic. Android's WebView has no built-in PDF viewer or
+  `window.print()`, unlike a desktop/mobile browser, so printing a
+  receipt there goes through one small additive change in
+  `app/templates/pos/terminal.html`'s `printReceipt()`: a
+  feature-detected `window.AndroidPrint` bridge (present only inside
+  the app's WebView, `addJavascriptInterface`-injected by
+  `MainActivity.kt`) that downloads the same server-generated PDF and
+  hands it to Android's native `PrintManager`, instead of the hidden-
+  iframe `window.print()` every other browser still uses unchanged.
+  Built via `.github/workflows/android-apk.yml` on GitHub's own
+  runners, not locally - the Android SDK, the Android Gradle Plugin,
+  and every AndroidX/Material dependency all resolve through
+  `dl.google.com` (`maven.google.com` just redirects there), which this
+  project's own sandbox network policy has no route to.
 
 ## Roadmap
 

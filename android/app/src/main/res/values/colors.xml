@@ -1,0 +1,14 @@
+<resources>
+    <!-- Matches app/static/css/app.css's :root custom properties, so the
+         native chrome (status bar, splash, error screen) reads as part
+         of the same app as the web UI inside the WebView, not a
+         mismatched shell around it. -->
+    <color name="arfa_primary">#1F7A4D</color>
+    <color name="arfa_primary_dark">#175C3A</color>
+    <color name="arfa_bg">#F6F7F5</color>
+    <color name="arfa_surface">#FFFFFF</color>
+    <color name="arfa_text">#1F2A24</color>
+    <color name="arfa_text_muted">#5C6B62</color>
+    <color name="arfa_danger">#B3261E</color>
+    <color name="white">#FFFFFF</color>
+</resources>

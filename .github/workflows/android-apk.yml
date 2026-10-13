@@ -1,0 +1,84 @@
+name: Build ARFA POS Android APK
+
+# This builds only the android/ project - it never touches the Flask
+# app, and nothing in this workflow runs as part of (or can break) the
+# website's own tests or deploys.
+#
+# Runs on GitHub's own runners, not locally: the sandbox this project
+# was authored in has no route to dl.google.com (the Android SDK's
+# package host), so this workflow is the only place the app actually
+# compiles. android-actions/setup-android pins the exact SDK platform
+# and build-tools this project needs rather than relying on whatever
+# happens to be preinstalled on the runner image.
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "android/**"
+      - ".github/workflows/android-apk.yml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write # softprops/action-gh-release needs this to publish the release
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: "platform-tools platforms;android-34 build-tools;34.0.0"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build debug APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Rename APK for a clear download name
+        working-directory: android
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/debug/app-debug.apk dist/ARFA-POS-debug.apk
+
+      # Always available from this run's "Summary" page, even for a
+      # push that isn't on the branch the release step publishes from.
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ARFA-POS-debug-apk
+          path: android/dist/ARFA-POS-debug.apk
+          retention-days: 90
+
+      # A stable, permanent download link (unlike an Actions artifact,
+      # which expires) - every successful build replaces the same
+      # "android-latest" release's APK, so this one URL always has the
+      # most recently built app.
+      - name: Publish/update the "latest" release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: android-latest
+          name: "ARFA POS (branch login app) - latest build"
+          body: |
+            Auto-built from commit ${{ github.sha }} on branch `${{ github.ref_name }}`.
+
+            Debug-signed APK for direct installation (not a Play Store release).
+            On the phone: enable "install from unknown sources" for your
+            browser/file manager, download ARFA-POS-debug.apk, open it, install.
+
+            Points at: see android/README.md for the server URL this build
+            talks to and how to change it.
+          prerelease: true
+          files: android/dist/ARFA-POS-debug.apk

@@ -1,0 +1,20 @@
+<resources>
+    <style name="Theme.ArfaPos" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/arfa_primary</item>
+        <item name="colorPrimaryDark">@color/arfa_primary_dark</item>
+        <item name="colorAccent">@color/arfa_primary</item>
+        <item name="android:statusBarColor">@color/arfa_primary_dark</item>
+        <item name="android:windowBackground">@color/arfa_bg</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+
+    <!-- Shown for the moment between process start and MainActivity's
+         first frame - installSplashScreen() in MainActivity swaps this
+         for Theme.ArfaPos as soon as the WebView is ready, so a cold
+         start never shows a blank white flash. -->
+    <style name="Theme.ArfaPos.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/arfa_bg</item>
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+        <item name="postSplashScreenTheme">@style/Theme.ArfaPos</item>
+    </style>
+</resources>
