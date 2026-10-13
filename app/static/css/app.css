@@ -251,18 +251,56 @@ tr:last-child td { border-bottom: none; }
 .cart-panel { position: sticky; top: 20px; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius); padding: 16px; display: flex; flex-direction: column; gap: 12px; max-height: calc(100vh - 100px); }
 .cart-items { overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 10px; }
 .cart-empty { text-align: center; color: var(--color-text-muted); padding: 30px 10px; }
-.cart-line { display: flex; align-items: center; gap: 8px; }
-.cart-line .cart-line-name { flex: 1; font-weight: 600; font-size: 0.92rem; }
-.cart-line .cart-line-amount { font-weight: 700; min-width: 70px; text-align: right; }
-.qty-stepper { display: flex; align-items: center; gap: 6px; }
+/* Grid, not flex: a flex `name { flex: 1 }` has an implicit min-width of
+   `auto` (its content's natural width), so a longer name wraps to a
+   second line instead of shrinking - which then makes that one row
+   taller, and `align-items: center` centers its stepper/amount against
+   that extra height, throwing the whole row out of line with its
+   single-line neighbors. `minmax(0, 1fr)` has no such floor, so the
+   name always has a definite width to truncate against instead. */
+/* A bare `<input>` contributes its UA-default preferred size (not its
+   CSS `width`) to a grid/flex ancestor's intrinsic-size calculation, so
+   neither `auto` nor `max-content` sizes this column to the 124px the
+   stepper actually renders at - the column inflates to the input's
+   unstyled ~200px notional width instead, starving the fr column next
+   to it. Pinning the column to the stepper's real pixel width (kept in
+   sync with --qty-stepper-w below) sidesteps that entirely. */
+.cart-line {
+  --qty-stepper-w: 124px;
+  display: grid; grid-template-columns: minmax(0, 1fr) var(--qty-stepper-w) max-content;
+  align-items: center; gap: 8px;
+}
+.cart-line .cart-line-name {
+  font-weight: 600; font-size: 0.92rem;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.cart-line .cart-line-amount { font-weight: 700; min-width: 70px; text-align: right; white-space: nowrap; }
+.qty-stepper { display: flex; align-items: center; gap: 6px; width: 100%; }
 .qty-stepper button {
   width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--color-border);
-  background: var(--color-bg); font-size: 1.1rem; font-weight: 700; cursor: pointer;
+  background: var(--color-bg); font-size: 1.1rem; font-weight: 700; cursor: pointer; flex-shrink: 0;
 }
 .qty-stepper .qty-value { min-width: 22px; text-align: center; font-weight: 700; }
-.qty-input {
-  width: 48px; height: 32px; border-radius: 8px; border: 1px solid var(--color-border);
-  text-align: center; font-weight: 700; font-size: 0.95rem; -moz-appearance: textfield;
+/* `.qty-stepper .qty-input` (two classes), not the bare `.qty-input`
+   used before - a plain class selector loses to the global form reset
+   two rules up (`input[type="number"] { width: 100%; min-height: 48px }`
+   combines an attribute selector with the element type, which outranks
+   a single class), so the UA rule's width/min-height were winning and
+   silently stretching this input to fill the row every time regardless
+   of what was written here. */
+.qty-stepper .qty-input {
+  width: 48px; height: 32px; min-height: 0; padding: 0 2px; border-radius: 8px; border: 1px solid var(--color-border);
+  text-align: center; font-weight: 700; font-size: 0.95rem; -moz-appearance: textfield; flex-shrink: 0;
+}
+
+@media (max-width: 480px) {
+  /* A real phone viewport (this is also what the Android branch-POS
+     app's WebView renders at) has less room than the 360px desktop
+     cart column ever needed to budget for. */
+  .cart-line { --qty-stepper-w: 104px; }
+  .qty-stepper button { width: 28px; height: 28px; font-size: 1rem; }
+  .qty-stepper .qty-input { width: 38px; height: 28px; font-size: 0.85rem; }
+  .cart-line .cart-line-amount { min-width: 60px; font-size: 0.9rem; }
 }
 .cart-total-row { display: flex; justify-content: space-between; font-size: 1.4rem; font-weight: 800; padding-top: 10px; border-top: 1px solid var(--color-border); }
 
