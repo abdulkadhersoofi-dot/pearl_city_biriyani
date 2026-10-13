@@ -60,16 +60,150 @@ Biriyani" / "Spice Route Kitchen" — hence the repo name.
   specific behavior — row locking, native JSON/Enum columns — is
   exercised faithfully).
 
-## 3. Roles (see README.md "Roles" table)
+## 3. Roles and exact powers
 
-Ultra Admin (Super Admin) → Auditor → Sub-Auditor → Client Admin →
-Staff/Branch. Billing (pending/paused/overdue gating, mark-paid,
-resync, cycle changes, password resets) always stays with the Ultra
-Admin regardless of who onboards or manages a client day to day — this
-was a deliberate, repeatedly-reinforced decision across several rounds
-of this session (see §5 below). A branch/Staff login has **no nav bar
-at all** — POS billing is the only thing it can reach, by design, and
-this is exactly what the Android app (§6) locks onto.
+Five roles, strictly hierarchical: **Ultra Admin → Auditor →
+Sub-Auditor → Client Admin → Staff/Branch**. The stored enum value for
+Ultra Admin is still `SUPER_ADMIN` (`UserRole.SUPER_ADMIN`) — "Ultra
+Admin" is purely the UI label, don't go looking for a `ULTRA_ADMIN`
+role in the code. Every login's password is set directly by whoever
+creates it (no OTP, no email step anywhere in the app); the new user
+is forced to change it on their first sign-in.
+
+### Ultra Admin (Super Admin) — unrestricted, the only billing authority
+
+- Sees and can act on **every** Auditor, every client, every branch —
+  no scoping at all (`auditor_tenant_ids()` returns `None` for this
+  role specifically, meaning "no filter").
+- **The only role that can touch billing**, for both clients and
+  Auditors/Sub-Auditors: verify a pending client/Auditor and set its
+  initial billing cycle, change an already-active one's cycle later
+  (Monthly ⇄ Yearly), mark a period paid, resync a drifted cycle back
+  to the live calendar, and trigger/mute the manual billing alarm.
+  Nobody else — not an Auditor, not a Client Admin — can do any of
+  this, for anyone, ever. This was deliberately repeated and reinforced
+  across several rounds of this session (§5.2–§5.5) specifically
+  because the firm rejected any version where billing authority
+  leaked to another role.
+- **Reassigns a client between Auditors**, or back to unallocated
+  (`tenants.reassign_auditor`) — an Auditor can only move a client
+  *they already have* to *their own* Sub-Auditor; moving a client
+  anywhere else, or taking it away from an Auditor entirely, is
+  Ultra-Admin-only.
+- **Resets an Auditor's (or any of their Sub-Auditors') own login
+  password** (`tenants.reset_auditor_password`) — deliberately
+  *unscoped*: reachable for any Auditor/Sub-Auditor in the system, not
+  just ones a particular Auditor manages, for the same reason billing
+  is unscoped (§5.6).
+- Resets a Client Admin's or a Staff/branch login's password directly
+  (`tenants.reset_client_password`).
+- Activates/deactivates any single user anywhere — a specific branch,
+  or a Client Admin itself — directly from that client's admin page.
+- **"Act as"** any Client Admin or branch login (`tenants.act_as`),
+  *and* any Auditor-hierarchy account (`tenants.act_as_auditor`) —
+  signs in as that user via `flask_login.login_user`, stashing the
+  admin's own id in `session['impersonator_id']`, so every existing
+  tenant-scoped route/template/business-logic function just works
+  unmodified, no parallel "pretend tenant_id" plumbing anywhere.
+  Impersonation deliberately **bypasses the tenant-access gate** (a
+  paused or billing-overdue client can still be reached this way — the
+  Ultra Admin needs to actually get in to fix the problem, e.g. mark
+  it paid). Both starting and stopping impersonation are written to
+  `AuditLog`.
+- Full audit log, cross-client GST exports (bulk ZIP of GSTR-1+3B for
+  any number of Regular-scheme clients at once).
+- Onboards clients/Auditors too (same `tenants.onboard()` any role can
+  call), but — critically — onboarding **never** sets a billing cycle
+  for anyone, including when the Ultra Admin does it. Every new
+  client/Auditor always lands "pending" first; a *separate*,
+  deliberate Ultra-Admin action is required to lift that.
+
+### Auditor — same operational power as Ultra Admin, but scoped to their own allocated clients
+
+- Can onboard clients, pause/reactivate clients, and **"act as"** a
+  client (which is also how an Auditor creates branches for a client
+  they manage — there's no separate "Auditor creates a branch" UI, it
+  reuses the exact impersonation path the Ultra Admin already had).
+- **Scope**: only clients with `Tenant.auditor_id` pointing at this
+  Auditor, *plus* every client allocated to any of their own
+  Sub-Auditors. Every admin-console route checks this via
+  `assert_auditor_owns_tenant`/`assert_auditor_owns_auditor` before
+  acting — an Auditor can never read or act on a client outside this
+  set, even by guessing an id in the URL.
+- **Never sets a billing cycle for anyone** — a client an Auditor
+  onboards lands pending exactly like one the Ultra Admin onboards;
+  only the Ultra Admin can lift that.
+- **Can create their own Sub-Auditors**, and can allocate any client
+  *currently allocated to them* to one of *their own* Sub-Auditors
+  (`tenants.allocate_client_to_sub_auditor`) — checked on both ends
+  (the tenant must already be theirs; the target must be a Sub-Auditor
+  with `parent_auditor_id` pointing at this Auditor), so an Auditor can
+  never hand a client to someone outside their own office.
+- Can **"act as"** their own Sub-Auditors too (`tenants.act_as_auditor`).
+- Has its own billing fields (`billing_cycle`, `cycle_anchor_date`,
+  `next_billing_due`, `manual_alarm_active`) — **the firm bills an
+  Auditor's own office the same way it bills a client**, including
+  starting "pending" until the Ultra Admin verifies them.
+- Sees the shared admin console (`tenants/directory.html`) exactly as
+  the Ultra Admin does, just pre-filtered to their own scope — no
+  separate template to maintain.
+
+### Sub-Auditor — scoped to only what one specific Auditor hands them
+
+- Created by exactly one Auditor ("within their office") —
+  `User.parent_auditor_id` names that Auditor.
+- **Scope**: only the clients that Auditor has *explicitly* allocated
+  to them (`Tenant.auditor_id` pointing at this Sub-Auditor) — never
+  that Auditor's full client pool automatically, and never another
+  Sub-Auditor's allocated clients.
+- Otherwise runs the same console as an Auditor for whatever's in that
+  allocated set.
+- Also starts "pending" with its own billing fields, same as an
+  Auditor — the hierarchy is exactly two levels deep (Auditor →
+  Sub-Auditor); nothing in the code supports a Sub-Auditor creating a
+  further level under themselves.
+
+### Client Admin — the business owner, full control of their own tenant only
+
+- Owns their tenant's GSTIN(s), invoice numbering series (own editable
+  prefix per GSTIN/doc-type/financial-year), product/customer catalog.
+- Creates/deactivates branch (Staff) logins and **sets/resets their
+  passwords directly** (same "set it yourself, they change it on next
+  sign-in" pattern used one level up).
+- Full invoicing, POS, Reports, and the Live dashboard — scoped
+  automatically to their own `tenant_id` via `tenant_query()`; can
+  never see another tenant's data even by guessing an id.
+- Settings: branding (logo upload, display name, their own
+  `/auth/login/<slug>` branded sign-in page), full site theme
+  (button/background/text colors, font), the category/sub-category
+  on/off toggle, default POS print size.
+- **Their own first successful login** (after changing the password
+  the Ultra Admin set for them) is the one moment that stamps their
+  tenant's `cycle_anchor_date`/`next_billing_due` for the first time —
+  never re-stamped on any later password change.
+- Cannot change their own billing cycle, trigger/mute their own
+  billing alarm, or reassign themselves to a different Auditor — all
+  Ultra-Admin-only, see above.
+
+### Staff / Branch — POS billing only, nothing else
+
+- **No nav bar at all** in the web app — POS is the only destination,
+  by design (this is exactly the constraint the Android app in §6
+  enforces natively, by reading which page the server's own post-login
+  redirect sent the user to).
+- A branch is typed at creation (`User.branch_type`, set by the Client
+  Admin): **PCB-owned** (the kitchen's own branch — any invoice billed
+  to it is always forced to a Delivery Challan with no GST, regardless
+  of what document type was picked in the form) or **third-party** (an
+  independent reseller — always forced to a Tax Invoice with GST
+  applied normally). This override happens server-side in
+  `create_invoice` itself, never left to the operator's choice.
+- Sees their own running "today's stock" counter (view-only — it's
+  informational, never a checkout limit; a branch can sell past its
+  allocation and the counter is allowed to go negative, shown in red,
+  rather than silently floored at zero).
+- Cannot see any other branch's data, any other tenant, or anything
+  above POS billing.
 
 ## 4. Full feature inventory (what's actually shipped)
 
