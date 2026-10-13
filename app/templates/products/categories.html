@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% from "macros.html" import field %}
+{% block title %}Categories - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Categories</h1>
+  <a href="{{ url_for('products.list_products') }}" class="btn btn-quiet">Back to Items</a>
+</div>
+
+<div class="card" style="margin-bottom:20px;">
+  <h2 style="margin-top:0;">New category</h2>
+  <form method="post" action="{{ url_for('products.new_category') }}" class="row">
+    {{ category_form.hidden_tag() }}
+    {{ category_form.name(class="field-input", placeholder="e.g. Biriyani") }}
+    <button type="submit" class="btn btn-primary">Add category</button>
+  </form>
+</div>
+
+{% for category in categories %}
+<div class="card" style="margin-bottom:16px;">
+  <div class="page-header" style="margin-bottom:12px;">
+    <h2 style="margin:0; font-size:1.1rem;">{{ category.name }}</h2>
+    <form method="post" action="{{ url_for('products.deactivate_category', category_id=category.id) }}"
+          onsubmit="return confirm('Remove {{ category.name }} and all its sub-categories? Items already using them keep working, just grouped under Uncategorized in the POS.');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn btn-quiet btn-sm">Remove category</button>
+    </form>
+  </div>
+
+  <ul style="margin:0 0 12px;">
+    {% for sub in category.sub_categories if sub.is_active %}
+    <li class="row" style="justify-content:space-between; align-items:center; padding:4px 0;">
+      <span>{{ sub.name }}</span>
+      <form method="post" action="{{ url_for('products.deactivate_sub_category', sub_category_id=sub.id) }}"
+            onsubmit="return confirm('Remove {{ sub.name }}?');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-quiet btn-sm">Remove</button>
+      </form>
+    </li>
+    {% else %}
+    <li class="text-muted">No sub-categories yet.</li>
+    {% endfor %}
+  </ul>
+
+  <form method="post" action="{{ url_for('products.new_sub_category', category_id=category.id) }}" class="row">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="text" name="name" class="field-input" placeholder="e.g. Chicken" required>
+    <button type="submit" class="btn btn-secondary btn-sm">+ Sub-category</button>
+  </form>
+</div>
+{% else %}
+<p class="empty-state">No categories yet. Add one above to start organizing your menu.</p>
+{% endfor %}
+{% endblock %}

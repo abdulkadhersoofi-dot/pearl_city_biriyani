@@ -16,6 +16,16 @@ class Product(db.Model, TenantScopedMixin, TimestampMixin):
     # survives a container restart/redeploy - see app/models/media.py.
     image_id = db.Column(db.Integer, db.ForeignKey("uploaded_images.id"))
     is_active = db.Column(db.Boolean, nullable=False, default=True)
+    # Optional even when the tenant has category-wise mode on
+    # (Tenant.category_wise_items) - an item with neither just shows
+    # under "Uncategorized" in the POS grouping. sub_category_id is only
+    # meaningful together with a matching category_id; the product form
+    # enforces that pairing, the column itself doesn't.
+    category_id = db.Column(db.Integer, db.ForeignKey("categories.id"))
+    sub_category_id = db.Column(db.Integer, db.ForeignKey("sub_categories.id"))
+
+    category = db.relationship("Category")
+    sub_category = db.relationship("SubCategory")
 
     def __repr__(self):
         return f"<Product {self.id} {self.name}>"

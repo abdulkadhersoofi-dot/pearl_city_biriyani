@@ -45,3 +45,17 @@ class ProductForm(FlaskForm):
             FileSize(MAX_IMAGE_BYTES, message="Image is too large - 5 MB max."),
         ],
     )
+    # Only rendered/used when the tenant has category_wise_items on (see
+    # products/form.html and products.routes) - choices are populated per
+    # request from that tenant's own Category/SubCategory rows. Both stay
+    # optional even then - "" (coerced to None below) means uncategorized.
+    category_id = SelectField("Category (optional)", choices=[], validators=[Optional()])
+    sub_category_id = SelectField("Sub-category (optional)", choices=[], validators=[Optional()])
+
+
+class CategoryForm(FlaskForm):
+    name = StringField("Category name", validators=[DataRequired(), Length(max=100)])
+
+
+class SubCategoryForm(FlaskForm):
+    name = StringField("Sub-category name", validators=[DataRequired(), Length(max=100)])

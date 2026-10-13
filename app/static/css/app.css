@@ -188,8 +188,16 @@ tr:last-child td { border-bottom: none; }
 .totals-row.grand { font-size: 1.3rem; font-weight: 800; border-top: 1px solid var(--color-border); margin-top: 8px; padding-top: 10px; }
 
 /* --- POS terminal --- */
-.pos-layout { display: grid; grid-template-columns: 1fr 360px; gap: 20px; align-items: start; }
+.pos-layout { display: grid; grid-template-columns: 260px 1fr 360px; gap: 20px; align-items: start; }
 .pos-search { min-height: 56px; font-size: 1.1rem; margin-bottom: 16px; }
+
+/* Always visible, never collapsible - held bills sit in their own
+   left-hand column so a bill left on hold is never out of sight. */
+.held-bills-panel { position: sticky; top: 20px; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius); padding: 16px; display: flex; flex-direction: column; gap: 10px; max-height: calc(100vh - 100px); overflow-y: auto; }
+.held-bill-card { border: 1px solid var(--color-border); border-radius: 8px; padding: 10px; }
+.held-bill-card .held-bill-label { font-weight: 700; }
+.held-bill-card .held-bill-meta { color: var(--color-text-muted); font-size: 0.85rem; margin-top: 2px; }
+.held-bill-card .row { margin-top: 8px; gap: 8px; }
 .product-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
@@ -225,6 +233,21 @@ tr:last-child td { border-bottom: none; }
 .product-tile .tile-name { font-weight: 700; line-height: 1.2; }
 .product-tile .tile-price { color: var(--color-text-muted); margin-top: 4px; }
 
+/* Category/sub-category tree - app.pos.catalog.build_category_tree. */
+.category-group { border: 1px solid var(--color-border); border-radius: var(--radius); margin-bottom: 12px; overflow: hidden; }
+.category-header {
+  width: 100%; display: flex; justify-content: space-between; align-items: center;
+  padding: 14px 16px; background: var(--color-surface); border: none;
+  font-size: 1.05rem; font-weight: 700; cursor: pointer; color: var(--color-text);
+}
+.category-body { padding: 0 16px 16px; }
+.subcategory-group { border-top: 1px solid var(--color-border); padding-top: 10px; margin-top: 10px; }
+.subcategory-group:first-child { border-top: none; padding-top: 0; margin-top: 0; }
+.subcategory-header {
+  width: 100%; display: flex; justify-content: space-between; align-items: center;
+  padding: 8px 0; background: none; border: none; font-weight: 600; cursor: pointer; color: var(--color-text);
+}
+
 .cart-panel { position: sticky; top: 20px; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius); padding: 16px; display: flex; flex-direction: column; gap: 12px; max-height: calc(100vh - 100px); }
 .cart-items { overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 10px; }
 .cart-empty { text-align: center; color: var(--color-text-muted); padding: 30px 10px; }
@@ -252,9 +275,14 @@ tr:last-child td { border-bottom: none; }
 .payment-mode-btn { min-height: 88px; border-radius: var(--radius); border: 2px solid var(--color-border); background: var(--color-bg); font-size: 1.1rem; font-weight: 700; cursor: pointer; }
 .payment-mode-btn.selected { border-color: var(--color-primary); background: var(--color-success-bg); color: var(--color-primary-dark); }
 
+@media (max-width: 1200px) {
+  .pos-layout { grid-template-columns: 220px 1fr 340px; }
+}
+
 @media (max-width: 900px) {
   .pos-layout { grid-template-columns: 1fr; }
   .cart-panel { position: static; max-height: none; }
+  .held-bills-panel { position: static; max-height: none; }
 }
 
 /* --- Empty / coming soon --- */
@@ -278,4 +306,45 @@ tr:last-child td { border-bottom: none; }
   .user-name { display: none; }
   .main-nav { padding: 0 10px 8px; }
   .app-main { padding: 16px 14px 48px; }
+}
+
+/* --- Live dashboard: F1-style branch leaderboard --- */
+.leaderboard { position: relative; margin-top: 4px; }
+.leaderboard-row {
+  position: absolute;
+  left: 0; right: 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  height: 46px;
+  padding: 0 14px;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  /* The move itself - a branch overtaking another slides to its new
+     row position instead of jumping, since each row keeps the same
+     DOM node (Alpine's :key) across a refresh. */
+  transition: top 0.6s ease;
+}
+.leaderboard-row-top { border-color: var(--color-primary); background: var(--color-success-bg); }
+.leaderboard-row-idle { opacity: 0.6; }
+.leaderboard-rank { font-weight: 800; width: 24px; text-align: center; color: var(--color-text-muted); }
+.leaderboard-name { font-weight: 600; width: 160px; flex-shrink: 0; }
+.leaderboard-bar-track { flex: 1; height: 10px; background: var(--color-border); border-radius: 6px; overflow: hidden; }
+.leaderboard-bar { height: 100%; background: var(--color-primary); transition: width 0.6s ease; }
+.leaderboard-revenue { font-weight: 700; width: 120px; text-align: right; flex-shrink: 0; }
+.leaderboard-orders { color: var(--color-text-muted); font-size: 0.85rem; width: 90px; flex-shrink: 0; }
+.leaderboard-idle-tag {
+  font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--color-text-muted); border: 1px solid var(--color-border); border-radius: 999px;
+  padding: 2px 8px;
+}
+
+.pie-legend { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.pie-legend li { display: flex; align-items: center; gap: 8px; font-size: 0.9rem; }
+.legend-swatch { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; display: inline-block; }
+
+@media (max-width: 700px) {
+  .leaderboard-name { width: 110px; }
+  .leaderboard-orders { display: none; }
 }

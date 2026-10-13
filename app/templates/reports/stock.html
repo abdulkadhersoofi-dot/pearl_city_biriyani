@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Stock report - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Stock report</h1>
+    <p class="text-muted mt-0">{{ data.start.strftime('%d %b %Y') }} - {{ data.end.strftime('%d %b %Y') }} &middot; allocated vs. sold, per item</p>
+  </div>
+  <a href="{{ url_for('reports.index') }}" class="btn btn-quiet">Back</a>
+</div>
+
+{% include "reports/_filter_bar.html" %}
+
+<div class="form-grid" style="margin-bottom:20px;">
+  <div class="card">
+    <p class="text-muted mt-0">Allocated</p>
+    <p style="font-size:1.6rem; font-weight:800; margin:0;">{{ '%.2f'|format(data.totals.allocated) }}</p>
+  </div>
+  <div class="card">
+    <p class="text-muted mt-0">Sold</p>
+    <p style="font-size:1.6rem; font-weight:800; margin:0;">{{ '%.2f'|format(data.totals.sold) }}</p>
+  </div>
+  <div class="card">
+    <p class="text-muted mt-0">Remaining</p>
+    <p style="font-size:1.6rem; font-weight:800; margin:0;">{{ '%.2f'|format(data.totals.remaining) }}</p>
+  </div>
+</div>
+
+<div class="card">
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Item</th><th>Unit</th><th>Allocated</th><th>Sold</th><th>Remaining</th></tr>
+      </thead>
+      <tbody>
+      {% for r in data.rows %}
+        <tr>
+          <td>{{ r.product_name }}</td>
+          <td>{{ r.unit }}</td>
+          <td>{{ '%.2f'|format(r.allocated) }}</td>
+          <td>{{ '%.2f'|format(r.sold) }}</td>
+          <td>{{ '%.2f'|format(r.remaining) }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="5" class="empty-state">No stock activity in this period.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

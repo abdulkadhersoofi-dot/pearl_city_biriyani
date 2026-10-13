@@ -609,6 +609,75 @@ Gunicorn workers or add app servers behind Nginx as load grows.
   the Ultra Admin regardless of who created or allocated the account.
   Reachable from the auditor's own page and, for an Auditor's view of
   their Sub-Auditors table, from each Sub-Auditor's row directly.
+- **Held bills live in a persistent left sidebar on the POS terminal**,
+  not a collapsible panel - the whole point is that a parked bill is
+  never forgotten mid-shift, so it has to stay visible by default rather
+  than behind a toggle a cashier has to remember to open. `pos.terminal`
+  already queried every `HELD` bill for the day-book/resume flow; the
+  template change is purely layout (`.pos-layout` grows a third,
+  leftmost grid column) with no new backend logic - the list "resets"
+  only in the sense that a new day's held bills are a new, empty query,
+  same as before.
+- **Item categories/sub-categories are opt-in per tenant**
+  (`Tenant.category_wise_items`, toggled from Settings). Some clients
+  want a flat item list, others want to browse by Category ->
+  Sub-category, so `Category`/`SubCategory` (`app/models/category.py`)
+  are normal normalized tables rather than free-text fields on
+  `Product` - letting a tenant manage them once (`products.categories`)
+  and reuse consistent names everywhere, including in the POS grouping.
+  Both fields stay optional on `Product` even with the toggle on (a
+  client's catalog is rarely perfectly categorized on day one), so
+  `app.pos.catalog.build_category_tree` buckets every product into
+  "in a sub-category", "loose in a category", or "uncategorized" -
+  including a product whose category or sub-category was since
+  deactivated, which falls back to uncategorized rather than
+  disappearing. The POS terminal renders two alternate product
+  layouts from the same `PRODUCTS` data (`app/templates/macros.html`'s
+  `product_js` macro keeps both in sync): a flat grid when the toggle
+  is off or a search is active, and the collapsible Category ->
+  Sub-category tree (with "Expand all"/"Always collapse" controls)
+  when it's on - both exist in the server-rendered HTML always, since
+  Alpine's `x-if` only ever decides which one is *visible*, never which
+  one is *sent*.
+- **Reports share one filter bar** (`app.reports.filters.parse_report_filters`,
+  included via `templates/reports/_filter_bar.html`) across the Sales,
+  Stock, and Sales-by-item reports, rather than three separate ad hoc
+  date-range forms. A period is one of day/month/custom range (`?mode=`),
+  and a branch filter is zero or more Staff logins (`?branch_id=`,
+  repeatable) - `None` means "every branch". `app.reports.sales.sales_report_data`,
+  `app.reports.stock.stock_report_data` (generalizing the POS
+  terminal's today-only, single-branch stock counter in
+  `app.pos.stock` to any date range and any branch selection), and the
+  new `app.reports.items.item_sales_data` (merging `InvoiceLine` and
+  `POSBillLine` by product, falling back to grouping by description for
+  a one-off typed line with no `product_id`) all take the same
+  `(tenant, start, end, branch_ids)` shape, so the filter bar's query
+  string works identically on all three pages and round-trips straight
+  into the Excel/PDF export links on the Sales report.
+- **The top-nav Live dashboard** (`app/live/`, Client Admin only) is a
+  separate thing from Reports on purpose: Reports answers "what
+  happened in this period", Live always means "right now, today" -
+  there's no filter bar, just a `/live/data.json` snapshot the page
+  polls on an interval. `app.live.metrics.branch_leaderboard` ranks
+  every active branch by today's total POS revenue (the chosen
+  metric - order count rides along for context but never breaks a
+  tie), including a branch with zero sales so it visibly shows up as
+  idle rather than dropping off the board. The F1-style "watch it
+  move" effect is pure CSS: each branch row keeps the same DOM node
+  across a refresh (Alpine's `x-for` `:key="b.id"`), so re-sorting the
+  underlying array only changes that node's `top` offset, which
+  `transition: top 0.6s ease` animates into a slide instead of a jump.
+  The best-seller pie chart is a hand-rolled SVG donut (stacked
+  `<circle>` segments via `stroke-dasharray`/`stroke-dashoffset`, no
+  charting library - this app loads no CDN scripts) built as a markup
+  string and injected with `x-html`, because Alpine's `x-for` template
+  cloning doesn't handle the SVG namespace correctly (it throws on
+  `document.importNode` for SVG children) - `x-html`'s plain
+  `innerHTML` assignment sidesteps that entirely. `app.live.metrics.item_sales_today`
+  computes each item's revenue share from POS sales only (not
+  invoices - a live floor dashboard is about till activity), and the
+  stock panel reuses `app.reports.stock.stock_report_data` for today,
+  all branches.
 
 ## Roadmap
 

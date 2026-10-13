@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Sales by item - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Sales by item</h1>
+    <p class="text-muted mt-0">{{ data.start.strftime('%d %b %Y') }} - {{ data.end.strftime('%d %b %Y') }} &middot; {{ data.rows|length }} item(s) sold</p>
+  </div>
+  <a href="{{ url_for('reports.index') }}" class="btn btn-quiet">Back</a>
+</div>
+
+{% include "reports/_filter_bar.html" %}
+
+<div class="form-grid" style="margin-bottom:20px;">
+  <div class="card">
+    <p class="text-muted mt-0">Quantity sold</p>
+    <p style="font-size:1.6rem; font-weight:800; margin:0;">{{ '%.2f'|format(data.totals.qty) }}</p>
+  </div>
+  <div class="card">
+    <p class="text-muted mt-0">Taxable value</p>
+    <p style="font-size:1.6rem; font-weight:800; margin:0;">Rs. {{ '%.2f'|format(data.totals.taxable_value) }}</p>
+  </div>
+  <div class="card">
+    <p class="text-muted mt-0">Total</p>
+    <p style="font-size:1.6rem; font-weight:800; margin:0;">Rs. {{ '%.2f'|format(data.totals.total) }}</p>
+  </div>
+</div>
+
+<div class="card">
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Item</th><th>Unit</th><th>Qty sold</th><th>Taxable value</th><th>Total</th></tr>
+      </thead>
+      <tbody>
+      {% for r in data.rows %}
+        <tr>
+          <td>{{ r.product_name }}</td>
+          <td>{{ r.unit }}</td>
+          <td>{{ '%.2f'|format(r.qty) }}</td>
+          <td>{{ '%.2f'|format(r.taxable_value) }}</td>
+          <td>{{ '%.2f'|format(r.total) }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="5" class="empty-state">No sales in this period.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

@@ -3,7 +3,12 @@
 {% block content %}
 <div class="page-header">
   <h1>Items</h1>
-  <a href="{{ url_for('products.new_product') }}" class="btn btn-primary">+ Add item</a>
+  <div class="row">
+    {% if current_user.tenant.category_wise_items %}
+    <a href="{{ url_for('products.categories') }}" class="btn btn-quiet">Categories</a>
+    {% endif %}
+    <a href="{{ url_for('products.new_product') }}" class="btn btn-primary">+ Add item</a>
+  </div>
 </div>
 
 <form class="search-bar" method="get">
@@ -13,11 +18,17 @@
 
 <div class="table-wrap card">
   <table>
-    <thead><tr><th>Name</th><th>HSN/SAC</th><th>GST %</th><th>Unit</th><th>Price</th><th></th></tr></thead>
+    <thead><tr><th>Name</th>{% if current_user.tenant.category_wise_items %}<th>Category</th>{% endif %}<th>HSN/SAC</th><th>GST %</th><th>Unit</th><th>Price</th><th></th></tr></thead>
     <tbody>
     {% for p in products %}
       <tr>
         <td>{{ p.name }}</td>
+        {% if current_user.tenant.category_wise_items %}
+        <td>
+          {% if p.category %}{{ p.category.name }}{% if p.sub_category %} &rsaquo; {{ p.sub_category.name }}{% endif %}
+          {% else %}<span class="text-muted">Uncategorized</span>{% endif %}
+        </td>
+        {% endif %}
         <td>{{ p.hsn_or_sac_code }}</td>
         <td>{{ p.gst_rate }}%</td>
         <td>{{ p.unit }}</td>
@@ -25,7 +36,7 @@
         <td><a href="{{ url_for('products.edit_product', product_id=p.id) }}">Edit</a></td>
       </tr>
     {% else %}
-      <tr><td colspan="6" class="empty-state">No items yet. Add your first one.</td></tr>
+      <tr><td colspan="7" class="empty-state">No items yet. Add your first one.</td></tr>
     {% endfor %}
     </tbody>
   </table>

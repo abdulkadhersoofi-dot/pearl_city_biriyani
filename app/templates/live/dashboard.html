@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% block title %}Live - {{ firm_name }}{% endblock %}
+
+{% block head %}
+<script>
+  const INITIAL_SNAPSHOT = {{ snapshot|tojson }};
+  const LIVE_DATA_URL = {{ url_for('live.data_json')|tojson }};
+  // A small fixed palette, cycled by index - no charting library is
+  // loaded (this app is vendored-JS-only, no CDN), so the pie chart
+  // below is a hand-rolled stacked-stroke SVG donut.
+  const PIE_COLORS = ["#1f7a4d", "#c0392b", "#2980b9", "#f39c12", "#8e44ad", "#16a085", "#d35400", "#7f8c8d"];
+</script>
+{% endblock %}
+
+{% block content %}
+<div x-data="liveDashboard()" x-init="init()">
+  <div class="page-header">
+    <div>
+      <h1>Live dashboard</h1>
+      <p class="text-muted mt-0">Today's performance, refreshing automatically - watch branches move on the leaderboard as sales come in.</p>
+    </div>
+    <button type="button" class="btn btn-quiet" @click="refresh()">Refresh now</button>
+  </div>
+
+  <div class="card" style="margin-bottom:20px;">
+    <h2 style="margin-top:0;">Branch leaderboard</h2>
+    <p class="text-muted" style="margin-top:0;">Ranked by today's total sales revenue - the best performer rises to the top, the quietest branch sinks to the bottom.</p>
+    <div class="leaderboard" :style="`height: ${Math.max(branches.length, 1) * rowHeight}px`">
+      <template x-for="(b, idx) in branches" :key="b.id">
+        <div class="leaderboard-row" :class="{ 'leaderboard-row-top': idx === 0 && b.revenue > 0, 'leaderboard-row-idle': b.revenue === 0 }" :style="`top: ${idx * rowHeight}px`">
+          <span class="leaderboard-rank" x-text="idx + 1"></span>
+          <span class="leaderboard-name" x-text="b.name"></span>
+          <div class="leaderboard-bar-track">
+            <div class="leaderboard-bar" :style="`width: ${Math.max(2, (b.revenue / maxRevenue()) * 100)}%`"></div>
+          </div>
+          <span class="leaderboard-revenue" x-text="'Rs. ' + b.revenue.toFixed(2)"></span>
+          <span class="leaderboard-orders" x-text="b.order_count + (b.order_count === 1 ? ' order' : ' orders')"></span>
+          <span class="leaderboard-idle-tag" x-show="b.revenue === 0" x-cloak>Idle</span>
+        </div>
+      </template>
+    </div>
+    <p class="empty-state" x-show="branches.length === 0" x-cloak>No branches set up yet.</p>
+  </div>
+
+  <div class="form-grid" style="margin-bottom:20px; grid-template-columns: 1fr 1fr;">
+    <div class="card">
+      <h2 style="margin-top:0;">Best-selling items</h2>
+      <p class="text-muted" style="margin-top:0;">Today's POS sales, by revenue share.</p>
+      <div class="row" style="align-items:center; gap:24px; flex-wrap:wrap;">
+        {# Alpine's x-for template cloning doesn't play well with the SVG
+           namespace (it fails on document.importNode for SVG children),
+           so the donut's <circle> segments are built as a markup string
+           and injected with x-html instead - innerHTML on an <svg><g>
+           works fine for these simple shapes. #}
+        <svg viewBox="0 0 200 200" width="180" height="180" x-show="items.length > 0" x-cloak>
+          <g transform="translate(100,100) rotate(-90)" x-html="pieSvgMarkup()"></g>
+        </svg>
+        <ul class="pie-legend">
+          <template x-for="(item, i) in items" :key="i">
+            <li>
+              <span class="legend-swatch" :style="`background:${PIE_COLORS[i % PIE_COLORS.length]}`"></span>
+              <span x-text="item.name"></span>
+              <span class="text-muted" x-text="'(' + item.share_percent.toFixed(1) + '% - Rs. ' + item.revenue.toFixed(2) + ')'"></span>
+            </li>
+          </template>
+        </ul>
+      </div>
+      <p class="empty-state" x-show="items.length === 0" x-cloak>No sales yet today.</p>
+    </div>
+
+    <div class="card">
+      <h2 style="margin-top:0;">Stock today</h2>
+      <p class="text-muted" style="margin-top:0;">Allocated vs. sold, across every branch.</p>
+      <div class="table-wrap" style="max-height:320px; overflow-y:auto;">
+        <table>
+          <thead><tr><th>Item</th><th>Allocated</th><th>Sold</th><th>Remaining</th></tr></thead>
+          <tbody>
+            <template x-for="(s, i) in stock" :key="i">
+              <tr>
+                <td x-text="s.name"></td>
+                <td x-text="s.allocated.toFixed(2)"></td>
+                <td x-text="s.sold.toFixed(2)"></td>
+                <td x-text="s.remaining.toFixed(2)"></td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+      <p class="empty-state" x-show="stock.length === 0" x-cloak>No active items yet.</p>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function liveDashboard() {
+  return {
+    branches: INITIAL_SNAPSHOT.branches,
+    items: INITIAL_SNAPSHOT.items,
+    stock: INITIAL_SNAPSHOT.stock,
+    rowHeight: 56,
+    pollMs: 6000,
+    timer: null,
+    init() {
+      this.timer = setInterval(() => this.refresh(), this.pollMs);
+    },
+    async refresh() {
+      try {
+        const resp = await fetch(LIVE_DATA_URL, { headers: { "X-Requested-With": "XMLHttpRequest" } });
+        if (!resp.ok) return;
+        const data = await resp.json();
+        // Reassigning the whole array (rather than mutating in place)
+        // is what makes Alpine re-sort the x-for - the keyed DOM nodes
+        // stay the same per branch id, so only their "top" position
+        // changes, and the CSS transition on .leaderboard-row does the
+        // rest (the actual "watch it move" effect).
+        this.branches = data.branches;
+        this.items = data.items;
+        this.stock = data.stock;
+      } catch (err) {
+        // Offline or a transient network hiccup - keep showing the
+        // last good snapshot rather than clearing the dashboard.
+      }
+    },
+    maxRevenue() {
+      return Math.max(1, ...this.branches.map((b) => b.revenue));
+    },
+    pieSegments() {
+      const circumference = 2 * Math.PI * 70;
+      let offset = 0;
+      return this.items.map((item, i) => {
+        const length = (item.share_percent / 100) * circumference;
+        const seg = {
+          color: PIE_COLORS[i % PIE_COLORS.length],
+          dasharray: `${length} ${circumference - length}`,
+          dashoffset: -offset,
+        };
+        offset += length;
+        return seg;
+      });
+    },
+    pieSvgMarkup() {
+      return this.pieSegments()
+        .map(
+          (seg) =>
+            `<circle r="70" cx="0" cy="0" fill="transparent" stroke-width="40" stroke="${seg.color}" stroke-dasharray="${seg.dasharray}" stroke-dashoffset="${seg.dashoffset}"></circle>`
+        )
+        .join("");
+    },
+  };
+}
+</script>
+{% endblock %}

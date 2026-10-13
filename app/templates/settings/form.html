@@ -32,6 +32,19 @@
   </div>
 
   <div class="card stack" style="margin-top:16px;">
+    <h2 style="margin:0; font-size:1.05rem;">Menu organization</h2>
+    <label class="row" style="align-items:center; gap:8px; font-weight:600;">
+      {{ form.category_wise_items() }} {{ form.category_wise_items.label.text }}
+    </label>
+    <p class="field-help" style="margin:0;">When on, items can be grouped into categories and sub-categories (e.g.
+      "Biriyani" &gt; "Chicken") - the item form gets category pickers, and the POS screen shows a collapsible
+      category tree instead of one flat grid. A category is never required for an item, even with this on.</p>
+    {% if tenant.category_wise_items %}
+    <a href="{{ url_for('products.categories') }}" class="btn btn-secondary" style="align-self:flex-start;">Manage categories</a>
+    {% endif %}
+  </div>
+
+  <div class="card stack" style="margin-top:16px;">
     <h2 style="margin:0; font-size:1.05rem;">Print sizes</h2>
     <div class="form-grid">
       <div class="field">

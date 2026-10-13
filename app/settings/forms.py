@@ -1,6 +1,6 @@
 from flask_wtf import FlaskForm
 from flask_wtf.file import FileAllowed, FileField, FileSize
-from wtforms import SelectField, StringField
+from wtforms import BooleanField, SelectField, StringField
 from wtforms.validators import DataRequired, Regexp
 
 from app.pos.receipt import THERMAL_WIDTHS_IN
@@ -37,3 +37,4 @@ class TenantSettingsForm(FlaskForm):
     default_receipt_format = SelectField(
         "POS bill print size", choices=RECEIPT_FORMAT_CHOICES, validators=[DataRequired()]
     )
+    category_wise_items = BooleanField("Organize items into categories and sub-categories")

@@ -58,6 +58,14 @@ class Tenant(db.Model, TimestampMixin):
     # 2in / 3in / a4 - app.pos.receipt.THERMAL_WIDTHS_IN keys, plus "a4".
     # Lets POS checkout print immediately without asking every time.
     default_receipt_format = db.Column(db.String(10), nullable=False, default="3in")
+    # Whether this client organizes its menu into Category -> Sub-category
+    # (app.models.category.Category/SubCategory) - set from Settings, off
+    # by default so an existing flat item list keeps working unchanged.
+    # When on, the item form shows category/sub-category pickers (still
+    # optional - see Product.category_id) and the POS terminal groups
+    # items into a collapsible category/sub-category tree instead of one
+    # flat grid.
+    category_wise_items = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
 
     # Access gating - see app.utils.billing.tenant_access_status, which
     # combines these with `is_active` (above) into one go/no-go check,

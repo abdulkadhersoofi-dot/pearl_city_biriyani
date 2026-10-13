@@ -1,13 +1,30 @@
 {% extends "base.html" %}
+{% from "macros.html" import product_js %}
 {% block title %}POS - {{ firm_name }}{% endblock %}
 
 {% block head %}
 <script>
   const PRODUCTS = [
     {% for p in products %}
-    {id: {{ p.id }}, name: {{ p.name|tojson }}, hsn: {{ (p.hsn_or_sac_code or '')|tojson }}, rate: {{ p.default_price }}, gst_rate: {{ p.gst_rate }}, unit: {{ p.unit|tojson }}, image: {{ (url_for('main.media', image_id=p.image_id) if p.image_id else '')|tojson }}},
+    {{ product_js(p) }},
     {% endfor %}
   ];
+  const CATEGORY_WISE = {{ category_wise_items|tojson }};
+  const CATEGORY_TREE = [
+    {% for cat in category_tree %}
+    {
+      id: {{ cat.id }},
+      name: {{ cat.name|tojson }},
+      loose_products: [{% for p in cat.loose_products %}{{ product_js(p) }}, {% endfor %}],
+      subcategories: [
+        {% for sub in cat.subcategories %}
+        {id: {{ sub.id }}, name: {{ sub.name|tojson }}, products: [{% for p in sub.products %}{{ product_js(p) }}, {% endfor %}]},
+        {% endfor %}
+      ]
+    },
+    {% endfor %}
+  ];
+  const UNCATEGORIZED_PRODUCTS = [{% for p in uncategorized_products %}{{ product_js(p) }}, {% endfor %}];
   const DEFAULT_RECEIPT_FORMAT = {{ default_receipt_format|tojson }};
   const STOCK_STATUS = [
     {% for s in stock_status %}
@@ -32,11 +49,6 @@
   <div class="page-header">
     <h1>POS billing</h1>
     <div class="row">
-      {% if held_bills %}
-      <button type="button" class="btn btn-secondary" @click="showHeld = !showHeld">
-        Held bills ({{ held_bills|length }})
-      </button>
-      {% endif %}
       <a href="{{ url_for('pos.day_book') }}" class="btn btn-quiet">Day-book</a>
       <a href="{{ url_for('pos.z_report_view') }}" class="btn btn-quiet">Z-report</a>
     </div>
@@ -57,51 +69,137 @@
     </table>
   </details>
 
-  {% if held_bills %}
-  <div class="card" style="margin-bottom:16px;" x-show="showHeld" x-cloak>
-    <table>
-      <thead><tr><th>Label</th><th>Items</th><th>Total</th><th>Held at</th><th></th></tr></thead>
-      <tbody>
-      {% for hb in held_bills %}
-        <tr>
-          <td>{{ hb.hold_label or ('Bill #' ~ hb.id) }}</td>
-          <td>{{ hb.lines|length }} item(s)</td>
-          <td>Rs. {{ '%.2f'|format(hb.grand_total) }}</td>
-          <td>{{ hb.created_at.strftime('%H:%M') }}</td>
-          <td class="row">
-            <a href="{{ url_for('pos.terminal', resume=hb.id) }}" class="btn btn-quiet">Resume</a>
-            <form method="post" action="{{ url_for('pos.discard_held', bill_id=hb.id) }}"
-                  onsubmit="return confirm('Discard this held bill?');">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <button class="btn btn-quiet">Discard</button>
-            </form>
-          </td>
-        </tr>
-      {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  {% endif %}
-
   <div class="pos-layout">
+    <!-- Always visible, never collapsible - a bill left on hold stays in
+         plain sight here instead of behind a toggle, so it never gets
+         forgotten. -->
+    <div class="held-bills-panel">
+      <h2 style="margin:0 0 4px;">Held bills ({{ held_bills|length }})</h2>
+      {% for hb in held_bills %}
+      <div class="held-bill-card">
+        <div class="held-bill-label">{{ hb.hold_label or ('Bill #' ~ hb.id) }}</div>
+        <div class="held-bill-meta">{{ hb.lines|length }} item(s) &middot; Rs. {{ '%.2f'|format(hb.grand_total) }}</div>
+        <div class="held-bill-meta">Held at {{ hb.created_at.strftime('%H:%M') }}</div>
+        <div class="row">
+          <a href="{{ url_for('pos.terminal', resume=hb.id) }}" class="btn btn-quiet btn-sm">Resume</a>
+          <form method="post" action="{{ url_for('pos.discard_held', bill_id=hb.id) }}"
+                onsubmit="return confirm('Discard this held bill?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-quiet btn-sm">Discard</button>
+          </form>
+        </div>
+      </div>
+      {% else %}
+      <p class="text-muted" style="margin:0;">No bills held right now.</p>
+      {% endfor %}
+    </div>
+
     <div>
-      <input type="text" class="field-input pos-search" placeholder="Search items..."
-             x-model="search" autofocus>
-      <div class="product-grid">
-        <template x-for="p in filteredProducts()" :key="p.id">
-          <button type="button" class="product-tile" @click="addToCart(p)">
-            <div class="tile-image">
-              <template x-if="p.image"><img :src="p.image" :alt="p.name"></template>
-              <template x-if="!p.image"><span class="tile-image-placeholder" x-text="p.name.charAt(0)"></span></template>
-            </div>
-            <span class="tile-name" x-text="p.name"></span>
-            <span class="tile-price" x-text="'Rs. ' + p.rate.toFixed(2)"></span>
-          </button>
+      <div class="row" style="align-items:center; gap:10px;">
+        <input type="text" class="field-input pos-search" placeholder="Search items..."
+               x-model="search" autofocus style="flex:1; margin-bottom:0;">
+        <template x-if="categoryWise && !search">
+          <div class="row" style="gap:8px; flex-shrink:0;">
+            <button type="button" class="btn btn-quiet btn-sm" @click="expandAllCategories()">Expand all</button>
+            <button type="button" class="btn btn-quiet btn-sm" @click="collapseAllCategories()">Collapse all</button>
+          </div>
         </template>
       </div>
-      <p class="text-muted" x-show="filteredProducts().length === 0" style="margin-top:20px;">
-        No items match "<span x-text="search"></span>".
-      </p>
+
+      <!-- Category/sub-category tree - only when the tenant has turned
+           this on, and only while not searching (a search result is
+           always the flat filtered grid below, same as non-category
+           tenants always see). -->
+      <template x-if="categoryWise && !search">
+        <div class="category-tree" style="margin-top:16px;">
+          <template x-for="cat in categoryTree" :key="'cat-'+cat.id">
+            <div class="category-group">
+              <button type="button" class="category-header" @click="toggleGroup('cat-'+cat.id)">
+                <span x-text="cat.name"></span>
+                <span x-text="isExpanded('cat-'+cat.id) ? '−' : '+'"></span>
+              </button>
+              <div class="category-body" x-show="isExpanded('cat-'+cat.id)" x-cloak>
+                <template x-if="cat.loose_products.length">
+                  <div class="product-grid" style="margin-bottom:12px;">
+                    <template x-for="p in cat.loose_products" :key="p.id">
+                      <button type="button" class="product-tile" @click="addToCart(p)">
+                        <div class="tile-image">
+                          <template x-if="p.image"><img :src="p.image" :alt="p.name"></template>
+                          <template x-if="!p.image"><span class="tile-image-placeholder" x-text="p.name.charAt(0)"></span></template>
+                        </div>
+                        <span class="tile-name" x-text="p.name"></span>
+                        <span class="tile-price" x-text="'Rs. ' + p.rate.toFixed(2)"></span>
+                      </button>
+                    </template>
+                  </div>
+                </template>
+                <template x-for="sub in cat.subcategories" :key="'sub-'+sub.id">
+                  <div class="subcategory-group">
+                    <button type="button" class="subcategory-header" @click="toggleGroup('sub-'+sub.id)">
+                      <span x-text="sub.name"></span>
+                      <span x-text="isExpanded('sub-'+sub.id) ? '−' : '+'"></span>
+                    </button>
+                    <div class="product-grid" x-show="isExpanded('sub-'+sub.id)" x-cloak style="margin-top:10px;">
+                      <template x-for="p in sub.products" :key="p.id">
+                        <button type="button" class="product-tile" @click="addToCart(p)">
+                          <div class="tile-image">
+                            <template x-if="p.image"><img :src="p.image" :alt="p.name"></template>
+                            <template x-if="!p.image"><span class="tile-image-placeholder" x-text="p.name.charAt(0)"></span></template>
+                          </div>
+                          <span class="tile-name" x-text="p.name"></span>
+                          <span class="tile-price" x-text="'Rs. ' + p.rate.toFixed(2)"></span>
+                        </button>
+                      </template>
+                    </div>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </template>
+          <template x-if="uncategorizedProducts.length">
+            <div class="category-group">
+              <button type="button" class="category-header" @click="toggleGroup('uncat')">
+                <span>Uncategorized</span>
+                <span x-text="isExpanded('uncat') ? '−' : '+'"></span>
+              </button>
+              <div class="category-body" x-show="isExpanded('uncat')" x-cloak>
+                <div class="product-grid">
+                  <template x-for="p in uncategorizedProducts" :key="p.id">
+                    <button type="button" class="product-tile" @click="addToCart(p)">
+                      <div class="tile-image">
+                        <template x-if="p.image"><img :src="p.image" :alt="p.name"></template>
+                        <template x-if="!p.image"><span class="tile-image-placeholder" x-text="p.name.charAt(0)"></span></template>
+                      </div>
+                      <span class="tile-name" x-text="p.name"></span>
+                      <span class="tile-price" x-text="'Rs. ' + p.rate.toFixed(2)"></span>
+                    </button>
+                  </template>
+                </div>
+              </div>
+            </div>
+          </template>
+        </div>
+      </template>
+
+      <template x-if="!categoryWise || search">
+        <div style="margin-top:16px;">
+          <div class="product-grid">
+            <template x-for="p in filteredProducts()" :key="p.id">
+              <button type="button" class="product-tile" @click="addToCart(p)">
+                <div class="tile-image">
+                  <template x-if="p.image"><img :src="p.image" :alt="p.name"></template>
+                  <template x-if="!p.image"><span class="tile-image-placeholder" x-text="p.name.charAt(0)"></span></template>
+                </div>
+                <span class="tile-name" x-text="p.name"></span>
+                <span class="tile-price" x-text="'Rs. ' + p.rate.toFixed(2)"></span>
+              </button>
+            </template>
+          </div>
+          <p class="text-muted" x-show="filteredProducts().length === 0" style="margin-top:20px;">
+            No items match "<span x-text="search"></span>".
+          </p>
+        </div>
+      </template>
     </div>
 
     <div class="cart-panel">
@@ -201,7 +299,10 @@ function posTerminal() {
     search: "",
     cart: [],
     stock: STOCK_STATUS,
-    showHeld: false,
+    categoryWise: CATEGORY_WISE,
+    categoryTree: CATEGORY_TREE,
+    uncategorizedProducts: UNCATEGORIZED_PRODUCTS,
+    expandedGroups: {},
     checkoutStep: "idle",
     paymentMode: "",
     submitting: false,
@@ -220,6 +321,20 @@ function posTerminal() {
       if (!q) return PRODUCTS;
       return PRODUCTS.filter(p => p.name.toLowerCase().includes(q));
     },
+    // Category/sub-category tree expand-collapse state. Keyed by
+    // "cat-<id>" / "sub-<id>" / "uncat" - nothing persists across a
+    // reload, "Expand all"/"Collapse all" just set every key at once.
+    isExpanded(key) { return !!this.expandedGroups[key]; },
+    toggleGroup(key) { this.expandedGroups[key] = !this.expandedGroups[key]; },
+    expandAllCategories() {
+      const next = {uncat: true};
+      this.categoryTree.forEach(cat => {
+        next['cat-' + cat.id] = true;
+        cat.subcategories.forEach(sub => { next['sub-' + sub.id] = true; });
+      });
+      this.expandedGroups = next;
+    },
+    collapseAllCategories() { this.expandedGroups = {}; },
     // Live stock counter only - never blocks a sale. A branch can keep
     // billing past its allocation (serving sizes vary too much to enforce
     // a hard stop); this just shows the running total going negative.

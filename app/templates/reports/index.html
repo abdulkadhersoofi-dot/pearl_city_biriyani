@@ -5,25 +5,31 @@
   <h1>Reports &amp; GST exports</h1>
 </div>
 
-<div class="card" style="max-width:480px; margin-bottom:20px;">
-  <h2 style="margin-top:0;">Sales report</h2>
-  <p class="text-muted">
-    Every invoice and POS bill between two dates, across all your GSTINs - downloadable as Excel or PDF.
-    Unlike the Day-book (one day, POS only), this covers any date range and both invoices and POS sales.
-  </p>
-  <form method="get" action="{{ url_for('reports.sales_view') }}" class="stack">
-    <div class="form-grid">
-      <div class="field">
-        <label class="field-label" for="sales_start">From</label>
-        <input type="date" name="start" id="sales_start" value="{{ sales_start.isoformat() }}" class="field-input">
-      </div>
-      <div class="field">
-        <label class="field-label" for="sales_end">To</label>
-        <input type="date" name="end" id="sales_end" value="{{ sales_end.isoformat() }}" class="field-input">
-      </div>
-    </div>
-    <button type="submit" class="btn btn-primary">View sales report</button>
-  </form>
+<div class="form-grid" style="margin-bottom:20px;">
+  <div class="card">
+    <h2 style="margin-top:0;">Sales report</h2>
+    <p class="text-muted">
+      Every invoice and POS bill, across all your GSTINs - downloadable as Excel or PDF. Filter by
+      day, month or any date range, and by one or more branches.
+    </p>
+    <a href="{{ url_for('reports.sales_view') }}" class="btn btn-primary">View sales report</a>
+  </div>
+  <div class="card">
+    <h2 style="margin-top:0;">Stock report</h2>
+    <p class="text-muted">
+      How much stock was allocated to each branch and how much it actually sold, over any period
+      and any branch selection.
+    </p>
+    <a href="{{ url_for('reports.stock_view') }}" class="btn btn-primary">View stock report</a>
+  </div>
+  <div class="card">
+    <h2 style="margin-top:0;">Sales by item</h2>
+    <p class="text-muted">
+      Which items sold, how many, and for how much - the same period and branch filters as the
+      other two reports.
+    </p>
+    <a href="{{ url_for('reports.items_view') }}" class="btn btn-primary">View sales by item</a>
+  </div>
 </div>
 
 {% if not_regular %}

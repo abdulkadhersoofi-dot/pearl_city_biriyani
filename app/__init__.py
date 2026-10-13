@@ -59,6 +59,7 @@ def _register_blueprints(app: Flask) -> None:
     from app.branches import branches_bp
     from app.customers import customers_bp
     from app.invoicing import invoicing_bp
+    from app.live import live_bp
     from app.notes import notes_bp
     from app.pos import pos_bp
     from app.products import products_bp
@@ -76,6 +77,7 @@ def _register_blueprints(app: Flask) -> None:
     app.register_blueprint(pos_bp)
     app.register_blueprint(notes_bp)
     app.register_blueprint(reports_bp)
+    app.register_blueprint(live_bp)
     app.register_blueprint(settings_bp)
     app.register_blueprint(branches_bp)
     app.register_blueprint(api_bp)

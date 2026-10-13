@@ -7,23 +7,13 @@
     <p class="text-muted mt-0">{{ data.start.strftime('%d %b %Y') }} - {{ data.end.strftime('%d %b %Y') }} &middot; {{ data.invoice_count }} invoice(s), {{ data.pos_bill_count }} POS bill(s)</p>
   </div>
   <div class="row">
-    <a href="{{ url_for('reports.sales_xlsx', start=data.start.isoformat(), end=data.end.isoformat()) }}" class="btn btn-secondary">Excel</a>
-    <a href="{{ url_for('reports.sales_pdf', start=data.start.isoformat(), end=data.end.isoformat()) }}" class="btn btn-secondary" target="_blank">PDF</a>
+    <a href="{{ url_for('reports.sales_xlsx', mode=filters.mode, start=filters.start.isoformat(), end=filters.end.isoformat(), date=filters.day_value, month=filters.month_value, branch_id=filters.branch_ids) }}" class="btn btn-secondary">Excel</a>
+    <a href="{{ url_for('reports.sales_pdf', mode=filters.mode, start=filters.start.isoformat(), end=filters.end.isoformat(), date=filters.day_value, month=filters.month_value, branch_id=filters.branch_ids) }}" class="btn btn-secondary" target="_blank">PDF</a>
     <a href="{{ url_for('reports.index') }}" class="btn btn-quiet">Back</a>
   </div>
 </div>
 
-<form method="get" class="card row" style="margin-bottom:20px; align-items:flex-end;">
-  <div class="field" style="margin-bottom:0;">
-    <label class="field-label" for="start">From</label>
-    <input type="date" name="start" id="start" value="{{ data.start.isoformat() }}" class="field-input">
-  </div>
-  <div class="field" style="margin-bottom:0;">
-    <label class="field-label" for="end">To</label>
-    <input type="date" name="end" id="end" value="{{ data.end.isoformat() }}" class="field-input">
-  </div>
-  <button type="submit" class="btn btn-primary">Update</button>
-</form>
+{% include "reports/_filter_bar.html" %}
 
 <div class="form-grid" style="margin-bottom:20px;">
   <div class="card">

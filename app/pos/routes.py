@@ -9,6 +9,7 @@ from app.auth.decorators import tenant_user_required
 from app.extensions import db
 from app.models.pos_bill import PaymentMode, POSBill, POSBillStatus
 from app.models.product import Product
+from app.pos.catalog import build_category_tree
 from app.pos import pos_bp
 from app.pos.receipt import DEFAULT_PAGE_FORMAT, render_receipt_pdf
 from app.pos.services import (
@@ -62,6 +63,10 @@ def terminal():
 
     stock_status = branch_stock_status(current_user.tenant_id, current_user.id) if current_user.is_staff else []
 
+    category_tree, uncategorized_products = (
+        build_category_tree(products) if tenant.category_wise_items else ([], [])
+    )
+
     return render_template(
         "pos/terminal.html",
         products=products,
@@ -69,6 +74,9 @@ def terminal():
         resume_bill=resume_bill,
         default_receipt_format=tenant.default_receipt_format,
         stock_status=stock_status,
+        category_wise_items=tenant.category_wise_items,
+        category_tree=category_tree,
+        uncategorized_products=uncategorized_products,
     )
 
 

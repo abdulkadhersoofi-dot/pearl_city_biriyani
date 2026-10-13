@@ -41,29 +41,32 @@ class SalesReportRow:
         return self.sign * self.total
 
 
-def sales_report_data(tenant: Tenant, start: date, end: date) -> dict:
+def sales_report_data(tenant: Tenant, start: date, end: date, branch_ids: list[int] | None = None) -> dict:
     day_start, day_end = datetime.combine(start, time.min), datetime.combine(end, time.max)
 
-    invoices = (
-        Invoice.query.filter(
-            Invoice.tenant_id == tenant.id,
-            Invoice.invoice_date >= start,
-            Invoice.invoice_date <= end,
-            Invoice.status != InvoiceStatus.VOID,
-        )
-        .order_by(Invoice.invoice_date, Invoice.invoice_number)
-        .all()
+    invoice_query = Invoice.query.filter(
+        Invoice.tenant_id == tenant.id,
+        Invoice.invoice_date >= start,
+        Invoice.invoice_date <= end,
+        Invoice.status != InvoiceStatus.VOID,
     )
-    pos_bills = (
-        POSBill.query.filter(
-            POSBill.tenant_id == tenant.id,
-            POSBill.status.in_([POSBillStatus.COMPLETED, POSBillStatus.REFUNDED]),
-            POSBill.completed_at >= day_start,
-            POSBill.completed_at <= day_end,
-        )
-        .order_by(POSBill.completed_at)
-        .all()
+    pos_bill_query = POSBill.query.filter(
+        POSBill.tenant_id == tenant.id,
+        POSBill.status.in_([POSBillStatus.COMPLETED, POSBillStatus.REFUNDED]),
+        POSBill.completed_at >= day_start,
+        POSBill.completed_at <= day_end,
     )
+    # A "branch" filter means "sales attributable to this branch login" -
+    # branch_user_id on the invoice (stock billed to that branch) or
+    # created_by_id on the POS bill (rung up by that branch's own
+    # till). An ordinary customer invoice has no branch_user_id, so it
+    # correctly drops out once a branch filter is active.
+    if branch_ids:
+        invoice_query = invoice_query.filter(Invoice.branch_user_id.in_(branch_ids))
+        pos_bill_query = pos_bill_query.filter(POSBill.created_by_id.in_(branch_ids))
+
+    invoices = invoice_query.order_by(Invoice.invoice_date, Invoice.invoice_number).all()
+    pos_bills = pos_bill_query.order_by(POSBill.completed_at).all()
 
     rows: list[SalesReportRow] = []
 
