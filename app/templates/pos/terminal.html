@@ -47,17 +47,12 @@
     {product_id: {{ s.product_id }}, name: {{ s.product_name|tojson }}, unit: {{ s.unit|tojson }}, allocated: {{ s.allocated }}, sold: {{ s.sold }}},
     {% endfor %}
   ];
-  const PREFILL = {
-    lines: [
-      {% for l in (resume_bill.lines if resume_bill else []) %}
-      {product_id: {{ l.product_id or 'null' }}, description: {{ l.description|tojson }}, hsn: {{ (l.hsn_or_sac_code or '')|tojson }}, rate: {{ l.rate }}, incl: {{ l.price_includes_tax|tojson }}, gst_rate: {{ l.gst_rate }}, unit: {{ (l.unit or 'pcs')|tojson }}, qty: {{ l.qty }}, loose: {{ (l.product.sells_loose if l.product else false)|tojson }}, disc_kind: {{ (l.line_discount_kind or '')|tojson }}, disc_value: {{ l.line_discount_value or 0 }}},
-      {% endfor %}
-    ],
-    customer: {{ ({"id": resume_bill.customer.id, "name": resume_bill.customer.name, "phone": resume_bill.customer.phone or "", "gstin": resume_bill.customer.gstin or ""} if resume_bill and resume_bill.customer else none)|tojson }},
-    bill_disc_kind: {{ ((resume_bill.bill_discount_kind or '') if resume_bill else '')|tojson }},
-    bill_disc_value: {{ (resume_bill.bill_discount_value if resume_bill else 0) or 0 }},
-    price_list_id: {{ ((resume_bill.price_list_id if resume_bill else none) or default_price_list_id)|tojson }},
-  };
+  // A resumed held bill (app.pos.routes._prefill_from_held), else empty.
+  const PREFILL = Object.assign(
+    {lines: [], customer: null, bill_disc_kind: "", bill_disc_value: 0, price_list_id: null},
+    {{ (prefill or {})|tojson }}
+  );
+  if (!PREFILL.price_list_id) PREFILL.price_list_id = {{ default_price_list_id|tojson }};
   // bill_id=0 is a placeholder swapped for the real id once checkout
   // returns one - keeps the route structure in one place (url_for)
   // instead of hand-building the path in JS.
@@ -161,7 +156,8 @@
         <div class="held-bill-meta">{{ hb.lines|length }} item(s) &middot; Rs. {{ '%.2f'|format(hb.grand_total) }}</div>
         <div class="held-bill-meta">Held at {{ hb.created_at.strftime('%H:%M') }}</div>
         <div class="row">
-          <a href="{{ url_for('pos.terminal', resume=hb.id) }}" class="btn btn-quiet btn-sm">Resume</a>
+          <a href="{{ url_for('pos.terminal', resume=hb.id) }}" class="btn btn-quiet btn-sm"
+             @click="resumeHeld($event, {{ hb.id }})">Resume</a>
           <form method="post" action="{{ url_for('pos.discard_held', bill_id=hb.id) }}"
                 onsubmit="return confirm('Discard this held bill?');">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -361,6 +357,7 @@
               @click="startCheckout()">Checkout</button>
 
       <form method="post" :action="holdUrl" x-ref="holdForm">
+        <input type="hidden" name="then_resume" x-ref="thenResume" value="">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="customer_id" :value="customer ? customer.id : ''">
         <input type="hidden" name="bill_discount_kind" :value="billDisc.value ? billDisc.kind : ''">
@@ -1029,6 +1026,14 @@ function posTerminal() {
       } catch (e) {
         this.checkoutError = "Could not make a share link.";
       }
+    },
+    // Opening a held bill replaces the cart - so a cart with items in it
+    // is held first (not thrown away), then the chosen bill opens.
+    resumeHeld(ev, billId) {
+      if (!this.cart.length) return;  // plain link: nothing to lose
+      ev.preventDefault();
+      this.$refs.thenResume.value = billId;
+      this.$refs.holdForm.submit();
     },
     newSale() {
       this.upiSrc = "";

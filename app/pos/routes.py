@@ -152,23 +152,18 @@ def terminal():
         .all()
     )
 
+    # Resuming a held bill: copy it into plain data for the page, render,
+    # and only then remove it from the held list. Rendering from the
+    # deleted rows (as this used to) crashed whenever a line's item wasn't
+    # already loaded - and since the delete was already committed, the
+    # held bill was lost along with the page.
     resume_bill = None
-    resume_id = request.args.get("resume")
+    resume_id = _int_or_none(request.args.get("resume"))
     if resume_id:
         resume_bill = tenant_query(POSBill).filter_by(id=resume_id, status=POSBillStatus.HELD).first()
-        if resume_bill:
-            # Snapshot what the page needs before the draft goes.
-            resume_data = {
-                "lines": list(resume_bill.lines),
-                "customer": resume_bill.customer,
-                "bill_discount_kind": resume_bill.bill_discount_kind,
-                "bill_discount_value": resume_bill.bill_discount_value,
-                "price_list_id": resume_bill.price_list_id,
-            }
-            db.session.delete(resume_bill)
-            db.session.commit()
-            held_bills = [hb for hb in held_bills if hb.id != resume_bill.id]
-            resume_bill = resume_data
+    prefill = _prefill_from_held(resume_bill) if resume_bill else None
+    if resume_bill:
+        held_bills = [hb for hb in held_bills if hb.id != resume_bill.id]
 
     stock_status = branch_stock_status(current_user.tenant_id, current_user.id) if current_user.is_staff else []
 
@@ -190,11 +185,11 @@ def terminal():
         .first()
     )
 
-    return render_template(
+    html = render_template(
         "pos/terminal.html",
         products=products,
         held_bills=held_bills,
-        resume_bill=resume_bill,
+        prefill=prefill,
         default_receipt_format=tenant.default_receipt_format,
         stock_status=stock_status,
         category_wise_items=category_wise,
@@ -213,6 +208,50 @@ def terminal():
         exchange=exchange,
         last_bill=last_bill,
     )
+    if resume_bill is not None:
+        _remove_held(resume_bill)
+    return html
+
+
+def _prefill_from_held(bill: POSBill) -> dict:
+    """Everything the terminal needs to rebuild a held cart, as plain
+    values - nothing that touches the database once the bill is gone."""
+    customer = bill.customer
+    return {
+        "lines": [
+            {
+                "product_id": line.product_id,
+                "description": line.description,
+                "hsn": line.hsn_or_sac_code or "",
+                "rate": float(line.rate),
+                "incl": bool(line.price_includes_tax),
+                "gst_rate": float(line.gst_rate),
+                "unit": line.unit or "pcs",
+                "qty": float(line.qty),
+                "loose": bool(line.product.sells_loose) if line.product else False,
+                "disc_kind": line.line_discount_kind or "",
+                "disc_value": float(line.line_discount_value or 0),
+            }
+            for line in bill.lines
+        ],
+        "customer": (
+            {"id": customer.id, "name": customer.name, "phone": customer.phone or "", "gstin": customer.gstin or ""}
+            if customer else None
+        ),
+        "bill_disc_kind": bill.bill_discount_kind or "",
+        "bill_disc_value": float(bill.bill_discount_value or 0),
+        "price_list_id": bill.price_list_id,
+    }
+
+
+def _remove_held(bill: POSBill) -> None:
+    """A resumed bill leaves the held list. If another counter resumed or
+    discarded it a moment earlier, there's simply nothing left to remove."""
+    try:
+        db.session.delete(bill)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
 
 
 @pos_bp.route("/hold", methods=["POST"])
@@ -226,7 +265,11 @@ def hold_bill():
     except POSValidationError as exc:
         db.session.rollback()
         flash(exc.message, "error")
-    return redirect(url_for("pos.terminal"))
+        return redirect(url_for("pos.terminal"))
+    # "Resume" tapped with items already in the cart: the cart was held
+    # first (above) so it isn't lost, and now the chosen bill opens.
+    then_resume = _int_or_none(request.form.get("then_resume"))
+    return redirect(url_for("pos.terminal", resume=then_resume) if then_resume else url_for("pos.terminal"))
 
 
 @pos_bp.route("/held/<int:bill_id>/discard", methods=["POST"])
