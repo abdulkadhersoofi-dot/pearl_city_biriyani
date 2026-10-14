@@ -54,7 +54,7 @@
   const CHARGES_GST = {{ charges_gst|tojson }};
   const PAYMENT_MODES = {{ payment_modes|tojson }};
   const UPI_READY = {{ upi_ready|tojson }};
-  const UPI_QR_URL = {{ url_for('pos.upi_qr')|tojson if upi_ready else '""' }};
+  const UPI_QR_URL = {{ (url_for('pos.upi_qr') if upi_ready else '')|tojson }};
   // What this login may do - the server enforces the same limits.
   const DISCOUNT_CAP = {{ discount_cap|float }};
   const MAY_EDIT_PRICE = {{ may_edit_price|tojson }};

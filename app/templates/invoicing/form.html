@@ -7,7 +7,7 @@
   const GSTIN_STATE = { {% for g in current_user.tenant.gstins %}{{ g.id }}: "{{ g.state_code }}",{% endfor %} };
   const CUSTOMER_STATE = { {% for c in customers %}"{{ c.id }}": "{{ c.state_code or '' }}",{% endfor %} };
   const BRANCH_TYPE = { {% for b in branches %}"{{ b.id }}": "{{ b.branch_type.value }}",{% endfor %} };
-  const PRODUCTS_BY_NAME = { {% for p in products %}"{{ p.name|e }}": {hsn: "{{ p.hsn_or_sac_code }}", rate: {{ p.sale_price }}, incl: {{ p.price_includes_tax|tojson }}, gst_rate: {{ p.gst_rate }}, unit: "{{ p.unit }}", id: {{ p.id }}},{% endfor %} };
+  const PRODUCTS_BY_NAME = { {% for p in products %}{{ p.name|tojson }}: {hsn: {{ (p.hsn_or_sac_code or '')|tojson }}, rate: {{ p.sale_price }}, incl: {{ p.price_includes_tax|tojson }}, gst_rate: {{ p.gst_rate }}, unit: {{ p.unit|tojson }}, id: {{ p.id }}},{% endfor %} };
   const NO_GST_DOC_TYPES = ["bill_of_supply", "delivery_challan"];
   // New ad-hoc lines start from the client's own "prices include GST"
   // default (Settings); a catalog item always brings its own setting.
