@@ -28,7 +28,8 @@ def search_products():
                 "hsn_or_sac_code": p.hsn_or_sac_code,
                 "gst_rate": str(p.gst_rate),
                 "unit": p.unit,
-                "default_price": str(p.default_price),
+                "sale_price": str(p.sale_price),
+                "price_includes_tax": p.price_includes_tax,
             }
             for p in products
         ]

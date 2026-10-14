@@ -51,9 +51,9 @@ def run():
     db.session.add(admin)
 
     db.session.add_all([
-        Product(tenant_id=tenant.id, name="Chicken Biriyani", hsn_or_sac_code="996331", gst_rate=5, unit="plate", default_price=220),
-        Product(tenant_id=tenant.id, name="Mutton Biriyani", hsn_or_sac_code="996331", gst_rate=5, unit="plate", default_price=280),
-        Product(tenant_id=tenant.id, name="Delivery charge", hsn_or_sac_code="996812", gst_rate=18, unit="pcs", default_price=40),
+        Product(tenant_id=tenant.id, name="Chicken Biriyani", hsn_or_sac_code="996331", gst_rate=5, unit="NOS", sale_price=220),
+        Product(tenant_id=tenant.id, name="Mutton Biriyani", hsn_or_sac_code="996331", gst_rate=5, unit="NOS", sale_price=280),
+        Product(tenant_id=tenant.id, name="Delivery charge", hsn_or_sac_code="996812", gst_rate=18, unit="NOS", sale_price=40, is_service=True),
     ])
     db.session.add(
         Customer(tenant_id=tenant.id, name="Walk-in Customer", state_code="27", state_name="Maharashtra", city="Pune")

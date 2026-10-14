@@ -95,6 +95,11 @@ class NoteLine(db.Model, TimestampMixin):
 
     taxable_value = db.Column(db.Numeric(12, 2), nullable=False, default=0)
     gst_rate = db.Column(db.Numeric(5, 2), nullable=False, default=0)
+    # Whether `rate` was the GST-inclusive price (the taxable value was
+    # backed out of it - see app.utils.gst.compute_line) or the pre-tax
+    # price. Kept so a document can be shown, copied or credited exactly
+    # as it was computed.
+    price_includes_tax = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
     cgst_amount = db.Column(db.Numeric(12, 2), nullable=False, default=0)
     sgst_amount = db.Column(db.Numeric(12, 2), nullable=False, default=0)
     igst_amount = db.Column(db.Numeric(12, 2), nullable=False, default=0)

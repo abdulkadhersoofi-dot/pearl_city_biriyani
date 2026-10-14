@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Import / export {{ spec.label|lower }} - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Import / export {{ spec.label|lower }}</h1>
+  <a href="{{ back_url }}" class="btn btn-quiet">Back</a>
+</div>
+
+<div class="form-grid">
+  <div class="card stack">
+    <h2 style="margin:0; font-size:1.05rem;">1. Get the sheet</h2>
+    <p class="text-muted mt-0">Start from the blank template, or download everything you already have, edit it in Excel and upload it back.</p>
+    <a href="{{ url_for('bulk.template', kind=spec.kind) }}" class="btn btn-secondary">Download blank template</a>
+    <a href="{{ url_for('bulk.export', kind=spec.kind) }}" class="btn btn-secondary">Download my {{ spec.label|lower }}</a>
+  </div>
+
+  <div class="card stack">
+    <h2 style="margin:0; font-size:1.05rem;">2. Upload it</h2>
+    <p class="text-muted mt-0">You'll see every row checked before anything is saved. Rows that match an existing record update it; the rest are added.</p>
+    <form method="post" action="{{ url_for('bulk.upload', kind=spec.kind) }}" enctype="multipart/form-data" class="stack">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="file" name="file" accept=".xlsx" class="field-input" required>
+      <button type="submit" class="btn btn-primary">Check file</button>
+    </form>
+  </div>
+</div>
+
+<div class="card" style="margin-top:16px;">
+  <h2 style="margin:0 0 8px; font-size:1.05rem;">Columns</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Column</th><th>What to enter</th></tr></thead>
+      <tbody>
+      {% for col in spec.columns %}
+        <tr><td><strong>{{ col.header }}</strong>{% if col.required %} <span class="text-muted">(required)</span>{% endif %}</td><td>{{ col.help }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

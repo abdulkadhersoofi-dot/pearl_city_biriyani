@@ -204,6 +204,11 @@ is forced to change it on their first sign-in.
   rather than silently floored at zero).
 - Cannot see any other branch's data, any other tenant, or anything
   above POS billing.
+- **Per-login permissions** (Branches -> Permissions, Phase 1 of the
+  platform build): give discounts (+ max %), change price at billing,
+  refund, void, see Day-book/Z-report, adjust stock. Defaults equal the
+  old behaviour (refund + Day-book/Z-report on, the rest off) and are
+  enforced server-side (`app/utils/permissions.py`).
 
 ## 4. Full feature inventory (what's actually shipped)
 
@@ -258,6 +263,15 @@ this list is just the index.
   full; POS bills/notes in summary only — full drill-down for those is
   still outstanding), bulk GST export (ZIP of GSTR-1+3B per client).
 - **Android app** (`android/`): see §6.
+- **Platform build Phase 1** (from `ARFA_BUILD_PROMPT.md`'s 10-phase
+  plan): business type + per-tenant feature flags (`Tenant.features`
+  JSON, `app/utils/features.py`; `category_wise_items` folded into
+  `features.categories`), tax-inclusive pricing per item/line
+  (`gst.compute_line(price_includes_tax=...)`), GST rates/HSN/UQC in
+  `app/utils/gst_config.py`, item master (sku, barcode, mrp, prices,
+  UQC unit, pack unit, service flag; `default_price` -> `sale_price`),
+  Excel import/export (`app/bulk/`), `flask backup`, per-staff
+  permissions. Phases 2-10 still to build, in order.
 
 ## 5. Chronological development history (this session)
 

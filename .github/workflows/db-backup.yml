@@ -1,0 +1,66 @@
+name: Database backup
+
+# Nightly pg_dump of the live database, kept as a downloadable workflow
+# artifact (Actions -> this workflow -> a run -> Artifacts) for 30 days.
+# A file, not a cloud upload - no storage credentials involved.
+#
+# Does nothing until a repository secret named BACKUP_DATABASE_URL holds
+# the database's *external* connection string (Render: Postgres instance
+# -> Connect -> External Database URL). Scheduled workflows only run from
+# the repository's default branch, so this starts once merged there.
+#
+# The same backup can be taken by hand on any machine with the app
+# installed: `flask backup` (see app/utils/backup.py).
+on:
+  schedule:
+    - cron: "30 20 * * *" # 02:00 IST
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check a database URL is configured
+        id: check
+        env:
+          BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+        run: |
+          if [ -z "$BACKUP_DATABASE_URL" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::BACKUP_DATABASE_URL secret not set - skipping backup."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install PostgreSQL client
+        if: steps.check.outputs.configured == 'true'
+        run: |
+          # A client at least as new as the server: pg_dump refuses to dump
+          # a newer server version.
+          sudo apt-get update -q
+          sudo apt-get install -yq postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -yq postgresql-client-17
+
+      - name: Dump and compress
+        if: steps.check.outputs.configured == 'true'
+        env:
+          BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+        run: |
+          set -o pipefail
+          mkdir -p out
+          name="arfa-$(TZ=Asia/Kolkata date +%Y%m%d-%H%M%S).sql.gz"
+          /usr/lib/postgresql/17/bin/pg_dump --no-owner --no-privileges --format=plain "$BACKUP_DATABASE_URL" | gzip > "out/$name"
+          test -s "out/$name"
+          echo "Wrote $name ($(stat -c %s "out/$name") bytes)"
+
+      - name: Keep as artifact
+        if: steps.check.outputs.configured == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: database-backup
+          path: out/*.sql.gz
+          retention-days: 30

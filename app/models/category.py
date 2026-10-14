@@ -4,7 +4,7 @@ from app.models.mixins import TenantScopedMixin, TimestampMixin
 
 class Category(db.Model, TenantScopedMixin, TimestampMixin):
     """A top-level menu grouping (e.g. "Starters", "Biriyani", "Drinks").
-    Only meaningful when Tenant.category_wise_items is on - see
+    Only meaningful when the tenant has the "categories" feature on - see
     app.settings and app.pos.routes.terminal for where that toggle is
     read. Categorizing an item is always optional even then; an
     uncategorized item just shows under "Uncategorized" in the POS."""

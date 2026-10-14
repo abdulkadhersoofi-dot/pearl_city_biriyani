@@ -1,9 +1,10 @@
 from flask_wtf import FlaskForm
 from flask_wtf.file import FileAllowed, FileField, FileSize
-from wtforms import BooleanField, SelectField, StringField
-from wtforms.validators import DataRequired, Regexp
+from wtforms import BooleanField, DecimalField, SelectField, StringField
+from wtforms.validators import DataRequired, NumberRange, Optional, Regexp
 
 from app.pos.receipt import THERMAL_WIDTHS_IN
+from app.utils.features import AVAILABLE_FEATURES, BUSINESS_TYPE_CHOICES
 from app.utils.theme import FONT_FAMILY_CHOICES, HEX_COLOR_RE
 from app.utils.uploads import ALLOWED_IMAGE_EXTENSIONS, MAX_IMAGE_BYTES
 
@@ -37,4 +38,23 @@ class TenantSettingsForm(FlaskForm):
     default_receipt_format = SelectField(
         "POS bill print size", choices=RECEIPT_FORMAT_CHOICES, validators=[DataRequired()]
     )
-    category_wise_items = BooleanField("Organize items into categories and sub-categories")
+
+    # Optional server-side: the select always submits a value, and a client
+    # that omits it keeps its current type (settings.routes).
+    business_type = SelectField("Type of business", choices=BUSINESS_TYPE_CHOICES, validators=[Optional()])
+    apply_business_preset = BooleanField("Also switch modules to the recommended set for this type of business")
+    aato = DecimalField(
+        "Turnover last financial year (Rs.)", places=2, validators=[Optional(), NumberRange(min=0)]
+    )
+    default_price_includes_tax = BooleanField("New items' prices already include GST")
+
+
+def feature_field_name(key: str) -> str:
+    return f"feature_{key}"
+
+
+# One switch per module that's actually built (app.utils.features) - a
+# flag for a module that doesn't exist yet is never offered, since
+# switching it on would do nothing.
+for _feature in AVAILABLE_FEATURES:
+    setattr(TenantSettingsForm, feature_field_name(_feature.key), BooleanField(_feature.label))

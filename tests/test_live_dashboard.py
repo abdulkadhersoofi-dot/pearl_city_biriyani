@@ -22,7 +22,7 @@ def _branch(db, tenant, name, email):
 def _product(db, tenant, name="Chicken Biriyani", price="150"):
     product = Product(
         tenant_id=tenant.id, name=name, hsn_or_sac_code="996331", gst_rate=Decimal("18"), unit="plate",
-        default_price=Decimal(price),
+        sale_price=Decimal(price),
     )
     db.session.add(product)
     db.session.commit()
@@ -32,7 +32,7 @@ def _product(db, tenant, name="Chicken Biriyani", price="150"):
 def _sell(tenant, branch, product, qty):
     checkout(
         tenant, branch,
-        CartInput(lines=[CartLineInput(description=product.name, hsn_or_sac_code="996331", qty=Decimal(qty), rate=product.default_price, gst_rate=Decimal("18"), unit="plate", product_id=product.id)]),
+        CartInput(lines=[CartLineInput(description=product.name, hsn_or_sac_code="996331", qty=Decimal(qty), rate=product.sale_price, gst_rate=Decimal("18"), unit="plate", product_id=product.id)]),
         PaymentMode.CASH,
     )
 

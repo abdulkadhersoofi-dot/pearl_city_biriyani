@@ -26,7 +26,7 @@ def biriyani(db, tenant):
         hsn_or_sac_code="996331",
         gst_rate=Decimal("18"),
         unit="plate",
-        default_price=Decimal("100"),
+        sale_price=Decimal("100"),
     )
     db.session.add(product)
     db.session.commit()
@@ -299,10 +299,10 @@ def test_invoicing_form_bills_owned_branch_as_delivery_challan_end_to_end(client
 def test_branch_stock_status_lists_every_active_product_even_unallocated(db, tenant, client_admin, owned_branch, biriyani):
     # Soda has never been sent to this branch - it should still show up,
     # at 0 sent / 0 remaining, not be silently missing.
-    soda = Product(tenant_id=tenant.id, name="Soda", hsn_or_sac_code="22021010", unit="bottle", default_price=Decimal("20"))
+    soda = Product(tenant_id=tenant.id, name="Soda", hsn_or_sac_code="22021010", unit="bottle", sale_price=Decimal("20"))
     inactive = Product(
         tenant_id=tenant.id, name="Discontinued Item", hsn_or_sac_code="12345678", unit="pcs",
-        default_price=Decimal("10"), is_active=False,
+        sale_price=Decimal("10"), is_active=False,
     )
     db.session.add_all([soda, inactive])
     allocate_stock(tenant.id, owned_branch.id, client_admin.id, [(biriyani.id, Decimal("50"))])

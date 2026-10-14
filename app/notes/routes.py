@@ -63,6 +63,7 @@ def new_note():
                 request.form.getlist("line_gst_rate[]"),
                 request.form.getlist("line_product_id[]"),
                 request.form.getlist("line_unit[]"),
+                request.form.getlist("line_incl[]"),
             )
             note = create_note(
                 current_user.tenant,

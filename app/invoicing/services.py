@@ -11,6 +11,7 @@ from app.models.tenant import Gstin, Tenant
 from app.models.user import BranchType, User, UserRole
 from app.pos.stock import allocate_stock
 from app.utils.financial_year import financial_year_for
+from app.utils.form_arrays import posted_flag
 from app.utils.gst import allowed_document_types, compute_invoice_totals, compute_line
 from app.utils.numbering import allocate_number, get_or_create_series
 
@@ -31,6 +32,7 @@ class LineInput:
     gst_rate: Decimal
     product_id: int | None = None
     unit: str = "pcs"
+    price_includes_tax: bool = False
 
 
 @dataclass
@@ -72,7 +74,7 @@ def _bounded(value: str, field_name: str, max_length: int) -> str:
 
 
 def parse_line_arrays(
-    descriptions, hsns, qtys, rates, discounts, gst_rates, product_ids, units
+    descriptions, hsns, qtys, rates, discounts, gst_rates, product_ids, units, incls=()
 ) -> list[LineInput]:
     lines = []
     for i, description in enumerate(descriptions):
@@ -93,6 +95,7 @@ def parse_line_arrays(
                 gst_rate=_to_decimal(gst_rates[i] if i < len(gst_rates) else "0", "GST rate"),
                 product_id=int(product_ids[i]) if i < len(product_ids) and product_ids[i] else None,
                 unit=_bounded(unit, "Unit", _MAX_UNIT_LENGTH),
+                price_includes_tax=posted_flag(incls, i),
             )
         )
     if not lines:
@@ -174,6 +177,7 @@ def create_invoice(tenant: Tenant, created_by, data: InvoiceInput) -> Invoice:
             gst_rate=line.gst_rate,
             is_intra_state=is_intra_state,
             charge_gst=charge_gst,
+            price_includes_tax=line.price_includes_tax,
         )
         computed_lines.append({**computed, "input": line})
 
@@ -235,6 +239,7 @@ def create_invoice(tenant: Tenant, created_by, data: InvoiceInput) -> Invoice:
                 discount_amount=item["discount_amount"],
                 taxable_value=item["taxable_value"],
                 gst_rate=line_in.gst_rate if charge_gst else Decimal("0"),
+                price_includes_tax=line_in.price_includes_tax,
                 cgst_amount=cgst_amount,
                 sgst_amount=sgst_amount,
                 igst_amount=igst_amount,

@@ -9,6 +9,7 @@ from app.auth.decorators import tenant_user_required
 from app.extensions import db
 from app.models.pos_bill import PaymentMode, POSBill, POSBillStatus
 from app.models.product import Product
+from app.models.tenant import RegistrationType
 from app.pos.catalog import build_category_tree
 from app.pos import pos_bp
 from app.pos.receipt import DEFAULT_PAGE_FORMAT, render_receipt_pdf
@@ -24,6 +25,8 @@ from app.pos.services import (
 )
 from app.pos.stock import branch_stock_status
 from app.utils.audit import record_audit
+from app.utils.features import current_tenant_has
+from app.utils.permissions import permission_required
 from app.utils.tenant_scope import assert_owns, tenant_query
 
 
@@ -36,6 +39,8 @@ def _cart_from_request() -> CartInput:
         request.form.getlist("line_gst_rate[]"),
         request.form.getlist("line_product_id[]"),
         request.form.getlist("line_unit[]"),
+        request.form.getlist("line_incl[]"),
+        request.form.getlist("line_discount[]"),
     )
     return CartInput(lines=lines)
 
@@ -63,9 +68,8 @@ def terminal():
 
     stock_status = branch_stock_status(current_user.tenant_id, current_user.id) if current_user.is_staff else []
 
-    category_tree, uncategorized_products = (
-        build_category_tree(products) if tenant.category_wise_items else ([], [])
-    )
+    category_wise = current_tenant_has("categories")
+    category_tree, uncategorized_products = build_category_tree(products) if category_wise else ([], [])
 
     return render_template(
         "pos/terminal.html",
@@ -74,7 +78,8 @@ def terminal():
         resume_bill=resume_bill,
         default_receipt_format=tenant.default_receipt_format,
         stock_status=stock_status,
-        category_wise_items=tenant.category_wise_items,
+        category_wise_items=category_wise,
+        charges_gst=tenant.registration_type == RegistrationType.REGULAR,
         category_tree=category_tree,
         uncategorized_products=uncategorized_products,
     )
@@ -188,6 +193,7 @@ def receipt_pdf(bill_id):
 
 @pos_bp.route("/bills/<int:bill_id>/refund", methods=["POST"])
 @tenant_user_required
+@permission_required("refund")
 def refund_bill_route(bill_id):
     bill = tenant_query(POSBill).filter_by(id=bill_id).first_or_404()
     assert_owns(bill)
@@ -216,6 +222,7 @@ def refund_bill_route(bill_id):
 
 @pos_bp.route("/bills")
 @tenant_user_required
+@permission_required("view_reports")
 def day_book():
     on_date = _parse_date(request.args.get("date")) or date.today()
     start = datetime.combine(on_date, datetime.min.time())
@@ -240,6 +247,7 @@ def day_book():
 
 @pos_bp.route("/z-report")
 @tenant_user_required
+@permission_required("view_reports")
 def z_report_view():
     on_date = _parse_date(request.args.get("date")) or date.today()
     report = z_report(current_user.tenant_id, on_date)

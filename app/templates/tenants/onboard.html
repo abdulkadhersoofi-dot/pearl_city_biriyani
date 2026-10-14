@@ -11,6 +11,8 @@
     {{ field(form.registration_type, help="Composition and unregistered clients issue a Bill of Supply, never a Tax Invoice.") }}
     {{ field(form.gstin) }}
     {{ field(form.state_code) }}
+    {{ field(form.business_type, help="Pre-switches the modules this client is likely to need. They can change any of it later in Settings.") }}
+    {{ field(form.aato, help="Aggregate annual turnover of the last financial year - drives compliance rules like HSN digits.") }}
   </div>
   {{ field(form.registered_address) }}
   {{ field(form.logo, help="Shown to this client's own users instead of the platform logo, and on their printed invoices/receipts.") }}

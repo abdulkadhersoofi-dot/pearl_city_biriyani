@@ -3,7 +3,10 @@
 {% block content %}
 <div class="page-header">
   <h1>Customers</h1>
-  <a href="{{ url_for('customers.new_customer') }}" class="btn btn-primary">+ Add customer</a>
+  <div class="row">
+    <a href="{{ url_for('bulk.index', kind='customers') }}" class="btn btn-quiet">Import / Export</a>
+    <a href="{{ url_for('customers.new_customer') }}" class="btn btn-primary">+ Add customer</a>
+  </div>
 </div>
 
 <form class="search-bar" method="get">

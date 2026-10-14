@@ -1,5 +1,12 @@
 {% extends "base.html" %}
 {% from "macros.html" import field %}
+{% macro checkbox(f, help=None) %}
+<div class="field {{ 'field-error' if f.errors }}">
+  <label class="row" style="align-items:center; gap:8px; font-weight:600;">{{ f() }} {{ f.label.text }}</label>
+  {% if help %}<p class="field-help" style="margin:4px 0 0;">{{ help }}</p>{% endif %}
+  {% for error in f.errors %}<p class="field-error-msg">{{ error }}</p>{% endfor %}
+</div>
+{% endmacro %}
 {% block title %}{{ 'Edit item' if product else 'New item' }} - {{ firm_name }}{% endblock %}
 {% block content %}
 <div class="page-header"><h1>{{ 'Edit item' if product else 'New item' }}</h1></div>
@@ -7,13 +14,15 @@
   {{ form.hidden_tag() }}
   {{ field(form.name) }}
   {{ field(form.description) }}
+  {{ checkbox(form.is_service, help="A service uses a SAC code (starts with 99) and is never counted as stock.") }}
   <div class="form-grid">
-    {{ field(form.hsn_or_sac_code) }}
+    {{ field(form.hsn_or_sac_code, help="4, 6 or 8 digits. Above Rs. 5 crore turnover, at least 6.") }}
     {{ field(form.gst_rate) }}
+    {{ field(form.sale_price) }}
     {{ field(form.unit) }}
-    {{ field(form.default_price) }}
   </div>
-  {% if current_user.tenant.category_wise_items %}
+  {{ checkbox(form.price_includes_tax, help="Tick for menu / MRP-style prices the customer pays as-is - GST is worked out from inside the price. Untick if GST is added on top.") }}
+  {% if has_feature('categories') %}
   <div class="form-grid">
     {{ field(form.category_id, help="Leave as Uncategorized if this item doesn't belong to one.") }}
     {{ field(form.sub_category_id) }}
@@ -26,6 +35,30 @@
     <img src="{{ url_for('main.media', image_id=product.image_id) }}" alt="{{ product.name }}" style="width:96px; height:96px; object-fit:cover; border-radius:var(--radius); border:1px solid var(--color-border);">
   {% endif %}
   {{ field(form.image, help="Shown on the POS item tile, alongside the name and price.") }}
+
+  {% set more_has_errors = form.mrp.errors or form.wholesale_price.errors or form.purchase_rate.errors or form.cost_price.errors or form.sku.errors or form.barcode.errors or form.alt_unit.errors or form.alt_unit_factor.errors or form.min_stock_level.errors %}
+  <details class="more-details" {% if more_has_errors %}open{% endif %}>
+    <summary>More details (optional) - MRP, other prices, codes, pack size, stock alert</summary>
+    <div class="stack" style="margin-top:12px;">
+      <div class="form-grid">
+        {{ field(form.mrp, help="Always includes GST. The sale price can't go above it.") }}
+        {{ field(form.wholesale_price) }}
+        {{ field(form.purchase_rate, help="What you last paid the supplier.") }}
+        {{ field(form.cost_price, help="Average cost of your stock.") }}
+      </div>
+      <div class="form-grid">
+        {{ field(form.sku) }}
+        {{ field(form.barcode, help="Type it or scan it into this box.") }}
+      </div>
+      <div class="form-grid">
+        {{ field(form.alt_unit, help="e.g. BOX, if you also buy/sell by the box.") }}
+        {{ field(form.alt_unit_factor, help="e.g. 12 if 1 BOX = 12 PCS.") }}
+        {{ field(form.min_stock_level) }}
+      </div>
+      {{ checkbox(form.allow_negative_stock, help="Untick to stop billing this item once stock runs out (applies once stock tracking is on).") }}
+    </div>
+  </details>
+
   <button type="submit" class="btn btn-primary btn-lg">Save</button>
 </form>
 {% if product %}

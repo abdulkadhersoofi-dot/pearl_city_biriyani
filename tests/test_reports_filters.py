@@ -83,7 +83,7 @@ def _branch(db, tenant, name, email):
 def _product(db, tenant, name="Chicken Biriyani"):
     product = Product(
         tenant_id=tenant.id, name=name, hsn_or_sac_code="996331", gst_rate=Decimal("18"), unit="plate",
-        default_price=Decimal("150"),
+        sale_price=Decimal("150"),
     )
     db.session.add(product)
     db.session.commit()

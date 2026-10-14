@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% from "macros.html" import field %}
+{% macro checkbox(f, help=None) %}
+<div class="field {{ 'field-error' if f.errors }}">
+  <label class="row" style="align-items:center; gap:8px; font-weight:600;">{{ f() }} {{ f.label.text }}</label>
+  {% if help %}<p class="field-help" style="margin:4px 0 0;">{{ help }}</p>{% endif %}
+  {% for error in f.errors %}<p class="field-error-msg">{{ error }}</p>{% endfor %}
+</div>
+{% endmacro %}
+{% block title %}Permissions - {{ branch.name }} - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Permissions - {{ branch.name }}</h1>
+  <a href="{{ url_for('branches.list_branches') }}" class="btn btn-quiet">Back</a>
+</div>
+<form method="post" class="card stack" novalidate x-data="{ discount: {{ (form.can_give_discount.data or false)|tojson }} }">
+  {{ form.hidden_tag() }}
+  <p class="text-muted mt-0">This login can always bill, hold and resume bills. Choose what else it may do. You (the owner) can always do everything.</p>
+  <div class="field">
+    <label class="row" style="align-items:center; gap:8px; font-weight:600;">{{ form.can_give_discount(**{"x-model": "discount"}) }} {{ form.can_give_discount.label.text }}</label>
+  </div>
+  <div x-show="discount">
+    {{ field(form.max_discount_percent, help="e.g. 10 lets this counter give up to 10% off a line.") }}
+  </div>
+  {{ checkbox(form.can_edit_price_at_pos, help="Off: billing always uses the item's saved price.") }}
+  {{ checkbox(form.can_refund) }}
+  {{ checkbox(form.can_void) }}
+  {{ checkbox(form.can_view_reports) }}
+  {{ checkbox(form.can_manage_stock, help="Applies once stock adjustments and transfers are switched on.") }}
+  <button type="submit" class="btn btn-primary btn-lg">Save permissions</button>
+</form>
+{% endblock %}

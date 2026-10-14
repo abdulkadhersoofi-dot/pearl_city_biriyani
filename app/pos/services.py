@@ -7,10 +7,13 @@ from app.models.customer import Customer
 from app.models.invoice_series import DocumentType
 from app.models.mixins import utcnow
 from app.models.pos_bill import PaymentMode, POSBill, POSBillLine, POSBillStatus
+from app.models.product import Product
 from app.models.tenant import RegistrationType, Tenant
 from app.utils.financial_year import financial_year_for
+from app.utils.form_arrays import posted_flag
 from app.utils.gst import compute_invoice_totals, compute_line
 from app.utils.numbering import allocate_number, get_or_create_series
+from app.utils.permissions import max_discount_percent, user_can
 
 _MAX_DESCRIPTION_LENGTH = 255
 _MAX_HSN_LENGTH = 8
@@ -33,6 +36,7 @@ class CartLineInput:
     product_id: int | None = None
     unit: str = "pcs"
     discount_percent: Decimal = Decimal("0")
+    price_includes_tax: bool = False
 
 
 @dataclass
@@ -54,7 +58,9 @@ def _bounded(value: str, field_name: str, max_length: int) -> str:
     return value
 
 
-def parse_cart_lines(descriptions, hsns, qtys, rates, gst_rates, product_ids, units) -> list[CartLineInput]:
+def parse_cart_lines(
+    descriptions, hsns, qtys, rates, gst_rates, product_ids, units, incls=(), discounts=()
+) -> list[CartLineInput]:
     lines = []
     for i, description in enumerate(descriptions):
         description = (description or "").strip()
@@ -71,11 +77,49 @@ def parse_cart_lines(descriptions, hsns, qtys, rates, gst_rates, product_ids, un
                 gst_rate=_to_decimal(gst_rates[i] if i < len(gst_rates) else "0", "GST rate"),
                 product_id=int(product_ids[i]) if i < len(product_ids) and product_ids[i] else None,
                 unit=_bounded(unit, "Unit", _MAX_UNIT_LENGTH),
+                discount_percent=_to_decimal(
+                    discounts[i] if i < len(discounts) and discounts[i] else "0", "discount"
+                ),
+                price_includes_tax=posted_flag(incls, i),
             )
         )
     if not lines:
         raise POSValidationError("Cart is empty.")
     return lines
+
+
+def apply_counter_rules(tenant: Tenant, user, lines: list[CartLineInput]) -> None:
+    """The server's word on every cart line, whatever the terminal sent.
+
+    A catalog item's tax treatment always comes from the item master (a
+    cashier can't turn an inclusive menu price exclusive), and its price
+    too unless this login may change prices at the counter. A discount
+    is capped at this login's limit. Item ids must belong to this client.
+    """
+    product_ids = {line.product_id for line in lines if line.product_id}
+    products = {}
+    if product_ids:
+        products = {
+            p.id: p
+            for p in Product.query.filter(Product.id.in_(product_ids), Product.tenant_id == tenant.id).all()
+        }
+    may_edit_price = user_can(user, "edit_price")
+    discount_cap = max_discount_percent(user)
+
+    for line in lines:
+        if line.product_id:
+            product = products.get(line.product_id)
+            if product is None:
+                raise POSValidationError("An item in the cart isn't in your catalog - remove it and add it again.")
+            line.price_includes_tax = product.price_includes_tax
+            if not may_edit_price:
+                line.rate = product.sale_price
+        if line.discount_percent < 0 or line.discount_percent > 100:
+            raise POSValidationError("A discount must be between 0% and 100%.")
+        if line.discount_percent > discount_cap:
+            if discount_cap == 0:
+                raise POSValidationError("This login isn't allowed to give discounts.")
+            raise POSValidationError(f"This login can give at most {discount_cap.normalize():f}% discount.")
 
 
 def _charge_gst(tenant: Tenant) -> bool:
@@ -97,6 +141,7 @@ def _compute_lines(tenant: Tenant, lines: list[CartLineInput]) -> list[dict]:
             gst_rate=line.gst_rate,
             is_intra_state=True,
             charge_gst=charge_gst,
+            price_includes_tax=line.price_includes_tax,
         )
         computed.append({**result, "input": line})
     return computed
@@ -118,6 +163,7 @@ def _persist_lines(bill: POSBill, computed_lines: list[dict], charge_gst: bool) 
                 discount_amount=item["discount_amount"],
                 taxable_value=item["taxable_value"],
                 gst_rate=line_in.gst_rate if charge_gst else Decimal("0"),
+                price_includes_tax=line_in.price_includes_tax,
                 cgst_amount=item["cgst_amount"],
                 sgst_amount=item["sgst_amount"],
                 igst_amount=item["igst_amount"],
@@ -134,6 +180,7 @@ def hold_cart(tenant: Tenant, created_by, cart: CartInput, label: str | None) ->
             "This client has no business location on file. Ask the firm to add one from Clients -> this client."
         )
 
+    apply_counter_rules(tenant, created_by, cart.lines)
     computed_lines = _compute_lines(tenant, cart.lines)
     totals = compute_invoice_totals(computed_lines)
 
@@ -177,6 +224,7 @@ def checkout(tenant: Tenant, created_by, cart: CartInput, payment_mode: PaymentM
             "phone": customer.phone,
         }
 
+    apply_counter_rules(tenant, created_by, cart.lines)
     charge_gst = _charge_gst(tenant)
     computed_lines = _compute_lines(tenant, cart.lines)
     totals = compute_invoice_totals(computed_lines)

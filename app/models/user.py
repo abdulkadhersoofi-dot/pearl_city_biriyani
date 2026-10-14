@@ -77,6 +77,17 @@ class User(db.Model, UserMixin, TimestampMixin):
     branch_type = db.Column(db.Enum(BranchType, name="branch_type"))
     is_active = db.Column(db.Boolean, nullable=False, default=True)
     must_change_password = db.Column(db.Boolean, nullable=False, default=True)
+
+    # Counter permissions - only consulted for a Staff (branch) login; a
+    # Client Admin can always do all of these. Defaults reproduce what a
+    # Staff login could do before these existed. See app.utils.permissions.
+    can_give_discount = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
+    max_discount_percent = db.Column(db.Numeric(5, 2), nullable=False, default=0, server_default="0")
+    can_refund = db.Column(db.Boolean, nullable=False, default=True, server_default=db.true())
+    can_void = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
+    can_view_reports = db.Column(db.Boolean, nullable=False, default=True, server_default=db.true())
+    can_edit_price_at_pos = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
+    can_manage_stock = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
     last_login_at = db.Column(db.DateTime(timezone=True))
 
     # Billing for an Auditor/Sub-Auditor login - the same system a Tenant

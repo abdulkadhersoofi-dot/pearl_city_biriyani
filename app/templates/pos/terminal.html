@@ -33,7 +33,7 @@
   ];
   const PREFILL_CART = [
     {% for l in (resume_bill.lines if resume_bill else []) %}
-    {product_id: {{ l.product_id or 'null' }}, description: {{ l.description|tojson }}, hsn: {{ (l.hsn_or_sac_code or '')|tojson }}, rate: {{ l.rate }}, gst_rate: {{ l.gst_rate }}, unit: {{ (l.unit or 'pcs')|tojson }}, qty: {{ l.qty }}},
+    {product_id: {{ l.product_id or 'null' }}, description: {{ l.description|tojson }}, hsn: {{ (l.hsn_or_sac_code or '')|tojson }}, rate: {{ l.rate }}, incl: {{ l.price_includes_tax|tojson }}, gst_rate: {{ l.gst_rate }}, unit: {{ (l.unit or 'pcs')|tojson }}, qty: {{ l.qty }}},
     {% endfor %}
   ];
   // bill_id=0 is a placeholder swapped for the real id once checkout
@@ -41,6 +41,9 @@
   // instead of hand-building the path in JS.
   const RECEIPT_PDF_URL_TEMPLATE = {{ url_for('pos.receipt_pdf', bill_id=0)|tojson }};
   const CSRF_TOKEN = {{ csrf_token()|tojson }};
+  // Composition/unregistered clients never charge GST at the counter -
+  // the cart preview must not add it either (app.pos.services._charge_gst).
+  const CHARGES_GST = {{ charges_gst|tojson }};
 </script>
 {% endblock %}
 
@@ -49,8 +52,10 @@
   <div class="page-header">
     <h1>POS billing</h1>
     <div class="row">
+      {% if can('view_reports') %}
       <a href="{{ url_for('pos.day_book') }}" class="btn btn-quiet">Day-book</a>
       <a href="{{ url_for('pos.z_report_view') }}" class="btn btn-quiet">Z-report</a>
+      {% endif %}
     </div>
   </div>
 
@@ -243,6 +248,7 @@
             <input type="hidden" name="line_qty[]" :value="line.qty">
             <input type="hidden" name="line_rate[]" :value="line.rate">
             <input type="hidden" name="line_gst_rate[]" :value="line.gst_rate">
+            <input type="hidden" name="line_incl[]" :value="line.incl ? '1' : '0'">
             <input type="hidden" name="line_unit[]" :value="line.unit">
           </span>
         </template>
@@ -352,7 +358,7 @@ function posTerminal() {
       if (existing) {
         existing.qty += 1;
       } else {
-        this.cart.push({product_id: p.id, description: p.name, hsn: p.hsn, rate: p.rate, gst_rate: p.gst_rate, unit: p.unit, qty: 1});
+        this.cart.push({product_id: p.id, description: p.name, hsn: p.hsn, rate: p.rate, incl: p.incl, gst_rate: p.gst_rate, unit: p.unit, qty: 1});
       }
     },
     increment(i) { this.cart[i].qty += 1; },
@@ -366,9 +372,7 @@ function posTerminal() {
     },
     clearCart() { this.cart = []; },
     lineTotal(line) {
-      const taxable = line.qty * line.rate;
-      const tax = taxable * (line.gst_rate || 0) / 100;
-      return taxable + tax;
+      return GstCalc.line(line.qty, line.rate, 0, line.gst_rate, line.incl, CHARGES_GST, true).total;
     },
     cartTotal() {
       return this.cart.reduce((sum, l) => sum + this.lineTotal(l), 0);
@@ -390,6 +394,7 @@ function posTerminal() {
         body.append("line_qty[]", line.qty);
         body.append("line_rate[]", line.rate);
         body.append("line_gst_rate[]", line.gst_rate);
+        body.append("line_incl[]", line.incl ? "1" : "0");
         body.append("line_unit[]", line.unit);
       });
       try {

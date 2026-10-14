@@ -386,3 +386,7 @@ tr:last-child td { border-bottom: none; }
   .leaderboard-name { width: 110px; }
   .leaderboard-orders { display: none; }
 }
+
+/* --- Item form: optional "More details" section --- */
+.more-details { border-top: 1px solid var(--color-border); padding-top: 12px; }
+.more-details > summary { cursor: pointer; font-weight: 600; color: var(--color-primary); min-height: var(--touch); display: flex; align-items: center; }

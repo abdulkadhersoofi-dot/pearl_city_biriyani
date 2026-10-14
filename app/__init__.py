@@ -57,6 +57,7 @@ def _register_blueprints(app: Flask) -> None:
     from app.api import api_bp
     from app.auth import auth_bp
     from app.branches import branches_bp
+    from app.bulk import bulk_bp
     from app.customers import customers_bp
     from app.invoicing import invoicing_bp
     from app.live import live_bp
@@ -81,6 +82,7 @@ def _register_blueprints(app: Flask) -> None:
     app.register_blueprint(settings_bp)
     app.register_blueprint(branches_bp)
     app.register_blueprint(api_bp)
+    app.register_blueprint(bulk_bp)
 
 
 def _register_error_handlers(app: Flask) -> None:
@@ -152,9 +154,16 @@ def _register_context_processors(app: Flask) -> None:
             "impersonator_name": impersonator_name,
         }
 
+    from app.utils.features import current_tenant_has
+    from app.utils.permissions import current_user_can
     from app.utils.theme import tenant_theme_css
 
     app.jinja_env.globals["tenant_theme_css"] = tenant_theme_css
+    # {% if has_feature('categories') %} / {% if can('refund') %} - the
+    # template-side counterparts of feature_required/permission_required,
+    # so a switched-off module's links and fields never render.
+    app.jinja_env.globals["has_feature"] = current_tenant_has
+    app.jinja_env.globals["can"] = current_user_can
 
     @app.template_filter("state_name")
     def state_name_filter(state_code: str) -> str:
@@ -261,3 +270,17 @@ def _register_cli(app: Flask) -> None:
         db.session.add(user)
         db.session.commit()
         click.echo(f"Super Admin '{email}' created via bootstrap.")
+
+    @app.cli.command("backup")
+    @click.option("--dir", "out_dir", default=lambda: os.environ.get("BACKUP_DIR", "backups"), show_default="BACKUP_DIR or ./backups")
+    @click.option("--keep", default=lambda: int(os.environ.get("BACKUP_KEEP", "14")), show_default="BACKUP_KEEP or 14", type=int)
+    def backup(out_dir, keep):
+        """pg_dump the database to a gzipped, timestamped file, keeping the
+        newest --keep backups in --dir (see app/utils/backup.py)."""
+        from app.utils.backup import BackupError, run_backup
+
+        try:
+            path = run_backup(app.config["SQLALCHEMY_DATABASE_URI"], out_dir, keep)
+        except BackupError as exc:
+            raise click.ClickException(str(exc))
+        click.echo(f"Backup written: {path} ({path.stat().st_size} bytes)")

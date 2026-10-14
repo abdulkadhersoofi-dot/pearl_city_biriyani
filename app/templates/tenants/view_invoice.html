@@ -34,7 +34,7 @@
         <td>{{ l.description }}</td>
         <td>{{ l.hsn_or_sac_code or '-' }}</td>
         <td>{{ l.qty }} {{ l.unit }}</td>
-        <td>Rs. {{ '%.2f'|format(l.rate) }}</td>
+        <td>Rs. {{ '%.2f'|format(l.rate) }}{% if l.price_includes_tax %} <span class="text-muted">(incl. GST)</span>{% endif %}</td>
         <td>{{ l.gst_rate }}%</td>
         <td>Rs. {{ '%.2f'|format(l.line_total) }}</td>
       </tr>

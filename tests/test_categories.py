@@ -10,7 +10,7 @@ def _login(client, email, password):
 
 
 def _enable_category_mode(db, tenant):
-    tenant.category_wise_items = True
+    tenant.set_feature("categories", True)
     db.session.commit()
 
 
@@ -26,13 +26,13 @@ def test_settings_turns_category_mode_on(client, db, tenant, client_admin):
             "text_color": "#1f2a24",
             "font_family": "system",
             "default_receipt_format": "3in",
-            "category_wise_items": "y",
+            "feature_categories": "y",
         },
         follow_redirects=True,
     )
     assert resp.status_code == 200
     db.session.refresh(tenant)
-    assert tenant.category_wise_items is True
+    assert tenant.has_feature("categories") is True
 
 
 def test_settings_leaves_category_mode_off_when_unchecked(client, db, tenant, client_admin):
@@ -46,11 +46,11 @@ def test_settings_leaves_category_mode_off_when_unchecked(client, db, tenant, cl
             "text_color": "#1f2a24",
             "font_family": "system",
             "default_receipt_format": "3in",
-            # category_wise_items omitted - an unchecked checkbox sends nothing
+            # feature_categories omitted - an unchecked checkbox sends nothing
         },
     )
     db.session.refresh(tenant)
-    assert tenant.category_wise_items is False
+    assert tenant.has_feature("categories") is False
 
 
 # --- Category/sub-category CRUD --------------------------------------------
@@ -125,8 +125,8 @@ def test_item_can_be_created_with_a_category_and_sub_category(client, db, tenant
             "description": "",
             "hsn_or_sac_code": "2106",
             "gst_rate": "5",
-            "unit": "plate",
-            "default_price": "180",
+            "unit": "NOS",
+            "sale_price": "180",
             "category_id": str(category.id),
             "sub_category_id": str(sub.id),
         },
@@ -149,8 +149,8 @@ def test_item_can_be_created_with_no_category_even_when_mode_is_on(client, db, t
             "description": "",
             "hsn_or_sac_code": "2201",
             "gst_rate": "18",
-            "unit": "bottle",
-            "default_price": "20",
+            "unit": "BTL",
+            "sale_price": "20",
             "category_id": "",
             "sub_category_id": "",
         },
@@ -184,8 +184,8 @@ def test_a_sub_category_from_a_different_category_is_dropped(client, db, tenant,
             "description": "",
             "hsn_or_sac_code": "2106",
             "gst_rate": "5",
-            "unit": "plate",
-            "default_price": "100",
+            "unit": "NOS",
+            "sale_price": "100",
             "category_id": str(cat_a.id),
             "sub_category_id": str(sub_under_b.id),
         },
@@ -206,9 +206,9 @@ def test_build_category_tree_groups_products_correctly(db, tenant):
     db.session.add(sub)
     db.session.flush()
 
-    in_sub = Product(tenant_id=tenant.id, name="Chicken Biriyani", hsn_or_sac_code="2106", default_price=Decimal("180"), category_id=cat.id, sub_category_id=sub.id)
-    loose_in_cat = Product(tenant_id=tenant.id, name="Papad", hsn_or_sac_code="2106", default_price=Decimal("20"), category_id=cat.id)
-    uncategorized = Product(tenant_id=tenant.id, name="Water", hsn_or_sac_code="2201", default_price=Decimal("20"))
+    in_sub = Product(tenant_id=tenant.id, name="Chicken Biriyani", hsn_or_sac_code="2106", sale_price=Decimal("180"), category_id=cat.id, sub_category_id=sub.id)
+    loose_in_cat = Product(tenant_id=tenant.id, name="Papad", hsn_or_sac_code="2106", sale_price=Decimal("20"), category_id=cat.id)
+    uncategorized = Product(tenant_id=tenant.id, name="Water", hsn_or_sac_code="2201", sale_price=Decimal("20"))
     db.session.add_all([in_sub, loose_in_cat, uncategorized])
     db.session.commit()
 
@@ -227,7 +227,7 @@ def test_build_category_tree_treats_a_deactivated_category_as_uncategorized(db, 
     cat = Category(tenant_id=tenant.id, name="Discontinued", is_active=False)
     db.session.add(cat)
     db.session.flush()
-    product = Product(tenant_id=tenant.id, name="Old Item", hsn_or_sac_code="2106", default_price=Decimal("50"), category_id=cat.id)
+    product = Product(tenant_id=tenant.id, name="Old Item", hsn_or_sac_code="2106", sale_price=Decimal("50"), category_id=cat.id)
     db.session.add(product)
     db.session.commit()
 
@@ -247,7 +247,7 @@ def test_pos_terminal_shows_category_names_when_mode_is_on(client, db, tenant, c
     cat = Category(tenant_id=tenant.id, name="Biriyani")
     db.session.add(cat)
     db.session.flush()
-    db.session.add(Product(tenant_id=tenant.id, name="Chicken Biriyani", hsn_or_sac_code="2106", default_price=Decimal("180"), category_id=cat.id))
+    db.session.add(Product(tenant_id=tenant.id, name="Chicken Biriyani", hsn_or_sac_code="2106", sale_price=Decimal("180"), category_id=cat.id))
     db.session.commit()
 
     _login(client, staff.email, "CashierSecret123")

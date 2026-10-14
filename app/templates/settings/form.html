@@ -32,16 +32,34 @@
   </div>
 
   <div class="card stack" style="margin-top:16px;">
-    <h2 style="margin:0; font-size:1.05rem;">Menu organization</h2>
+    <h2 style="margin:0; font-size:1.05rem;">Business profile</h2>
+    <div class="form-grid">
+      {{ field(form.business_type, help="Used to suggest which modules you need. Changing it doesn't switch anything by itself.") }}
+      {{ field(form.aato, help="Aggregate annual turnover of the last financial year. Decides rules like how many HSN digits your bills need. Leave blank if under Rs. 5 crore and unsure.") }}
+    </div>
     <label class="row" style="align-items:center; gap:8px; font-weight:600;">
-      {{ form.category_wise_items() }} {{ form.category_wise_items.label.text }}
+      {{ form.default_price_includes_tax() }} {{ form.default_price_includes_tax.label.text }}
     </label>
-    <p class="field-help" style="margin:0;">When on, items can be grouped into categories and sub-categories (e.g.
-      "Biriyani" &gt; "Chicken") - the item form gets category pickers, and the POS screen shows a collapsible
-      category tree instead of one flat grid. A category is never required for an item, even with this on.</p>
-    {% if tenant.category_wise_items %}
-    <a href="{{ url_for('products.categories') }}" class="btn btn-secondary" style="align-self:flex-start;">Manage categories</a>
-    {% endif %}
+    <p class="field-help" style="margin:0;">Pre-ticks "price already includes GST" for new items and new invoice lines. Each item keeps its own setting.</p>
+    <label class="row" style="align-items:center; gap:8px; font-weight:600;">
+      {{ form.apply_business_preset() }} {{ form.apply_business_preset.label.text }}
+    </label>
+    <p class="field-help" style="margin:0;">Turns the modules below (and the GST-included default above) to what's usual for the type you picked. Leave unticked to keep your own choices.</p>
+  </div>
+
+  <div class="card stack" style="margin-top:16px;">
+    <h2 style="margin:0; font-size:1.05rem;">Modules</h2>
+    <p class="text-muted mt-0">Switch on only what your business uses - everything else stays out of your menus.</p>
+    {% for feature in features %}
+    {% set f = form[feature_field_name(feature.key)] %}
+    <div>
+      <label class="row" style="align-items:center; gap:8px; font-weight:600;">{{ f() }} {{ f.label.text }}</label>
+      <p class="field-help" style="margin:4px 0 0;">{{ feature.description }}</p>
+      {% if feature.key == 'categories' and tenant.has_feature('categories') %}
+      <a href="{{ url_for('products.categories') }}" class="btn btn-secondary" style="margin-top:8px;">Manage categories</a>
+      {% endif %}
+    </div>
+    {% endfor %}
   </div>
 
   <div class="card stack" style="margin-top:16px;">

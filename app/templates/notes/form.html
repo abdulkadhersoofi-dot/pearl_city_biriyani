@@ -8,9 +8,10 @@
   const CHARGES_GST = {{ 'true' if invoice.total_cgst or invoice.total_sgst or invoice.total_igst else 'false' }};
   const PREFILL_LINES = [
     {% for l in invoice.lines %}
-    {description: {{ l.description|tojson }}, hsn: {{ (l.hsn_or_sac_code or '')|tojson }}, qty: {{ l.qty }}, rate: {{ l.rate }}, discount: {{ l.discount_percent }}, gst_rate: {{ l.gst_rate }}, unit: {{ (l.unit or 'pcs')|tojson }}, product_id: {{ l.product_id or 'null' }}},
+    {description: {{ l.description|tojson }}, hsn: {{ (l.hsn_or_sac_code or '')|tojson }}, qty: {{ l.qty }}, rate: {{ l.rate }}, discount: {{ l.discount_percent }}, gst_rate: {{ l.gst_rate }}, incl: {{ l.price_includes_tax|tojson }}, unit: {{ (l.unit or 'pcs')|tojson }}, product_id: {{ l.product_id or 'null' }}},
     {% endfor %}
   ];
+  const DEFAULT_INCL = {{ current_user.tenant.default_price_includes_tax|tojson }};
 </script>
 {% endblock %}
 
@@ -47,6 +48,7 @@
             <th style="width:110px;">Rate</th>
             <th style="width:90px;">Disc %</th>
             <th style="width:90px;">GST %</th>
+            <th style="width:70px;" title="Tick when the rate already includes GST">Incl. GST</th>
             <th style="width:110px;">Amount</th>
             <th></th>
           </tr>
@@ -60,6 +62,10 @@
               <td><input type="number" step="0.01" min="0" x-model.number="line.rate" @input="recalc()" name="line_rate[]"></td>
               <td><input type="number" step="0.01" min="0" x-model.number="line.discount" @input="recalc()" name="line_discount[]"></td>
               <td><input type="number" step="0.01" min="0" x-model.number="line.gst_rate" @input="recalc()" name="line_gst_rate[]"></td>
+              <td style="text-align:center;">
+                <input type="checkbox" x-model="line.incl" @change="recalc()" aria-label="Rate includes GST">
+                <input type="hidden" name="line_incl[]" :value="line.incl ? '1' : '0'">
+              </td>
               <td class="text-muted" x-text="lineAmount(line)"></td>
               <td>
                 <input type="hidden" name="line_product_id[]" :value="line.product_id || ''">
@@ -98,35 +104,28 @@
 <script>
 function noteForm() {
   return {
-    lines: PREFILL_LINES.length ? JSON.parse(JSON.stringify(PREFILL_LINES)) : [{description:'', hsn:'', qty:1, rate:0, discount:0, gst_rate:0, unit:'pcs', product_id:null}],
+    lines: PREFILL_LINES.length ? JSON.parse(JSON.stringify(PREFILL_LINES)) : [{description:'', hsn:'', qty:1, rate:0, discount:0, gst_rate:0, incl:DEFAULT_INCL, unit:'pcs', product_id:null}],
     totals: { taxable: 0, cgst: 0, sgst: 0, igst: 0, grand: 0 },
     init() { this.recalc(); },
-    lineAmount(line) {
-      const gross = (line.qty || 0) * (line.rate || 0);
-      const discount = gross * (line.discount || 0) / 100;
-      const taxable = gross - discount;
-      const gstRate = CHARGES_GST ? (line.gst_rate || 0) : 0;
-      const tax = taxable * gstRate / 100;
-      return 'Rs. ' + (taxable + tax).toFixed(2);
+    computeLine(line) {
+      return GstCalc.line(line.qty, line.rate, line.discount, line.gst_rate, line.incl, CHARGES_GST, IS_INTRA_STATE);
     },
-    addLine() { this.lines.push({description:'', hsn:'', qty:1, rate:0, discount:0, gst_rate:0, unit:'pcs', product_id:null}); },
+    lineAmount(line) {
+      return 'Rs. ' + this.computeLine(line).total.toFixed(2);
+    },
+    addLine() { this.lines.push({description:'', hsn:'', qty:1, rate:0, discount:0, gst_rate:0, incl:DEFAULT_INCL, unit:'pcs', product_id:null}); },
     removeLine(i) { this.lines.splice(i, 1); this.recalc(); },
     recalc() {
-      let taxable = 0, tax = 0;
+      const t = { taxable: 0, cgst: 0, sgst: 0, igst: 0 };
       this.lines.forEach(line => {
-        const gross = (line.qty || 0) * (line.rate || 0);
-        const discount = gross * (line.discount || 0) / 100;
-        const lineTaxable = gross - discount;
-        taxable += lineTaxable;
-        if (CHARGES_GST) tax += lineTaxable * (line.gst_rate || 0) / 100;
+        const c = this.computeLine(line);
+        t.taxable += c.taxable; t.cgst += c.cgst; t.sgst += c.sgst; t.igst += c.igst;
       });
-      this.totals.taxable = taxable;
-      if (IS_INTRA_STATE) {
-        this.totals.cgst = tax / 2; this.totals.sgst = tax / 2; this.totals.igst = 0;
-      } else {
-        this.totals.cgst = 0; this.totals.sgst = 0; this.totals.igst = tax;
-      }
-      this.totals.grand = Math.round(taxable + tax);
+      this.totals.taxable = GstCalc.round2(t.taxable);
+      this.totals.cgst = GstCalc.round2(t.cgst);
+      this.totals.sgst = GstCalc.round2(t.sgst);
+      this.totals.igst = GstCalc.round2(t.igst);
+      this.totals.grand = Math.round(t.taxable + t.cgst + t.sgst + t.igst);
     }
   };
 }

@@ -7,11 +7,14 @@
   const GSTIN_STATE = { {% for g in current_user.tenant.gstins %}{{ g.id }}: "{{ g.state_code }}",{% endfor %} };
   const CUSTOMER_STATE = { {% for c in customers %}"{{ c.id }}": "{{ c.state_code or '' }}",{% endfor %} };
   const BRANCH_TYPE = { {% for b in branches %}"{{ b.id }}": "{{ b.branch_type.value }}",{% endfor %} };
-  const PRODUCTS_BY_NAME = { {% for p in products %}"{{ p.name|e }}": {hsn: "{{ p.hsn_or_sac_code }}", rate: {{ p.default_price }}, gst_rate: {{ p.gst_rate }}, unit: "{{ p.unit }}", id: {{ p.id }}},{% endfor %} };
-  const BILL_OF_SUPPLY = "bill_of_supply";
+  const PRODUCTS_BY_NAME = { {% for p in products %}"{{ p.name|e }}": {hsn: "{{ p.hsn_or_sac_code }}", rate: {{ p.sale_price }}, incl: {{ p.price_includes_tax|tojson }}, gst_rate: {{ p.gst_rate }}, unit: "{{ p.unit }}", id: {{ p.id }}},{% endfor %} };
+  const NO_GST_DOC_TYPES = ["bill_of_supply", "delivery_challan"];
+  // New ad-hoc lines start from the client's own "prices include GST"
+  // default (Settings); a catalog item always brings its own setting.
+  const DEFAULT_INCL = {{ current_user.tenant.default_price_includes_tax|tojson }};
   const PREFILL_LINES = [
     {% for l in (duplicate_from.lines if duplicate_from else []) %}
-    {description: {{ l.description|tojson }}, hsn: {{ (l.hsn_or_sac_code or '')|tojson }}, qty: {{ l.qty }}, rate: {{ l.rate }}, discount: {{ l.discount_percent }}, gst_rate: {{ l.gst_rate }}, unit: {{ (l.unit or 'pcs')|tojson }}, product_id: {{ l.product_id or 'null' }}},
+    {description: {{ l.description|tojson }}, hsn: {{ (l.hsn_or_sac_code or '')|tojson }}, qty: {{ l.qty }}, rate: {{ l.rate }}, discount: {{ l.discount_percent }}, gst_rate: {{ l.gst_rate }}, incl: {{ l.price_includes_tax|tojson }}, unit: {{ (l.unit or 'pcs')|tojson }}, product_id: {{ l.product_id or 'null' }}},
     {% endfor %}
   ];
 </script>
@@ -89,6 +92,7 @@
             <th style="width:110px;">Rate</th>
             <th style="width:90px;">Disc %</th>
             <th style="width:90px;">GST %</th>
+            <th style="width:70px;" title="Tick when the rate you entered already includes GST">Incl. GST</th>
             <th style="width:110px;">Amount</th>
             <th></th>
           </tr>
@@ -105,6 +109,10 @@
               <td><input type="number" step="0.01" min="0" x-model.number="line.rate" @input="recalc()" name="line_rate[]"></td>
               <td><input type="number" step="0.01" min="0" x-model.number="line.discount" @input="recalc()" name="line_discount[]"></td>
               <td><input type="number" step="0.01" min="0" x-model.number="line.gst_rate" @input="recalc()" name="line_gst_rate[]"></td>
+              <td style="text-align:center;">
+                <input type="checkbox" x-model="line.incl" @change="recalc()" aria-label="Rate includes GST">
+                <input type="hidden" name="line_incl[]" :value="line.incl ? '1' : '0'">
+              </td>
               <td class="text-muted" x-text="lineAmount(line)"></td>
               <td>
                 <input type="hidden" name="line_product_id[]" :value="line.product_id || ''">
@@ -148,7 +156,7 @@
 <script>
 function invoiceForm() {
   return {
-    lines: PREFILL_LINES.length ? PREFILL_LINES : [{description:'', hsn:'', qty:1, rate:0, discount:0, gst_rate:0, unit:'pcs', product_id:null}],
+    lines: PREFILL_LINES.length ? PREFILL_LINES : [{description:'', hsn:'', qty:1, rate:0, discount:0, gst_rate:0, incl:DEFAULT_INCL, unit:'pcs', product_id:null}],
     billTo: document.querySelector('[name=branch_user_id]')?.value ? 'branch' : 'customer',
     customerId: document.querySelector('[name=customer_id]')?.value || '',
     branchId: document.querySelector('[name=branch_user_id]')?.value || '',
@@ -185,42 +193,34 @@ function invoiceForm() {
     chargesGst() {
       if (this.billTo === 'branch') return BRANCH_TYPE[this.branchId] !== 'owned';
       const docType = document.querySelector('[name=document_type]');
-      return !docType || docType.value !== BILL_OF_SUPPLY;
+      return !docType || !NO_GST_DOC_TYPES.includes(docType.value);
     },
     applyProduct(line) {
       const p = PRODUCTS_BY_NAME[line.description];
       if (p) {
-        line.hsn = p.hsn; line.rate = p.rate; line.gst_rate = p.gst_rate; line.unit = p.unit; line.product_id = p.id;
+        line.hsn = p.hsn; line.rate = p.rate; line.gst_rate = p.gst_rate; line.incl = p.incl; line.unit = p.unit; line.product_id = p.id;
       }
       this.recalc();
     },
-    lineAmount(line) {
-      const gross = (line.qty || 0) * (line.rate || 0);
-      const discount = gross * (line.discount || 0) / 100;
-      const taxable = gross - discount;
-      const gstRate = this.chargesGst() ? (line.gst_rate || 0) : 0;
-      const tax = taxable * gstRate / 100;
-      return 'Rs. ' + (taxable + tax).toFixed(2);
+    computeLine(line) {
+      return GstCalc.line(line.qty, line.rate, line.discount, line.gst_rate, line.incl, this.chargesGst(), !!this.isIntraState());
     },
-    addLine() { this.lines.push({description:'', hsn:'', qty:1, rate:0, discount:0, gst_rate:0, unit:'pcs', product_id:null}); },
+    lineAmount(line) {
+      return 'Rs. ' + this.computeLine(line).total.toFixed(2);
+    },
+    addLine() { this.lines.push({description:'', hsn:'', qty:1, rate:0, discount:0, gst_rate:0, incl:DEFAULT_INCL, unit:'pcs', product_id:null}); },
     removeLine(i) { this.lines.splice(i, 1); this.recalc(); },
     recalc() {
-      let taxable = 0, tax = 0;
-      const chargesGst = this.chargesGst();
+      const t = { taxable: 0, cgst: 0, sgst: 0, igst: 0 };
       this.lines.forEach(line => {
-        const gross = (line.qty || 0) * (line.rate || 0);
-        const discount = gross * (line.discount || 0) / 100;
-        const lineTaxable = gross - discount;
-        taxable += lineTaxable;
-        if (chargesGst) tax += lineTaxable * (line.gst_rate || 0) / 100;
+        const c = this.computeLine(line);
+        t.taxable += c.taxable; t.cgst += c.cgst; t.sgst += c.sgst; t.igst += c.igst;
       });
-      this.totals.taxable = taxable;
-      if (this.isIntraState()) {
-        this.totals.cgst = tax / 2; this.totals.sgst = tax / 2; this.totals.igst = 0;
-      } else {
-        this.totals.cgst = 0; this.totals.sgst = 0; this.totals.igst = tax;
-      }
-      this.totals.grand = Math.round(taxable + tax);
+      this.totals.taxable = GstCalc.round2(t.taxable);
+      this.totals.cgst = GstCalc.round2(t.cgst);
+      this.totals.sgst = GstCalc.round2(t.sgst);
+      this.totals.igst = GstCalc.round2(t.igst);
+      this.totals.grand = Math.round(t.taxable + t.cgst + t.sgst + t.igst);
     }
   };
 }

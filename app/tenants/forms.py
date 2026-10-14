@@ -1,9 +1,10 @@
 from flask_wtf import FlaskForm
 from flask_wtf.file import FileAllowed, FileField, FileSize
-from wtforms import PasswordField, SelectField, StringField
-from wtforms.validators import DataRequired, Email, EqualTo, Length, Optional, Regexp
+from wtforms import DecimalField, PasswordField, SelectField, StringField
+from wtforms.validators import DataRequired, Email, EqualTo, Length, NumberRange, Optional, Regexp
 
-from app.models.tenant import BillingCycle, RegistrationType
+from app.models.tenant import BillingCycle, BusinessType, RegistrationType
+from app.utils.features import BUSINESS_TYPE_CHOICES
 from app.utils.gst import GSTIN_REGEX, normalize_gstin
 from app.utils.indian_states import INDIAN_STATES
 from app.utils.uploads import ALLOWED_IMAGE_EXTENSIONS, MAX_IMAGE_BYTES
@@ -26,6 +27,15 @@ class OnboardClientForm(FlaskForm):
     )
     state_code = SelectField("State", choices=INDIAN_STATES, validators=[DataRequired()])
     registered_address = StringField("Registered address", validators=[Optional()])
+    # Pre-sets which modules this client starts with (app.utils.features).
+    # The select always submits a value; an older client that omits it
+    # gets OTHER (no modules pre-switched).
+    business_type = SelectField(
+        "Type of business", choices=BUSINESS_TYPE_CHOICES, default=BusinessType.RETAIL.value, validators=[Optional()]
+    )
+    aato = DecimalField(
+        "Turnover last financial year (Rs., optional)", places=2, validators=[Optional(), NumberRange(min=0)]
+    )
 
     # No billing_cycle field here, whoever is filling this in (Ultra Admin
     # or Auditor) - billing selection always stays with the Ultra Admin,

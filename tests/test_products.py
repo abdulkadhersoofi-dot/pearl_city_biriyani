@@ -17,8 +17,8 @@ def test_zero_rated_gst_product_can_be_created(client, db, client_admin):
             "description": "",
             "hsn_or_sac_code": "2106",
             "gst_rate": "0",
-            "unit": "plate",
-            "default_price": "30",
+            "unit": "NOS",
+            "sale_price": "30",
         },
         follow_redirects=True,
     )
@@ -30,7 +30,7 @@ def test_zero_rated_gst_product_can_be_created(client, db, client_admin):
     assert product.gst_rate == Decimal("0")
 
 
-def test_free_item_with_zero_default_price_can_be_created(client, db, client_admin):
+def test_free_item_with_zero_sale_price_can_be_created(client, db, client_admin):
     _login(client, client_admin.email, "ClientSecret123")
 
     resp = client.post(
@@ -41,7 +41,7 @@ def test_free_item_with_zero_default_price_can_be_created(client, db, client_adm
             "hsn_or_sac_code": "2106",
             "gst_rate": "5",
             "unit": "pcs",
-            "default_price": "0",
+            "sale_price": "0",
         },
         follow_redirects=True,
     )
@@ -49,7 +49,7 @@ def test_free_item_with_zero_default_price_can_be_created(client, db, client_adm
 
     product = Product.query.filter_by(name="Complimentary Papad").first()
     assert product is not None
-    assert product.default_price == Decimal("0")
+    assert product.sale_price == Decimal("0")
 
 
 def test_gst_rate_accepts_every_published_slab(client, db, client_admin):
@@ -64,7 +64,7 @@ def test_gst_rate_accepts_every_published_slab(client, db, client_admin):
                 "hsn_or_sac_code": "2106",
                 "gst_rate": rate,
                 "unit": "pcs",
-                "default_price": "10",
+                "sale_price": "10",
             },
             follow_redirects=True,
         )
@@ -88,7 +88,7 @@ def test_gst_rate_rejects_a_value_outside_the_published_slabs(client, db, client
             "hsn_or_sac_code": "2106",
             "gst_rate": "2.8",
             "unit": "pcs",
-            "default_price": "10",
+            "sale_price": "10",
         },
     )
     assert resp.status_code == 200

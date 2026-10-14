@@ -19,6 +19,7 @@
         <td>{{ 'Active' if u.is_active else 'Inactive' }}</td>
         <td class="row">
           <a href="{{ url_for('branches.branch_stock', user_id=u.id) }}">Stock</a>
+          <a href="{{ url_for('branches.branch_permissions', user_id=u.id) }}">Permissions</a>
           <a href="{{ url_for('branches.reset_branch_password', user_id=u.id) }}">Reset password</a>
           {% if u.is_active %}
           <form method="post" action="{{ url_for('branches.deactivate_branch', user_id=u.id) }}"

@@ -15,6 +15,25 @@ class BillingCycle(str, enum.Enum):
     YEARLY = "yearly"
 
 
+class BusinessType(str, enum.Enum):
+    """What kind of business a client runs - only ever used to pre-set
+    sensible feature flags (app.utils.features.BUSINESS_TYPE_PRESETS) and
+    pricing defaults. Nothing branches on it directly; every module checks
+    its own flag, so a client can always switch any module on or off."""
+
+    RETAIL = "retail"
+    WHOLESALE = "wholesale"
+    RESTAURANT = "restaurant"
+    MOBILE_ELECTRONICS = "mobile_electronics"
+    PHARMACY = "pharmacy"
+    APPAREL = "apparel"
+    HARDWARE = "hardware"
+    JEWELLERY = "jewellery"
+    BAKERY = "bakery"
+    SERVICES = "services"
+    OTHER = "other"
+
+
 class Tenant(db.Model, TimestampMixin):
     """A client business of the CA firm. One shared database, tenant_id everywhere."""
 
@@ -58,14 +77,28 @@ class Tenant(db.Model, TimestampMixin):
     # 2in / 3in / a4 - app.pos.receipt.THERMAL_WIDTHS_IN keys, plus "a4".
     # Lets POS checkout print immediately without asking every time.
     default_receipt_format = db.Column(db.String(10), nullable=False, default="3in")
-    # Whether this client organizes its menu into Category -> Sub-category
-    # (app.models.category.Category/SubCategory) - set from Settings, off
-    # by default so an existing flat item list keeps working unchanged.
-    # When on, the item form shows category/sub-category pickers (still
-    # optional - see Product.category_id) and the POS terminal groups
-    # items into a collapsible category/sub-category tree instead of one
-    # flat grid.
-    category_wise_items = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
+    # Business profile - see BusinessType. Pre-sets `features` at
+    # onboarding; changing it later never silently rewrites them.
+    business_type = db.Column(
+        db.Enum(BusinessType, name="business_type"),
+        nullable=False,
+        default=BusinessType.OTHER,
+        # SQLAlchemy stores the enum *name* ("OTHER"), not its value - same
+        # as every other enum column in this schema.
+        server_default=BusinessType.OTHER.name,
+    )
+    # Per-client module switches, {flag_key: bool} - the registry of keys,
+    # labels and which are built yet lives in app.utils.features. A key
+    # that's absent means off. Read through has_feature(), never directly.
+    features = db.Column(db.JSON, nullable=False, default=dict, server_default="{}")
+    # Default for "price already includes GST" on a new item and on an
+    # ad-hoc invoice line (Product.price_includes_tax decides for catalog
+    # items). Off = prices are entered before tax, as before this existed.
+    default_price_includes_tax = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
+    # Aggregate Annual Turnover of the preceding financial year, in rupees.
+    # Optional; drives compliance thresholds kept in app.utils.gst_config
+    # (e.g. minimum HSN digits). Unknown is treated as the lowest bracket.
+    aato = db.Column(db.Numeric(15, 2))
 
     # Access gating - see app.utils.billing.tenant_access_status, which
     # combines these with `is_active` (above) into one go/no-go check,
@@ -128,6 +161,15 @@ class Tenant(db.Model, TimestampMixin):
     @property
     def display_name(self) -> str:
         return self.trade_name or self.legal_name
+
+    def has_feature(self, key: str) -> bool:
+        return bool((self.features or {}).get(key, False))
+
+    def set_feature(self, key: str, enabled: bool) -> None:
+        # Reassigned rather than mutated in place - a plain JSON column
+        # doesn't track in-place dict changes, so mutating would silently
+        # never be written.
+        self.features = {**(self.features or {}), key: bool(enabled)}
 
     def __repr__(self):
         return f"<Tenant {self.id} {self.legal_name}>"

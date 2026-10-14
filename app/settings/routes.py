@@ -1,11 +1,14 @@
-from flask import flash, redirect, render_template, url_for
+from flask import flash, redirect, render_template, request, url_for
 from flask_login import current_user
 
 from app.auth.decorators import roles_required
 from app.extensions import db
+from app.models.tenant import BusinessType
 from app.models.user import UserRole
 from app.settings import settings_bp
-from app.settings.forms import TenantSettingsForm
+from app.settings.forms import TenantSettingsForm, feature_field_name
+from app.utils.audit import record_audit
+from app.utils.features import AVAILABLE_FEATURES, BUSINESS_TYPE_LABELS, apply_business_type_preset
 from app.utils.uploads import UploadError, delete_uploaded_image, save_uploaded_image
 
 
@@ -14,13 +17,17 @@ from app.utils.uploads import UploadError, delete_uploaded_image, save_uploaded_
 def index():
     tenant = current_user.tenant
     form = TenantSettingsForm(obj=tenant)
+    if request.method == "GET":
+        form.business_type.data = tenant.business_type.value
+        for feature in AVAILABLE_FEATURES:
+            getattr(form, feature_field_name(feature.key)).data = tenant.has_feature(feature.key)
     if form.validate_on_submit():
         if form.logo.data and form.logo.data.filename:
             try:
                 new_logo_id = save_uploaded_image(form.logo.data)
             except UploadError as exc:
                 flash(exc.message, "error")
-                return render_template("settings/form.html", form=form, tenant=tenant)
+                return _render(form, tenant)
             # Point the tenant at the new image (and flush it) before
             # deleting the old row - the other way around trips the
             # foreign key, since tenant.logo_image_id still references it.
@@ -34,9 +41,40 @@ def index():
         tenant.text_color = form.text_color.data
         tenant.font_family = form.font_family.data
         tenant.default_receipt_format = form.default_receipt_format.data
-        tenant.category_wise_items = form.category_wise_items.data
+        tenant.aato = form.aato.data
+
+        # The submitted value, not form.business_type.data: when the field
+        # is absent, Optional() lets the obj-populated enum (stringified)
+        # through as "data". Absent means "keep the current type".
+        submitted = (form.business_type.raw_data or [""])[0]
+        business_type = BusinessType(submitted) if submitted else tenant.business_type
+        before = dict(tenant.features or {})
+        if form.apply_business_preset.data:
+            apply_business_type_preset(tenant, business_type)
+            message = f"Settings updated - modules reset to the recommended set for {BUSINESS_TYPE_LABELS[business_type]}."
+        else:
+            tenant.business_type = business_type
+            tenant.default_price_includes_tax = form.default_price_includes_tax.data
+            for feature in AVAILABLE_FEATURES:
+                tenant.set_feature(feature.key, getattr(form, feature_field_name(feature.key)).data)
+            message = "Settings updated."
+        if tenant.features != before:
+            record_audit(
+                current_user,
+                "tenant_features_changed",
+                tenant_id=tenant.id,
+                entity_type="tenant",
+                entity_id=tenant.id,
+                details={"before": before, "after": tenant.features},
+            )
         db.session.commit()
-        flash("Settings updated.", "success")
+        flash(message, "success")
         return redirect(url_for("settings.index"))
 
-    return render_template("settings/form.html", form=form, tenant=tenant)
+    return _render(form, tenant)
+
+
+def _render(form, tenant):
+    return render_template(
+        "settings/form.html", form=form, tenant=tenant, features=AVAILABLE_FEATURES, feature_field_name=feature_field_name
+    )

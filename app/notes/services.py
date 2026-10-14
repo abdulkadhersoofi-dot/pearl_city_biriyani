@@ -62,6 +62,7 @@ def create_note(tenant: Tenant, created_by, data: NoteInput) -> CreditDebitNote:
             gst_rate=line.gst_rate,
             is_intra_state=is_intra_state,
             charge_gst=charge_gst,
+            price_includes_tax=line.price_includes_tax,
         )
         computed_lines.append({**computed, "input": line})
 
@@ -106,6 +107,7 @@ def create_note(tenant: Tenant, created_by, data: NoteInput) -> CreditDebitNote:
                 discount_amount=item["discount_amount"],
                 taxable_value=item["taxable_value"],
                 gst_rate=line_in.gst_rate if charge_gst else Decimal("0"),
+                price_includes_tax=line_in.price_includes_tax,
                 cgst_amount=item["cgst_amount"],
                 sgst_amount=item["sgst_amount"],
                 igst_amount=item["igst_amount"],

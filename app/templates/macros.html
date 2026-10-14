@@ -11,5 +11,5 @@
    a PRODUCTS-shaped array for Alpine (the POS terminal's flat grid and
    its category/sub-category groupings). #}
 {% macro product_js(p) -%}
-{id: {{ p.id }}, name: {{ p.name|tojson }}, hsn: {{ (p.hsn_or_sac_code or '')|tojson }}, rate: {{ p.default_price }}, gst_rate: {{ p.gst_rate }}, unit: {{ p.unit|tojson }}, image: {{ (url_for('main.media', image_id=p.image_id) if p.image_id else '')|tojson }}}
+{id: {{ p.id }}, name: {{ p.name|tojson }}, hsn: {{ (p.hsn_or_sac_code or '')|tojson }}, rate: {{ p.sale_price }}, incl: {{ p.price_includes_tax|tojson }}, gst_rate: {{ p.gst_rate }}, unit: {{ p.unit|tojson }}, image: {{ (url_for('main.media', image_id=p.image_id) if p.image_id else '')|tojson }}}
 {%- endmacro %}

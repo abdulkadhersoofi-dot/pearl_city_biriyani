@@ -73,7 +73,7 @@
         <td>{{ l.description }}</td>
         <td>{{ l.hsn_or_sac_code or '-' }}</td>
         <td class="num">{{ l.qty }} {{ l.unit }}</td>
-        <td class="num">{{ '%.2f'|format(l.rate) }}</td>
+        <td class="num">{{ '%.2f'|format(l.rate) }}{% if l.price_includes_tax %}*{% endif %}</td>
         <td class="num">{{ '%.2f'|format(l.discount_amount) }}</td>
         <td class="num">{{ '%.2f'|format(l.taxable_value) }}</td>
         {% if note.total_igst %}<td class="num">{{ '%.2f'|format(l.igst_amount) }}</td>
@@ -96,6 +96,7 @@
   <p><strong>Reason:</strong> {{ note.reason }}</p>
 
   <p class="footer-note">
+    {% if note.lines|selectattr('price_includes_tax')|list %}* Rate includes GST; the taxable value shown is net of tax.<br>{% endif %}
     This is a system-generated {{ document_label|lower }}{% if note.status.value == 'void' %} - VOID{% endif %}.
   </p>
 </body>

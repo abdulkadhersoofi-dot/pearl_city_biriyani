@@ -15,7 +15,7 @@ from app.models.invoice import Invoice
 from app.models.invoice_series import DOCUMENT_TYPE_LABELS
 from app.models.note import CreditDebitNote
 from app.models.pos_bill import POSBill
-from app.models.tenant import BillingCycle, Gstin, RegistrationType, Tenant
+from app.models.tenant import BillingCycle, BusinessType, Gstin, RegistrationType, Tenant
 from app.models.user import User, UserRole
 from app.reports.export import build_gstr1_workbook, build_gstr3b_workbook
 from app.reports.gstr import ReportPeriodError, gstr1_data, gstr3b_data
@@ -39,6 +39,7 @@ from app.utils.billing import (
     next_due_after,
     tenant_access_status,
 )
+from app.utils.features import apply_business_type_preset
 from app.utils.indian_states import STATE_NAME_BY_CODE
 from app.utils.uploads import UploadError, delete_uploaded_image, save_uploaded_image
 
@@ -87,6 +88,12 @@ def onboard():
             # and only the Ultra Admin's set_billing_cycle sets it.
             auditor_id=current_user.id if current_user.is_admin_hierarchy and not current_user.is_super_admin else None,
         )
+        # The submitted value, not .data - an absent field would otherwise
+        # fall back to the form's RETAIL default and silently switch
+        # modules on; absent means OTHER (nothing pre-switched).
+        submitted_type = (form.business_type.raw_data or [""])[0]
+        apply_business_type_preset(tenant, BusinessType(submitted_type or BusinessType.OTHER.value))
+        tenant.aato = form.aato.data
         db.session.add(tenant)
         db.session.flush()
 

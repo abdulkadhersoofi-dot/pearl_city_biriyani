@@ -1,6 +1,6 @@
 """Groups a tenant's active products into Category -> Sub-category for the
 POS terminal's collapsible menu view (app.pos.routes.terminal), only used
-when Tenant.category_wise_items is on. A product's category/sub-category
+when the tenant has the "categories" feature on. A product's category/sub-category
 are always optional even then (app.models.product.Product) - this is
 where that shows up: an uncategorized item, or one with a category but no
 sub-category, still needs somewhere to render.

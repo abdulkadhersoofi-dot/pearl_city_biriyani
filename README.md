@@ -117,6 +117,11 @@ app/
 ├── staff/           # Client Admin: create/deactivate/reset staff logins
 ├── invoicing/        # form, PDF, GST calc, numbering
 ├── customers/, products/   # tenant-scoped catalog CRUD
+├── bulk/             # Excel import/export (items, customers): template,
+│                     # row-by-row preview, confirm - specs.py per kind
+├── branches/         # branch logins, stock, per-branch permissions
+├── settings/         # Client Admin settings: branding, business profile,
+│                     # modules (feature flags)
 ├── pos/             # POS module: terminal, hold/resume, refunds, Z-report
 ├── notes/           # Credit/Debit notes, created from an existing invoice
 ├── reports/         # gstr.py (aggregation), export.py (Excel/PDF/JSON) -
@@ -124,7 +129,12 @@ app/
 ├── api/              # small JSON endpoints (product lookup today; POS
 │                     # cart/checkout from Phase 2) - kept separate so a
 │                     # future SPA frontend can reuse them
-├── utils/            # gst.py (tax split + document-type gating),
+├── utils/            # gst.py (tax split, inclusive pricing, HSN rules),
+│                     # gst_config.py (rate slabs, HSN/AATO thresholds,
+│                     # UQC codes - with source + effective date),
+│                     # features.py (business types, feature flags),
+│                     # permissions.py (per-staff permissions),
+│                     # backup.py (`flask backup`),
 │                     # numbering.py (atomic per-FY/GSTIN/doc-type counters),
 │                     # tenant_scope.py (tenant isolation helper)
 ├── templates/, static/
@@ -177,6 +187,22 @@ subdomain onto your own domain, it's a dashboard step, no code change:
 web service → **Settings → Custom Domains** → add your domain, then add
 the CNAME/A record it gives you at your DNS provider. Render issues the
 TLS certificate automatically.
+
+### Database backups
+
+`flask backup` runs `pg_dump` against `DATABASE_URL`, gzips it to
+`backups/arfa-YYYYmmdd-HHMMSS.sql.gz` (or `--dir` / `BACKUP_DIR`) and
+keeps the newest 14 (`--keep` / `BACKUP_KEEP`). The password goes to
+`pg_dump` through `PGPASSWORD`, never the command line; a failed dump
+leaves no file behind. Restore with
+`gunzip -c arfa-....sql.gz | psql <database-url>`.
+
+On Render the container disk is wiped on every deploy, so a backup
+written there doesn't survive. Instead `.github/workflows/db-backup.yml`
+runs nightly (02:00 IST, or on demand from the Actions tab) and keeps
+each dump as a 30-day workflow artifact - set the repository secret
+`BACKUP_DATABASE_URL` to the database's **external** URL to switch it on
+(it skips quietly until then). No cloud-storage upload is wired in yet.
 
 ### Self-hosted (VPS / your own server)
 
@@ -621,7 +647,8 @@ Gunicorn workers or add app servers behind Nginx as load grows.
   only in the sense that a new day's held bills are a new, empty query,
   same as before.
 - **Item categories/sub-categories are opt-in per tenant**
-  (`Tenant.category_wise_items`, toggled from Settings). Some clients
+  (originally `Tenant.category_wise_items`, now the `categories` feature
+  flag - see Phase 1 below; toggled from Settings). Some clients
   want a flat item list, others want to browse by Category ->
   Sub-category, so `Category`/`SubCategory` (`app/models/category.py`)
   are normal normalized tables rather than free-text fields on
@@ -713,8 +740,94 @@ Gunicorn workers or add app servers behind Nginx as load grows.
   `dl.google.com` (`maven.google.com` just redirects there), which this
   project's own sandbox network policy has no route to.
 
+### Platform build - Phase 1 (business profile, pricing, item master)
+
+- **Business type + per-client feature flags** (`app/utils/features.py`).
+  `Tenant.business_type` (retail, restaurant, pharmacy, ...) only
+  *suggests* modules: picking one at onboarding applies a preset, and in
+  Settings a separate "also switch modules" tick re-applies it - changing
+  the type alone never flips anything. Flags live in one JSON column,
+  `Tenant.features`, rather than a boolean column per module, because
+  the next nine phases add a dozen of them. The old
+  `category_wise_items` column was folded in as `features.categories`;
+  the migration (`306ce885a627`) marks every existing client RESTAURANT
+  and copies its categories setting across, so nothing changes for them.
+  A flag is enforced in two places: `feature_required(key)` on routes
+  (404 when off - the module doesn't exist for that client) and the
+  `has_feature()` Jinja global for menus/fields. Only flags whose module
+  is actually built are `available` and appear in Settings; the presets
+  already store the rest so they light up as their phases ship.
+- **Tax-inclusive pricing, in the one GST service.**
+  `app.utils.gst.compute_line(..., price_includes_tax=True)` backs GST
+  out of the line total instead of adding it: net = qty x rate less
+  discount (each rounded half-up), taxable = net x 100 / (100 + rate),
+  tax = net - taxable. Intra-state, CGST is rounded and SGST takes the
+  remainder, so the bill total is exactly the shelf price even when that
+  makes the two differ by a paisa; the exclusive path is untouched
+  (CGST = SGST, as before). The flag is stored per line
+  (`InvoiceLine`/`POSBillLine`/`NoteLine.price_includes_tax`) so a
+  reprint or note always recomputes the same way, and the PDFs mark such
+  lines with an asterisk. `app/static/js/gst_calc.js` mirrors the same
+  rounding for the on-screen preview (POS cart, invoice and note forms);
+  it is display-only - the server always recomputes. Clients default to
+  exclusive; `Tenant.default_price_includes_tax` only pre-ticks new items
+  and lines.
+- **Rates and thresholds live in `app/utils/gst_config.py`**, each with
+  its notification and effective date: the rate slabs (including the
+  40% slab from 22 Sep 2025), the HSN-digit rule (4 digits up to Rs. 5
+  crore AATO, 6 above - Notification 78/2020-CT), and the 45 UQC unit
+  codes from the GST portal. Logic never hardcodes a rate or threshold.
+  HSN length is checked on the item form and bulk import against the
+  client's `Tenant.aato` (blank = treated as under Rs. 5 crore); a
+  service must use a SAC (`99...`).
+- **Item master** gains SKU and barcode (unique per client, named
+  constraints), MRP (sale price can't exceed it once GST is included),
+  wholesale/purchase/cost prices, a UQC unit with an optional pack unit
+  + conversion factor, low-stock level, "is a service" and "allow billing
+  at zero stock" (stored now, enforced when stock tracking ships).
+  `default_price` was renamed `sale_price`. Units used to be free text:
+  an item keeping an old value (e.g. "plate") can still be saved
+  unchanged, but new items and changed units must be a UQC code. The
+  extra fields sit in a collapsed "More details" section so a small
+  shop's form looks no busier than before.
+- **Bulk Excel import/export** (`app/bulk/`). Each kind is one
+  `ImportSpec` (columns, parse, save, export) so suppliers can be added
+  when that master exists. Upload never saves: it shows every row as
+  add / update / skip with the reasons, then "Import" re-reads the file
+  (kept in the server-side session, tied to the tenant) and re-validates
+  against the database as it is at that moment. Code columns are
+  text-formatted in the template, and HSN codes that Excel stripped a
+  leading zero from (901 -> 0901) or GST rates entered as a percentage
+  cell (0.18 -> 18) are repaired rather than rejected. Rows match an
+  existing item by SKU then name, a customer by GSTIN then name -
+  always within the tenant only.
+- **Per-staff permissions** (`app/utils/permissions.py`, Branches ->
+  Permissions): give discounts (with a max %), change price at billing,
+  refund, void, see Day-book/Z-report, adjust stock. Defaults equal
+  what a branch login could already do, so nothing changes until the
+  owner edits them; Client Admin is always allowed everything. They're
+  enforced on the server, not just hidden: the POS now ignores a
+  client-posted rate unless the login may change prices (and rejects
+  products from another client by id), caps discounts, and refund /
+  Day-book / Z-report routes return 403. Void and stock permissions are
+  stored but have nothing to guard until those flows exist.
+- **Bugs fixed along the way:** the POS preview added GST on top for
+  composition-scheme clients (the saved bill was right; the cart total
+  shown wasn't), and the invoice form's preview treated a Delivery
+  Challan as taxable.
+
 ## Roadmap
 
+- **Platform build (ARFA general-purpose POS), phase by phase.**
+  Phase 1 - business type + feature flags, tax-inclusive pricing, item
+  master, HSN/AATO rule, bulk import/export, `flask backup`, per-staff
+  permissions - is done (see Design notes). Next, in order: Phase 2
+  POS for every business (discount / price-edit UI on top of the
+  permissions already enforced, split payments, UPI QR, barcode,
+  returns, day open/close), 3 inventory & purchases (brings supplier
+  import and the zero-stock rule), 4 expenses, 5 margin scheme,
+  6 receivables/payables, 7 P&L, 8 e-invoice/e-way bill (only with
+  real credentials), 9 business-type modules, 10 platform polish.
 - **Remaining document types** - Delivery Challan and Receipt/Refund
   Voucher don't fit the itemized-invoice shape the Invoicing module uses
   (no GST calc the same way, or tied to an advance payment rather than a
