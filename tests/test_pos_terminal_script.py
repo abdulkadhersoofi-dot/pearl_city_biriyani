@@ -122,3 +122,10 @@ def test_invoice_form_scripts_also_parse(client, db, tenant, client_admin, menu,
     resp = client.get("/invoices/new")
     assert resp.status_code == 200
     _assert_scripts_parse(resp.data.decode(), tmp_path)
+
+
+def test_pos_shows_which_version_is_running(client, db, tenant, client_admin, menu):
+    _login(client, client_admin.email, "ClientSecret123")
+    html = client.get("/pos/").data.decode()
+    assert re.search(r"ARFA POS &middot; version \S+", html)
+    assert "pos-js-error" in html  # the on-screen error banner is wired in

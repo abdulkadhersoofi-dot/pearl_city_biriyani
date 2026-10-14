@@ -4,6 +4,21 @@
 
 {% block head %}
 <script>
+  // If anything on this screen throws, say so on the screen itself (with
+  // the version) instead of leaving a silently blank POS.
+  window.addEventListener("error", function (ev) {
+    var box = document.getElementById("pos-js-error");
+    if (!box) {
+      box = document.createElement("div");
+      box.id = "pos-js-error";
+      box.className = "pos-js-error";
+      document.addEventListener("DOMContentLoaded", function () { document.body.insertBefore(box, document.body.firstChild); });
+      if (document.body) document.body.insertBefore(box, document.body.firstChild);
+    }
+    box.textContent = "This screen hit an error (version " + {{ app_version|tojson }} + "): " + (ev.message || "unknown") + " - please send this to support.";
+  });
+</script>
+<script>
   const PRODUCTS = [
     {% for p in products %}
     {{ product_js(p) }},
@@ -558,6 +573,7 @@
   </div>
 
   <iframe id="receipt-print-frame" style="display:none;"></iframe>
+  <p class="pos-version">ARFA POS &middot; version {{ app_version }}</p>
 </div>
 {% endblock %}
 

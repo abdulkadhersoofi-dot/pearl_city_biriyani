@@ -164,6 +164,7 @@ def _register_context_processors(app: Flask) -> None:
     # so a switched-off module's links and fields never render.
     app.jinja_env.globals["has_feature"] = current_tenant_has
     app.jinja_env.globals["can"] = current_user_can
+    app.jinja_env.globals["app_version"] = _app_version()
 
     @app.template_filter("qty")
     def qty_filter(value):
@@ -294,3 +295,25 @@ def _register_cli(app: Flask) -> None:
         except BackupError as exc:
             raise click.ClickException(str(exc))
         click.echo(f"Backup written: {path} ({path.stat().st_size} bytes)")
+
+
+def _app_version() -> str:
+    """Short commit id of the code that is running, shown on the POS
+    screen so "which version is this server on?" has a one-glance
+    answer. Render sets RENDER_GIT_COMMIT; elsewhere ask git; else dev."""
+    import subprocess
+
+    for key in ("RENDER_GIT_COMMIT", "GIT_COMMIT", "SOURCE_VERSION"):
+        value = os.environ.get(key)
+        if value:
+            return value[:7]
+    try:
+        out = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True, text=True, timeout=3, cwd=os.path.dirname(os.path.dirname(__file__)),
+        )
+        if out.returncode == 0 and out.stdout.strip():
+            return out.stdout.strip()
+    except Exception:
+        pass
+    return "dev"
