@@ -15,6 +15,11 @@ DEFAULT_PREFIXES = {
     DocumentType.DEBIT_NOTE: "DN",
     DocumentType.POS_BILL: "POS",
     DocumentType.POS_RETURN: "SR",
+    DocumentType.PURCHASE_BILL: "PB",
+    DocumentType.PURCHASE_RETURN: "PDN",
+    DocumentType.PURCHASE_ORDER: "PO",
+    DocumentType.STOCK_TRANSFER: "TDC",
+    DocumentType.STOCK_ADJUSTMENT: "ADJ",
 }
 
 

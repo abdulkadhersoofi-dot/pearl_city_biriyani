@@ -65,6 +65,8 @@
   const PAYMENT_MODES = {{ payment_modes|tojson }};
   const UPI_READY = {{ upi_ready|tojson }};
   const UPI_QR_URL = {{ (url_for('pos.upi_qr') if upi_ready else '')|tojson }};
+  // Items whose serial number / IMEI is picked at sale (module "serial_imei").
+  const SERIAL_ITEMS = {{ (serial_stock or {}).keys()|list|tojson }};
   // What this login may do - the server enforces the same limits.
   const DISCOUNT_CAP = {{ discount_cap|float }};
   const MAY_EDIT_PRICE = {{ may_edit_price|tojson }};
@@ -336,10 +338,17 @@
             <template x-if="lineNote(line)">
               <span class="cart-line-note" x-text="lineNote(line)"></span>
             </template>
+            <template x-if="line.serial">
+              <input type="text" class="field-input cart-serials" x-model="line.serials" :list="'serials-' + line.product_id"
+                     :placeholder="'Serial / IMEI - ' + line.qty + ' needed, comma-separated'" aria-label="Serial or IMEI numbers">
+            </template>
           </div>
         </template>
       </div>
 
+      {% for pid, numbers in (serial_stock or {}).items() %}
+      <datalist id="serials-{{ pid }}">{% for no in numbers %}<option value="{{ no }}">{% endfor %}</datalist>
+      {% endfor %}
       <template x-if="computed().discount > 0">
         <div class="cart-sub-row"><span>Discount</span><span x-text="'- Rs. ' + computed().discount.toFixed(2)"></span></div>
       </template>
@@ -645,7 +654,10 @@ function posTerminal() {
       code = (code || "").trim();
       if (!code) return null;
       const lower = code.toLowerCase();
-      return PRODUCTS.find(p => p.barcode && p.barcode === code) || PRODUCTS.find(p => p.sku && p.sku.toLowerCase() === lower) || null;
+      // ARFA000123 = the code printed on labels of items with no barcode or SKU.
+      const internal = /^arfa\d{6}$/.test(lower) ? parseInt(lower.slice(4), 10) : null;
+      return PRODUCTS.find(p => p.barcode && p.barcode === code) || PRODUCTS.find(p => p.sku && p.sku.toLowerCase() === lower)
+        || (internal ? PRODUCTS.find(p => p.id === internal) : null) || null;
     },
     searchEnter() {
       const byCode = this.findByCode(this.search);
@@ -702,7 +714,8 @@ function posTerminal() {
       if (existing) {
         existing.qty += 1;
       } else {
-        this.cart.push({product_id: p.id, description: p.name, hsn: p.hsn, rate: this.priceFor(p), incl: p.incl, gst_rate: p.gst_rate, unit: p.unit, qty: 1, loose: false, disc_kind: "percent", disc_value: 0});
+        this.cart.push({product_id: p.id, description: p.name, hsn: p.hsn, rate: this.priceFor(p), incl: p.incl, gst_rate: p.gst_rate, unit: p.unit, qty: 1, loose: false, disc_kind: "percent", disc_value: 0,
+                        serial: SERIAL_ITEMS.includes(p.id), serials: ""});
       }
     },
     increment(i) { this.cart[i].qty = Number(this.cart[i].qty) + 1; },
@@ -962,6 +975,7 @@ function posTerminal() {
         body.append("line_unit[]", line.unit);
         body.append("line_discount_kind[]", Number(line.disc_value) ? line.disc_kind : "");
         body.append("line_discount_value[]", Number(line.disc_value) ? line.disc_value : "");
+        body.append("line_serials[]", line.serials || "");
       });
       try {
         const res = await fetch(this.checkoutUrl, {

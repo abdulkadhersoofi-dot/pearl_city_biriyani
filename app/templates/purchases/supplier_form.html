@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% from "macros.html" import field %}
+{% block title %}{{ 'Edit supplier' if supplier else 'New supplier' }} - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header"><h1>{{ supplier.name if supplier else 'New supplier' }}</h1></div>
+{% include "purchases/_nav.html" %}
+<form method="post" class="card stack" novalidate>
+  {{ form.hidden_tag() }}
+  {{ field(form.name) }}
+  <div class="form-grid">
+    {{ field(form.gstin, help="Blank for an unregistered supplier.") }}
+    {{ field(form.state_code, help="Decides CGST+SGST (same state) or IGST on their bills.") }}
+    {{ field(form.address_line1) }}
+    {{ field(form.city) }}
+    {{ field(form.pincode) }}
+    {{ field(form.contact_person) }}
+    {{ field(form.phone) }}
+    {{ field(form.email) }}
+    {{ field(form.payment_terms_days) }}
+    {{ field(form.opening_balance, help="What you owed them when you started using ARFA.") }}
+  </div>
+  <button type="submit" class="btn btn-primary btn-lg">Save</button>
+</form>
+{% if supplier %}
+{% if bills %}
+<h2>Recent purchase bills</h2>
+<div class="table-wrap card">
+  <table>
+    <thead><tr><th>Number</th><th>Their invoice</th><th>Date</th><th class="num">Total</th><th>Status</th></tr></thead>
+    <tbody>
+    {% for b in bills %}
+      <tr><td><a href="{{ url_for('purchases.view_bill', bill_id=b.id) }}">{{ b.number }}</a></td><td>{{ b.supplier_invoice_no }}</td>
+        <td>{{ b.bill_date.strftime('%d %b %Y') }}</td><td class="num">{{ '%.2f'|format(b.grand_total) }}</td>
+        <td><span class="status-badge {{ 'status-void' if b.status.value == 'voided' else 'status-issued' }}">{{ b.status.value|title }}</span></td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+<form method="post" action="{{ url_for('purchases.deactivate_supplier', supplier_id=supplier.id) }}" style="margin-top:12px;"
+      onsubmit="return confirm('Remove {{ supplier.name }} from the active list?');">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <button class="btn btn-quiet">Remove</button>
+</form>
+{% endif %}
+{% endblock %}

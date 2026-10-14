@@ -23,12 +23,18 @@ from app.utils.audit import record_audit
 
 _SESSION_KEY = "bulk_upload"
 _XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-_LIST_ENDPOINTS = {"products": "products.list_products", "customers": "customers.list_customers"}
+_LIST_ENDPOINTS = {
+    "products": "products.list_products",
+    "customers": "customers.list_customers",
+    "suppliers": "purchases.suppliers",
+}
 
 
 def _spec_or_404(kind):
+    from app.utils.features import current_tenant_has
+
     spec = SPECS.get(kind)
-    if spec is None:
+    if spec is None or (spec.feature and not current_tenant_has(spec.feature)):
         abort(404)
     return spec
 

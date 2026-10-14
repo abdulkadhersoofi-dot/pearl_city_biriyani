@@ -60,6 +60,8 @@
           <a href="{{ url_for('pos.terminal') }}" class="{{ 'active' if request.blueprint == 'pos' }}">POS</a>
           <a href="{{ url_for('customers.list_customers') }}" class="{{ 'active' if request.blueprint == 'customers' }}">Customers</a>
           <a href="{{ url_for('products.list_products') }}" class="{{ 'active' if request.blueprint == 'products' }}">Items</a>
+          {% if has_feature('inventory') %}<a href="{{ url_for('inventory.index') }}" class="{{ 'active' if request.blueprint == 'inventory' }}">Stock</a>{% endif %}
+          {% if has_feature('purchases') %}<a href="{{ url_for('purchases.bills') }}" class="{{ 'active' if request.blueprint == 'purchases' }}">Purchases</a>{% endif %}
           <a href="{{ url_for('branches.list_branches') }}" class="{{ 'active' if request.blueprint == 'branches' }}">Branches</a>
           <a href="{{ url_for('reports.index') }}" class="{{ 'active' if request.blueprint == 'reports' }}">Reports</a>
           <a href="{{ url_for('live.dashboard') }}" class="{{ 'active' if request.blueprint == 'live' }}">Live</a>

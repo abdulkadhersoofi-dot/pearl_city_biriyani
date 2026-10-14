@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Purchase orders - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Purchase orders</h1>
+  <a href="{{ url_for('purchases.new_order') }}" class="btn btn-primary">+ New order</a>
+</div>
+{% include "purchases/_nav.html" %}
+<div class="table-wrap card">
+  <table>
+    <thead><tr><th>Number</th><th>Supplier</th><th>Date</th><th>Expected</th><th class="num">Estimated</th><th>Status</th></tr></thead>
+    <tbody>
+    {% for o in orders %}
+      <tr>
+        <td><a href="{{ url_for('purchases.view_order', order_id=o.id) }}">{{ o.number }}</a></td>
+        <td>{{ o.supplier.name }}</td>
+        <td>{{ o.order_date.strftime('%d %b %Y') }}</td>
+        <td>{{ o.expected_date.strftime('%d %b %Y') if o.expected_date else '-' }}</td>
+        <td class="num">{{ '%.2f'|format(o.estimated_total) }}</td>
+        <td><span class="status-badge {{ 'status-void' if o.status.value == 'cancelled' else ('status-issued' if o.status.value == 'converted' else 'status-draft') }}">{{ o.status.value|title }}</span></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6" class="empty-state">No purchase orders yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

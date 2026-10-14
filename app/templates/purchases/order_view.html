@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}{{ order.number }} - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>{{ order.number }}</h1>
+    <p class="text-muted mt-0">Purchase order · <span class="status-badge {{ 'status-void' if order.status.value == 'cancelled' else ('status-issued' if order.status.value == 'converted' else 'status-draft') }}">{{ order.status.value|title }}</span></p>
+  </div>
+  {% if order.status.value == 'open' %}<a href="{{ url_for('purchases.new_bill', order=order.id) }}" class="btn btn-primary">Goods arrived - enter bill</a>{% endif %}
+</div>
+{% include "purchases/_nav.html" %}
+<div class="card" style="margin-bottom:16px;">
+  <div class="form-grid">
+    <div><strong>Supplier</strong><p>{{ order.supplier.name }}{% if order.supplier.phone %}<br>{{ order.supplier.phone }}{% endif %}</p></div>
+    <div><strong>Ordered</strong><p>{{ order.order_date.strftime('%d %b %Y') }}</p></div>
+    <div><strong>Expected</strong><p>{{ order.expected_date.strftime('%d %b %Y') if order.expected_date else '-' }}</p></div>
+    <div><strong>Estimated value</strong><p>Rs. {{ '%.2f'|format(order.estimated_total) }}</p></div>
+  </div>
+  {% if order.notes %}<p><strong>Notes:</strong> {{ order.notes }}</p>{% endif %}
+  {% if order.cancel_reason %}<p><strong>Cancelled:</strong> {{ order.cancel_reason }}</p>{% endif %}
+  {% for b in order.bills %}<p>Billed as <a href="{{ url_for('purchases.view_bill', bill_id=b.id) }}">{{ b.number }}</a></p>{% endfor %}
+</div>
+<div class="table-wrap card">
+  <table>
+    <thead><tr><th>Item</th><th>HSN</th><th class="num">Qty</th><th class="num">Rate</th><th class="num">GST %</th></tr></thead>
+    <tbody>
+    {% for l in order.lines %}
+      <tr><td>{{ l.description }}</td><td>{{ l.hsn_or_sac_code or '' }}</td><td class="num">{{ l.qty|qty }} {{ l.unit }}</td>
+        <td class="num">{{ '%.2f'|format(l.rate) }}</td><td class="num">{{ l.gst_rate|qty }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% if order.status.value == 'open' %}
+<form method="post" action="{{ url_for('purchases.cancel_order', order_id=order.id) }}" class="card row void-box" style="gap:10px; align-items:flex-end;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label class="field" style="margin:0; flex:1;"><span class="field-label">Cancel this order - reason</span>
+    <input type="text" name="reason" class="field-input" required></label>
+  <button class="btn btn-danger">Cancel order</button>
+</form>
+{% endif %}
+{% endblock %}

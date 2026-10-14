@@ -1,0 +1,52 @@
+{# Item rows for a stock document (adjustment / transfer). Posts
+   line_product_id[], line_qty[], line_cost[], line_batch[], line_expiry[]. #}
+{% macro stock_lines(products_json, rows, qty_label='Qty', show_cost=False, show_batch=False) %}
+<div class="line-items table-wrap" x-data="stockLines()">
+  <table class="stock-lines">
+    <thead><tr>
+      <th style="min-width:220px;">Item</th>
+      <th style="width:120px;">{{ qty_label }}</th>
+      {% if show_cost %}<th style="width:130px;">Cost / unit <small class="text-muted">(optional)</small></th>{% endif %}
+      {% if show_batch %}<th style="width:140px;">Batch</th><th style="width:150px;">Expiry</th>{% endif %}
+      <th style="width:40px;"></th>
+    </tr></thead>
+    <tbody>
+      <template x-for="(row, i) in rows" :key="row.key">
+        <tr>
+          <td>
+            <select name="line_product_id[]" class="field-input" x-model="row.product_id">
+              <option value="">- pick an item -</option>
+              <template x-for="p in products" :key="p.id"><option :value="String(p.id)" x-text="p.name + ' (' + p.unit + ')'" :selected="String(p.id) === row.product_id"></option></template>
+            </select>
+          </td>
+          <td><input type="number" name="line_qty[]" step="0.001" class="field-input" x-model="row.qty"></td>
+          {% if show_cost %}<td><input type="number" name="line_cost[]" step="0.01" min="0" class="field-input" x-model="row.cost" :placeholder="costHint(row)"></td>{% endif %}
+          {% if show_batch %}
+          <td><input type="text" name="line_batch[]" maxlength="50" class="field-input" x-model="row.batch" :disabled="!isBatch(row)" :placeholder="isBatch(row) ? 'Batch no.' : '-'"></td>
+          <td><input type="date" name="line_expiry[]" class="field-input" x-model="row.expiry" :disabled="!isBatch(row)"></td>
+          {% endif %}
+          <td><button type="button" class="btn btn-quiet btn-sm" @click="remove(i)" title="Remove row">&times;</button></td>
+        </tr>
+      </template>
+    </tbody>
+  </table>
+  <div style="padding:10px;"><button type="button" class="btn btn-secondary btn-sm" @click="add()">+ Add row</button></div>
+</div>
+<script>
+  function stockLines() {
+    const PRODUCTS = {{ products_json|tojson }};
+    const START = {{ rows|tojson }};
+    let next = 0;
+    const blank = () => ({key: next++, product_id: "", qty: "", cost: "", batch: "", expiry: ""});
+    return {
+      products: PRODUCTS,
+      rows: (START.length ? START.map(r => Object.assign(blank(), r)) : [blank(), blank(), blank()]),
+      find(row) { return PRODUCTS.find(p => String(p.id) === String(row.product_id)); },
+      isBatch(row) { const p = this.find(row); return !!(p && p.batch); },
+      costHint(row) { const p = this.find(row); return p ? "avg " + p.cost.toFixed(2) : ""; },
+      add() { this.rows.push(blank()); },
+      remove(i) { this.rows.splice(i, 1); if (!this.rows.length) this.add(); },
+    };
+  }
+</script>
+{% endmacro %}

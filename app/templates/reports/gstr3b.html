@@ -52,6 +52,37 @@
   </div>
 </div>
 
+{% if data.itc is defined %}
+{% set itc = data.itc %}
+<div class="card" style="margin-top:20px;">
+  <h2 style="margin-top:0;">3.1(d) Inward supplies liable to reverse charge</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th></th><th class="num">Taxable value</th><th class="num">CGST</th><th class="num">SGST</th><th class="num">IGST</th></tr></thead>
+    <tbody><tr><td>Reverse-charge purchases (tax you pay in cash)</td><td class="num">{{ '%.2f'|format(itc.rcm_inward.taxable_value) }}</td>
+      <td class="num">{{ '%.2f'|format(itc.rcm_inward.cgst) }}</td><td class="num">{{ '%.2f'|format(itc.rcm_inward.sgst) }}</td><td class="num">{{ '%.2f'|format(itc.rcm_inward.igst) }}</td></tr></tbody>
+  </table></div>
+</div>
+<div class="card" style="margin-top:20px;">
+  <h2 style="margin-top:0;">4. Eligible ITC</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Details</th><th class="num">CGST</th><th class="num">SGST</th><th class="num">IGST</th></tr></thead>
+    <tbody>
+    {% for label, row in (('(A)(3) Inward supplies liable to reverse charge', itc.a3_rcm), ('(A)(5) All other ITC', itc.a5_other), ('(B)(1) Reversed - ineligible / blocked u/s 17(5)', itc.b1_ineligible), ('(B)(2) Reversed - goods returned to suppliers', itc.b2_returns)) %}
+      <tr><td>{{ label }}</td><td class="num">{{ '%.2f'|format(row.cgst) }}</td><td class="num">{{ '%.2f'|format(row.sgst) }}</td><td class="num">{{ '%.2f'|format(row.igst) }}</td></tr>
+    {% endfor %}
+      <tr><td><strong>(C) Net ITC available (A) - (B)</strong></td><td class="num"><strong>{{ '%.2f'|format(itc.net.cgst) }}</strong></td><td class="num"><strong>{{ '%.2f'|format(itc.net.sgst) }}</strong></td><td class="num"><strong>{{ '%.2f'|format(itc.net.igst) }}</strong></td></tr>
+    </tbody>
+  </table></div>
+  <p class="text-muted" style="margin-bottom:0;">From {{ itc.bill_count }} purchase bill(s) entered this month. Claim only what your GSTR-2B shows -
+    check it under <a href="{{ url_for('purchases.gstr2b_imports') }}">Purchases &rarr; GSTR-2B match</a>. The order of set-off (IGST credit first) is applied on the portal.</p>
+</div>
+<div class="card" style="margin-top:20px;">
+  <p class="text-muted mt-0" style="margin-bottom:0;">
+    Reverse Charge Invoices you <em>issued</em> are excluded from the output tax above - under reverse charge the
+    recipient pays that tax directly. Tax on reverse-charge <em>purchases</em> (3.1(d), Rs. {{ '%.2f'|format(itc.rcm_tax_payable) }}) is yours to pay in cash.
+  </p>
+</div>
+{% else %}
 <div class="card" style="margin-top:20px;">
   <p class="text-muted mt-0" style="margin-bottom:0;">
     <strong>Before computing net cash payable:</strong> Input Tax Credit isn't tracked in this
@@ -64,4 +95,5 @@
     tax payable. See the invoice (or GSTR-1, where it's still disclosed) for that amount.
   </p>
 </div>
+{% endif %}
 {% endblock %}

@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Suppliers - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Suppliers</h1>
+  <div class="row">
+    <a href="{{ url_for('bulk.index', kind='suppliers') }}" class="btn btn-quiet">Import / Export</a>
+    <a href="{{ url_for('purchases.new_supplier') }}" class="btn btn-primary">+ Add supplier</a>
+  </div>
+</div>
+{% include "purchases/_nav.html" %}
+<form class="search-bar" method="get">
+  <input type="text" name="q" value="{{ search }}" placeholder="Search by name or GSTIN" class="field-input">
+  <button class="btn btn-secondary">Search</button>
+</form>
+<div class="table-wrap card">
+  <table>
+    <thead><tr><th>Name</th><th>GSTIN</th><th>State</th><th>Contact</th><th class="num">Credit days</th><th></th></tr></thead>
+    <tbody>
+    {% for s in suppliers %}
+      <tr>
+        <td>{{ s.name }}</td><td>{{ s.gstin or 'Unregistered' }}</td><td>{{ s.state_name or '-' }}</td>
+        <td>{{ s.contact_person or '' }}{% if s.phone %} {{ s.phone }}{% endif %}</td>
+        <td class="num">{{ s.payment_terms_days if s.payment_terms_days is not none else '-' }}</td>
+        <td><a href="{{ url_for('purchases.edit_supplier', supplier_id=s.id) }}">Open</a> · <a href="{{ url_for('purchases.bills', supplier=s.id) }}">Bills</a></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6" class="empty-state">No suppliers yet. Add the people you buy from.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

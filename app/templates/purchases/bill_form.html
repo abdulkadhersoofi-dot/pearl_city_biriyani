@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% from "purchases/_lines.html" import purchase_lines, purchase_lines_script %}
+{% block title %}Enter purchase bill - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header"><h1>Enter purchase bill</h1></div>
+{% include "purchases/_nav.html" %}
+{% if order %}<p class="text-muted">From purchase order <a href="{{ url_for('purchases.view_order', order_id=order.id) }}">{{ order.number }}</a> - check the quantities and rates against the supplier's invoice.</p>{% endif %}
+{% if not suppliers %}
+<div class="card"><p>Add a supplier first.</p><a href="{{ url_for('purchases.new_supplier', next=request.path) }}" class="btn btn-primary">+ Add supplier</a></div>
+{% else %}
+<form method="post" enctype="multipart/form-data" x-data='purchaseLines({ other: {{ (form.get('other_charges') or '0')|tojson }}, rcm: {{ (form.get('is_rcm') == '1')|tojson }} })'>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  {% if order %}<input type="hidden" name="order" value="{{ order.id }}">{% endif %}
+  <div class="card" style="margin-bottom:16px;">
+    <div class="form-grid">
+      <label class="field"><span class="field-label">Supplier</span>
+        <select name="supplier_id" class="field-input" required>
+          <option value="">- pick -</option>
+          {% for s in suppliers %}<option value="{{ s.id }}" {{ 'selected' if form.get('supplier_id') == s.id|string }}>{{ s.name }}{% if s.gstin %} ({{ s.gstin }}){% endif %}</option>{% endfor %}
+        </select>
+        <a href="{{ url_for('purchases.new_supplier', next=request.path) }}" class="field-help">+ new supplier</a>
+      </label>
+      <label class="field"><span class="field-label">Their invoice no.</span>
+        <input type="text" name="supplier_invoice_no" maxlength="50" class="field-input" value="{{ form.get('supplier_invoice_no', '') }}" required></label>
+      <label class="field"><span class="field-label">Their invoice date</span>
+        <input type="date" name="supplier_invoice_date" class="field-input" value="{{ form.get('supplier_invoice_date', '') }}" required></label>
+      <label class="field"><span class="field-label">Received on</span>
+        <input type="date" name="bill_date" class="field-input" value="{{ form.get('bill_date') or today.isoformat() }}"></label>
+      {% if gstins|length > 1 %}
+      <label class="field"><span class="field-label">Your registration</span>
+        <select name="gstin_id" class="field-input">
+          {% for g in gstins %}<option value="{{ g.id }}" {{ 'selected' if form.get('gstin_id') == g.id|string }}>{{ g.display_label }}</option>{% endfor %}
+        </select></label>
+      {% else %}<input type="hidden" name="gstin_id" value="{{ gstins[0].id if gstins else '' }}">{% endif %}
+      <label class="field"><span class="field-label">Goods received at</span>
+        <select name="location_id" class="field-input">
+          {% for loc in locations %}<option value="{{ loc.id }}" {{ 'selected' if form.get('location_id') == loc.id|string }}>{{ loc.name }}</option>{% endfor %}
+        </select></label>
+    </div>
+    {% if not claims_itc %}<p class="field-help">Your business isn't a regular GST registration, so GST paid on purchases can't be claimed as input tax credit - it's counted in the cost of the goods.</p>{% endif %}
+    <label class="row" style="gap:6px; align-items:center; margin-top:8px;"><input type="checkbox" name="is_rcm" value="1" x-model="rcm"> Reverse charge - the supplier charges no GST; you pay it to the government</label>
+  </div>
+
+  {{ purchase_lines(catalog, rows, slabs, itc_labels=itc_labels, with_stock=True) }}
+
+  <div class="form-grid" style="margin-top:16px;">
+    <div class="card">
+      <label class="field"><span class="field-label">Freight / other charges on the bill</span>
+        <input type="number" step="0.01" min="0" name="other_charges" class="field-input" x-model="other"></label>
+      <label class="field"><span class="field-label">Label</span>
+        <input type="text" name="other_charges_label" maxlength="60" class="field-input" placeholder="Freight" value="{{ form.get('other_charges_label', '') }}"></label>
+      <p class="field-help">Spread over the items by value, so their stock cost includes it.</p>
+      <label class="field"><span class="field-label">Supplier's bill (PDF or photo, optional)</span>
+        <input type="file" name="attachment" accept=".pdf,.jpg,.jpeg,.png" class="field-input"></label>
+      <label class="field"><span class="field-label">Notes</span>
+        <input type="text" name="notes" class="field-input" value="{{ form.get('notes', '') }}"></label>
+    </div>
+    <div class="totals-box">
+      <div class="totals-row"><span>Taxable value</span><span x-text="money(sum(taxable))"></span></div>
+      <div class="totals-row"><span>GST</span><span x-text="money(sum(tax))"></span></div>
+      <div class="totals-row"><span>Other charges</span><span x-text="money(parseFloat(other) || 0)"></span></div>
+      <div class="totals-row grand"><span x-text="rcm ? 'Payable to supplier' : 'Bill total'"></span>
+        <span x-text="money(Math.round(sum(taxable) + (rcm ? 0 : sum(tax)) + (parseFloat(other) || 0)))"></span></div>
+      <p class="field-help" x-show="rcm">Under reverse charge you pay the GST of <span x-text="money(sum(tax))"></span> to the government in GSTR-3B.</p>
+      <p class="field-help">A preview - the saved bill is computed exactly on the server. CGST+SGST or IGST is decided by the supplier's state.</p>
+    </div>
+  </div>
+  <div class="row" style="margin-top:16px; justify-content:flex-end;">
+    <a href="{{ url_for('purchases.bills') }}" class="btn btn-quiet">Cancel</a>
+    <button class="btn btn-primary btn-lg">Post purchase bill</button>
+  </div>
+</form>
+{{ purchase_lines_script(catalog, rows, has_feature('batch_expiry'), has_feature('serial_imei')) }}
+{% endif %}
+{% endblock %}

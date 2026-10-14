@@ -1,0 +1,100 @@
+{# Purchase line rows (bill and order forms). Posts line_*[] arrays read
+   by app.purchases.services.parse_purchase_lines. with_itc / with_stock
+   add the ITC column and batch / serial capture (bills only). #}
+{% macro purchase_lines(catalog, rows, slabs, itc_labels=None, with_stock=False) %}
+<div class="line-items table-wrap">
+  <table class="stock-lines">
+    <thead><tr>
+      <th style="min-width:230px;">Item</th><th style="width:100px;">HSN</th><th style="width:90px;">Qty</th>
+      <th style="width:90px;">Unit</th><th style="width:110px;">Rate</th>
+      {% if itc_labels %}<th style="width:75px;">Disc %</th>{% endif %}
+      <th style="width:100px;">GST %</th>
+      {% if itc_labels %}<th style="width:150px;">ITC</th>{% endif %}
+      <th class="num" style="width:110px;">Amount</th><th style="width:36px;"></th>
+    </tr></thead>
+    <template x-for="(row, i) in rows" :key="row.key">
+      <tbody>
+        <tr>
+          <td>
+            <select class="field-input" x-model="row.product_id" @change="pick(row)">
+              <option value="">- not a stocked item -</option>
+              <template x-for="p in catalog" :key="p.id"><option :value="String(p.id)" x-text="p.name" :selected="String(p.id) === row.product_id"></option></template>
+            </select>
+            <input type="hidden" name="line_product_id[]" :value="row.product_id">
+            <input type="text" name="line_description[]" class="field-input" x-model="row.description" placeholder="Description" style="margin-top:4px;">
+          </td>
+          <td><input type="text" name="line_hsn[]" maxlength="8" class="field-input" x-model="row.hsn"></td>
+          <td><input type="number" name="line_qty[]" step="0.001" min="0" class="field-input" x-model="row.qty"></td>
+          <td><input type="text" name="line_unit[]" maxlength="20" class="field-input" x-model="row.unit"></td>
+          <td><input type="number" name="line_rate[]" step="0.01" min="0" class="field-input" x-model="row.rate"></td>
+          {% if itc_labels %}<td><input type="number" name="line_discount[]" step="0.01" min="0" max="100" class="field-input" x-model="row.discount"></td>{% endif %}
+          <td><select name="line_gst_rate[]" class="field-input" x-model="row.gst_rate">
+            {% for s in slabs %}<option value="{{ '%g'|format(s) }}">{{ '%g'|format(s) }}</option>{% endfor %}
+          </select></td>
+          {% if itc_labels %}<td><select name="line_itc[]" class="field-input" x-model="row.itc">
+            {% for k, label in itc_labels.items() %}<option value="{{ k.value }}" {{ 'selected' if loop.first }}>{{ label }}</option>{% endfor %}
+          </select></td>{% endif %}
+          <td class="num" x-text="money(lineTotal(row))"></td>
+          <td><button type="button" class="btn btn-quiet btn-sm" @click="remove(i)" title="Remove row">&times;</button></td>
+        </tr>
+        {% if with_stock %}
+        <tr x-show="needsBatch(row) || needsSerial(row)">
+          <td colspan="10" style="background:var(--color-bg, #fafaf7);">
+            <div class="row" style="gap:8px; flex-wrap:wrap; align-items:flex-end;">
+              <label class="field" style="margin:0;" x-show="needsBatch(row)"><span class="field-label">Batch no.</span>
+                <input type="text" name="line_batch[]" maxlength="50" class="field-input" x-model="row.batch"></label>
+              <label class="field" style="margin:0;" x-show="needsBatch(row)"><span class="field-label">Mfg date</span>
+                <input type="date" name="line_mfg[]" class="field-input" x-model="row.mfg"></label>
+              <label class="field" style="margin:0;" x-show="needsBatch(row)"><span class="field-label">Expiry</span>
+                <input type="date" name="line_expiry[]" class="field-input" x-model="row.expiry"></label>
+              <label class="field" style="margin:0;" x-show="needsBatch(row)"><span class="field-label">Batch MRP</span>
+                <input type="number" step="0.01" min="0" name="line_mrp[]" class="field-input" x-model="row.mrp"></label>
+              <label class="field" style="margin:0; flex:1; min-width:240px;" x-show="needsSerial(row)"><span class="field-label">Serial / IMEI numbers - one per unit, comma or new line</span>
+                <textarea name="line_serials[]" rows="2" class="field-input" x-model="row.serials"></textarea></label>
+            </div>
+          </td>
+        </tr>
+        {% endif %}
+      </tbody>
+    </template>
+  </table>
+  <div style="padding:10px;"><button type="button" class="btn btn-secondary btn-sm" @click="add()">+ Add row</button></div>
+</div>
+{% endmacro %}
+
+{# The Alpine component behind purchase_lines. Totals here are a preview;
+   the server recomputes everything (app.utils.itc) when it's saved. #}
+{% macro purchase_lines_script(catalog, rows, batches_on=False, serials_on=False) %}
+<script>
+  function purchaseLines(extra) {
+    const CATALOG = {{ catalog|tojson }};
+    const START = {{ rows|tojson }};
+    const BATCHES = {{ batches_on|tojson }}, SERIALS = {{ serials_on|tojson }};
+    let next = 0;
+    const blank = () => ({key: next++, product_id: "", description: "", hsn: "", qty: "", unit: "PCS", rate: "",
+                          discount: "", gst_rate: "18", itc: "eligible", batch: "", expiry: "", mfg: "", mrp: "", serials: ""});
+    const r2 = (x) => Math.round((x + Number.EPSILON) * 100) / 100;
+    return Object.assign({
+      catalog: CATALOG,
+      rows: START.length ? START.map(r => Object.assign(blank(), r)) : [blank(), blank()],
+      find(row) { return CATALOG.find(p => String(p.id) === String(row.product_id)); },
+      pick(row) {
+        const p = this.find(row);
+        if (!p) return;
+        row.description = p.name; row.hsn = p.hsn; row.unit = p.unit;
+        row.gst_rate = String(p.gst_rate); if (p.rate) row.rate = p.rate.toFixed(2);
+      },
+      needsBatch(row) { const p = this.find(row); return BATCHES && !!(p && p.batch); },
+      needsSerial(row) { const p = this.find(row); return SERIALS && !!(p && p.serial); },
+      taxable(row) { const q = parseFloat(row.qty) || 0, r = parseFloat(row.rate) || 0, d = parseFloat(row.discount) || 0;
+                     return r2(q * r * (1 - d / 100)); },
+      tax(row) { return r2(this.taxable(row) * (parseFloat(row.gst_rate) || 0) / 100); },
+      lineTotal(row) { return this.taxable(row) + this.tax(row); },
+      sum(fn) { return r2(this.rows.reduce((t, row) => t + fn.call(this, row), 0)); },
+      money(x) { return (x || 0).toFixed(2); },
+      add() { this.rows.push(blank()); },
+      remove(i) { this.rows.splice(i, 1); if (!this.rows.length) this.add(); },
+    }, extra || {});
+  }
+</script>
+{% endmacro %}

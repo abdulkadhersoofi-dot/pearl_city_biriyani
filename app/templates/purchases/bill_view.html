@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}{{ bill.number }} - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>{{ bill.number }}</h1>
+    <p class="text-muted mt-0">Purchase bill{% if bill.is_rcm %} · reverse charge{% endif %} ·
+      <span class="status-badge {{ 'status-void' if bill.status.value == 'voided' else 'status-issued' }}">{{ bill.status.value|title }}</span></p>
+  </div>
+  <div class="row">
+    {% if bill.attachment_id %}<a href="{{ url_for('purchases.bill_attachment', bill_id=bill.id) }}" class="btn btn-secondary" target="_blank">Supplier's bill</a>{% endif %}
+    {% if bill.status.value == 'posted' %}<a href="{{ url_for('purchases.new_return', bill_id=bill.id) }}" class="btn btn-secondary">Return goods</a>{% endif %}
+  </div>
+</div>
+{% include "purchases/_nav.html" %}
+<div class="card" style="margin-bottom:16px;">
+  <div class="form-grid">
+    <div><strong>Supplier</strong><p>{{ bill.supplier_snapshot.name }}<br>{% if bill.supplier_snapshot.gstin %}GSTIN: {{ bill.supplier_snapshot.gstin }}<br>{% endif %}{{ bill.supplier_snapshot.state_name or '' }}</p></div>
+    <div><strong>Their invoice</strong><p>{{ bill.supplier_invoice_no }}<br>{{ bill.supplier_invoice_date.strftime('%d %b %Y') }}</p></div>
+    <div><strong>Received</strong><p>{{ bill.bill_date.strftime('%d %b %Y') }}<br>at {{ bill.location.name }}</p></div>
+    <div><strong>Your registration</strong><p>{{ bill.gstin.display_label }}</p></div>
+  </div>
+  {% if bill.purchase_order %}<p>From order <a href="{{ url_for('purchases.view_order', order_id=bill.purchase_order.id) }}">{{ bill.purchase_order.number }}</a></p>{% endif %}
+  {% if bill.notes %}<p><strong>Notes:</strong> {{ bill.notes }}</p>{% endif %}
+  {% if bill.void_reason %}<p><strong>Voided:</strong> {{ bill.void_reason }}</p>{% endif %}
+</div>
+<div class="table-wrap card">
+  <table>
+    <thead><tr><th>Item</th><th>HSN</th><th class="num">Qty</th><th class="num">Rate</th><th class="num">Taxable</th><th class="num">GST</th><th>ITC</th><th class="num">Cost / unit</th></tr></thead>
+    <tbody>
+    {% for l in bill.lines %}
+      <tr>
+        <td>{{ l.description }}{% if l.batch %}<br><small class="text-muted">Batch {{ l.batch.batch_no }}{% if l.batch.expiry_date %} · exp {{ l.batch.expiry_date.strftime('%d %b %Y') }}{% endif %}</small>{% endif %}</td>
+        <td>{{ l.hsn_or_sac_code or '' }}</td>
+        <td class="num">{{ l.qty|qty }} {{ l.unit }}</td>
+        <td class="num">{{ '%.2f'|format(l.rate) }}{% if l.discount_percent %}<br><small class="text-muted">-{{ l.discount_percent|qty }}%</small>{% endif %}</td>
+        <td class="num">{{ '%.2f'|format(l.taxable_value) }}</td>
+        <td class="num">{{ '%.2f'|format(l.cgst_amount + l.sgst_amount + l.igst_amount) }}<br><small class="text-muted">{{ l.gst_rate|qty }}%</small></td>
+        <td><span class="tag {{ 'tag-fast' if l.itc_eligibility.value == 'eligible' else 'tag-low' }}">{{ itc_labels[l.itc_eligibility] }}</span></td>
+        <td class="num">{{ '%.2f'|format(l.unit_cost) if l.product_id else '-' }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+<div class="totals-panel">
+  <div class="totals-box">
+    <div class="totals-row"><span>Taxable value</span><span>{{ '%.2f'|format(bill.total_taxable_value) }}</span></div>
+    {% if bill.total_igst %}<div class="totals-row"><span>IGST</span><span>{{ '%.2f'|format(bill.total_igst) }}</span></div>
+    {% else %}<div class="totals-row"><span>CGST</span><span>{{ '%.2f'|format(bill.total_cgst) }}</span></div>
+    <div class="totals-row"><span>SGST</span><span>{{ '%.2f'|format(bill.total_sgst) }}</span></div>{% endif %}
+    {% if bill.other_charges %}<div class="totals-row"><span>{{ bill.other_charges_label or 'Other charges' }}</span><span>{{ '%.2f'|format(bill.other_charges) }}</span></div>{% endif %}
+    {% if bill.round_off %}<div class="totals-row"><span>Round off</span><span>{{ '%.2f'|format(bill.round_off) }}</span></div>{% endif %}
+    <div class="totals-row grand"><span>{{ 'Payable to supplier' if bill.is_rcm else 'Bill total' }}</span><span>Rs. {{ '%.2f'|format(bill.grand_total) }}</span></div>
+    {% if bill.is_rcm %}<div class="totals-row"><span>GST you pay (RCM)</span><span>{{ '%.2f'|format(bill.total_tax) }}</span></div>{% endif %}
+    <div class="totals-row"><span>Input tax credit</span><span>{{ '%.2f'|format(bill.itc_total) }}</span></div>
+  </div>
+</div>
+
+{% if bill.returns %}
+<h2>Returned to supplier</h2>
+<div class="table-wrap card">
+  <table>
+    <thead><tr><th>Debit note</th><th>Date</th><th class="num">Value</th><th>Status</th></tr></thead>
+    <tbody>
+    {% for r in bill.returns %}
+      <tr><td><a href="{{ url_for('purchases.view_return', return_id=r.id) }}">{{ r.number }}</a></td><td>{{ r.return_date.strftime('%d %b %Y') }}</td>
+        <td class="num">{{ '%.2f'|format(r.grand_total) }}</td>
+        <td><span class="status-badge {{ 'status-void' if r.status.value == 'voided' else 'status-issued' }}">{{ r.status.value|title }}</span></td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% if bill.status.value == 'posted' %}
+<form method="post" action="{{ url_for('purchases.void_bill', bill_id=bill.id) }}" class="card row void-box" style="gap:10px; align-items:flex-end;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label class="field" style="margin:0; flex:1;"><span class="field-label">Void this bill - reason</span>
+    <input type="text" name="reason" class="field-input" required></label>
+  <button class="btn btn-danger" onclick="return confirm('Void {{ bill.number }}? Its goods come out of stock and its ITC is dropped.');">Void</button>
+</form>
+{% endif %}
+{% endblock %}

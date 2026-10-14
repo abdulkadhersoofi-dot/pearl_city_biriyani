@@ -30,6 +30,8 @@ from app.utils.gst import (
 )
 from app.utils.numbering import allocate_number, get_or_create_series
 from app.utils.permissions import max_discount_percent, user_can
+from app.inventory import hooks as inventory_hooks
+from app.inventory import ledger as inventory_ledger
 
 _MAX_DESCRIPTION_LENGTH = 255
 _MAX_HSN_LENGTH = 8
@@ -63,6 +65,8 @@ class CartLineInput:
     # Filled in by apply_counter_rules: rupees off on the line's price basis
     # (its own rupee discount + its share of the bill discount).
     discount_flat: Decimal = Decimal("0")
+    # Serial numbers / IMEIs picked for this line (feature "serial_imei").
+    serials: list = field(default_factory=list)
 
 
 @dataclass
@@ -114,7 +118,7 @@ def _at(seq, i, default=""):
 
 def parse_cart_lines(
     descriptions, hsns, qtys, rates, gst_rates, product_ids, units, incls=(), discounts=(),
-    discount_kinds=(), discount_values=(),
+    discount_kinds=(), discount_values=(), serials=(),
 ) -> list[CartLineInput]:
     lines = []
     for i, description in enumerate(descriptions):
@@ -148,6 +152,7 @@ def parse_cart_lines(
                 price_includes_tax=posted_flag(incls, i),
                 discount_kind=kind,
                 discount_value=value,
+                serials=[x.strip() for x in (_at(serials, i) or "").split(",") if x.strip()],
             )
         )
     if not lines:
@@ -501,6 +506,17 @@ def checkout(
         else:
             change_due = cash_tendered - cash_paid
 
+    # Stock rules first (they only bite with the Inventory module on), so a
+    # refused sale never uses up a bill number.
+    location = inventory_ledger.location_for_user(tenant.id, created_by)
+    try:
+        inventory_hooks.check_sale(
+            tenant, location.id,
+            [inventory_hooks.SaleLine(l.product_id, l.qty, None, l.serials) for l in cart.lines if l.product_id],
+        )
+    except inventory_ledger.StockError as exc:
+        raise POSValidationError(exc.message)
+
     series = get_or_create_series(tenant.id, gstin.id, DocumentType.POS_BILL, financial_year_for(date.today()))
     bill_number = allocate_number(series)
     modes = {p.mode for p, _, _ in settled}
@@ -540,6 +556,13 @@ def checkout(
         if exchange_return is not None:
             exchange_return.exchange_used = (exchange_return.exchange_used or 0) + amount
     db.session.flush()
+    saved_lines = POSBillLine.query.filter_by(bill_id=bill.id).order_by(POSBillLine.sort_order).all()
+    inventory_hooks.post_sale(
+        tenant, location.id,
+        [inventory_hooks.SaleLine(saved.product_id, saved.qty, saved.id, line_in.serials)
+         for saved, line_in in zip(saved_lines, cart.lines) if saved.product_id],
+        "pos_bill", bill.id, created_by.id, pos_bill=bill,
+    )
     return bill
 
 
@@ -558,6 +581,9 @@ def refund_bill(
     if amount <= 0 or amount > bill.grand_total:
         raise POSValidationError(f"Refund amount must be between 0 and Rs. {bill.grand_total}.")
 
+    # As on the branch's daily counter, a refunded bill counts as not sold:
+    # its goods go back into stock.
+    inventory_hooks.undo_sale(bill.tenant_id, "pos_bill", bill.id, refunded_by.id, f"{bill.bill_number} refunded")
     bill.status = POSBillStatus.REFUNDED
     bill.refunded_amount = amount
     bill.refund_reason = reason.strip()
@@ -593,6 +619,7 @@ def void_bill(bill: POSBill, voided_by, reason: str, today: date | None = None) 
     for payment in bill.payments:
         if payment.mode == PaymentMode.EXCHANGE and payment.pos_return is not None:
             payment.pos_return.exchange_used = (payment.pos_return.exchange_used or 0) - payment.amount
+    inventory_hooks.undo_sale(bill.tenant_id, "pos_bill", bill.id, voided_by.id, f"{bill.bill_number} voided")
     bill.status = POSBillStatus.VOIDED
     bill.void_reason = reason.strip()
     bill.voided_at = utcnow()

@@ -9,6 +9,14 @@ from app.models.pos_bill import POSBill, POSBillLine, POSBillStatus, PaymentMode
 from app.models.pos_return import POSReturn, POSReturnLine, POSReturnStatus
 from app.models.cash_session import CashSession, CashMovement
 from app.models.price_list import PriceList, PriceListItem
+from app.models.inventory import (
+    StockLocation, StockMovement, ProductBatch, ProductSerial, StockAdjustment, StockAdjustmentLine,
+    StockTransfer, StockTransferLine,
+)
+from app.models.purchase import (
+    Supplier, PurchaseBill, PurchaseBillLine, PurchaseReturn, PurchaseReturnLine, PurchaseOrder,
+    PurchaseOrderLine, Gstr2bImport, Gstr2bEntry,
+)
 from app.models.note import CreditDebitNote, NoteLine, NoteStatus
 from app.models.audit_log import AuditLog
 from app.models.stock import BranchStockAllocation

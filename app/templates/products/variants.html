@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}{{ product.name }} - variants - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>{{ product.name }}</h1>
+    <p class="text-muted mt-0">Sizes / colours. Each variant is its own item - its own SKU, barcode, price and stock - and is what the counter sells. The design itself isn't sold.</p>
+  </div>
+  <a href="{{ url_for('products.edit_product', product_id=product.id) }}" class="btn btn-quiet">Back to item</a>
+</div>
+
+<form method="post" class="card" style="margin-bottom:16px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="action" value="generate">
+  <h2 style="margin-top:0;">{{ 'Add more sizes / colours' if rows else 'Make the size / colour matrix' }}</h2>
+  {% for i in range(2) %}
+  {% set attr = attributes[i] if i < attributes|length else none %}
+  <div class="form-grid">
+    <label class="field"><span class="field-label">Attribute {{ i + 1 }}{{ ' (optional)' if i else '' }}</span>
+      <input type="text" name="attr_name" class="field-input" maxlength="30" placeholder="{{ 'Colour' if i else 'Size' }}" value="{{ attr[0] if attr else '' }}"></label>
+    <label class="field"><span class="field-label">Values, comma-separated</span>
+      <input type="text" name="attr_values" class="field-input" placeholder="{{ 'Red, Blue, Black' if i else 'S, M, L, XL' }}" value="{{ attr[1]|join(', ') if attr else '' }}"></label>
+  </div>
+  {% endfor %}
+  <p class="field-help">Every combination becomes a variant, copying this item's HSN, GST, unit and prices. Variants that already exist are kept as they are.</p>
+  <button class="btn btn-primary">Make variants</button>
+</form>
+
+{% if rows %}
+<form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="action" value="update">
+  <div class="table-wrap card">
+    <table>
+      <thead><tr><th>Variant</th><th>SKU</th><th>Barcode</th><th class="num">Price</th>{% if has_feature('inventory') %}<th class="num">Stock</th>{% endif %}<th>Sold</th></tr></thead>
+      <tbody>
+      {% for v in rows %}
+        <tr>
+          <td><a href="{{ url_for('products.edit_product', product_id=v.id) }}">{{ v.variant_attributes.values()|join(' / ') if v.variant_attributes else v.name }}</a></td>
+          <td><input type="text" name="sku_{{ v.id }}" value="{{ v.sku or '' }}" maxlength="64" class="field-input"></td>
+          <td><input type="text" name="barcode_{{ v.id }}" value="{{ v.barcode or '' }}" maxlength="64" class="field-input"></td>
+          <td><input type="number" step="0.01" min="0" name="price_{{ v.id }}" value="{{ '%.2f'|format(v.sale_price) }}" class="field-input" style="max-width:120px;"></td>
+          {% if has_feature('inventory') %}<td class="num">{{ (stock.get(v.id) or 0)|qty }}</td>{% endif %}
+          <td><input type="checkbox" name="active_{{ v.id }}" value="1" {{ 'checked' if v.is_active }}></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="row" style="margin-top:12px; justify-content:flex-end;"><button class="btn btn-primary">Save variants</button></div>
+</form>
+{% endif %}
+{% endblock %}

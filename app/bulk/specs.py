@@ -2,12 +2,13 @@
 row is validated, which existing record it updates, and how it's saved.
 
 The workbook plumbing (app.bulk.excel) and the screens (app.bulk.routes)
-are generic over these; adding Suppliers once that master exists is one
-more ImportSpec here.
+are generic over these - Items, Customers and (with the Purchases
+module on) Suppliers.
 """
 
 import re
 from dataclasses import dataclass, field
+from decimal import Decimal, InvalidOperation
 from typing import Callable
 
 from app.bulk import cells
@@ -16,6 +17,7 @@ from app.extensions import db
 from app.models.category import Category, SubCategory
 from app.models.customer import Customer
 from app.models.product import Product
+from app.models.purchase import Supplier
 from app.utils import gst_config
 from app.utils.gst import GSTIN_REGEX, exceeds_mrp, hsn_error, normalize_gstin
 from app.utils.indian_states import INDIAN_STATES, STATE_NAME_BY_CODE
@@ -60,6 +62,7 @@ class ImportSpec:
     save_row: Callable  # (row: RowResult, ctx) -> None
     export_rows: Callable  # (tenant) -> list[dict]
     make_context: Callable  # (tenant) -> ImportContext
+    feature: str | None = None  # module flag the client must have on, if any
 
 
 @dataclass
@@ -386,6 +389,111 @@ def _export_customers(tenant) -> list[dict]:
     ]
 
 
+# --- Suppliers (Purchases module) --------------------------------------------
+
+SUPPLIER_COLUMNS = [
+    Column("name", "Supplier name", "Required. Matches an existing supplier (by GSTIN, else name) to update it.", "Sri Balaji Distributors", required=True),
+    Column("gstin", "GSTIN", "Optional. 15 characters; blank for an unregistered supplier.", "33BBBBB1111B1Z5", as_text=True),
+    Column("state", "State", "State name or 2-digit code. Blank = taken from the GSTIN.", "Tamil Nadu"),
+    Column("address_line1", "Address", "Optional.", ""),
+    Column("city", "City", "Optional.", "Chennai"),
+    Column("pincode", "PIN code", "Optional.", "600001", as_text=True),
+    Column("contact_person", "Contact person", "Optional.", ""),
+    Column("phone", "Phone", "Optional.", "", as_text=True),
+    Column("email", "Email", "Optional.", ""),
+    Column("payment_terms_days", "Credit days", "Optional. Days you get to pay, e.g. 30.", "30"),
+    Column("opening_balance", "Opening balance", "Optional. What you owed them when you started using ARFA.", "0"),
+]
+
+
+def _supplier_context(tenant) -> ImportContext:
+    ctx = ImportContext(tenant=tenant)
+    for s in Supplier.query.filter_by(tenant_id=tenant.id, is_active=True).all():
+        ctx.by_key.setdefault(s.name.strip().lower(), s.id)
+        if s.gstin:
+            ctx.by_alt_key[("gstin", s.gstin)] = s.id
+    return ctx
+
+
+def _parse_supplier(raw: dict, ctx: ImportContext, row: RowResult) -> None:
+    errors = row.errors
+    v = row.values
+    v["name"] = cells.text(raw.get("name"))
+    if not v["name"]:
+        errors.append("Supplier name is required.")
+    elif len(v["name"]) > 255:
+        errors.append("Supplier name: at most 255 characters.")
+    v["gstin"] = normalize_gstin(cells.text(raw.get("gstin")))
+    if v["gstin"] and not _GSTIN_RE.match(v["gstin"]):
+        errors.append(f"GSTIN '{v['gstin']}' isn't a valid 15-character GSTIN.")
+    state_raw = raw.get("state")
+    state_code = _state_code(state_raw)
+    if cells.text(state_raw) and not state_code:
+        errors.append(f"State '{cells.text(state_raw)}' isn't a state name or code.")
+    if not state_code and v["gstin"] and v["gstin"][:2] in STATE_NAME_BY_CODE:
+        state_code = v["gstin"][:2]
+    if not state_code and not errors:
+        errors.append("State is required (or give a GSTIN).")
+    v["state_code"] = state_code
+    for key, limit in (("address_line1", 255), ("city", 100), ("pincode", 10), ("contact_person", 100), ("phone", 20), ("email", 255)):
+        v[key] = cells.text(raw.get(key))
+        if v[key] and len(v[key]) > limit:
+            errors.append(f"{_header_for(key)}: at most {limit} characters.")
+    days = cells.text(raw.get("payment_terms_days"))
+    v["payment_terms_days"] = None
+    if days:
+        try:
+            v["payment_terms_days"] = int(Decimal(days))
+            if v["payment_terms_days"] < 0:
+                raise InvalidOperation
+        except (InvalidOperation, ValueError):
+            errors.append("Credit days must be a whole number.")
+    balance = cells.text(raw.get("opening_balance"))
+    v["opening_balance"] = Decimal("0")
+    if balance:
+        try:
+            v["opening_balance"] = Decimal(balance.replace(",", "")).quantize(Decimal("0.01"))
+        except InvalidOperation:
+            errors.append("Opening balance must be a number.")
+
+    existing = None
+    if v["gstin"] and ("gstin", v["gstin"]) in ctx.by_alt_key:
+        existing = ctx.by_alt_key[("gstin", v["gstin"])]
+    elif v["name"] and not v["gstin"]:
+        existing = ctx.by_key.get(v["name"].lower())
+    row.existing_id = existing
+    dedupe_key = ("gstin", v["gstin"]) if v["gstin"] else ("name", (v["name"] or "").lower())
+    earlier = ctx.seen.get(dedupe_key)
+    if earlier and v["name"]:
+        errors.append(f"Also on row {earlier}.")
+    ctx.seen.setdefault(dedupe_key, row.row_number)
+
+
+def _save_supplier(row: RowResult, ctx: ImportContext) -> None:
+    v = row.values
+    if row.existing_id:
+        supplier = Supplier.query.filter_by(id=row.existing_id, tenant_id=ctx.tenant.id).one()
+    else:
+        supplier = Supplier(tenant_id=ctx.tenant.id)
+        db.session.add(supplier)
+    for key in ("name", "gstin", "state_code", "address_line1", "city", "pincode", "contact_person", "phone", "email",
+                "payment_terms_days", "opening_balance"):
+        setattr(supplier, key, v[key])
+    supplier.state_name = STATE_NAME_BY_CODE.get(v["state_code"], "")
+    supplier.is_active = True
+
+
+def _export_suppliers(tenant) -> list[dict]:
+    return [
+        {
+            "name": s.name, "gstin": s.gstin, "state": s.state_name or s.state_code, "address_line1": s.address_line1,
+            "city": s.city, "pincode": s.pincode, "contact_person": s.contact_person, "phone": s.phone, "email": s.email,
+            "payment_terms_days": s.payment_terms_days, "opening_balance": s.opening_balance,
+        }
+        for s in Supplier.query.filter_by(tenant_id=tenant.id, is_active=True).order_by(Supplier.name).all()
+    ]
+
+
 SPECS = {
     "products": ImportSpec(
         kind="products",
@@ -406,6 +514,17 @@ SPECS = {
         save_row=_save_customer,
         export_rows=_export_customers,
         make_context=_customer_context,
+    ),
+    "suppliers": ImportSpec(
+        kind="suppliers",
+        label="Suppliers",
+        sheet_title="Suppliers",
+        columns=SUPPLIER_COLUMNS,
+        parse_row=_parse_supplier,
+        save_row=_save_supplier,
+        export_rows=_export_suppliers,
+        make_context=_supplier_context,
+        feature="purchases",
     ),
 }
 

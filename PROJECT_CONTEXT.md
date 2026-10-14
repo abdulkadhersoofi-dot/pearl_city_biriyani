@@ -279,7 +279,21 @@ this list is just the index.
   decimal quantities for KGS/LTR..., favourites row, item-wise sales
   returns/exchange (`POSReturn`, series SR), same-day voids, day
   open/close per counter (`CashSession`), WhatsApp share links,
-  DUPLICATE COPY on reprints. Phases 3-10 still to build, in order.
+  DUPLICATE COPY on reprints.
+- **Platform build Phase 3** (inventory & purchases, flags `inventory`,
+  `purchases`, `variants`, `batch_expiry`, `serial_imei`): append-only
+  stock ledger `StockMovement` posted for every client (flags only add
+  screens + the no-negative-stock rule), locations incl. auto branch
+  locations, weighted-average cost, stock adjustments (ADJ) and
+  transfers (TDC + Delivery Challan PDF), suppliers (+ bulk import),
+  purchase bills (PB) with per-line ITC eligibility / RCM / landed cost
+  / private attachment (`app/utils/itc.py`; no ITC for unregistered or
+  composition clients), supplier returns (PDN), purchase orders (PO),
+  GSTR-2B JSON/Excel import + match (`app/purchases/gstr2b.py`), ITC in
+  the GSTR-3B working paper (3.1(d), table 4 - only with Purchases on),
+  batches/FEFO/expired-sale block, serial/IMEI capture + POS picker +
+  receipt print, size/colour variants, stock reports, barcode labels.
+  Phases 4-10 still to build, in order.
 
 ## 5. Chronological development history (this session)
 
@@ -534,7 +548,7 @@ nohup flask run --port 5055 > /tmp/.../flask_dev.log 2>&1 & disown
 
 # Tests, against a SEPARATE database
 export DATABASE_URL="postgresql+psycopg2://gst_app:gst_app@localhost:5432/gst_billing_test"
-python -m pytest -q   # 280 tests as of the end of this session, all passing
+python -m pytest -q   # full suite, all passing at each phase commit
 ```
 
 Background long-running commands (the full suite takes ~3 minutes)
@@ -555,10 +569,10 @@ Flask app — nothing in either can affect the website.
 Trust **README.md's own "Roadmap" section** over any stale task-
 tracker state (see the warning in §11) — as of this file:
 
-- **Remaining document types**: Delivery Challan and Receipt/Refund
-  Voucher don't fit Invoicing's itemized-invoice shape and still need
-  their own flow (Tax Invoice, Bill of Supply, Export/RCM variants
-  already work).
+- **Remaining document types**: a Delivery Challan for own-location
+  stock transfers exists (Phase 3); an on-approval/job-work challan and
+  Receipt/Refund Vouchers still need their own flow (Tax Invoice, Bill
+  of Supply, Export/RCM variants already work).
 - **Onboarding walkthrough polish**: still just a plain form, no
   guided first-run checklist.
 - **Admin console drill-down**: POS bills/notes don't have full
@@ -568,9 +582,9 @@ tracker state (see the warning in §11) — as of this file:
   (government e-invoice portal) credentials this deployment doesn't
   have. Deliberately not faked.
 - **GSTR-1/3B explicit, by-design limits** (not bugs, don't "fix"
-  these without the user asking): Input Tax Credit isn't tracked (no
-  purchase-side records in this app, so GSTR-3B shows gross output tax
-  only); B2C is one aggregated bucket, not split by GSTR-1's ₹2.5 lakh
+  these without the user asking): Input Tax Credit appears in GSTR-3B
+  only for clients with the Purchases module on (from their purchase
+  bills; everyone else sees gross output tax only, unchanged); B2C is one aggregated bucket, not split by GSTR-1's ₹2.5 lakh
   inter-state threshold.
 - **Android app**: debug-signed only — no Play Store release signing
   key exists or was asked for. If the user wants a Play Store release

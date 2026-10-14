@@ -51,7 +51,7 @@
   <table>
     {% for l in bill.lines %}
     <tr>
-      <td class="line-desc" colspan="2">{{ l.description }}</td>
+      <td class="line-desc" colspan="2">{{ l.description }}{% set sn = l.serial_numbers %}{% if sn %}<br><small>S/N: {{ sn|join(', ') }}</small>{% endif %}</td>
     </tr>
     <tr>
       <td>{{ l.qty }} {{ l.unit }} x {{ '%.2f'|format(l.rate) }}</td>

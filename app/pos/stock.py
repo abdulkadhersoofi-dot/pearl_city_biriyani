@@ -119,7 +119,8 @@ def branch_stock_status(tenant_id: int, branch_user_id: int, on_date: date | Non
     rather than being left out."""
     allocated = today_allocations(branch_user_id, on_date)
     sold = today_sold(branch_user_id, on_date)
-    products = Product.query.filter_by(tenant_id=tenant_id, is_active=True).order_by(Product.name).all()
+    products = (Product.query.filter_by(tenant_id=tenant_id, is_active=True).filter(Product.has_variants.is_(False))
+                .order_by(Product.name).all())
 
     return [
         ProductStockStatus(

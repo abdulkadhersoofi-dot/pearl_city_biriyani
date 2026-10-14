@@ -18,6 +18,12 @@ class DocumentType(str, enum.Enum):
     POS_BILL = "pos_bill"
     # Goods returned against a POS bill (app.models.pos_return).
     POS_RETURN = "pos_return"
+    # Buying side and stock documents (Phase 3).
+    PURCHASE_BILL = "purchase_bill"
+    PURCHASE_RETURN = "purchase_return"
+    PURCHASE_ORDER = "purchase_order"
+    STOCK_TRANSFER = "stock_transfer"
+    STOCK_ADJUSTMENT = "stock_adjustment"
 
 
 # Document types a tenant may issue, gated by their GST registration type.
@@ -36,6 +42,11 @@ DOCUMENT_TYPE_LABELS = {
     DocumentType.DEBIT_NOTE: "Debit Note",
     DocumentType.POS_BILL: "POS Bill",
     DocumentType.POS_RETURN: "POS Sales Return",
+    DocumentType.PURCHASE_BILL: "Purchase Bill",
+    DocumentType.PURCHASE_RETURN: "Debit Note (purchase return)",
+    DocumentType.PURCHASE_ORDER: "Purchase Order",
+    DocumentType.STOCK_TRANSFER: "Delivery Challan (stock transfer)",
+    DocumentType.STOCK_ADJUSTMENT: "Stock Adjustment",
 }
 
 

@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Reverse charge purchases' if rcm else 'Purchase bills' }} - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>{{ 'Reverse charge purchases' if rcm else 'Purchase bills' }}</h1>
+  <a href="{{ url_for('purchases.new_bill') }}" class="btn btn-primary">+ Enter purchase bill</a>
+</div>
+{% include "purchases/_nav.html" %}
+{% if rcm %}<p class="text-muted">Purchases where you pay the GST yourself (reverse charge, s.9(3)/9(4)). Kept separate from the regular purchase register; the tax goes in GSTR-3B table 3.1(d), and its credit in 4A(3).</p>{% endif %}
+<form class="search-bar" method="get">
+  {% if rcm %}<input type="hidden" name="rcm" value="1">{% endif %}
+  <select name="supplier" class="field-input" style="max-width:280px;">
+    <option value="">All suppliers</option>
+    {% for s in suppliers %}<option value="{{ s.id }}" {{ 'selected' if s.id == supplier_id }}>{{ s.name }}</option>{% endfor %}
+  </select>
+  <button class="btn btn-secondary">Show</button>
+</form>
+<div class="table-wrap card">
+  <table>
+    <thead><tr><th>Number</th><th>Supplier</th><th>Their invoice</th><th>Date</th><th class="num">Taxable</th><th class="num">GST</th><th class="num">ITC</th><th class="num">{{ 'Payable to supplier' if rcm else 'Total' }}</th><th>Status</th></tr></thead>
+    <tbody>
+    {% for b in bills %}
+      <tr>
+        <td><a href="{{ url_for('purchases.view_bill', bill_id=b.id) }}">{{ b.number }}</a></td>
+        <td>{{ b.supplier_snapshot.name }}</td>
+        <td>{{ b.supplier_invoice_no }}<br><small class="text-muted">{{ b.supplier_invoice_date.strftime('%d %b %Y') }}</small></td>
+        <td>{{ b.bill_date.strftime('%d %b %Y') }}</td>
+        <td class="num">{{ '%.2f'|format(b.total_taxable_value) }}</td>
+        <td class="num">{{ '%.2f'|format(b.total_tax) }}</td>
+        <td class="num">{{ '%.2f'|format(b.itc_total) }}</td>
+        <td class="num">{{ '%.2f'|format(b.grand_total) }}</td>
+        <td><span class="status-badge {{ 'status-void' if b.status.value == 'voided' else 'status-issued' }}">{{ b.status.value|title }}</span></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="9" class="empty-state">No {{ 'reverse charge ' if rcm }}purchase bills yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

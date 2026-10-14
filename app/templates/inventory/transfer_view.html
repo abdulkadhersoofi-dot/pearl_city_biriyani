@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}{{ transfer.number }} - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>{{ transfer.number }}</h1>
+    <p class="text-muted mt-0">Stock transfer · <span class="status-badge {{ 'status-void' if transfer.status.value == 'voided' else 'status-issued' }}">{{ transfer.status.value|title }}</span></p>
+  </div>
+  <div class="row">
+    <a href="{{ url_for('inventory.transfer_challan', transfer_id=transfer.id) }}" class="btn btn-secondary" target="_blank">Delivery Challan PDF</a>
+    <a href="{{ url_for('inventory.transfers') }}" class="btn btn-quiet">All transfers</a>
+  </div>
+</div>
+{% include "inventory/_nav.html" %}
+<div class="card" style="margin-bottom:16px;">
+  <div class="form-grid">
+    <div><strong>From</strong><p>{{ transfer.from_location.name }}</p></div>
+    <div><strong>To</strong><p>{{ transfer.to_location.name }}</p></div>
+    <div><strong>Date</strong><p>{{ transfer.transfer_date.strftime('%d %b %Y') }}</p></div>
+    <div><strong>Vehicle</strong><p>{{ transfer.vehicle_no or '-' }}</p></div>
+  </div>
+  {% if transfer.note %}<p><strong>Note:</strong> {{ transfer.note }}</p>{% endif %}
+  {% if transfer.void_reason %}<p><strong>Voided:</strong> {{ transfer.void_reason }}</p>{% endif %}
+</div>
+<div class="table-wrap card">
+  <table>
+    <thead><tr><th>Item</th><th>Batch</th><th class="num">Qty</th><th class="num">Cost / unit</th></tr></thead>
+    <tbody>
+    {% for l in transfer.lines %}
+      <tr><td>{{ l.product.name }}</td><td>{{ l.batch.batch_no if l.batch else '-' }}</td>
+        <td class="num">{{ l.qty|qty }} {{ l.product.unit }}</td><td class="num">{{ '%.2f'|format(l.unit_cost) }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% if transfer.status.value == 'completed' %}
+<form method="post" action="{{ url_for('inventory.void_transfer', transfer_id=transfer.id) }}" class="card row void-box" style="gap:10px; align-items:flex-end;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label class="field" style="margin:0; flex:1;"><span class="field-label">Void this transfer - reason</span>
+    <input type="text" name="reason" class="field-input" required></label>
+  <button class="btn btn-danger" onclick="return confirm('Void {{ transfer.number }}? The goods go back to {{ transfer.from_location.name }}.');">Void</button>
+</form>
+{% endif %}
+{% endblock %}

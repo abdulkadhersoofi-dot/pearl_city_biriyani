@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}{{ product.name }} - stock ledger - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>{{ product.name }}</h1>
+    <p class="text-muted mt-0">Stock ledger · avg cost Rs. {{ '%.2f'|format(product.cost_price or 0) }}{% if product.min_stock_level is not none %} · minimum {{ product.min_stock_level|qty }} {{ product.unit }}{% endif %}</p>
+  </div>
+  <a href="{{ url_for('inventory.index') }}" class="btn btn-quiet">All stock</a>
+</div>
+{% include "inventory/_nav.html" %}
+
+<div class="card" style="margin-bottom:16px;">
+  <strong>On hand by location:</strong>
+  {% for loc in locations %}{% set q = by_location.get((product.id, loc.id)) %}{% if q is not none and q != 0 %}
+    <span class="tag" style="margin-left:6px;">{{ loc.name }}: {{ q|qty }}</span>
+  {% endif %}{% endfor %}
+  {% if batches %}
+  <p style="margin-bottom:0;"><strong>Batches (earliest expiry first):</strong>
+  {% for b, q in batches %}<span class="tag" style="margin-left:6px;">{{ b.batch_no }}{% if b.expiry_date %} · exp {{ b.expiry_date.strftime('%d %b %Y') }}{% endif %}: {{ q|qty }}</span>{% endfor %}</p>
+  {% endif %}
+</div>
+
+<form class="search-bar" method="get">
+  <select name="location" class="field-input" style="max-width:220px;">
+    <option value="">All locations</option>
+    {% for loc in locations %}<option value="{{ loc.id }}" {{ 'selected' if loc.id == location_id }}>{{ loc.name }}</option>{% endfor %}
+  </select>
+  <input type="date" name="from" value="{{ date_from or '' }}" class="field-input" style="max-width:170px;">
+  <input type="date" name="to" value="{{ date_to or '' }}" class="field-input" style="max-width:170px;">
+  <button class="btn btn-secondary">Show</button>
+</form>
+
+<div class="table-wrap card">
+  <table>
+    <thead><tr><th>When</th><th>Type</th><th>Location</th><th>Document</th><th class="num">In</th><th class="num">Out</th><th class="num">Balance</th></tr></thead>
+    <tbody>
+      <tr><td colspan="6"><em>Opening balance</em></td><td class="num">{{ opening|qty }}</td></tr>
+    {% for r in rows %}
+      <tr>
+        <td>{{ r.movement.moved_at.strftime('%d %b %Y %H:%M') }}</td>
+        <td>{{ r.label }}{% if r.movement.batch %} · {{ r.movement.batch.batch_no }}{% endif %}{% if r.movement.serial %} · {{ r.movement.serial.serial_no }}{% endif %}</td>
+        <td>{{ r.movement.location.name }}</td>
+        <td>{{ r.movement.source_type|replace('_', ' ') }} #{{ r.movement.source_id }}{% if r.movement.note %}<br><small class="text-muted">{{ r.movement.note }}</small>{% endif %}</td>
+        <td class="num">{{ r.qty_in|qty if r.qty_in else '' }}</td>
+        <td class="num">{{ r.qty_out|qty if r.qty_out else '' }}</td>
+        <td class="num {{ 'qty-neg' if r.balance < 0 }}">{{ r.balance|qty }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="7" class="empty-state">No stock movements in this period.</td></tr>
+    {% endfor %}
+    </tbody>
+    <tfoot><tr><th colspan="6">Closing balance</th><th class="num">{{ closing|qty }} {{ product.unit }}</th></tr></tfoot>
+  </table>
+</div>
+{% endblock %}

@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Barcode labels - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header"><h1>Barcode labels</h1></div>
+{% include "inventory/_nav.html" %}
+<form method="post" target="_blank" x-data="{ q: '' }">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="card row" style="gap:12px; align-items:flex-end; flex-wrap:wrap; margin-bottom:16px;">
+    <label class="field" style="margin:0;"><span class="field-label">Layout</span>
+      <select name="layout" class="field-input">{% for k, label in layouts.items() %}<option value="{{ k }}">{{ label }}</option>{% endfor %}</select></label>
+    <label class="row" style="gap:6px; align-items:center; white-space:nowrap;"><input type="checkbox" name="show_price" value="1" checked> Print price / MRP</label>
+    <input type="text" class="field-input" style="max-width:240px;" placeholder="Filter items" x-model="q">
+    <button class="btn btn-primary">Make labels PDF</button>
+  </div>
+  <p class="text-muted">The item's barcode is printed (EAN-13 when it's a valid 13-digit EAN, else Code 128); items with none get their SKU, or an ARFA code the POS also scans.</p>
+  <div class="table-wrap card">
+    <table>
+      <thead><tr><th>Item</th><th>Code printed</th><th class="num">Price</th><th style="width:110px;">Copies</th></tr></thead>
+      <tbody>
+      {% for p in products %}
+        <tr x-show='!q || {{ p.name|lower|tojson }}.includes(q.toLowerCase())'>
+          <td>{{ p.name }}</td><td><code>{{ code_for(p) }}</code></td><td class="num">{{ '%.2f'|format(p.sale_price) }}</td>
+          <td><input type="number" name="copies_{{ p.id }}" min="0" max="1000" class="field-input" placeholder="0"></td>
+        </tr>
+      {% else %}
+        <tr><td colspan="4" class="empty-state">No items yet.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</form>
+{% endblock %}

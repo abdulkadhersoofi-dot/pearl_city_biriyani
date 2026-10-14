@@ -1,0 +1,41 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+{% if layout == 'roll' %}
+  @page { size: 50mm 25mm; margin: 0; }
+  body { margin: 0; font-family: Arial, sans-serif; }
+  .label { width: 50mm; height: 25mm; padding: 1.5mm 2mm; box-sizing: border-box; page-break-after: always; overflow: hidden; text-align: center; }
+  .label:last-child { page-break-after: auto; }
+  .name { font-size: 6.5pt; font-weight: 700; white-space: nowrap; overflow: hidden; }
+  .bars { height: 11mm; width: 44mm; }
+  .code { font-size: 6pt; }
+  .price { font-size: 7pt; font-weight: 700; }
+{% else %}
+  @page { size: A4; margin: 10mm 0 0 0; }
+  body { margin: 0; font-family: Arial, sans-serif; }
+  .sheet { display: flex; flex-wrap: wrap; }
+  .label { width: 70mm; height: 37mm; padding: 3mm 4mm; box-sizing: border-box; overflow: hidden; text-align: center; }
+  .name { font-size: 8.5pt; font-weight: 700; white-space: nowrap; overflow: hidden; }
+  .firm { font-size: 6.5pt; color: #555; }
+  .bars { height: 16mm; width: 58mm; margin-top: 1mm; }
+  .code { font-size: 7.5pt; letter-spacing: .05em; }
+  .price { font-size: 9pt; font-weight: 700; }
+{% endif %}
+</style>
+</head>
+<body>
+<div class="sheet">
+{% for l in labels %}
+  <div class="label">
+    {% if layout != 'roll' %}<div class="firm">{{ firm_name }}</div>{% endif %}
+    <div class="name">{{ l.name }}</div>
+    <img class="bars" src="{{ l.svg }}">
+    <div class="code">{{ l.code }}</div>
+    {% if l.price is not none %}<div class="price">Rs. {{ '%.2f'|format(l.price) }}{% if l.mrp %} · MRP {{ '%.2f'|format(l.mrp) }}{% endif %}</div>{% endif %}
+  </div>
+{% endfor %}
+</div>
+</body>
+</html>

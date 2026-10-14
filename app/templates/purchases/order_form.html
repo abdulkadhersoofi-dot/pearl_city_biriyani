@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% from "purchases/_lines.html" import purchase_lines, purchase_lines_script %}
+{% block title %}New purchase order - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header"><h1>New purchase order</h1></div>
+{% include "purchases/_nav.html" %}
+{% if not suppliers %}
+<div class="card"><p>Add a supplier first.</p><a href="{{ url_for('purchases.new_supplier', next=request.path) }}" class="btn btn-primary">+ Add supplier</a></div>
+{% else %}
+<form method="post" x-data="purchaseLines()">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="card form-grid" style="margin-bottom:16px;">
+    <label class="field"><span class="field-label">Supplier</span>
+      <select name="supplier_id" class="field-input" required>
+        <option value="">- pick -</option>
+        {% for s in suppliers %}<option value="{{ s.id }}" {{ 'selected' if form.get('supplier_id') == s.id|string }}>{{ s.name }}</option>{% endfor %}
+      </select></label>
+    <label class="field"><span class="field-label">Order date</span>
+      <input type="date" name="order_date" class="field-input" value="{{ form.get('order_date') or today.isoformat() }}"></label>
+    <label class="field"><span class="field-label">Expected by</span>
+      <input type="date" name="expected_date" class="field-input" value="{{ form.get('expected_date', '') }}"></label>
+    {% if gstins|length > 1 %}
+    <label class="field"><span class="field-label">Your registration</span>
+      <select name="gstin_id" class="field-input">{% for g in gstins %}<option value="{{ g.id }}">{{ g.display_label }}</option>{% endfor %}</select></label>
+    {% else %}<input type="hidden" name="gstin_id" value="{{ gstins[0].id if gstins else '' }}">{% endif %}
+  </div>
+  {{ purchase_lines(catalog, rows, slabs) }}
+  <div class="card" style="margin-top:16px;">
+    <label class="field"><span class="field-label">Notes for the supplier</span>
+      <input type="text" name="notes" class="field-input" value="{{ form.get('notes', '') }}"></label>
+    <p><strong>Estimated value:</strong> Rs. <span x-text="money(sum(lineTotal))"></span></p>
+  </div>
+  <div class="row" style="margin-top:16px; justify-content:flex-end;">
+    <a href="{{ url_for('purchases.orders') }}" class="btn btn-quiet">Cancel</a>
+    <button class="btn btn-primary">Save order</button>
+  </div>
+</form>
+{{ purchase_lines_script(catalog, rows) }}
+{% endif %}
+{% endblock %}

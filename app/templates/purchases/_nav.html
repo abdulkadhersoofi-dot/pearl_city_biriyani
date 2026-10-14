@@ -1,0 +1,8 @@
+<nav class="subnav">
+  <a href="{{ url_for('purchases.bills') }}" class="{{ 'active' if request.endpoint in ('purchases.bills', 'purchases.new_bill', 'purchases.view_bill') and not rcm }}">Purchase bills</a>
+  <a href="{{ url_for('purchases.bills', rcm=1) }}" class="{{ 'active' if request.endpoint == 'purchases.bills' and rcm }}">Reverse charge (RCM)</a>
+  <a href="{{ url_for('purchases.returns') }}" class="{{ 'active' if 'return' in request.endpoint }}">Returns / debit notes</a>
+  <a href="{{ url_for('purchases.orders') }}" class="{{ 'active' if 'order' in request.endpoint }}">Purchase orders</a>
+  <a href="{{ url_for('purchases.suppliers') }}" class="{{ 'active' if 'supplier' in request.endpoint }}">Suppliers</a>
+  <a href="{{ url_for('purchases.gstr2b_imports') }}" class="{{ 'active' if 'gstr2b' in request.endpoint }}">GSTR-2B match</a>
+</nav>

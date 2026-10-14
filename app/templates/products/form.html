@@ -59,11 +59,21 @@
       {% if has_feature('favourites') %}
       {{ checkbox(form.is_favourite, help="Shown first in the favourites row, ahead of your automatic best sellers.") }}
       {% endif %}
+      {% if has_feature('batch_expiry') %}
+      {{ checkbox(form.track_batch, help="Medicines, food, cosmetics: batch no. and expiry are entered on each purchase; the counter sells the earliest expiry first and won't sell expired stock.") }}
+      {% endif %}
+      {% if has_feature('serial_imei') %}
+      {{ checkbox(form.track_serial, help="Mobiles, electronics: each unit's serial / IMEI is entered on purchase and picked at sale.") }}
+      {{ field(form.warranty_months, help="From the purchase date - shown against each serial number.") }}
+      {% endif %}
     </div>
   </details>
 
   <button type="submit" class="btn btn-primary btn-lg">Save</button>
 </form>
+{% if product and has_feature('variants') and not product.parent_id %}
+<p style="margin-top:12px;"><a href="{{ url_for('products.variants', product_id=product.id) }}" class="btn btn-secondary">Sizes / colours (variants){% if product.has_variants %} - {{ product.variants|length }}{% endif %}</a></p>
+{% endif %}
 {% if product %}
 <form method="post" action="{{ url_for('products.deactivate_product', product_id=product.id) }}"
       style="margin-top:12px;"

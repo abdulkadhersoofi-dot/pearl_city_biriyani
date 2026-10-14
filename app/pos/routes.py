@@ -73,6 +73,7 @@ def _cart_from_request() -> CartInput:
         request.form.getlist("line_discount[]"),
         request.form.getlist("line_discount_kind[]"),
         request.form.getlist("line_discount_value[]"),
+        serials=request.form.getlist("line_serials[]"),
     )
     kind, value = parse_bill_discount(request.form.get("bill_discount_kind"), request.form.get("bill_discount_value"))
     return CartInput(
@@ -144,7 +145,9 @@ def _upi_ready(tenant) -> bool:
 @tenant_user_required
 def terminal():
     tenant = current_user.tenant
-    products = tenant_query(Product).filter_by(is_active=True).order_by(Product.name).all()
+    # A design with variants isn't sold itself - its sizes/colours are.
+    products = (tenant_query(Product).filter_by(is_active=True).filter(Product.has_variants.is_(False))
+                .order_by(Product.name).all())
     held_bills = (
         tenant_query(POSBill)
         .filter_by(status=POSBillStatus.HELD)
@@ -207,10 +210,29 @@ def terminal():
         cash_session=current_session(tenant, current_user) if day_close_on(tenant) else None,
         exchange=exchange,
         last_bill=last_bill,
+        serial_stock=_serial_stock(tenant, products),
     )
     if resume_bill is not None:
         _remove_held(resume_bill)
     return html
+
+
+def _serial_stock(tenant, products) -> dict[int, list[str]]:
+    """In-stock serial numbers / IMEIs per serial-tracked item, for the
+    counter's picker - only with the "serial_imei" module on."""
+    if not tenant.has_feature("serial_imei"):
+        return {}
+    from app.models.inventory import ProductSerial, SerialStatus
+
+    tracked = [p.id for p in products if p.track_serial]
+    if not tracked:
+        return {}
+    stock: dict[int, list[str]] = {pid: [] for pid in tracked}
+    for unit in (tenant_query(ProductSerial).filter(ProductSerial.product_id.in_(tracked),
+                                                    ProductSerial.status == SerialStatus.IN_STOCK)
+                 .order_by(ProductSerial.serial_no).limit(5000)):
+        stock[unit.product_id].append(unit.serial_no)
+    return stock
 
 
 def _prefill_from_held(bill: POSBill) -> dict:

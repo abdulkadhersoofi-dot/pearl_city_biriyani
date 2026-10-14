@@ -111,8 +111,23 @@ def build_gstr3b_workbook(data: dict) -> BytesIO:
     ws.append([])
     ws.append(["Gross output tax payable (before ITC)", _money(data["gross_tax_payable"])])
     ws.append([])
-    ws.append(["Input Tax Credit is not tracked in this system - this app records sales only."])
-    ws.append(["Add eligible ITC from purchase records before computing net cash payable."])
+    itc = data.get("itc")
+    if itc is not None:
+        _write_header(ws, ws.max_row + 1, ["3.1(d) Inward supplies liable to reverse charge", "Taxable value", "CGST", "SGST", "IGST"])
+        r = itc["rcm_inward"]
+        ws.append(["Reverse-charge purchases", _money(r["taxable_value"]), _money(r["cgst"]), _money(r["sgst"]), _money(r["igst"])])
+        ws.append([])
+        _write_header(ws, ws.max_row + 1, ["4. Eligible ITC", "", "CGST", "SGST", "IGST"])
+        for label, key in (("(A)(3) Inward supplies liable to reverse charge", "a3_rcm"), ("(A)(5) All other ITC", "a5_other"),
+                           ("(B)(1) Reversed - ineligible / blocked u/s 17(5)", "b1_ineligible"),
+                           ("(B)(2) Reversed - goods returned to suppliers", "b2_returns"), ("(C) Net ITC available", "net")):
+            row = itc[key]
+            ws.append([label, "", _money(row["cgst"]), _money(row["sgst"]), _money(row["igst"])])
+        ws.append([])
+        ws.append(["Claim only the ITC your GSTR-2B shows. Tax on reverse-charge purchases is payable in cash."])
+    else:
+        ws.append(["Input Tax Credit is not tracked in this system - this app records sales only."])
+        ws.append(["Add eligible ITC from purchase records before computing net cash payable."])
     ws.append(["Reverse Charge Invoices are excluded above - the recipient pays that tax directly, not this tenant."])
     _autosize(ws)
     buf = BytesIO()

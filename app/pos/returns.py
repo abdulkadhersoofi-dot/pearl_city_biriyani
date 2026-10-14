@@ -159,6 +159,11 @@ def create_return(
             )
         )
     db.session.flush()
+    from app.inventory import hooks as inventory_hooks
+    from app.inventory import ledger as inventory_ledger
+
+    location = inventory_ledger.location_for_user(bill.tenant_id, created_by)
+    inventory_hooks.post_return(bill.tenant_id, location.id, ret, created_by.id)
     return ret
 
 
@@ -181,6 +186,9 @@ def void_return(ret: POSReturn, voided_by, reason: str, today: date | None = Non
             raise POSValidationError("That day is closed - the return can't be voided now.")
     elif ret.returned_at.astimezone().date() != (today or date.today()):
         raise POSValidationError("Only today's returns can be voided.")
+    from app.inventory import ledger as inventory_ledger
+
+    inventory_ledger.reverse_source(ret.tenant_id, "pos_return", ret.id, voided_by.id, f"{ret.return_number} voided")
     ret.status = POSReturnStatus.VOIDED
     ret.void_reason = reason
     ret.voided_at = utcnow()

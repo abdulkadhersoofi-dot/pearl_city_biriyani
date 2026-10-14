@@ -463,3 +463,18 @@ tr:last-child td { border-bottom: none; }
 
 .pos-js-error { background: #fdecea; color: #8a1f17; border-bottom: 2px solid #c0392b; padding: 10px 16px; font-weight: 600; }
 .pos-version { margin: 24px 0 0; text-align: center; font-size: 0.8rem; color: var(--color-text-muted); }
+
+/* --- Stock & Purchases: section tabs, low-stock and movement tags --- */
+.subnav { display: flex; gap: 4px; flex-wrap: wrap; margin: -6px 0 18px; padding-bottom: 8px; border-bottom: 1px solid var(--color-border); }
+.subnav a { padding: 6px 12px; border-radius: 999px; text-decoration: none; color: var(--color-text-muted); font-size: 0.9rem; }
+.subnav a.active, .subnav a:hover { background: var(--color-success-bg); color: var(--color-primary-dark); }
+.tag { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 0.75rem; font-weight: 700; background: #f0f0f0; color: var(--color-text-muted); }
+.tag-low, .tag-dead, .tag-expired { background: var(--color-danger-bg); color: var(--color-danger); }
+.tag-fast { background: var(--color-success-bg); color: var(--color-primary-dark); }
+.tag-slow, .tag-soon { background: #fff4d6; color: #8a5a00; }
+td.num, th.num { text-align: right; white-space: nowrap; }
+.qty-neg { color: var(--color-danger); }
+.stock-lines td { vertical-align: top; }
+.stock-lines input, .stock-lines select { min-height: 38px; width: 100%; }
+.void-box { margin-top: 20px; }
+.cart-line .cart-serials { grid-column: 1 / -1; min-height: 36px; font-size: 0.85rem; }

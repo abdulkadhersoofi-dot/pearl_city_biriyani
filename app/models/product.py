@@ -56,6 +56,18 @@ class Product(db.Model, TenantScopedMixin, TimestampMixin):
     # Stored in uploaded_images (database row, not a disk path) so it
     # survives a container restart/redeploy - see app/models/media.py.
     image_id = db.Column(db.Integer, db.ForeignKey("uploaded_images.id"))
+    # Variants (feature "variants"): a parent item with has_variants=True
+    # is the design ("Shirt") - never sold or stocked itself - and each
+    # variant is an ordinary item of its own (own SKU, barcode, price and
+    # stock) pointing back at it, with its attributes ({"Size": "M"}).
+    parent_id = db.Column(db.Integer, db.ForeignKey("products.id", name="fk_products_parent"), index=True)
+    variant_attributes = db.Column(db.JSON)
+    has_variants = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
+    # Batch & expiry / serial-IMEI tracking per item (features
+    # "batch_expiry" / "serial_imei"); warranty for serial-tracked items.
+    track_batch = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
+    track_serial = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
+    warranty_months = db.Column(db.Integer)
     # Pinned to the top of the POS favourites row (feature "favourites"),
     # ahead of the automatic best sellers.
     is_favourite = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
@@ -69,6 +81,7 @@ class Product(db.Model, TenantScopedMixin, TimestampMixin):
     sub_category_id = db.Column(db.Integer, db.ForeignKey("sub_categories.id"))
 
     category = db.relationship("Category")
+    parent = db.relationship("Product", remote_side="Product.id", backref=db.backref("variants", order_by="Product.name"))
     sub_category = db.relationship("SubCategory")
 
     @property

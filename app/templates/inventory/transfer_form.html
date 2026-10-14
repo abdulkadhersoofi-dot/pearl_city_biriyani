@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% from "inventory/_lines.html" import stock_lines %}
+{% block title %}Transfer stock - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header"><h1>Transfer stock</h1></div>
+{% include "inventory/_nav.html" %}
+<form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="card" style="margin-bottom:16px;">
+    <div class="form-grid">
+      <label class="field"><span class="field-label">From</span>
+        <select name="from_location_id" class="field-input">
+          {% for loc in locations %}<option value="{{ loc.id }}" {{ 'selected' if form.get('from_location_id') == loc.id|string }}>{{ loc.name }}</option>{% endfor %}
+        </select>
+      </label>
+      <label class="field"><span class="field-label">To</span>
+        <select name="to_location_id" class="field-input">
+          {% for loc in locations %}<option value="{{ loc.id }}" {{ 'selected' if form.get('to_location_id') == loc.id|string or (not form.get('to_location_id') and loop.index == 2) }}>{{ loc.name }}</option>{% endfor %}
+        </select>
+      </label>
+      <label class="field"><span class="field-label">Date</span>
+        <input type="date" name="transfer_date" class="field-input" value="{{ form.get('transfer_date') or today.isoformat() }}">
+      </label>
+      <label class="field"><span class="field-label">Vehicle no. (optional)</span>
+        <input type="text" name="vehicle_no" maxlength="30" class="field-input" value="{{ form.get('vehicle_no', '') }}">
+      </label>
+    </div>
+    <label class="field"><span class="field-label">Note</span>
+      <input type="text" name="note" class="field-input" value="{{ form.get('note', '') }}"></label>
+    <p class="field-help">Goods moved between your own places aren't a sale - no GST is charged. A Delivery Challan is made for the goods to travel with.{% if has_feature('batch_expiry') %} Batch-tracked items leave earliest-expiry first.{% endif %}</p>
+  </div>
+  {{ stock_lines(products_json, rows or [], qty_label='Qty') }}
+  <div class="row" style="margin-top:16px; justify-content:flex-end;">
+    <a href="{{ url_for('inventory.transfers') }}" class="btn btn-quiet">Cancel</a>
+    <button class="btn btn-primary">Save transfer</button>
+  </div>
+</form>
+{% endblock %}

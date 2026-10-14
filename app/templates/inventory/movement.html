@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Fast, slow and dead stock - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header"><h1>Fast, slow and dead stock</h1></div>
+{% include "inventory/_nav.html" %}
+<form class="search-bar" method="get">
+  <label class="row" style="gap:6px; align-items:center; white-space:nowrap;">Sales over the last
+    <select name="days" class="field-input" style="max-width:120px;">
+      {% for d in (30, 60, 90, 180, 365) %}<option value="{{ d }}" {{ 'selected' if d == days }}>{{ d }} days</option>{% endfor %}
+    </select></label>
+  <button class="btn btn-secondary">Show</button>
+</form>
+<p class="text-muted">Items that sold are ranked by quantity sold: the top third are <em>fast</em>, the rest <em>slow</em>. Items with stock that didn't sell at all are <em>dead</em> - money sitting on the shelf.</p>
+<div class="table-wrap card">
+  <table>
+    <thead><tr><th>Item</th><th>Class</th><th class="num">Sold</th><th class="num">On hand</th><th class="num">Stock value</th><th>Last sold</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td><a href="{{ url_for('inventory.item_ledger', product_id=r.product.id) }}">{{ r.product.name }}</a></td>
+        <td><span class="tag tag-{{ r.klass }}">{{ r.klass|title }}</span></td>
+        <td class="num">{{ r.sold|qty }}</td>
+        <td class="num">{{ r.on_hand|qty }} {{ r.product.unit }}</td>
+        <td class="num">{{ '%.2f'|format(r.on_hand * (r.product.cost_price or 0)) if r.on_hand > 0 else '0.00' }}</td>
+        <td>{{ r.last_sold.strftime('%d %b %Y') if r.last_sold else 'Never' }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6" class="empty-state">No sales or stock yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

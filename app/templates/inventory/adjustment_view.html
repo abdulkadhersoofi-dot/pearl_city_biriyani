@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}{{ adjustment.number }} - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>{{ adjustment.number }}</h1>
+    <p class="text-muted mt-0">Stock adjustment · <span class="status-badge {{ 'status-void' if adjustment.status.value == 'voided' else 'status-issued' }}">{{ adjustment.status.value|title }}</span></p>
+  </div>
+  <a href="{{ url_for('inventory.adjustments') }}" class="btn btn-quiet">All adjustments</a>
+</div>
+{% include "inventory/_nav.html" %}
+<div class="card" style="margin-bottom:16px;">
+  <div class="form-grid">
+    <div><strong>Why</strong><p>{{ reason_labels[adjustment.reason] }}</p></div>
+    <div><strong>Location</strong><p>{{ adjustment.location.name }}</p></div>
+    <div><strong>Date</strong><p>{{ adjustment.adjusted_on.strftime('%d %b %Y') }}</p></div>
+    <div><strong>By</strong><p>{{ adjustment.created_by.name }}</p></div>
+  </div>
+  {% if adjustment.note %}<p><strong>Note:</strong> {{ adjustment.note }}</p>{% endif %}
+  {% if adjustment.void_reason %}<p><strong>Voided:</strong> {{ adjustment.void_reason }}</p>{% endif %}
+</div>
+<div class="table-wrap card">
+  <table>
+    <thead><tr><th>Item</th><th>Batch</th>{% if adjustment.reason.value == 'count' %}<th class="num">Counted</th>{% endif %}<th class="num">Change</th><th class="num">Cost / unit</th></tr></thead>
+    <tbody>
+    {% for l in adjustment.lines %}
+      <tr>
+        <td>{{ l.product.name }}</td>
+        <td>{{ l.batch.batch_no if l.batch else '-' }}</td>
+        {% if adjustment.reason.value == 'count' %}<td class="num">{{ l.counted_qty|qty }}</td>{% endif %}
+        <td class="num {{ 'qty-neg' if l.qty < 0 }}">{{ '+' if l.qty > 0 }}{{ l.qty|qty }} {{ l.product.unit }}</td>
+        <td class="num">{{ '%.2f'|format(l.unit_cost) }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% if adjustment.status.value == 'completed' %}
+<form method="post" action="{{ url_for('inventory.void_adjustment', adjustment_id=adjustment.id) }}" class="card row void-box" style="gap:10px; align-items:flex-end;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label class="field" style="margin:0; flex:1;"><span class="field-label">Void this adjustment - reason</span>
+    <input type="text" name="reason" class="field-input" required></label>
+  <button class="btn btn-danger" onclick="return confirm('Void {{ adjustment.number }}? Its stock changes will be reversed.');">Void</button>
+</form>
+{% endif %}
+{% endblock %}

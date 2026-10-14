@@ -1,0 +1,59 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @page { size: A4; margin: 16mm 14mm; }
+  body { font-family: "Helvetica Neue", Arial, sans-serif; color: #1f2a24; font-size: 10.5pt; }
+  h1 { font-size: 16pt; margin: 0 0 2px; }
+  .sub { color: #5c6b62; margin: 0 0 14px; }
+  .header { display: flex; justify-content: space-between; border-bottom: 2px solid #1f7a4d; padding-bottom: 10px; margin-bottom: 14px; }
+  .firm { text-align: right; }
+  .firm-logo { max-height: 44px; max-width: 150px; object-fit: contain; margin-bottom: 4px; }
+  .grid { display: flex; justify-content: space-between; margin-bottom: 14px; }
+  .grid .block { width: 48%; }
+  .label { font-size: 8pt; text-transform: uppercase; color: #5c6b62; letter-spacing: .04em; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
+  th, td { border: 1px solid #d8ddd6; padding: 5px 7px; font-size: 9.5pt; text-align: left; }
+  th { background: #f0f2ee; }
+  .num { text-align: right; }
+  .void { color: #b3261e; font-weight: 700; font-size: 13pt; }
+  .note { font-size: 9pt; color: #5c6b62; }
+  .sign { margin-top: 40px; display: flex; justify-content: space-between; }
+  .sign div { width: 40%; border-top: 1px solid #1f2a24; padding-top: 4px; font-size: 9pt; }
+</style>
+</head>
+<body>
+  <div class="header">
+    <div>
+      <h1>Delivery Challan</h1>
+      <p class="sub">{{ transfer.number }} · {{ transfer.transfer_date.strftime('%d %b %Y') }}<br>Transfer of goods between own premises - not a sale</p>
+      {% if transfer.status.value == 'voided' %}<p class="void">VOIDED - {{ transfer.void_reason }}</p>{% endif %}
+    </div>
+    <div class="firm">
+      {% if logo_data_uri %}<img class="firm-logo" src="{{ logo_data_uri }}"><br>{% endif %}
+      <strong>{{ firm_name }}</strong><br>
+      {% if transfer.gstin %}{% if transfer.gstin.gstin %}GSTIN: {{ transfer.gstin.gstin }}<br>{% endif %}{{ transfer.gstin.registered_address or '' }}{% endif %}
+    </div>
+  </div>
+  <div class="grid">
+    <div class="block"><div class="label">Dispatched from</div><strong>{{ transfer.from_location.name }}</strong><br>{{ transfer.from_location.address or '' }}</div>
+    <div class="block"><div class="label">Delivered to</div><strong>{{ transfer.to_location.name }}</strong><br>{{ transfer.to_location.address or '' }}</div>
+  </div>
+  {% if transfer.vehicle_no %}<p><span class="label">Vehicle no.</span> {{ transfer.vehicle_no }}</p>{% endif %}
+  <table>
+    <thead><tr><th>#</th><th>Description</th><th>HSN</th><th>Batch</th><th class="num">Qty</th><th>Unit</th><th class="num">Value (cost)</th></tr></thead>
+    <tbody>
+    {% for l in transfer.lines %}
+      <tr><td>{{ loop.index }}</td><td>{{ l.product.name }}</td><td>{{ l.product.hsn_or_sac_code }}</td>
+        <td>{{ l.batch.batch_no if l.batch else '' }}</td><td class="num">{{ l.qty|qty }}</td><td>{{ l.product.unit }}</td>
+        <td class="num">{{ '%.2f'|format(l.qty * l.unit_cost) }}</td></tr>
+    {% endfor %}
+    </tbody>
+    <tfoot><tr><th colspan="6">Approximate value of goods</th><th class="num">Rs. {{ '%.2f'|format(total_value) }}</th></tr></tfoot>
+  </table>
+  {% if transfer.note %}<p class="note">Note: {{ transfer.note }}</p>{% endif %}
+  <p class="note">Goods moved between premises of the same registered person under one GSTIN are not a supply; this challan accompanies them (Rule 55, CGST Rules). Value shown at cost for information.</p>
+  <div class="sign"><div>Dispatched by</div><div>Received by</div></div>
+</body>
+</html>

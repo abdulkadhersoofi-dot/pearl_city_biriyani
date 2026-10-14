@@ -45,6 +45,19 @@
     <tr class="grand"><td>Gross output tax payable</td><td class="num" colspan="4">Rs. {{ '%.2f'|format(data.gross_tax_payable) }}</td></tr>
   </table>
 
+  {% if data.itc is defined %}{% set itc = data.itc %}
+  <table>
+    <tr><th>3.1(d) Inward supplies liable to reverse charge</th><th class="num">Taxable value</th><th class="num">CGST</th><th class="num">SGST</th><th class="num">IGST</th></tr>
+    <tr><td>Reverse-charge purchases</td><td class="num">{{ '%.2f'|format(itc.rcm_inward.taxable_value) }}</td><td class="num">{{ '%.2f'|format(itc.rcm_inward.cgst) }}</td><td class="num">{{ '%.2f'|format(itc.rcm_inward.sgst) }}</td><td class="num">{{ '%.2f'|format(itc.rcm_inward.igst) }}</td></tr>
+  </table>
+  <table>
+    <tr><th>4. Eligible ITC</th><th class="num">CGST</th><th class="num">SGST</th><th class="num">IGST</th></tr>
+    {% for label, row in (('(A)(3) Inward supplies liable to reverse charge', itc.a3_rcm), ('(A)(5) All other ITC', itc.a5_other), ('(B)(1) Reversed - ineligible / blocked u/s 17(5)', itc.b1_ineligible), ('(B)(2) Reversed - goods returned to suppliers', itc.b2_returns), ('(C) Net ITC available', itc.net)) %}
+    <tr{% if loop.last %} class="grand"{% endif %}><td>{{ label }}</td><td class="num">{{ '%.2f'|format(row.cgst) }}</td><td class="num">{{ '%.2f'|format(row.sgst) }}</td><td class="num">{{ '%.2f'|format(row.igst) }}</td></tr>
+    {% endfor %}
+  </table>
+  <p class="note">ITC from {{ itc.bill_count }} purchase bill(s) entered this month - claim only what GSTR-2B shows. Tax on reverse-charge purchases (Rs. {{ '%.2f'|format(itc.rcm_tax_payable) }}) is payable in cash.</p>
+  {% else %}
   <p class="note">
     Input Tax Credit is not tracked in this system - it records sales only. Add eligible ITC from
     purchase records (table 4 of GSTR-3B) before arriving at the amount actually payable in cash.
@@ -53,5 +66,6 @@
     Reverse Charge Invoices are excluded from the figure above - the recipient pays that tax
     directly, not this tenant.
   </p>
+  {% endif %}
 </body>
 </html>

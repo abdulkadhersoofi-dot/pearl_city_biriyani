@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% from "inventory/_lines.html" import stock_lines %}
+{% block title %}Adjust stock - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header"><h1>Adjust stock</h1></div>
+{% include "inventory/_nav.html" %}
+<form method="post" x-data='{ reason: {{ (form.get('reason') or 'count')|tojson }} }'>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="card" style="margin-bottom:16px;">
+    <div class="form-grid">
+      <label class="field"><span class="field-label">Why</span>
+        <select name="reason" class="field-input" x-model="reason">
+          {% for r, label in reason_labels.items() %}<option value="{{ r.value }}">{{ label }}</option>{% endfor %}
+        </select>
+      </label>
+      <label class="field"><span class="field-label">Location</span>
+        <select name="location_id" class="field-input">
+          {% for loc in locations %}<option value="{{ loc.id }}" {{ 'selected' if form.get('location_id') == loc.id|string }}>{{ loc.name }}</option>{% endfor %}
+        </select>
+      </label>
+      <label class="field"><span class="field-label">Date</span>
+        <input type="date" name="adjusted_on" class="field-input" value="{{ form.get('adjusted_on') or today.isoformat() }}">
+      </label>
+      <label class="field"><span class="field-label">Note</span>
+        <input type="text" name="note" class="field-input" value="{{ form.get('note', '') }}" placeholder="Required for 'Other correction'">
+      </label>
+    </div>
+    <p class="field-help" x-show="reason === 'count'">Enter what you actually counted on the shelf - stock is set to that number.</p>
+    <p class="field-help" x-show="reason === 'damage' || reason === 'wastage'">Enter how many to take out of stock.</p>
+    <p class="field-help" x-show="reason === 'opening' || reason === 'found'">Enter how many to add. A cost per unit sets the item's average cost.</p>
+    <p class="field-help" x-show="reason === 'other'">Enter + to add or - to take out (e.g. -2).</p>
+  </div>
+  {{ stock_lines(products_json, rows or [], qty_label='Qty', show_cost=True, show_batch=has_feature('batch_expiry')) }}
+  <div class="row" style="margin-top:16px; justify-content:flex-end;">
+    <a href="{{ url_for('inventory.adjustments') }}" class="btn btn-quiet">Cancel</a>
+    <button class="btn btn-primary">Save adjustment</button>
+  </div>
+</form>
+{% endblock %}

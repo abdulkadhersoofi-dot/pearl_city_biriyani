@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Stock locations - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header"><h1>Stock locations</h1></div>
+{% include "inventory/_nav.html" %}
+<p class="text-muted">Every place stock is kept. The main store is where invoices and the main counter sell from; each branch login has its own location, made automatically. Add godowns and extra stores here and move goods between them with a transfer.</p>
+
+<form method="post" class="card row" style="gap:10px; align-items:flex-end; flex-wrap:wrap;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label class="field" style="margin:0; flex:1; min-width:180px;">
+    <span class="field-label">Name</span>
+    <input type="text" name="name" class="field-input" maxlength="100" placeholder="e.g. Back godown" required>
+  </label>
+  <label class="field" style="margin:0;">
+    <span class="field-label">Type</span>
+    <select name="kind" class="field-input"><option value="godown">Godown</option><option value="store">Store</option></select>
+  </label>
+  <label class="field" style="margin:0; flex:2; min-width:200px;">
+    <span class="field-label">Address (printed on delivery challans)</span>
+    <input type="text" name="address" class="field-input">
+  </label>
+  <button class="btn btn-primary">Add location</button>
+</form>
+
+<div class="card table-wrap" style="margin-top:16px;">
+  <table>
+    <thead><tr><th>Name</th><th>Type</th><th>Address</th><th class="num">Items in stock</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+    {% for loc in locations %}
+      <tr>
+        <td>{{ loc.name }}{% if loc.is_default %} <span class="tag">Main</span>{% endif %}</td>
+        <td>{{ kind_labels[loc.kind] }}</td>
+        <td>{{ loc.address or '-' }}</td>
+        <td class="num">{{ counts.get(loc.id, 0) }}</td>
+        <td>{{ 'Active' if loc.is_active else 'Off' }}</td>
+        <td>
+          {% if loc.is_active and not loc.is_default and loc.kind.value != 'branch' %}
+          <form method="post" action="{{ url_for('inventory.deactivate_location', location_id=loc.id) }}" onsubmit="return confirm('Switch off {{ loc.name }}?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-quiet btn-sm">Switch off</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

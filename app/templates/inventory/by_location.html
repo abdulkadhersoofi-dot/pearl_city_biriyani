@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Stock by location - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header"><h1>Stock by location</h1></div>
+{% include "inventory/_nav.html" %}
+<form class="search-bar" method="get">
+  <input type="text" name="q" value="{{ search }}" placeholder="Search name, SKU or barcode" class="field-input">
+  <button class="btn btn-secondary">Search</button>
+</form>
+<div class="table-wrap card">
+  <table>
+    <thead><tr><th>Item</th>{% for loc in locations %}<th class="num">{{ loc.name }}</th>{% endfor %}<th class="num">Total</th></tr></thead>
+    <tbody>
+    {% for p, qtys, total in rows %}
+      <tr>
+        <td><a href="{{ url_for('inventory.item_ledger', product_id=p.id) }}">{{ p.name }}</a></td>
+        {% for q in qtys %}<td class="num {{ 'qty-neg' if q < 0 }}">{{ q|qty if q else '-' }}</td>{% endfor %}
+        <td class="num"><strong>{{ total|qty }}</strong></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="{{ locations|length + 2 }}" class="empty-state">No stocked items.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

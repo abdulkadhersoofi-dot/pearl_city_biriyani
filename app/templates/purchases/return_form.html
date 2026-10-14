@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Return goods - {{ bill.number }} - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header"><h1>Return goods to {{ bill.supplier_snapshot.name }}</h1></div>
+{% include "purchases/_nav.html" %}
+<p class="text-muted">Against {{ bill.number }} (their invoice {{ bill.supplier_invoice_no }}). A debit note is made; the goods leave stock and the input tax credit they gave is reversed.</p>
+<form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="table-wrap card">
+    <table>
+      <thead><tr><th>Item</th><th class="num">Bought</th><th class="num">Already returned</th><th class="num">Rate</th><th style="width:130px;">Return qty</th></tr></thead>
+      <tbody>
+      {% for line, done, _ in lines %}
+        <tr>
+          <td>{{ line.description }}{% if line.batch %}<br><small class="text-muted">Batch {{ line.batch.batch_no }}</small>{% endif %}</td>
+          <td class="num">{{ line.qty|qty }} {{ line.unit }}</td>
+          <td class="num">{{ done|qty }}</td>
+          <td class="num">{{ '%.2f'|format(line.rate) }}</td>
+          <td>{% if line.qty > done %}<input type="number" name="qty_{{ line.id }}" step="0.001" min="0" max="{{ (line.qty - done)|qty }}" class="field-input" value="{{ form.get('qty_' ~ line.id, '') }}">{% else %}-{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="card form-grid" style="margin-top:16px;">
+    <label class="field"><span class="field-label">Reason</span>
+      <input type="text" name="reason" class="field-input" value="{{ form.get('reason', '') }}" placeholder="Damaged / wrong item / excess" required></label>
+    <label class="field"><span class="field-label">Date</span>
+      <input type="date" name="return_date" class="field-input" value="{{ form.get('return_date', '') }}"></label>
+  </div>
+  <div class="row" style="margin-top:16px; justify-content:flex-end;">
+    <a href="{{ url_for('purchases.view_bill', bill_id=bill.id) }}" class="btn btn-quiet">Cancel</a>
+    <button class="btn btn-primary">Post debit note</button>
+  </div>
+</form>
+{% endblock %}

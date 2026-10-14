@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Serial / IMEI - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header"><h1>Serial / IMEI numbers</h1></div>
+{% include "inventory/_nav.html" %}
+<form class="search-bar" method="get">
+  <input type="text" name="q" value="{{ q }}" placeholder="Where is serial / IMEI..." class="field-input">
+  <button class="btn btn-secondary">Find</button>
+</form>
+<p class="text-muted">{{ 'Matches for "' ~ q ~ '"' if q else 'Every unit in stock' }}.</p>
+<div class="table-wrap card">
+  <table>
+    <thead><tr><th>Serial / IMEI</th><th>Item</th><th>Status</th><th>Where</th><th>Warranty until</th></tr></thead>
+    <tbody>
+    {% for u in units %}
+      <tr>
+        <td><strong>{{ u.serial_no }}</strong></td>
+        <td>{{ u.product.name }}</td>
+        <td><span class="tag {{ 'tag-fast' if u.status.value == 'in_stock' else '' }}">{{ u.status.value|replace('_', ' ')|title }}</span></td>
+        <td>{% if u.status.value == 'sold' %}Sold{% if u.sold_at %} {{ u.sold_at.strftime('%d %b %Y') }}{% endif %}{% if u.sold_pos_bill_id %} · <a href="{{ url_for('pos.view_receipt', bill_id=u.sold_pos_bill_id) }}">bill</a>{% endif %}
+            {% else %}{{ u.location.name if u.location else '-' }}{% endif %}</td>
+        <td>{{ u.warranty_end.strftime('%d %b %Y') if u.warranty_end else '-' }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="5" class="empty-state">No units found. Serial numbers are recorded when a purchase bill is entered for a serial-tracked item.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

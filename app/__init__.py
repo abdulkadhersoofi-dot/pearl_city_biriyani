@@ -59,11 +59,13 @@ def _register_blueprints(app: Flask) -> None:
     from app.branches import branches_bp
     from app.bulk import bulk_bp
     from app.customers import customers_bp
+    from app.inventory import inventory_bp
     from app.invoicing import invoicing_bp
     from app.live import live_bp
     from app.notes import notes_bp
     from app.pos import pos_bp
     from app.products import products_bp
+    from app.purchases import purchases_bp
     from app.reports import reports_bp
     from app.settings import settings_bp
     from app.tenants import tenants_bp
@@ -83,6 +85,8 @@ def _register_blueprints(app: Flask) -> None:
     app.register_blueprint(branches_bp)
     app.register_blueprint(api_bp)
     app.register_blueprint(bulk_bp)
+    app.register_blueprint(inventory_bp)
+    app.register_blueprint(purchases_bp)
 
 
 def _register_error_handlers(app: Flask) -> None:

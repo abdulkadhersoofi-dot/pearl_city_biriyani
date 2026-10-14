@@ -24,7 +24,7 @@
     <tbody>
     {% for p in products %}
       <tr>
-        <td>{{ p.name }}</td>
+        <td>{{ p.name }}{% if p.has_variants and has_feature('variants') %} <a href="{{ url_for('products.variants', product_id=p.id) }}" class="tag">{{ p.variants|length }} variants</a>{% endif %}</td>
         {% if has_feature('categories') %}
         <td>
           {% if p.category %}{{ p.category.name }}{% if p.sub_category %} &rsaquo; {{ p.sub_category.name }}{% endif %}

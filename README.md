@@ -913,24 +913,198 @@ Gunicorn workers or add app servers behind Nginx as load grows.
   the cart total now shows the rupee-rounded amount the bill will
   actually charge, and a reprint is marked DUPLICATE COPY.
 
+### Platform build - Phase 3 (inventory and purchases)
+
+- **One append-only stock ledger (`StockMovement`), posted for every
+  client.** Stock at a place is the sum of its movements. No other
+  column stores a stock number, so nothing can drift. Movements are
+  never edited or deleted. Voiding a document posts the opposite of each
+  of its movements, with `reversal_of_id` pointing back
+  (`ledger.reverse_source`, safe to call twice). Every POS sale, item
+  return, refund, void, invoice, purchase, purchase return, transfer and
+  adjustment posts here, whether or not the Inventory module is on. That
+  way the history is complete on the day a client switches it on (they
+  then set their real counts with a physical-count adjustment). The
+  module only adds the screens and the "can't sell below zero" rule. So
+  existing clients see no change: nothing is refused, and nothing new
+  appears on their screens.
+- **Locations (`StockLocation`).** Each client has a main store (made the
+  first time it's needed), any godowns or stores they add, and one
+  location per branch login, made automatically. The main counter and
+  invoices sell from the main store. A branch login's counter sells from
+  its own location. An invoice billed to a branch is how stock reaches
+  it, so it posts as a transfer from the main store into the branch. The
+  restaurant's daily branch counter (`BranchStockAllocation`) keeps
+  working exactly as before, and is still fed by branch invoices.
+- **Documented gaps fixed.** Voiding a branch invoice now takes back its
+  daily branch allocation (negative allocation rows, so the allocation
+  history stays append-only too) as well as its ledger movements. Item
+  returns put goods back on the shelf of the counter that took them back,
+  into the batches and serial numbers they were sold from. Voids and
+  full refunds reverse the sale.
+- **No negative stock, only when asked for.** With Inventory on, an item
+  whose "Allow billing even when stock shows zero" box is unticked can't
+  be sold, transferred or returned to a supplier below zero at that
+  location. This is checked before a number is allocated
+  (`ledger.check_available`). Items left ticked (the default) behave as
+  before.
+- **Weighted-average cost.** Goods coming in move `Product.cost_price` to
+  (stock x old cost + qty x new cost) / (stock + qty). Stock at or below
+  zero adds nothing to the average, because its cost is unknown. Voiding
+  a purchase or returning goods to the supplier undoes this at the cost
+  the goods came in at. Goods going out are valued at the current
+  average, and stock value is on-hand x average cost.
+- **Purchase bills (`PurchaseBill`, `PB/<FY>/0001`)** are posted when
+  saved: stock in, cost updated, ITC stored on the bill. They are never
+  deleted and are voided with a reason. A bill can't be voided while it
+  has returns, or after one of its serial numbers was sold. The line math
+  is the same `gst.compute_line` the sales side uses. Purchase-only rules
+  are in one module, `app/utils/itc.py`:
+  - **ITC eligibility per line**: eligible, ineligible, or blocked under
+    s.17(5). Only eligible GST comes back as credit. Ineligible GST
+    becomes part of the goods' cost.
+  - **Who can claim**: only a regular GST registration with a GSTIN
+    (s.16). For unregistered and composition clients
+    (`purchases.services.can_claim_itc`), every line is forced to
+    "No ITC" and the GST is part of the cost. The form says so.
+  - **Reverse charge**: the tax is computed and reported, and credited
+    if eligible. What's owed to the supplier excludes it.
+  - **Landed cost**: freight and other charges are spread over the lines
+    by taxable value (`gst.allocate_amount`). Unit cost = (taxable value
+    + share of charges + GST that won't come back) / qty, to 4 decimal
+    places.
+  - **CGST+SGST or IGST** depends on whether the supplier's state is the
+    receiving GSTIN's state.
+  - The same supplier invoice number can't be entered twice.
+  - The supplier's bill (PDF/JPG/PNG, 5 MB, content-checked) is stored in
+    `uploaded_images` with `is_private`. The public `/media/<id>` route
+    refuses private rows. It is served only through the bill's own
+    tenant-checked route, with `Cache-Control: private, no-store`.
+- **Returns to the supplier / debit notes (`PurchaseReturn`,
+  `PDN/<FY>/0001`).** Amounts come from `gst.return_line_amounts`, so
+  however the goods go back, the returns add up to the bill line to the
+  paisa. The credit those goods gave is reversed. Serial-tracked units
+  are picked from the bill's unsold ones. A return can be voided, which
+  puts the goods back.
+- **Purchase orders (`PO/<FY>/0001`)** have no tax effect. "Goods
+  arrived" opens a pre-filled purchase bill, and posting it marks the
+  order converted. Open orders can be cancelled with a reason. The
+  reorder list can start an order with suggested quantities.
+- **Suppliers master**: GSTIN (its first two digits must match the
+  state), contact, credit days, opening balance. Bulk import/export uses
+  the same Excel flow as items and customers. The spec carries
+  `feature="purchases"`, so it 404s with the module off.
+- **GSTR-2B import and match** (`app/purchases/gstr2b.py`) reads the
+  portal's JSON (`data.docdata.b2b`) or Excel (B2B sheet, two-row
+  headings, one row per tax rate merged per invoice).
+  - **Match rule**: same supplier GSTIN, and the same invoice number
+    after normalising (`INV/0042` = `inv-42` = `INV0042`), with values
+    within Rs. 1. That gives Matched; a different value gives Mismatch.
+  - **Fuzzy match**: an invoice number written differently (difflib
+    ratio >= 0.8) is a match with a note.
+  - **Only in 2B** means no bill was entered. **Only in books** means a
+    posted bill of the month that no row matched.
+  - **Reverse charge**: RCM rows are matched only to RCM bills and listed
+    separately. RCM bills have their own register too
+    (Purchases -> Reverse charge), never mixed into the regular one.
+  - **Manual changes**: matches made by hand survive "Match again", and
+    any match can be undone.
+- **ITC in the GSTR-3B working paper** appears only with Purchases on, so
+  everyone else's working paper and its JSON are unchanged. It adds:
+  - 3.1(d), reverse-charge inward supplies
+  - 4A(3), ITC on those reverse-charge purchases
+  - 4A(5), all other ITC
+  - 4B(1), ineligible / blocked GST, availed and reversed
+  - 4B(2), credit of goods returned to suppliers
+  - 4C, the net (4A - 4B)
+
+  Bills count by the date they were entered. The page says to claim only
+  what GSTR-2B shows.
+- **Stock documents.** Adjustments (`ADJ`) cover opening stock, physical
+  count, damage, wastage / expired, found, and other corrections (a note
+  is required). A physical count is entered as the counted number, and
+  the difference is posted. Transfers (`TDC`) move goods between
+  locations, with a Delivery Challan PDF (Rule 55, valued at cost, "not a
+  sale"). Both are numbered from the row-locked allocator, never
+  deleted, voided with a reason, and audit-logged.
+- **Batches and expiry (`batch_expiry`).** For items marked "track
+  batches", purchases need a batch number (with mfg/expiry/MRP). Sales
+  and transfers take stock earliest-expiry first (FEFO) and skip expired
+  batches. A sale that would need expired stock is refused. Near-expiry
+  and expired stock is listed per location (Stock -> Expiry). With the
+  module off, batches are neither recorded nor enforced.
+- **Serial / IMEI (`serial_imei`).** For items marked "track serial",
+  purchases need one serial per unit, unique per client. At the counter,
+  each such line asks for its serials, from a list of the units in stock.
+  The sale checks that each serial exists and is in stock, then marks it
+  sold against the bill line. The receipt prints `S/N: ...` under the
+  item. Voids put units back in stock. The warranty end date is the
+  purchase date + the item's warranty months. Stock -> Serial / IMEI
+  answers "where is this IMEI".
+- **Variants (`variants`).** An item can be turned into a design with a
+  size x colour matrix (two attributes, up to 200 combinations). Each
+  variant is a full item of its own: its own SKU (design SKU + codes),
+  barcode, price and stock, with `parent_id` pointing at the design. The
+  design itself (`has_variants`) is never sold or stocked: it is hidden
+  from the POS, the invoice form and purchases. It can only become a
+  design while its own stock is zero.
+- **Reports** (Stock tab), all read straight off the ledger:
+  - stock summary with value at cost, and a low-only filter
+  - stock ledger per item, with opening/closing and running balance
+  - stock by location (godown-wise)
+  - reorder list: items at or below `min_stock_level`, suggesting an
+    order back up to twice the minimum, with the last supplier and rate
+  - fast / slow / dead stock over 30-365 days: the top third by quantity
+    sold is fast, the other sellers slow, and stock that never sold dead
+
+  Low-stock items also show on the Live dashboard (only with Inventory
+  on).
+- **Barcode labels** (`app/inventory/labels.py`): python-barcode SVG
+  inside WeasyPrint. EAN-13 is used when the item's barcode is a valid
+  EAN-13, otherwise Code 128. Items with no barcode get their SKU, else
+  `ARFA000123`, which the POS scanner also recognises. Layouts are an A4
+  sheet (3 x 8 labels of 70 x 37 mm) or a 50 x 25 mm roll. Each label
+  has the name, code, price and MRP.
+- **Flags.** Every new screen is gated by `feature_required`, which
+  returns 404 when the module is off; staff logins get 403. Nav links
+  render only with the flag. The product form shows the track-batch /
+  track-serial / warranty fields only with their module, and keeps the
+  stored values when the module is off.
+- **Tenant isolation.** Every new table has `tenant_id`, is read through
+  `tenant_query`, and is checked by `tests/test_phase3_isolation.py`. That
+  test covers guessed ids in every URL (404), B's ids smuggled into A's
+  forms (refused), lists, and `tenant_query` for each model.
+
 ## Roadmap
 
 - **Platform build (ARFA general-purpose POS), phase by phase.**
-  Phase 1 (business type + feature flags, tax-inclusive pricing, item
-  master, HSN/AATO rule, bulk import/export, `flask backup`, per-staff
-  permissions) and Phase 2 (POS for every business: discounts, price
-  lists, split payments, UPI QR, customers, barcode/keyboard, loose
-  quantities, favourites, item returns/exchange, voids, day open/close,
-  bill sharing, duplicate copies) are done - see Design notes. Next, in
-  order: 3 inventory & purchases (brings supplier import, the
-  zero-stock rule, and stock restored by returns in a real stock
-  ledger), 4 expenses, 5 margin scheme,
-  6 receivables/payables, 7 P&L, 8 e-invoice/e-way bill (only with
-  real credentials), 9 business-type modules, 10 platform polish.
-- **Remaining document types** - Delivery Challan and Receipt/Refund
-  Voucher don't fit the itemized-invoice shape the Invoicing module uses
-  (no GST calc the same way, or tied to an advance payment rather than a
-  sale) and still need their own flow. Tax Invoice, Bill of Supply, and
+  Done (see Design notes):
+  - Phase 1: business type + feature flags, tax-inclusive pricing, item
+    master, HSN/AATO rule, bulk import/export, `flask backup`, per-staff
+    permissions.
+  - Phase 2: POS for every business.
+  - Phase 3: stock ledger and locations, purchases with ITC, supplier
+    returns, purchase orders, GSTR-2B match, ITC in 3B, batches/FEFO,
+    serial/IMEI, variants, stock documents, stock reports, barcode
+    labels.
+
+  Next, in order: 4 expenses, 5 margin scheme, 6 receivables/payables
+  (supplier ledger and payments build on Phase 3's opening balances and
+  credit days), 7 P&L (cost of goods sold from the ledger's costs),
+  8 e-invoice/e-way bill (only with real credentials; e-way bills for
+  transfers), 9 business-type modules, 10 platform polish.
+
+  Phase 3 limits, stated plainly:
+  - Purchase orders have no PDF.
+  - The GSTR-2B Excel reader handles the B2B sheet only (not CDNR/ISD).
+  - Batch/serial pickers are at the POS only: invoices sell FEFO
+    automatically and don't carry serials.
+  - Stock valuation is weighted average only (no FIFO).
+- **Remaining document types** - a Delivery Challan for stock moved
+  between the client's own places exists since Phase 3 (Stock ->
+  Transfers). A challan for goods sent out on approval / job work, and
+  Receipt/Refund Vouchers (tied to an advance payment rather than a sale)
+  still need their own flow. Tax Invoice, Bill of Supply, and
   both Export/RCM variants already work through Invoicing today.
 - **Onboarding walkthrough polish** - still just the plain onboarding form;
   a guided first-run checklist for a new Client Admin (add a product, add a
@@ -938,10 +1112,10 @@ Gunicorn workers or add app servers behind Nginx as load grows.
 - **Done, with explicit scope limits:**
   - **GSTR-1/3B** (`app/reports/gstr.py`) are *working papers* computed
     from this tenant's own invoices/POS bills/notes, not an auto-filer or
-    an exact replica of the government JSON schema. Two things it can't
-    do: **Input Tax Credit isn't tracked** (this app records sales only,
-    so GSTR-3B shows gross output tax, not the net cash payable - add ITC
-    from purchase records before filing), and **B2C is one aggregated
+    an exact replica of the government JSON schema. Two limits:
+    **Input Tax Credit** is only there for clients with the Purchases
+    module (table 4 from their purchase bills; for everyone else 3B shows
+    gross output tax only), and **B2C is one aggregated
     bucket**, not split into Large/Small by GSTR-1's Rs. 2.5 lakh
     inter-state threshold. Everything else - taxable value, CGST/SGST/
     IGST, the B2B/B2C split by whether the customer has a GSTIN on file,

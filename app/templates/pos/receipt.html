@@ -23,7 +23,7 @@
     <tbody>
     {% for l in bill.lines %}
       <tr>
-        <td>{{ l.description }}{% if l.line_discount_kind %}<div class="text-muted" style="font-size:0.85rem;">less {{ ((l.line_discount_value|qty) ~ '%') if l.line_discount_kind == 'percent' else ('Rs. %.2f'|format(l.line_discount_value)) }}</div>{% endif %}</td>
+        <td>{{ l.description }}{% set sn = l.serial_numbers %}{% if sn %}<div class="text-muted" style="font-size:0.85rem;">S/N: {{ sn|join(', ') }}</div>{% endif %}{% if l.line_discount_kind %}<div class="text-muted" style="font-size:0.85rem;">less {{ ((l.line_discount_value|qty) ~ '%') if l.line_discount_kind == 'percent' else ('Rs. %.2f'|format(l.line_discount_value)) }}</div>{% endif %}</td>
         <td>{{ l.qty|qty }} {{ l.unit }}</td>
         <td>Rs. {{ '%.2f'|format(l.line_total) }}</td>
       </tr>

@@ -206,6 +206,16 @@ class POSBillLine(db.Model, TimestampMixin):
 
     product = db.relationship("Product")
 
+    @property
+    def serial_numbers(self) -> list[str]:
+        """Serial numbers / IMEIs sold on this line (feature "serial_imei"),
+        printed on the receipt under the item."""
+        from app.models.inventory import ProductSerial
+
+        if self.id is None or not self.product_id:
+            return []
+        return [u.serial_no for u in ProductSerial.query.filter_by(sold_pos_line_id=self.id).order_by(ProductSerial.serial_no)]
+
     def __repr__(self):
         return f"<POSBillLine {self.id} {self.description}>"
 

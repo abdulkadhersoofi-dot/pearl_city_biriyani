@@ -1,6 +1,6 @@
 from io import BytesIO
 
-from flask import redirect, send_file, url_for
+from flask import abort, redirect, send_file, url_for
 from flask_login import current_user
 from sqlalchemy import text
 
@@ -27,6 +27,8 @@ def media(image_id):
     # new row/id rather than overwriting this one), so this is safe to
     # cache hard.
     record = UploadedImage.query.get_or_404(image_id)
+    if record.is_private:
+        abort(404)
     return send_file(
         BytesIO(record.data),
         mimetype=record.content_type,

@@ -74,6 +74,37 @@ def save_uploaded_image(file_storage, square_size: int | None = None) -> int | N
     return record.id
 
 
+ALLOWED_DOCUMENT_TYPES = {"pdf": "application/pdf", "jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png"}
+
+
+def save_private_document(file_storage) -> int | None:
+    """A supplier's bill (PDF or photo) attached to a purchase - stored
+    like other uploads but marked private, so the public /media route
+    never serves it; only the purchase bill's own tenant-checked route
+    does. Returns the new row's id, or None if no file was sent."""
+    if not file_storage or not file_storage.filename:
+        return None
+    ext = file_storage.filename.rsplit(".", 1)[-1].lower() if "." in file_storage.filename else ""
+    if ext not in ALLOWED_DOCUMENT_TYPES:
+        raise UploadError("Attach a PDF, JPG or PNG.")
+    data = file_storage.read()
+    if len(data) > MAX_IMAGE_BYTES:
+        raise UploadError("The attachment is too large - 5 MB max.")
+    if ext == "pdf":
+        if not data.startswith(b"%PDF"):
+            raise UploadError("That file doesn't look like a PDF.")
+    else:
+        try:
+            with Image.open(io.BytesIO(data)) as img:
+                img.verify()
+        except (UnidentifiedImageError, OSError) as exc:
+            raise UploadError("That file doesn't look like a valid image.") from exc
+    record = UploadedImage(content_type=ALLOWED_DOCUMENT_TYPES[ext], data=data, is_private=True)
+    db.session.add(record)
+    db.session.flush()
+    return record.id
+
+
 def _square_crop(data: bytes, size: int) -> tuple[bytes, str]:
     with Image.open(io.BytesIO(data)) as img:
         img = ImageOps.exif_transpose(img)  # phone photos often carry a rotation flag, not pixels

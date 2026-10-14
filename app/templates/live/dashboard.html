@@ -22,6 +22,26 @@
     <button type="button" class="btn btn-quiet" @click="refresh()">Refresh now</button>
   </div>
 
+  {% set low_items = stock_low_items() %}
+  {% if low_items %}
+  <div class="card" style="margin-bottom:20px;">
+    <h2 style="margin-top:0;">Low stock <span class="tag tag-low">{{ low_items|length }}</span></h2>
+    <p class="text-muted" style="margin-top:0;">At or below the minimum stock level set on the item.
+      <a href="{{ url_for('inventory.reorder') }}">Reorder list</a></p>
+    <table>
+      <thead><tr><th>Item</th><th class="num">On hand</th><th class="num">Minimum</th></tr></thead>
+      <tbody>
+      {% for r in low_items[:10] %}
+        <tr><td><a href="{{ url_for('inventory.item_ledger', product_id=r.product.id) }}">{{ r.product.name }}</a></td>
+          <td class="num {{ 'qty-neg' if r.qty < 0 }}">{{ r.qty|qty }} {{ r.product.unit }}</td>
+          <td class="num">{{ r.product.min_stock_level|qty }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% if low_items|length > 10 %}<p><a href="{{ url_for('inventory.index', low=1) }}">All {{ low_items|length }} low items</a></p>{% endif %}
+  </div>
+  {% endif %}
+
   <div class="card" style="margin-bottom:20px;">
     <h2 style="margin-top:0;">Branch leaderboard</h2>
     <p class="text-muted" style="margin-top:0;">Ranked by today's total sales revenue - the best performer rises to the top, the quietest branch sinks to the bottom.</p>

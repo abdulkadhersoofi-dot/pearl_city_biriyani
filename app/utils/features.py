@@ -37,12 +37,42 @@ FEATURES = {
             "required for an item, even with this on.",
             available=True,
         ),
-        Feature("inventory", "Inventory", "Stock levels, godowns, transfers and adjustments."),
-        Feature("purchases", "Purchases", "Suppliers, purchase bills and purchase returns."),
+        Feature(
+            "inventory",
+            "Inventory",
+            "Stock levels at each store, godown and branch, adjustments (damage, wastage, opening stock, physical "
+            "count), transfers with a delivery challan, low-stock alerts, stock reports and barcode labels. Items "
+            "set to stop at zero can no longer be billed once their stock runs out.",
+            available=True,
+        ),
+        Feature(
+            "purchases",
+            "Purchases",
+            "Suppliers, purchase orders, purchase bills with input tax credit and landed cost, returns to "
+            "suppliers (debit notes) and GSTR-2B matching.",
+            available=True,
+        ),
         Feature("expenses", "Expenses", "Record rent, salary, electricity and other expenses."),
-        Feature("variants", "Size / colour variants", "One item in several sizes or colours."),
-        Feature("batch_expiry", "Batch & expiry", "Batch numbers and expiry dates (pharmacy, food)."),
-        Feature("serial_imei", "Serial / IMEI", "Track each unit by serial number or IMEI."),
+        Feature(
+            "variants",
+            "Size / colour variants",
+            "One item in several sizes or colours - each with its own code, barcode, price and stock.",
+            available=True,
+        ),
+        Feature(
+            "batch_expiry",
+            "Batch & expiry",
+            "Batch numbers and expiry dates captured on purchase; the counter sells the batch expiring first "
+            "and refuses expired stock; near-expiry and expired reports.",
+            available=True,
+        ),
+        Feature(
+            "serial_imei",
+            "Serial / IMEI",
+            "Each unit's serial number or IMEI captured on purchase, picked at billing and printed on the bill, "
+            "with warranty dates and a search to find any unit.",
+            available=True,
+        ),
         Feature("margin_scheme", "Margin scheme", "GST on margin for second-hand goods."),
         Feature("weighing", "Weighing scale items", "Price per kg, weight entry at billing."),
         Feature("restaurant_mode", "Restaurant tables & KOT", "Tables, kitchen order tickets, order types."),

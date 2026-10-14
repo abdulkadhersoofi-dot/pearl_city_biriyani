@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}GSTR-2B {{ imp.period }} - {{ firm_name }}{% endblock %}
+{% macro entry_table(entries, show_match=True) %}
+<div class="table-wrap card" style="margin-bottom:20px;">
+  <table>
+    <thead><tr><th>Supplier</th><th>Invoice</th><th class="num">Value</th><th class="num">Taxable</th><th class="num">Tax</th><th>ITC</th><th>In your books</th><th style="min-width:230px;"></th></tr></thead>
+    <tbody>
+    {% for e in entries %}
+      <tr>
+        <td>{{ e.supplier_name or '' }}<br><small class="text-muted">{{ e.supplier_gstin }}</small></td>
+        <td>{{ e.invoice_no }}<br><small class="text-muted">{{ e.invoice_date.strftime('%d %b %Y') if e.invoice_date else '' }}</small></td>
+        <td class="num">{{ '%.2f'|format(e.invoice_value) }}</td>
+        <td class="num">{{ '%.2f'|format(e.taxable_value) }}</td>
+        <td class="num">{{ '%.2f'|format(e.total_tax) }}</td>
+        <td>{{ 'Available' if e.itc_available else 'Not available' }}</td>
+        <td>{% if e.matched_bill %}<a href="{{ url_for('purchases.view_bill', bill_id=e.matched_bill.id) }}">{{ e.matched_bill.number }}</a>
+            <br><small class="text-muted">{{ e.matched_bill.supplier_invoice_no }} · Rs. {{ '%.2f'|format(e.matched_bill.grand_total) }}</small>{% else %}-{% endif %}
+            {% if e.match_note %}<br><small class="text-muted">{{ e.match_note }}</small>{% endif %}</td>
+        <td>
+          {% if e.matched_bill_id %}
+          <form method="post" action="{{ url_for('purchases.gstr2b_unmatch', entry_id=e.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-quiet btn-sm">Unmatch</button></form>
+          {% else %}
+          <form method="post" action="{{ url_for('purchases.gstr2b_match', entry_id=e.id) }}" class="row" style="gap:4px;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <select name="bill_id" class="field-input" style="min-height:32px; max-width:180px;">
+              <option value="">Match to bill...</option>
+              {% for b in candidates if b.is_rcm == e.is_rcm %}<option value="{{ b.id }}">{{ b.supplier_snapshot.name }} · {{ b.supplier_invoice_no }} · {{ '%.0f'|format(b.grand_total) }}</option>{% endfor %}
+            </select>
+            <button class="btn btn-secondary btn-sm">Match</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="8" class="empty-state">None.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endmacro %}
+{% macro books_table(bills) %}
+<div class="table-wrap card" style="margin-bottom:20px;">
+  <table>
+    <thead><tr><th>Bill</th><th>Supplier</th><th>Their invoice</th><th class="num">Total</th><th class="num">ITC</th></tr></thead>
+    <tbody>
+    {% for b in bills %}
+      <tr><td><a href="{{ url_for('purchases.view_bill', bill_id=b.id) }}">{{ b.number }}</a></td>
+        <td>{{ b.supplier_snapshot.name }}<br><small class="text-muted">{{ b.supplier_snapshot.gstin or 'Unregistered' }}</small></td>
+        <td>{{ b.supplier_invoice_no }}<br><small class="text-muted">{{ b.supplier_invoice_date.strftime('%d %b %Y') }}</small></td>
+        <td class="num">{{ '%.2f'|format(b.grand_total) }}</td><td class="num">{{ '%.2f'|format(b.itc_total) }}</td></tr>
+    {% else %}
+      <tr><td colspan="5" class="empty-state">None.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endmacro %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>GSTR-2B · {{ imp.period }}</h1>
+    <p class="text-muted mt-0">{{ imp.gstin.gstin }} · {{ imp.filename }} · {{ imp.entries|length }} invoice(s)</p>
+  </div>
+  <form method="post" action="{{ url_for('purchases.gstr2b_rematch', import_id=imp.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-secondary">Match again</button></form>
+</div>
+{% include "purchases/_nav.html" %}
+<div class="form-grid" style="margin-bottom:16px;">
+  <div class="card"><strong>{{ groups[MatchStatus.MATCHED]|length }}</strong> matched</div>
+  <div class="card"><strong>{{ groups[MatchStatus.MISMATCH]|length }}</strong> mismatch</div>
+  <div class="card"><strong>{{ groups[MatchStatus.ONLY_IN_2B]|length }}</strong> only in 2B</div>
+  <div class="card"><strong>{{ books_regular|length }}</strong> only in your books</div>
+</div>
+<h2>Mismatch</h2>
+<p class="text-muted">Found in both, but the value differs by more than Rs. 1 - check with the supplier before claiming the credit.</p>
+{{ entry_table(groups[MatchStatus.MISMATCH]) }}
+<h2>Only in GSTR-2B</h2>
+<p class="text-muted">The supplier filed it, but there's no purchase bill for it in your books - enter the bill, or match it by hand.</p>
+{{ entry_table(groups[MatchStatus.ONLY_IN_2B]) }}
+<h2>Only in your books</h2>
+<p class="text-muted">Purchase bills dated {{ imp.period }} the supplier hasn't reported yet. Credit on these can't be claimed until they appear in a GSTR-2B.</p>
+{{ books_table(books_regular) }}
+<h2>Matched</h2>
+{{ entry_table(groups[MatchStatus.MATCHED]) }}
+<h2>Reverse charge (RCM)</h2>
+<p class="text-muted">Kept separate from the regular register - matched only to your reverse-charge purchase bills.</p>
+{{ entry_table(rcm) }}
+{% if books_rcm %}<h3>RCM bills only in your books</h3>{{ books_table(books_rcm) }}{% endif %}
+{% endblock %}

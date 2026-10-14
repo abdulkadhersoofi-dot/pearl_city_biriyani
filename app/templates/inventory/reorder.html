@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Reorder list - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Reorder list</h1>
+  {% if has_feature('purchases') and rows %}<a href="{{ url_for('purchases.new_order', reorder=1) }}" class="btn btn-primary">Make a purchase order</a>{% endif %}
+</div>
+{% include "inventory/_nav.html" %}
+<p class="text-muted">Items at or below the minimum stock level set on the item. Suggested quantity brings stock back up to twice the minimum.</p>
+<div class="table-wrap card">
+  <table>
+    <thead><tr><th>Item</th><th class="num">On hand</th><th class="num">Minimum</th><th class="num">Suggested order</th><th>Last supplier</th><th class="num">Last rate</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td><a href="{{ url_for('inventory.item_ledger', product_id=r.product.id) }}">{{ r.product.name }}</a></td>
+        <td class="num {{ 'qty-neg' if r.qty < 0 }}">{{ r.qty|qty }} {{ r.product.unit }}</td>
+        <td class="num">{{ r.min_level|qty }}</td>
+        <td class="num"><strong>{{ r.suggested|qty }}</strong></td>
+        <td>{{ r.supplier_name or '-' }}</td>
+        <td class="num">{{ '%.2f'|format(r.last_rate) if r.last_rate is not none else '-' }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6" class="empty-state">Nothing to reorder. Set a minimum stock level on items (Items &rarr; Edit) to see them here when they run low.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

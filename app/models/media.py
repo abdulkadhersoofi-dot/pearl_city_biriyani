@@ -16,6 +16,10 @@ class UploadedImage(db.Model, TimestampMixin):
     id = db.Column(db.Integer, primary_key=True)
     content_type = db.Column(db.String(50), nullable=False)
     data = db.Column(db.LargeBinary, nullable=False)
+    # A private file (a supplier's bill attached to a purchase) is never
+    # served by the public /media/<id> route - only through its owner's
+    # own tenant-checked route.
+    is_private = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
 
     def __repr__(self):
         return f"<UploadedImage {self.id} {self.content_type} ({len(self.data)} bytes)>"

@@ -155,7 +155,8 @@ def new_invoice():
             db.session.rollback()
             flash(exc.message, "error")
 
-    products = tenant_query(Product).filter_by(is_active=True).order_by(Product.name).all()
+    products = (tenant_query(Product).filter_by(is_active=True).filter(Product.has_variants.is_(False))
+                .order_by(Product.name).all())
     return render_template(
         "invoicing/form.html",
         form=form,

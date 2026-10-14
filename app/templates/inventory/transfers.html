@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Stock transfers - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Stock transfers</h1>
+  <a href="{{ url_for('inventory.new_transfer') }}" class="btn btn-primary">Transfer stock</a>
+</div>
+{% include "inventory/_nav.html" %}
+<div class="table-wrap card">
+  <table>
+    <thead><tr><th>Challan no.</th><th>Date</th><th>From</th><th>To</th><th class="num">Items</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+    {% for t in transfers %}
+      <tr>
+        <td><a href="{{ url_for('inventory.view_transfer', transfer_id=t.id) }}">{{ t.number }}</a></td>
+        <td>{{ t.transfer_date.strftime('%d %b %Y') }}</td>
+        <td>{{ t.from_location.name }}</td>
+        <td>{{ t.to_location.name }}</td>
+        <td class="num">{{ t.lines|length }}</td>
+        <td><span class="status-badge {{ 'status-void' if t.status.value == 'voided' else 'status-issued' }}">{{ t.status.value|title }}</span></td>
+        <td><a href="{{ url_for('inventory.transfer_challan', transfer_id=t.id) }}" target="_blank">Challan PDF</a></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="7" class="empty-state">No transfers yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

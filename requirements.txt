@@ -19,3 +19,4 @@ Faker==26.0.0
 pypdf==6.19.0
 openpyxl==3.1.5
 segno==1.6.1
+python-barcode==0.15.1

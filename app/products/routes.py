@@ -47,6 +47,24 @@ def _allow_legacy_unit(form: ProductForm, unit: str | None) -> None:
         )
 
 
+# Product fields whose form controls only show with a module on - with the
+# module off they aren't on the page, so the stored value must be kept,
+# not reset to the unticked default.
+_MODULE_FIELDS = {"batch_expiry": ("track_batch",), "serial_imei": ("track_serial", "warranty_months")}
+
+
+def _snapshot_module_fields(product: Product) -> dict:
+    return {f: getattr(product, f) for fields in _MODULE_FIELDS.values() for f in fields}
+
+
+def _restore_switched_off(product: Product, before: dict) -> None:
+    tenant = current_user.tenant
+    for key, fields in _MODULE_FIELDS.items():
+        if not tenant.has_feature(key):
+            for f in fields:
+                setattr(product, f, before[f])
+
+
 def _normalize_optional_fields(product: Product) -> None:
     product.alt_unit = product.alt_unit or None
     if not product.alt_unit:
@@ -95,6 +113,7 @@ def new_product():
     if form.validate_on_submit():
         product = Product(tenant_id=current_user.tenant_id)
         form.populate_obj(product)
+        _restore_switched_off(product, {"track_batch": False, "track_serial": False, "warranty_months": None})
         if not tenant.has_feature("favourites"):
             product.is_favourite = False
         _normalize_optional_fields(product)
@@ -125,7 +144,9 @@ def edit_product(product_id):
         form.alt_unit.data = product.alt_unit or ""
     if form.validate_on_submit():
         was_favourite = product.is_favourite
+        before = _snapshot_module_fields(product)
         form.populate_obj(product)
+        _restore_switched_off(product, before)
         if not current_user.tenant.has_feature("favourites"):
             product.is_favourite = was_favourite  # the box wasn't on the page
         _normalize_optional_fields(product)
@@ -332,3 +353,43 @@ def deactivate_price_list(list_id):
     db.session.commit()
     flash(f"{price_list.name} switched off.", "success")
     return redirect(url_for("products.price_lists"))
+
+
+# --- variants (feature "variants") ---------------------------------------------------
+
+@products_bp.route("/<int:product_id>/variants", methods=["GET", "POST"])
+@roles_required(UserRole.CLIENT_ADMIN)
+@feature_required("variants")
+def variants(product_id):
+    from app.inventory import ledger
+    from app.products import variants as variant_service
+
+    product = tenant_query(Product).filter_by(id=product_id).first_or_404()
+    assert_owns(product)
+    if product.parent_id:
+        return redirect(url_for("products.variants", product_id=product.parent_id))
+    if request.method == "POST":
+        try:
+            if request.form.get("action") == "generate":
+                attributes = variant_service.parse_attributes(request.form.getlist("attr_name"),
+                                                              request.form.getlist("attr_values"))
+                created = variant_service.generate(product, attributes)
+                message = f"{len(created)} variant(s) added." if created else "All those variants already exist."
+                audit = ("variants_generated", {"design": product.name, "created": [v.name for v in created]})
+            else:
+                changed = variant_service.update_variants(product, request.form)
+                message = f"{changed} variant(s) updated."
+                audit = ("variants_updated", {"design": product.name, "changed": changed})
+        except variant_service.VariantError as exc:
+            db.session.rollback()
+            flash(exc.message, "error")
+            return redirect(url_for("products.variants", product_id=product.id))
+        record_audit(current_user, audit[0], tenant_id=current_user.tenant_id, entity_type="product",
+                     entity_id=product.id, details=audit[1])
+        db.session.commit()
+        flash(message, "success")
+        return redirect(url_for("products.variants", product_id=product.id))
+    rows = sorted(product.variants, key=lambda v: v.name)
+    stock = ledger.stock_on_hand(current_user.tenant_id, [v.id for v in rows]) if rows else {}
+    attributes = list((product.variant_attributes or {}).items()) if product.has_variants else []
+    return render_template("products/variants.html", product=product, rows=rows, stock=stock, attributes=attributes)

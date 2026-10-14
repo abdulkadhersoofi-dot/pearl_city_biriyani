@@ -9,6 +9,8 @@ from app.models.invoice_series import DocumentType
 from app.models.mixins import utcnow
 from app.models.tenant import Gstin, Tenant
 from app.models.user import BranchType, User, UserRole
+from app.inventory import hooks as inventory_hooks
+from app.inventory import ledger as inventory_ledger
 from app.pos.stock import allocate_stock
 from app.utils.financial_year import financial_year_for
 from app.utils.form_arrays import posted_flag
@@ -194,6 +196,17 @@ def create_invoice(tenant: Tenant, created_by, data: InvoiceInput) -> Invoice:
         totals["total_rsgst"] = Decimal("0.00")
         totals["total_rigst"] = Decimal("0.00")
 
+    # Stock rules (only bite with the Inventory module on) are checked
+    # before a number is taken - a refused invoice leaves no gap.
+    try:
+        inventory_hooks.check_sale(
+            tenant, inventory_ledger.default_location(tenant.id).id,
+            [inventory_hooks.SaleLine(l.product_id, l.qty) for l in data.lines if l.product_id],
+            require_serials=False,
+        )
+    except inventory_ledger.StockError as exc:
+        raise InvoiceValidationError(exc.message)
+
     series = get_or_create_series(
         tenant.id, gstin.id, document_type, financial_year_for(data.invoice_date)
     )
@@ -260,6 +273,9 @@ def create_invoice(tenant: Tenant, created_by, data: InvoiceInput) -> Invoice:
         if stock_lines:
             allocate_stock(tenant.id, branch.id, created_by.id, stock_lines, on_date=data.invoice_date)
 
+    db.session.flush()
+    db.session.refresh(invoice)
+    inventory_hooks.post_invoice(tenant, invoice, created_by.id)
     return invoice
 
 
@@ -272,3 +288,11 @@ def void_invoice(invoice: Invoice, voided_by, reason: str) -> None:
     invoice.voided_by_id = voided_by.id
     invoice.void_reason = reason.strip()
     invoice.voided_at = utcnow()
+    # The goods it moved go back: out of the customer sale, or - for an
+    # invoice billed to a branch - back out of the branch's stock, both in
+    # the ledger and on the branch's daily counter for that day.
+    inventory_hooks.undo_sale(invoice.tenant_id, "invoice", invoice.id, voided_by.id, f"Invoice {invoice.invoice_number} voided")
+    if invoice.branch_user_id:
+        back = [(line.product_id, -line.qty) for line in invoice.lines if line.product_id]
+        if back:
+            allocate_stock(invoice.tenant_id, invoice.branch_user_id, voided_by.id, back, on_date=invoice.invoice_date)

@@ -1,0 +1,13 @@
+{# Section tabs for the Stock screens. #}
+<nav class="subnav">
+  <a href="{{ url_for('inventory.index') }}" class="{{ 'active' if request.endpoint in ('inventory.index', 'inventory.item_ledger') }}">Stock</a>
+  <a href="{{ url_for('inventory.by_location') }}" class="{{ 'active' if request.endpoint == 'inventory.by_location' }}">By location</a>
+  <a href="{{ url_for('inventory.adjustments') }}" class="{{ 'active' if 'adjustment' in request.endpoint }}">Adjustments</a>
+  <a href="{{ url_for('inventory.transfers') }}" class="{{ 'active' if 'transfer' in request.endpoint }}">Transfers</a>
+  <a href="{{ url_for('inventory.locations') }}" class="{{ 'active' if 'location' in request.endpoint and request.endpoint != 'inventory.by_location' }}">Locations</a>
+  <a href="{{ url_for('inventory.reorder') }}" class="{{ 'active' if request.endpoint == 'inventory.reorder' }}">Reorder</a>
+  <a href="{{ url_for('inventory.movement') }}" class="{{ 'active' if request.endpoint == 'inventory.movement' }}">Fast / slow / dead</a>
+  {% if has_feature('batch_expiry') %}<a href="{{ url_for('inventory.expiry') }}" class="{{ 'active' if request.endpoint == 'inventory.expiry' }}">Expiry</a>{% endif %}
+  {% if has_feature('serial_imei') %}<a href="{{ url_for('inventory.serials') }}" class="{{ 'active' if request.endpoint == 'inventory.serials' }}">Serial / IMEI</a>{% endif %}
+  <a href="{{ url_for('inventory.labels') }}" class="{{ 'active' if request.endpoint == 'inventory.labels' }}">Barcode labels</a>
+</nav>

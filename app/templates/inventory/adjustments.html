@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Stock adjustments - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Stock adjustments</h1>
+  <a href="{{ url_for('inventory.new_adjustment') }}" class="btn btn-primary">Adjust stock</a>
+</div>
+{% include "inventory/_nav.html" %}
+<div class="table-wrap card">
+  <table>
+    <thead><tr><th>Number</th><th>Date</th><th>Why</th><th>Location</th><th class="num">Items</th><th>Status</th></tr></thead>
+    <tbody>
+    {% for a in adjustments %}
+      <tr>
+        <td><a href="{{ url_for('inventory.view_adjustment', adjustment_id=a.id) }}">{{ a.number }}</a></td>
+        <td>{{ a.adjusted_on.strftime('%d %b %Y') }}</td>
+        <td>{{ reason_labels[a.reason] }}</td>
+        <td>{{ a.location.name }}</td>
+        <td class="num">{{ a.lines|length }}</td>
+        <td><span class="status-badge {{ 'status-void' if a.status.value == 'voided' else 'status-issued' }}">{{ a.status.value|title }}</span></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6" class="empty-state">No adjustments yet. Start with your opening stock or a physical count.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

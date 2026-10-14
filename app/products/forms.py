@@ -2,7 +2,7 @@ from decimal import Decimal
 
 from flask_wtf import FlaskForm
 from flask_wtf.file import FileAllowed, FileField, FileSize
-from wtforms import BooleanField, DecimalField, SelectField, StringField
+from wtforms import BooleanField, DecimalField, IntegerField, SelectField, StringField
 from wtforms.validators import DataRequired, InputRequired, Length, NumberRange, Optional
 
 from app.utils import gst_config
@@ -65,6 +65,11 @@ class ProductForm(FlaskForm):
     min_stock_level = DecimalField("Low-stock alert below", places=3, validators=[Optional(), NumberRange(min=0)])
     allow_negative_stock = BooleanField("Allow billing even when stock shows zero", default=True)
     is_favourite = BooleanField("Pin to the favourites row at the counter")
+    # Only on the page with the matching module on (products.routes keeps
+    # the stored value when it's off).
+    track_batch = BooleanField("Track batches and expiry dates")
+    track_serial = BooleanField("Track each unit by serial number / IMEI")
+    warranty_months = IntegerField("Warranty (months)", validators=[Optional(), NumberRange(min=0, max=240)])
 
     image = FileField(
         "Item image (optional)",

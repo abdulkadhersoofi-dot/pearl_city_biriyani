@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Purchase returns - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header"><h1>Purchase returns / debit notes</h1></div>
+{% include "purchases/_nav.html" %}
+<p class="text-muted">To return goods, open the purchase bill they came on and choose <em>Return goods</em>.</p>
+<div class="table-wrap card">
+  <table>
+    <thead><tr><th>Debit note</th><th>Supplier</th><th>Against</th><th>Date</th><th class="num">Value</th><th class="num">ITC reversed</th><th>Status</th></tr></thead>
+    <tbody>
+    {% for r in returns %}
+      <tr>
+        <td><a href="{{ url_for('purchases.view_return', return_id=r.id) }}">{{ r.number }}</a></td>
+        <td>{{ r.supplier_snapshot.name }}</td>
+        <td><a href="{{ url_for('purchases.view_bill', bill_id=r.purchase_bill_id) }}">{{ r.bill.number }}</a></td>
+        <td>{{ r.return_date.strftime('%d %b %Y') }}</td>
+        <td class="num">{{ '%.2f'|format(r.grand_total) }}</td>
+        <td class="num">{{ '%.2f'|format(r.itc_cgst + r.itc_sgst + r.itc_igst) }}</td>
+        <td><span class="status-badge {{ 'status-void' if r.status.value == 'voided' else 'status-issued' }}">{{ r.status.value|title }}</span></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="7" class="empty-state">No returns to suppliers yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

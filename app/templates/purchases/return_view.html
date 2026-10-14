@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}{{ ret.number }} - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>{{ ret.number }}</h1>
+    <p class="text-muted mt-0">Debit note to supplier · <span class="status-badge {{ 'status-void' if ret.status.value == 'voided' else 'status-issued' }}">{{ ret.status.value|title }}</span></p>
+  </div>
+  <a href="{{ url_for('purchases.view_bill', bill_id=ret.purchase_bill_id) }}" class="btn btn-quiet">Purchase bill {{ ret.bill.number }}</a>
+</div>
+{% include "purchases/_nav.html" %}
+<div class="card" style="margin-bottom:16px;">
+  <div class="form-grid">
+    <div><strong>Supplier</strong><p>{{ ret.supplier_snapshot.name }}{% if ret.supplier_snapshot.gstin %}<br>GSTIN: {{ ret.supplier_snapshot.gstin }}{% endif %}</p></div>
+    <div><strong>Date</strong><p>{{ ret.return_date.strftime('%d %b %Y') }}</p></div>
+    <div><strong>Their invoice</strong><p>{{ ret.bill.supplier_invoice_no }}</p></div>
+    <div><strong>Reason</strong><p>{{ ret.reason }}</p></div>
+  </div>
+  {% if ret.void_reason %}<p><strong>Voided:</strong> {{ ret.void_reason }}</p>{% endif %}
+</div>
+<div class="table-wrap card">
+  <table>
+    <thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Rate</th><th class="num">Taxable</th><th class="num">GST</th><th class="num">Total</th></tr></thead>
+    <tbody>
+    {% for l in ret.lines %}
+      <tr><td>{{ l.description }}</td><td class="num">{{ l.qty|qty }} {{ l.unit }}</td><td class="num">{{ '%.2f'|format(l.rate) }}</td>
+        <td class="num">{{ '%.2f'|format(l.taxable_value) }}</td><td class="num">{{ '%.2f'|format(l.cgst_amount + l.sgst_amount + l.igst_amount) }}</td>
+        <td class="num">{{ '%.2f'|format(l.line_total) }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+<div class="totals-panel"><div class="totals-box">
+  <div class="totals-row"><span>Taxable value</span><span>{{ '%.2f'|format(ret.total_taxable_value) }}</span></div>
+  <div class="totals-row"><span>GST</span><span>{{ '%.2f'|format(ret.total_cgst + ret.total_sgst + ret.total_igst) }}</span></div>
+  <div class="totals-row grand"><span>Debit note value</span><span>Rs. {{ '%.2f'|format(ret.grand_total) }}</span></div>
+  <div class="totals-row"><span>ITC reversed</span><span>{{ '%.2f'|format(ret.itc_cgst + ret.itc_sgst + ret.itc_igst) }}</span></div>
+</div></div>
+{% if ret.status.value == 'posted' %}
+<form method="post" action="{{ url_for('purchases.void_return', return_id=ret.id) }}" class="card row void-box" style="gap:10px; align-items:flex-end;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label class="field" style="margin:0; flex:1;"><span class="field-label">Void this debit note - reason</span>
+    <input type="text" name="reason" class="field-input" required></label>
+  <button class="btn btn-danger" onclick="return confirm('Void {{ ret.number }}? The goods come back into stock.');">Void</button>
+</form>
+{% endif %}
+{% endblock %}

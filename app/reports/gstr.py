@@ -4,10 +4,11 @@ one calendar month.
 
 These are deliberately not a filing tool. Two things a real GSTR-1/3B
 needs that this app has no way to know:
-  - Input Tax Credit (ITC): this app only records sales, never purchases,
-    so GSTR-3B's net-payable figure can't be computed here. The 3B
-    working paper shows gross output tax only, with that limitation
-    stated plainly next to it.
+  - Input Tax Credit (ITC): only clients with the Purchases module on
+    record purchases. For them the 3B working paper adds table 3.1(d)
+    and table 4 from their purchase bills (itc_summary); for everyone
+    else it shows gross output tax only, with that limitation stated
+    plainly next to it.
   - The B2C Large / B2C Small split (GSTR-1 treats a B2C invoice over
     Rs. 2.5 lakh to another state differently): out of scope here, B2C
     is aggregated as a single "B2CS-style" bucket. Flagged in the UI.
@@ -581,4 +582,77 @@ def gstr3b_data(tenant: Tenant, gstin: Gstin, period: str) -> dict:
         "outward_zero_rated": buckets["zero_rated"],
         "outward_nil_rated": buckets["nil_rated"],
         "gross_tax_payable": gross_tax_payable,
+        # Only for clients with the Purchases module on - everyone else's
+        # working paper (and its JSON) stays exactly as it was.
+        **({"itc": itc_summary(tenant, gstin, period)} if tenant.has_feature("purchases") else {}),
+    }
+
+
+def _heads() -> dict:
+    return {"taxable_value": ZERO, "cgst": ZERO, "sgst": ZERO, "igst": ZERO}
+
+
+def itc_summary(tenant: Tenant, gstin: Gstin, period: str) -> dict:
+    """GSTR-3B table 3.1(d) and table 4 from the client's purchase bills
+    (by the date they were entered) and returns to suppliers in the month.
+
+      3.1(d)  inward supplies liable to reverse charge - the RCM bills'
+              value and the tax the client pays on them
+      4A(3)   ITC on those reverse-charge purchases
+      4A(5)   all other ITC - GST charged on the other purchase bills
+      4B(1)   reversed: GST on lines not eligible (s.17(5) blocked, or
+              otherwise ineligible) - availed in 4A, reversed here
+      4B(2)   reversed: credit of goods sent back to suppliers
+      4C      net ITC available = 4A - 4B
+
+    As with the rest of this working paper, the claim must still be
+    checked against GSTR-2B (Purchases -> GSTR-2B match) before filing."""
+    from app.models.purchase import ItcEligibility, PurchaseBill, PurchaseBillLine, PurchaseReturn, PurchaseStatus
+
+    start, end = month_bounds(period)
+    bills = PurchaseBill.query.filter(
+        PurchaseBill.tenant_id == tenant.id, PurchaseBill.gstin_id == gstin.id,
+        PurchaseBill.status == PurchaseStatus.POSTED, PurchaseBill.bill_date >= start, PurchaseBill.bill_date <= end,
+    ).all()
+    rcm_inward, a3, a5, b1, b2 = _heads(), _heads(), _heads(), _heads(), _heads()
+    for bill in bills:
+        target = a3 if bill.is_rcm else a5
+        if bill.is_rcm:
+            rcm_inward["taxable_value"] += bill.total_taxable_value
+        target["taxable_value"] += bill.total_taxable_value
+        for head in ("cgst", "sgst", "igst"):
+            amount = getattr(bill, f"total_{head}")
+            target[head] += amount
+            if bill.is_rcm:
+                rcm_inward[head] += amount
+    if bills:
+        lost = (
+            PurchaseBillLine.query.filter(PurchaseBillLine.bill_id.in_([b.id for b in bills]),
+                                          PurchaseBillLine.itc_eligibility != ItcEligibility.ELIGIBLE).all()
+        )
+        for line in lost:
+            b1["taxable_value"] += line.taxable_value
+            b1["cgst"] += line.cgst_amount
+            b1["sgst"] += line.sgst_amount
+            b1["igst"] += line.igst_amount
+    for ret in PurchaseReturn.query.filter(
+        PurchaseReturn.tenant_id == tenant.id, PurchaseReturn.gstin_id == gstin.id,
+        PurchaseReturn.status == PurchaseStatus.POSTED, PurchaseReturn.return_date >= start,
+        PurchaseReturn.return_date <= end,
+    ):
+        b2["taxable_value"] += ret.total_taxable_value
+        b2["cgst"] += ret.itc_cgst
+        b2["sgst"] += ret.itc_sgst
+        b2["igst"] += ret.itc_igst
+    net = {h: a3[h] + a5[h] - b1[h] - b2[h] for h in ("cgst", "sgst", "igst")}
+    return {
+        "rcm_inward": rcm_inward,
+        "a3_rcm": a3,
+        "a5_other": a5,
+        "b1_ineligible": b1,
+        "b2_returns": b2,
+        "net": net,
+        "net_total": net["cgst"] + net["sgst"] + net["igst"],
+        "rcm_tax_payable": rcm_inward["cgst"] + rcm_inward["sgst"] + rcm_inward["igst"],
+        "bill_count": len(bills),
     }
