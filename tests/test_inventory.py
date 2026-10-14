@@ -9,7 +9,7 @@ from decimal import Decimal
 import pytest
 from flask import g
 
-from app.inventory import hooks, ledger, reports, services
+from app.inventory import ledger, reports, services
 from app.invoicing.services import InvoiceInput, LineInput, create_invoice, void_invoice
 from app.models.audit_log import AuditLog
 from app.models.stock import BranchStockAllocation
