@@ -161,7 +161,7 @@
 
     <div>
       <div class="row" style="align-items:center; gap:10px;">
-        <input type="text" class="field-input pos-search" placeholder="Search items or scan a barcode..."
+        <input type="text" class="field-input pos-search" placeholder="Search / scan"
                x-model="search" x-ref="search" autofocus style="flex:1; margin-bottom:0;"
                @keydown.enter.prevent="searchEnter()">
         <template x-if="categoryWise && !search">
@@ -598,6 +598,10 @@ function posTerminal() {
     holdUrl: "{{ url_for('pos.hold_bill') }}",
     checkoutUrl: "{{ url_for('pos.checkout_route') }}",
     init() {
+      // A category client's menu opens with every group expanded - with
+      // them all collapsed the screen shows only headers and no items at
+      // all. "Collapse all" is still there for a long menu.
+      if (this.categoryWise) this.expandAllCategories();
       this.priceListId = PREFILL.price_list_id || null;
       if (PREFILL.lines.length) {
         this.cart = PREFILL.lines.map(l => ({...l, disc_kind: l.disc_kind || "percent"}));
