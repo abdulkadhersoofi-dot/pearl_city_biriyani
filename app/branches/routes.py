@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from flask import flash, redirect, render_template, url_for
+from flask import flash, redirect, render_template, request, url_for
 from flask_login import current_user
 
 from app.auth.decorators import roles_required
@@ -8,6 +8,7 @@ from app.auth.forms import SetPasswordForm
 from app.branches import branches_bp
 from app.branches.forms import BranchForm, BranchPermissionsForm
 from app.extensions import db
+from app.models.price_list import PriceList
 from app.models.user import BranchType, User, UserRole
 from app.pos.stock import branch_stock_status
 from app.utils.audit import record_audit
@@ -110,9 +111,20 @@ def branch_permissions(user_id):
     branch = tenant_query(User).filter_by(id=user_id, role=UserRole.STAFF).first_or_404()
     assert_owns(branch)
     form = BranchPermissionsForm(obj=branch)
+    lists_on = current_user.tenant.has_feature("multi_price_list")
+    price_lists = tenant_query(PriceList).filter_by(is_active=True).order_by(PriceList.name).all() if lists_on else []
+    form.price_list_id.choices = [("", "Normal prices")] + [(str(pl.id), pl.name) for pl in price_lists]
+    if request.method == "GET":
+        form.price_list_id.data = str(branch.price_list_id) if branch.price_list_id else ""
     if form.validate_on_submit():
         before = {name: getattr(branch, name) for name in PERMISSION_FIELDS}
+        previous_list = branch.price_list_id
         form.populate_obj(branch)
+        branch.price_list_id = previous_list
+        if lists_on:
+            chosen = (form.price_list_id.raw_data or [""])[0]
+            valid = {str(pl.id): pl.id for pl in price_lists}
+            branch.price_list_id = valid.get(chosen)
         # A discount limit only means something with discounts allowed;
         # switching discounts off also zeroes it so a later re-enable
         # starts from a deliberate number, not a forgotten old one.
@@ -125,12 +137,16 @@ def branch_permissions(user_id):
             tenant_id=current_user.tenant_id,
             entity_type="user",
             entity_id=branch.id,
-            details={"before": {k: str(v) for k, v in before.items()}, "after": {k: str(v) for k, v in after.items()}},
+            details={
+                "before": {k: str(v) for k, v in before.items()},
+                "after": {k: str(v) for k, v in after.items()},
+                **({"price_list_id": [previous_list, branch.price_list_id]} if previous_list != branch.price_list_id else {}),
+            },
         )
         db.session.commit()
         flash(f"Permissions updated for {branch.name}.", "success")
         return redirect(url_for("branches.list_branches"))
-    return render_template("branches/permissions.html", form=form, branch=branch)
+    return render_template("branches/permissions.html", form=form, branch=branch, lists_on=lists_on)
 
 
 PERMISSION_FIELDS = (

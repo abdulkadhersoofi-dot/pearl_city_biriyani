@@ -94,6 +94,7 @@ def compute_line(
     is_intra_state: bool,
     charge_gst: bool = True,
     price_includes_tax: bool = False,
+    discount_flat: Decimal = Decimal("0"),
 ) -> dict:
     """Computes one invoice line's taxable value, tax split and total.
 
@@ -109,10 +110,16 @@ def compute_line(
     number on the bill. discount_amount is always reported pre-tax
     either way, so subtotal (taxable + discount) means the same thing on
     every document.
+
+    discount_flat is rupees off the line on its own price basis (pre-tax
+    for an exclusive price, inclusive for an inclusive one), taken after
+    any percentage - see price_basis_amount() to turn "Rs. 10 off what
+    the customer pays" into this. Callers must keep it within the line.
     """
     qty = Decimal(qty)
     rate = Decimal(rate)
     discount_percent = Decimal(discount_percent or 0)
+    discount_flat = Decimal(discount_flat or 0)
     gst_rate = Decimal(gst_rate or 0)
 
     if not charge_gst:
@@ -121,12 +128,14 @@ def compute_line(
     gross = qty * rate
     if price_includes_tax:
         gross_inclusive = round_money(gross)
-        net_inclusive = round_money(gross_inclusive - round_money(gross_inclusive * discount_percent / Decimal(100)))
+        net_inclusive = round_money(
+            gross_inclusive - round_money(gross_inclusive * discount_percent / Decimal(100)) - discount_flat
+        )
         taxable_value = taxable_from_inclusive(net_inclusive, gst_rate)
         discount_amount = taxable_from_inclusive(gross_inclusive, gst_rate) - taxable_value
         tax_total = net_inclusive - taxable_value
     else:
-        discount_amount = round_money(gross * discount_percent / Decimal(100))
+        discount_amount = round_money(gross * discount_percent / Decimal(100)) + round_money(discount_flat)
         taxable_value = round_money(gross - discount_amount)
         tax_total = round_money(taxable_value * gst_rate / Decimal(100))
 
@@ -158,6 +167,84 @@ def compute_line(
         "igst_amount": igst,
         "line_total": line_total,
     }
+
+
+def line_gross(qty: Decimal, rate: Decimal) -> Decimal:
+    """qty x rate to the paisa - the amount a line's discounts come off."""
+    return round_money(Decimal(qty) * Decimal(rate))
+
+
+def price_basis_amount(payable: Decimal, gst_rate: Decimal, price_includes_tax: bool, charge_gst: bool = True) -> Decimal:
+    """Rupees off what the customer pays -> rupees off the line's own
+    price basis (compute_line's discount_flat). A cashier saying "Rs. 50
+    off" means off the total; on a pre-tax price that's Rs. 50 less the
+    GST it would have carried."""
+    payable = Decimal(payable or 0)
+    if price_includes_tax or not charge_gst:
+        return round_money(payable)
+    return taxable_from_inclusive(payable, gst_rate)
+
+
+def allocate_amount(weights: list[Decimal], amount: Decimal) -> list[Decimal]:
+    """Splits `amount` over lines in proportion to `weights` (each line's
+    payable value), to the paisa, with the rounding remainder on the
+    heaviest line so the parts always add back to exactly `amount`.
+    Used to spread a bill-level discount over the bill's lines - tax is
+    always computed per line."""
+    amount = round_money(Decimal(amount or 0))
+    weights = [Decimal(w or 0) for w in weights]
+    total = sum(weights, Decimal("0"))
+    if not weights or total <= 0 or amount == 0:
+        return [Decimal("0.00")] * len(weights)
+    parts = [round_money(amount * w / total) for w in weights]
+    heaviest = max(range(len(weights)), key=lambda i: weights[i])
+    parts[heaviest] += amount - sum(parts, Decimal("0"))
+    return parts
+
+
+_LINE_AMOUNT_FIELDS = ("discount_amount", "taxable_value", "cgst_amount", "sgst_amount", "igst_amount", "line_total")
+
+
+def return_line_amounts(
+    original: dict,
+    original_qty: Decimal,
+    already_returned: dict,
+    already_returned_qty: Decimal,
+    return_qty: Decimal,
+) -> dict:
+    """Amounts for goods coming back against one sold line (a POS sales
+    return / credit-note equivalent).
+
+    `original` holds the sold line's inputs (rate, discount_percent,
+    discount_flat, gst_rate, price_includes_tax, is_intra_state) and its
+    stored amounts (_LINE_AMOUNT_FIELDS). A part return is recomputed with
+    compute_line from the same inputs, the rupee discount pro-rated by
+    quantity; the return that brings the line back to zero takes exactly
+    what is left, so however the goods come back, the returns add up to
+    the original line to the paisa - never more.
+    """
+    original_qty = Decimal(original_qty)
+    return_qty = Decimal(return_qty)
+    already_returned_qty = Decimal(already_returned_qty or 0)
+    remaining_qty = original_qty - already_returned_qty
+    if return_qty <= 0 or return_qty > remaining_qty:
+        raise ValueError("Return quantity must be more than 0 and no more than what is left on the bill.")
+
+    if return_qty == remaining_qty:
+        return {f: round_money(Decimal(original[f]) - Decimal(already_returned.get(f) or 0)) for f in _LINE_AMOUNT_FIELDS}
+
+    flat = round_money(Decimal(original.get("discount_flat") or 0) * return_qty / original_qty)
+    gst_rate = Decimal(original.get("gst_rate") or 0)
+    return compute_line(
+        qty=return_qty,
+        rate=original["rate"],
+        discount_percent=original.get("discount_percent") or 0,
+        gst_rate=gst_rate,
+        is_intra_state=original.get("is_intra_state", True),
+        charge_gst=gst_rate > 0,
+        price_includes_tax=bool(original.get("price_includes_tax")),
+        discount_flat=flat,
+    )
 
 
 def compute_invoice_totals(lines: list[dict]) -> dict:

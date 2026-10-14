@@ -19,6 +19,7 @@ from decimal import Decimal
 
 from app.extensions import db
 from app.models.pos_bill import POSBill, POSBillLine, POSBillStatus
+from app.models.pos_return import POSReturn, POSReturnLine, POSReturnStatus
 from app.models.product import Product
 from app.models.stock import BranchStockAllocation
 
@@ -47,9 +48,38 @@ def today_allocations(branch_user_id: int, on_date: date | None = None) -> dict[
 
 def today_sold(branch_user_id: int, on_date: date | None = None) -> dict[int, Decimal]:
     """product_id -> total quantity this branch has actually sold
-    (completed POS bills only) on on_date (today by default)."""
+    (completed POS bills only) on on_date (today by default), less goods
+    that came back over its counter that day (sales returns) - a returned
+    item is back on the shelf."""
     on_date = on_date or date.today()
     start, end = _day_bounds(on_date)
+    sold = _billed(branch_user_id, start, end)
+    for product_id, qty in returned_qty(start, end, [branch_user_id]).items():
+        sold[product_id] = sold.get(product_id, ZERO) - qty
+    return sold
+
+
+def returned_qty(start: datetime, end: datetime, user_ids: list[int] | None = None, tenant_id: int | None = None) -> dict[int, Decimal]:
+    """product_id -> quantity returned (completed sales returns) between
+    start and end, by the given counters or across a tenant."""
+    query = (
+        db.session.query(POSReturnLine.product_id, db.func.sum(POSReturnLine.qty))
+        .join(POSReturn, POSReturn.id == POSReturnLine.return_id)
+        .filter(
+            POSReturn.status == POSReturnStatus.COMPLETED,
+            POSReturn.returned_at >= start,
+            POSReturn.returned_at <= end,
+            POSReturnLine.product_id.isnot(None),
+        )
+    )
+    if user_ids is not None:
+        query = query.filter(POSReturn.created_by_id.in_(user_ids))
+    if tenant_id is not None:
+        query = query.filter(POSReturn.tenant_id == tenant_id)
+    return dict(query.group_by(POSReturnLine.product_id).all())
+
+
+def _billed(branch_user_id: int, start: datetime, end: datetime) -> dict[int, Decimal]:
     rows = (
         db.session.query(POSBillLine.product_id, db.func.sum(POSBillLine.qty))
         .join(POSBill, POSBill.id == POSBillLine.bill_id)

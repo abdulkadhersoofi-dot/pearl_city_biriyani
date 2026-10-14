@@ -64,6 +64,7 @@ class ProductForm(FlaskForm):
     )
     min_stock_level = DecimalField("Low-stock alert below", places=3, validators=[Optional(), NumberRange(min=0)])
     allow_negative_stock = BooleanField("Allow billing even when stock shows zero", default=True)
+    is_favourite = BooleanField("Pin to the favourites row at the counter")
 
     image = FileField(
         "Item image (optional)",

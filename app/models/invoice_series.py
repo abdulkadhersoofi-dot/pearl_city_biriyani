@@ -16,6 +16,8 @@ class DocumentType(str, enum.Enum):
     CREDIT_NOTE = "credit_note"
     DEBIT_NOTE = "debit_note"
     POS_BILL = "pos_bill"
+    # Goods returned against a POS bill (app.models.pos_return).
+    POS_RETURN = "pos_return"
 
 
 # Document types a tenant may issue, gated by their GST registration type.
@@ -33,6 +35,7 @@ DOCUMENT_TYPE_LABELS = {
     DocumentType.CREDIT_NOTE: "Credit Note",
     DocumentType.DEBIT_NOTE: "Debit Note",
     DocumentType.POS_BILL: "POS Bill",
+    DocumentType.POS_RETURN: "POS Sales Return",
 }
 
 

@@ -88,6 +88,9 @@ class User(db.Model, UserMixin, TimestampMixin):
     can_view_reports = db.Column(db.Boolean, nullable=False, default=True, server_default=db.true())
     can_edit_price_at_pos = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
     can_manage_stock = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
+    # The price list this counter bills from (feature "multi_price_list") -
+    # null = items' normal sale prices.
+    price_list_id = db.Column(db.Integer, db.ForeignKey("price_lists.id", name="fk_users_price_list"))
     last_login_at = db.Column(db.DateTime(timezone=True))
 
     # Billing for an Auditor/Sub-Auditor login - the same system a Tenant

@@ -28,6 +28,9 @@
   .grand { font-size: {{ '15pt' if is_narrow else ('18pt' if is_thermal else '14pt') }}; font-weight: 700; }
   .small { font-size: {{ '10pt' if is_narrow else ('12pt' if is_thermal else '9pt') }}; color: #333; }
   .bill-number { text-align: center; font-weight: 700; word-break: break-all; }
+  .copy-label { text-align: center; font-weight: 700; border: 1px solid #000; padding: 2px 0; margin: 4px 0; letter-spacing: 1px; }
+  .qr { text-align: center; }
+  .qr img { width: {{ '1.4in' if is_thermal else '1.6in' }}; height: auto; }
 </style>
 </head>
 <body>
@@ -35,11 +38,13 @@
     <div class="bold">{{ firm_name }}</div>
     {% if bill.gstin and bill.gstin.gstin %}<div class="small">GSTIN: {{ bill.gstin.gstin }}</div>{% endif %}
   </div>
+  {% if copy_label %}<div class="copy-label">{{ copy_label }}</div>{% endif %}
   <div class="rule"></div>
   <div class="bill-number">{{ bill.bill_number }}</div>
   <table>
     <tr><td>Date</td><td class="right">{{ bill.completed_at.strftime('%d %b %Y %H:%M') if bill.completed_at else '' }}</td></tr>
     {% if bill.customer_snapshot %}<tr><td>Customer</td><td class="right">{{ bill.customer_snapshot.name }}</td></tr>{% endif %}
+    {% if bill.customer_snapshot and bill.customer_snapshot.gstin %}<tr><td>Cust. GSTIN</td><td class="right">{{ bill.customer_snapshot.gstin }}</td></tr>{% endif %}
   </table>
   <div class="rule"></div>
 
@@ -52,11 +57,15 @@
       <td>{{ l.qty }} {{ l.unit }} x {{ '%.2f'|format(l.rate) }}</td>
       <td class="right">{{ '%.2f'|format(l.line_total) }}</td>
     </tr>
+    {% if l.line_discount_kind %}
+    <tr class="small"><td colspan="2">&nbsp;less {{ ((l.line_discount_value|qty) ~ '%') if l.line_discount_kind == 'percent' else ('Rs. %.2f'|format(l.line_discount_value)) }} discount</td></tr>
+    {% endif %}
     {% endfor %}
   </table>
   <div class="rule"></div>
 
   <table class="totals">
+    {% if bill.total_discount %}<tr><td>Discount{% if bill.bill_discount_kind %} (bill {{ ((bill.bill_discount_value|qty) ~ '%') if bill.bill_discount_kind == 'percent' else ('Rs. %.2f'|format(bill.bill_discount_value)) }}){% endif %}</td><td class="right">-{{ '%.2f'|format(bill.total_discount) }}</td></tr>{% endif %}
     <tr><td>Taxable value</td><td class="right">{{ '%.2f'|format(bill.total_taxable_value) }}</td></tr>
     {% if bill.total_cgst %}<tr><td>CGST</td><td class="right">{{ '%.2f'|format(bill.total_cgst) }}</td></tr>{% endif %}
     {% if bill.total_sgst %}<tr><td>SGST</td><td class="right">{{ '%.2f'|format(bill.total_sgst) }}</td></tr>{% endif %}
@@ -66,9 +75,27 @@
   </table>
   <div class="rule"></div>
   <table>
-    <tr><td>Paid via</td><td class="right">{{ bill.payment_mode.value|upper if bill.payment_mode else '-' }}</td></tr>
+    {% if bill.payments|length > 1 %}
+    {% for p in bill.payments %}<tr><td>{{ p.label }}</td><td class="right">{{ '%.2f'|format(p.amount) }}</td></tr>{% endfor %}
+    {% else %}
+    <tr><td>Paid via</td><td class="right">{{ (bill.payments[0].label if bill.payments else (bill.payment_mode.value if bill.payment_mode else '-'))|upper }}</td></tr>
+    {% endif %}
+    {% if bill.cash_tendered is not none %}
+    <tr><td>Cash received</td><td class="right">{{ '%.2f'|format(bill.cash_tendered) }}</td></tr>
+    <tr><td>Change</td><td class="right">{{ '%.2f'|format(bill.change_due or 0) }}</td></tr>
+    {% endif %}
   </table>
+  {% if upi_qr %}
+  <div class="rule"></div>
+  <div class="center small">Scan to pay the balance of Rs. {{ '%.2f'|format(bill.credit_amount) }}</div>
+  <div class="qr"><img src="{{ upi_qr }}" alt="UPI QR"></div>
+  {% endif %}
 
+  {% if bill.status.value == 'voided' %}
+  <div class="rule"></div>
+  <div class="center bold">CANCELLED</div>
+  <div class="center small">{{ bill.void_reason or '' }}</div>
+  {% endif %}
   {% if bill.status.value == 'refunded' %}
   <div class="rule"></div>
   <div class="center bold">REFUNDED</div>

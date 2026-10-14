@@ -27,6 +27,7 @@ from app.models.invoice import Invoice, InvoiceStatus
 from app.models.invoice_series import DocumentType, DOCUMENT_TYPE_LABELS
 from app.models.note import CreditDebitNote, NoteStatus
 from app.models.pos_bill import POSBill, POSBillStatus
+from app.models.pos_return import POSReturn, POSReturnStatus
 from app.models.tenant import Gstin, RegistrationType, Tenant
 
 ZERO = Decimal("0")
@@ -181,6 +182,26 @@ def _collect_supply_lines(tenant: Tenant, gstin: Gstin, period: str) -> tuple[li
         .order_by(POSBill.completed_at)
         .all()
     )
+    voided_pos_bills = POSBill.query.filter(
+        POSBill.tenant_id == tenant.id,
+        POSBill.gstin_id == gstin.id,
+        POSBill.status == POSBillStatus.VOIDED,
+        POSBill.completed_at >= day_start,
+        POSBill.completed_at <= day_end,
+    ).all()
+    # Item-wise POS sales returns, in the month the goods came back. A
+    # voided one only shows in the document summary, as cancelled.
+    pos_returns_all = (
+        POSReturn.query.filter(
+            POSReturn.tenant_id == tenant.id,
+            POSReturn.gstin_id == gstin.id,
+            POSReturn.returned_at >= day_start,
+            POSReturn.returned_at <= day_end,
+        )
+        .order_by(POSReturn.returned_at)
+        .all()
+    )
+    pos_returns = [r for r in pos_returns_all if r.status == POSReturnStatus.COMPLETED]
     notes = (
         CreditDebitNote.query.filter(
             CreditDebitNote.tenant_id == tenant.id,
@@ -273,6 +294,29 @@ def _collect_supply_lines(tenant: Tenant, gstin: Gstin, period: str) -> tuple[li
                     )
                 )
 
+    for ret in pos_returns:
+        cust = ret.customer_snapshot or {}
+        for l in ret.lines:
+            lines.append(
+                SupplyLine(
+                    doc_type=DocumentType.POS_RETURN.value,
+                    doc_number=ret.return_number,
+                    doc_date=ret.returned_at.date(),
+                    customer_name=cust.get("name", "Walk-in"),
+                    customer_gstin=normalized_customer_gstin(cust),
+                    place_of_supply=ret.gstin.state_code if ret.gstin else gstin.state_code,
+                    hsn=l.hsn_or_sac_code or "",
+                    gst_rate=l.gst_rate,
+                    unit=l.unit,
+                    qty=l.qty,
+                    taxable_value=l.taxable_value,
+                    cgst=l.cgst_amount,
+                    sgst=l.sgst_amount,
+                    igst=l.igst_amount,
+                    sign=-1,
+                )
+            )
+
     for note in notes:
         cust = note.customer_snapshot or {}
         sign = -1 if note.document_type == DocumentType.CREDIT_NOTE else 1
@@ -301,6 +345,9 @@ def _collect_supply_lines(tenant: Tenant, gstin: Gstin, period: str) -> tuple[li
         "invoices": invoices,
         "voided_invoices": voided_invoices,
         "pos_bills": pos_bills,
+        "voided_pos_bills": voided_pos_bills,
+        "pos_returns": pos_returns,
+        "pos_returns_all": pos_returns_all,
         "notes": notes,
         "period_start": start,
         "period_end": end,
@@ -337,6 +384,16 @@ def _document_summaries(tenant: Tenant, gstin: Gstin, raw: dict) -> list[DocSeri
         if bill.bill_number:
             prefix = bill.bill_number.rsplit("/", 1)[0]
             record("POS Bill", prefix, bill.bill_number)
+    for bill in raw["voided_pos_bills"]:
+        if bill.bill_number:
+            record("POS Bill", bill.bill_number.rsplit("/", 1)[0], bill.bill_number, cancelled=True)
+    for ret in raw["pos_returns_all"]:
+        record(
+            DOCUMENT_TYPE_LABELS[DocumentType.POS_RETURN],
+            ret.return_number.rsplit("/", 1)[0],
+            ret.return_number,
+            cancelled=ret.status != POSReturnStatus.COMPLETED,
+        )
     for note in raw["notes"]:
         prefix = note.note_number.rsplit("/", 1)[0] if note.note_number else ""
         record(DOCUMENT_TYPE_LABELS.get(note.document_type, note.document_type.value), prefix, note.note_number)
@@ -424,6 +481,25 @@ def gstr1_data(tenant: Tenant, gstin: Gstin, period: str) -> dict:
         }
         for n in raw["notes"]
     ]
+    # A POS return to a registered customer is reported the way a credit
+    # note is - it reduces that customer's B2B supplies.
+    credit_debit_notes += [
+        {
+            "note_number": r.return_number,
+            "note_date": r.returned_at.date(),
+            "document_type": DocumentType.POS_RETURN.value,
+            "against_invoice": r.bill.bill_number if r.bill else "",
+            "customer_gstin": normalized_customer_gstin(r.customer_snapshot),
+            "customer_name": (r.customer_snapshot or {}).get("name", ""),
+            "taxable_value": r.total_taxable_value,
+            "cgst": r.total_cgst,
+            "sgst": r.total_sgst,
+            "igst": r.total_igst,
+            "total": r.grand_total,
+        }
+        for r in raw["pos_returns"]
+        if normalized_customer_gstin(r.customer_snapshot)
+    ]
 
     totals = {
         "taxable_value": sum((l.sign * l.taxable_value for l in lines), ZERO),
@@ -454,7 +530,7 @@ def gstr1_data(tenant: Tenant, gstin: Gstin, period: str) -> dict:
 _TAXABLE_DOC_TYPES = {DocumentType.TAX_INVOICE, DocumentType.POS_BILL, DocumentType.RCM_INVOICE}
 _ZERO_RATED_DOC_TYPES = {DocumentType.EXPORT_INVOICE_IGST, DocumentType.EXPORT_INVOICE_LUT}
 _NIL_RATED_DOC_TYPES = {DocumentType.BILL_OF_SUPPLY}
-_NOTE_DOC_TYPES = {DocumentType.CREDIT_NOTE, DocumentType.DEBIT_NOTE}
+_NOTE_DOC_TYPES = {DocumentType.CREDIT_NOTE, DocumentType.DEBIT_NOTE, DocumentType.POS_RETURN}
 
 
 def gstr3b_data(tenant: Tenant, gstin: Gstin, period: str) -> dict:

@@ -14,35 +14,53 @@
     <thead><tr><th>Bill</th><th>Time</th><th>Payment</th><th>Status</th><th>Amount</th><th></th></tr></thead>
     <tbody>
     {% for b in bills %}
-      <tr>
-        <td><a href="{{ url_for('pos.view_receipt', bill_id=b.id) }}">{{ b.bill_number }}</a></td>
+      <tr{% if b.status.value == 'voided' %} class="text-muted"{% endif %}>
+        <td><a href="{{ url_for('pos.view_receipt', bill_id=b.id) }}">{{ b.bill_number }}</a>{% if b.customer_snapshot %}<div class="text-muted" style="font-size:0.85rem;">{{ b.customer_snapshot.name }}</div>{% endif %}</td>
         <td>{{ b.completed_at.strftime('%H:%M') if b.completed_at else '-' }}</td>
-        <td>{{ b.payment_mode.value|upper if b.payment_mode else '-' }}</td>
-        <td><span class="status-badge status-issued">Completed</span></td>
-        <td>Rs. {{ '%.2f'|format(b.grand_total) }}</td>
-        <td class="row">
-          <button type="button" class="btn btn-quiet" @click="print({{ b.id }})">Reprint</button>
+        <td>{{ b.payment_summary()|upper }}</td>
+        <td>
+          {% if b.status.value == 'voided' %}<span class="status-badge status-void">Voided</span>
+          {% else %}<span class="status-badge status-issued">Completed</span>{% endif %}
+        </td>
+        <td>{% if b.status.value == 'voided' %}<s>Rs. {{ '%.2f'|format(b.grand_total) }}</s>{% else %}Rs. {{ '%.2f'|format(b.grand_total) }}{% endif %}</td>
+        <td><div class="daybook-actions">
+          <button type="button" class="btn btn-quiet btn-sm" @click="print({{ b.id }})">Reprint</button>
           {% if b.status.value == 'completed' and can('refund') %}
+          <a href="{{ url_for('pos.return_items', bill_id=b.id) }}" class="btn btn-quiet btn-sm">Return items</a>
+          {% if not b.returns %}
           <form method="post" action="{{ url_for('pos.refund_bill_route', bill_id=b.id) }}"
                 onsubmit="var r = prompt('Reason for refund:'); if (!r) { return false; } this.reason.value = r; return confirm('Refund Rs. {{ '%.2f'|format(b.grand_total) }} for {{ b.bill_number }}?');">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="amount" value="{{ b.grand_total }}">
             <input type="hidden" name="redirect_date" value="{{ on_date.isoformat() }}">
             <input type="hidden" name="reason">
-            <button class="btn btn-quiet" style="color:var(--color-danger);">Refund</button>
+            <button class="btn btn-quiet btn-sm" style="color:var(--color-danger);">Refund</button>
           </form>
           {% endif %}
-        </td>
+          {% endif %}
+          {% if b.status.value == 'completed' and can('void') %}
+          <form method="post" action="{{ url_for('pos.void_bill_route', bill_id=b.id) }}"
+                onsubmit="var r = prompt('Why is {{ b.bill_number }} being voided?'); if (!r) { return false; } this.reason.value = r; return true;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="redirect_date" value="{{ on_date.isoformat() }}">
+            <input type="hidden" name="reason">
+            <button class="btn btn-quiet btn-sm" style="color:var(--color-danger);">Void</button>
+          </form>
+          {% endif %}
+        </div></td>
       </tr>
       {% if b.status.value == 'refunded' %}
       <tr class="text-muted">
         <td>&#8618; Refund</td>
         <td>{{ b.refunded_at.strftime('%H:%M') if b.refunded_at else '-' }}</td>
-        <td>{{ b.payment_mode.value|upper if b.payment_mode else '-' }}</td>
+        <td>{{ (labels[b.refund_mode] if b.refund_mode else b.payment_summary())|upper }}</td>
         <td><span class="status-badge status-void">Refunded</span></td>
         <td>- Rs. {{ '%.2f'|format(b.refunded_amount or 0) }}</td>
         <td>{{ b.refund_reason or '' }}</td>
       </tr>
+      {% endif %}
+      {% if b.status.value == 'voided' %}
+      <tr class="text-muted"><td colspan="6">&#8618; Voided: {{ b.void_reason or '' }}</td></tr>
       {% endif %}
     {% else %}
       <tr><td colspan="6" class="empty-state">No sales on this date.</td></tr>
@@ -51,6 +69,27 @@
   </table>
   <iframe id="receipt-print-frame" style="display:none;"></iframe>
 </div>
+
+{% if returns %}
+<div class="table-wrap card" style="margin-top:20px;">
+  <h2 class="mt-0">Sales returns</h2>
+  <table>
+    <thead><tr><th>Return</th><th>Time</th><th>Against</th><th>Paid back</th><th>Status</th><th>Amount</th></tr></thead>
+    <tbody>
+    {% for r in returns %}
+      <tr{% if r.status.value == 'voided' %} class="text-muted"{% endif %}>
+        <td><a href="{{ url_for('pos.view_return', return_id=r.id) }}">{{ r.return_number }}</a></td>
+        <td>{{ r.returned_at.strftime('%H:%M') }}</td>
+        <td>{{ r.bill.bill_number }}</td>
+        <td>{{ labels[r.refund_mode]|upper }}</td>
+        <td><span class="status-badge status-{{ 'void' if r.status.value == 'voided' else 'issued' }}">{{ r.status.value|title }}</span></td>
+        <td>- Rs. {{ '%.2f'|format(r.grand_total) }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
 {% endblock %}
 
 {% block scripts %}

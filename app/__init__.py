@@ -165,6 +165,16 @@ def _register_context_processors(app: Flask) -> None:
     app.jinja_env.globals["has_feature"] = current_tenant_has
     app.jinja_env.globals["can"] = current_user_can
 
+    @app.template_filter("qty")
+    def qty_filter(value):
+        """1.000 -> "1", 0.750 -> "0.75", 10.00 -> "10" (never "1E+1")."""
+        from decimal import Decimal
+
+        if value is None:
+            return ""
+        text = f"{Decimal(value).normalize():f}"
+        return text
+
     @app.template_filter("state_name")
     def state_name_filter(state_code: str) -> str:
         from app.utils.indian_states import STATE_NAME_BY_CODE

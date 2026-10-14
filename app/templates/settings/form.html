@@ -58,8 +58,29 @@
       {% if feature.key == 'categories' and tenant.has_feature('categories') %}
       <a href="{{ url_for('products.categories') }}" class="btn btn-secondary" style="margin-top:8px;">Manage categories</a>
       {% endif %}
+      {% if feature.key == 'multi_price_list' and tenant.has_feature('multi_price_list') %}
+      <a href="{{ url_for('products.price_lists') }}" class="btn btn-secondary" style="margin-top:8px;">Manage price lists</a>
+      {% endif %}
     </div>
     {% endfor %}
+  </div>
+
+  <div class="card stack" style="margin-top:16px;">
+    <h2 style="margin:0; font-size:1.05rem;">Counter (POS)</h2>
+    <input type="hidden" name="pos_settings_shown" value="1">
+    <div class="field">
+      <span class="field-label">{{ form.pos_payment_modes.label.text }}</span>
+      <div class="checkbox-grid">
+        {% for option in form.pos_payment_modes %}
+        <label class="row" style="align-items:center; gap:8px; font-weight:600;">{{ option() }} {{ option.label.text }}</label>
+        {% endfor %}
+      </div>
+      <p class="field-help">The buttons shown when a bill is paid. Credit (pay later) also needs the Credit sales module on, and a customer on the bill.</p>
+    </div>
+    <div class="form-grid">
+      {{ field(form.upi_vpa, help="Shows a QR with the bill amount filled in when UPI is picked at checkout. Blank = no QR.") }}
+      {{ field(form.upi_payee_name, help="Optional - defaults to your business name.") }}
+    </div>
   </div>
 
   <div class="card stack" style="margin-top:16px;">

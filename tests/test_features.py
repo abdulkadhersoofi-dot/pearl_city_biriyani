@@ -32,7 +32,8 @@ def test_presets_differ_by_business_type():
 
 
 def test_settings_only_offers_modules_that_are_built():
-    assert [f.key for f in AVAILABLE_FEATURES] == ["categories"]
+    # Phase 2 (POS for every business) built these four.
+    assert [f.key for f in AVAILABLE_FEATURES] == ["categories", "credit_sales", "multi_price_list", "favourites", "day_close"]
 
 
 def test_a_tenant_with_no_flags_has_every_feature_off(tenant):

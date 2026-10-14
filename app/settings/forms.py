@@ -1,7 +1,9 @@
 from flask_wtf import FlaskForm
 from flask_wtf.file import FileAllowed, FileField, FileSize
-from wtforms import BooleanField, DecimalField, SelectField, StringField
-from wtforms.validators import DataRequired, NumberRange, Optional, Regexp
+from wtforms import BooleanField, DecimalField, SelectField, SelectMultipleField, StringField, widgets
+from wtforms.validators import DataRequired, Length, NumberRange, Optional, Regexp
+
+from app.models.pos_bill import PAYMENT_MODE_LABELS, SELECTABLE_PAYMENT_MODES
 
 from app.pos.receipt import THERMAL_WIDTHS_IN
 from app.utils.features import AVAILABLE_FEATURES, BUSINESS_TYPE_CHOICES
@@ -9,6 +11,14 @@ from app.utils.theme import FONT_FAMILY_CHOICES, HEX_COLOR_RE
 from app.utils.uploads import ALLOWED_IMAGE_EXTENSIONS, MAX_IMAGE_BYTES
 
 RECEIPT_FORMAT_CHOICES = [(k, f"{k} roll") for k in THERMAL_WIDTHS_IN] + [("a4", "A4 copy")]
+PAYMENT_MODE_CHOICES = [(m.value, PAYMENT_MODE_LABELS[m]) for m in SELECTABLE_PAYMENT_MODES]
+# name@bank handle, as every UPI app shows it.
+UPI_VPA_RE = r"^[A-Za-z0-9.\-_]{2,256}@[A-Za-z][A-Za-z0-9]{1,63}$"
+
+
+class MultiCheckboxField(SelectMultipleField):
+    widget = widgets.ListWidget(prefix_label=False)
+    option_widget = widgets.CheckboxInput()
 
 
 class TenantSettingsForm(FlaskForm):
@@ -47,6 +57,17 @@ class TenantSettingsForm(FlaskForm):
         "Turnover last financial year (Rs.)", places=2, validators=[Optional(), NumberRange(min=0)]
     )
     default_price_includes_tax = BooleanField("New items' prices already include GST")
+
+    pos_payment_modes = MultiCheckboxField("Payment modes at the counter", choices=PAYMENT_MODE_CHOICES)
+    upi_vpa = StringField(
+        "UPI ID for scan-to-pay",
+        filters=[lambda v: (v or "").strip() or None],
+        validators=[Optional(), Regexp(UPI_VPA_RE, message="Enter a UPI ID like shopname@okhdfcbank")],
+    )
+    upi_payee_name = StringField(
+        "Name shown in the customer's UPI app", filters=[lambda v: (v or "").strip() or None],
+        validators=[Optional(), Length(max=100)],
+    )
 
 
 def feature_field_name(key: str) -> str:

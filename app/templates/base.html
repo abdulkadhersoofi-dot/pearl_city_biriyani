@@ -11,6 +11,14 @@
      CDN is ever blocked/down. #}
   <script src="{{ url_for('static', filename='js/vendor/htmx.min.js') }}"></script>
   <script src="{{ url_for('static', filename='js/gst_calc.js') }}"></script>
+  <script>
+    // Opens a share link (WhatsApp click-to-chat). Inside the ARFA POS
+    // Android app a new window can't open, so navigate instead - the app
+    // hands wa.me links to WhatsApp (MainActivity.shouldOverrideUrlLoading).
+    function openShare(url) {
+      if (window.AndroidPrint) { window.location.href = url; } else { window.open(url, "_blank", "noopener"); }
+    }
+  </script>
   <script defer src="{{ url_for('static', filename='js/vendor/alpine.min.js') }}"></script>
   {% block head %}{% endblock %}
 </head>

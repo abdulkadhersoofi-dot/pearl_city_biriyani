@@ -66,3 +66,44 @@ def build_category_tree(products) -> tuple[list[CategoryGroup], list]:
         cat_group.subcategories.sort(key=lambda g: g.name)
 
     return ordered, uncategorized
+
+
+FAVOURITES_LIMIT = 8
+FAVOURITES_LOOKBACK_DAYS = 30
+
+
+def favourite_products(tenant_id: int, products: list, limit: int = FAVOURITES_LIMIT) -> list:
+    """The POS favourites row (feature "favourites"): items the owner
+    pinned first, then the best sellers of the last 30 days by quantity,
+    up to `limit`. `products` is the terminal's active catalog - only
+    those can appear."""
+    from datetime import datetime, timedelta, timezone
+
+    from app.extensions import db
+    from app.models.pos_bill import POSBill, POSBillLine, POSBillStatus
+
+    by_id = {p.id: p for p in products}
+    chosen = [p for p in products if p.is_favourite][:limit]
+    if len(chosen) < limit:
+        since = datetime.now(timezone.utc) - timedelta(days=FAVOURITES_LOOKBACK_DAYS)
+        top = (
+            db.session.query(POSBillLine.product_id, db.func.sum(POSBillLine.qty).label("qty"))
+            .join(POSBill, POSBill.id == POSBillLine.bill_id)
+            .filter(
+                POSBill.tenant_id == tenant_id,
+                POSBill.status.in_([POSBillStatus.COMPLETED, POSBillStatus.REFUNDED]),
+                POSBill.completed_at >= since,
+                POSBillLine.product_id.isnot(None),
+            )
+            .group_by(POSBillLine.product_id)
+            .order_by(db.desc("qty"))
+            .limit(limit * 2)
+            .all()
+        )
+        for product_id, _qty in top:
+            product = by_id.get(product_id)
+            if product is not None and product not in chosen:
+                chosen.append(product)
+            if len(chosen) >= limit:
+                break
+    return chosen

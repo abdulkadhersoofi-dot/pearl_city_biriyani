@@ -122,7 +122,9 @@ app/
 ├── branches/         # branch logins, stock, per-branch permissions
 ├── settings/         # Client Admin settings: branding, business profile,
 │                     # modules (feature flags)
-├── pos/             # POS module: terminal, hold/resume, refunds, Z-report
+├── pos/             # POS module: terminal, hold/resume, refunds, Z-report;
+│                     # returns.py (sales returns), sessions.py (day
+│                     # open/close), share.py (UPI QR, share links)
 ├── notes/           # Credit/Debit notes, created from an existing invoice
 ├── reports/         # gstr.py (aggregation), export.py (Excel/PDF/JSON) -
 │                     # GSTR-1/3B working papers, see Roadmap for scope
@@ -816,16 +818,113 @@ Gunicorn workers or add app servers behind Nginx as load grows.
   shown wasn't), and the invoice form's preview treated a Delivery
   Challan as taxable.
 
+### Platform build - Phase 2 (POS for every business)
+
+- **Discounts at the counter, capped by the login.** A line can take a %
+  or a rupee discount and the whole bill can too. A rupee amount means
+  "off what the customer pays", so on a pre-tax price it is converted
+  first (`gst.price_basis_amount`). A bill discount is spread over the
+  lines in proportion to what each costs, with the rounding remainder on
+  the biggest line (`gst.allocate_amount`), because tax is always worked
+  out line by line. What the GST is computed on is stored per line:
+  `discount_percent` + `discount_flat` (+ the discount as entered, for
+  the receipt and for resuming a held bill). The cap is checked on each
+  line's total discount, with one paisa of slack for allocation rounding.
+  The cashier only sees discount controls if their login may give them;
+  a Client Admin always can.
+- **Price edit and price lists.** A line's price is the item's price, or
+  its price on the counter's price list, unless the login may change
+  prices. Price lists (`multi_price_list`, Items -> Price lists) are
+  named sets of item prices, assigned per branch login under Branches ->
+  Permissions. Only a login that may change prices can switch lists at
+  the counter. An item missing from a list sells at its normal price.
+  Switching a list off puts its counters back on normal prices rather
+  than blocking billing.
+- **Split payments (`POSPayment`).** Every completed bill now has one
+  payment row per way it was paid, adding up exactly to the grand total.
+  `POSBill.payment_mode` stays filled in (`MIXED` for a split) so
+  anything reading it still works. The migration back-fills one row for
+  every existing bill, so reports read old and new bills the same way.
+  The Z-report splits sales by those rows. A Client Admin picks which
+  modes the counter offers in Settings -> Counter; Cash/UPI/Card stay the
+  default, so existing counters look the same. Credit (pay later) needs
+  the `credit_sales` module and a named customer. Cash received and
+  change are stored on the bill and printed.
+- **Dynamic UPI QR**: `upi://pay` with the payee, the amount and a note,
+  drawn server-side by `segno` (`app/pos/share.py`). No JS library, and
+  no payment network is called - the cashier still confirms the money
+  arrived. It appears only once a UPI ID is set in Settings. On the
+  printed receipt it appears only for an amount still owed (a credit
+  part), because a pay-now QR on a paid bill invites paying twice.
+- **Customer on a bill**: search by phone/name, or quick-add (name,
+  phone, GSTIN optional; state taken from the GSTIN or the shop's own).
+  A customer with a GSTIN makes a B2B POS bill, which GSTR-1 already
+  files under B2B by its customer snapshot.
+- **Barcode and keyboard.** A keyboard-wedge scanner is caught by a
+  buffer of very fast keystrokes ending in Enter, outside any input.
+  Enter in the search box also adds an exact barcode/SKU match.
+  Shortcuts: F2 search, F4 checkout, F8 hold, +/- last line, Esc
+  close, `?` shows the cheat sheet. Items in a weighed/measured unit
+  (`gst_config.LOOSE_QTY_UQC`: KGS, LTR, MTR...) open a keypad for a
+  decimal quantity (Numeric(12,3)).
+- **Favourites row** (`favourites`): pinned items (item form) first,
+  then the 30-day best sellers, up to 8 (`app.pos.catalog`).
+- **Item-wise sales return / exchange (`POSReturn`).** Its own fiscal
+  document with its own row-locked series (`SR/<FY>/0001`), never
+  deleted, voidable the same day with a reason, and audit-logged. Amounts
+  come from `gst.return_line_amounts`: a part return is recomputed from
+  the sold line's own inputs (rupee discount pro-rated by quantity), and
+  the return that empties a line takes exactly what is left. However the
+  goods come back, the returns add up to the original line to the paisa.
+  The original bill is never changed. A return reduces sales, item and
+  stock reports and GSTR-1/3B in the period the goods came back. A B2B
+  return is also listed with the credit notes. The branch stock counter
+  counts returned goods as back on the shelf. Paid back by any counter
+  mode, or kept as exchange credit that a later bill spends through an
+  `EXCHANGE` payment (row-locked, with a running balance). The old
+  amount-only refund still works for bills with no item returns.
+- **Void** (needs the `void` permission): same day only - or, with day
+  close on, only while that counter day is open - and only with no
+  returns against the bill. The number stays used; the bill shows as
+  cancelled in the GSTR-1 document summary and drops out of sales.
+- **Day open / close per counter** (`day_close`, `CashSession` +
+  `CashMovement`). With it on, a counter opens the day with its cash
+  before billing (enforced in checkout, refund and return).
+  Expected cash = opening + cash payments - cash refunds - cash paid back
+  on returns + cash in - cash out. Closing stores the count and the
+  difference, and locks the day: its bills can't be voided, and goods
+  coming back are a return in a later day. A refund lands in the day it
+  is paid out (`refund_session_id`). A partial unique index allows one
+  open day per counter. The Z-report adds a counter-days table. Off, none
+  of this is consulted.
+- **Share and copies.** The bill PDF is shared through a signed,
+  expiring link (itsdangerous on SECRET_KEY, 7 days,
+  `BILL_SHARE_LINK_DAYS`) inside a `wa.me` click-to-chat message - no
+  WhatsApp API. The Android app hands `wa.me` links to WhatsApp
+  (`MainActivity.shouldOverrideUrlLoading`), since its WebView can't open
+  windows. The print straight after checkout asks for the original
+  (`original=1`), which is given out once (`original_printed_at`). Every
+  later print says DUPLICATE COPY, and the shared copy says CUSTOMER COPY.
+  "Reprint last bill" sits in the POS header.
+- **Unchanged for existing clients unless they switch something on:**
+  the new modules are off, the payment buttons are the same three,
+  staff can't discount or edit prices by default, and an old-style
+  single `payment_mode` post still works. Deliberate visible changes:
+  the cart total now shows the rupee-rounded amount the bill will
+  actually charge, and a reprint is marked DUPLICATE COPY.
+
 ## Roadmap
 
 - **Platform build (ARFA general-purpose POS), phase by phase.**
-  Phase 1 - business type + feature flags, tax-inclusive pricing, item
+  Phase 1 (business type + feature flags, tax-inclusive pricing, item
   master, HSN/AATO rule, bulk import/export, `flask backup`, per-staff
-  permissions - is done (see Design notes). Next, in order: Phase 2
-  POS for every business (discount / price-edit UI on top of the
-  permissions already enforced, split payments, UPI QR, barcode,
-  returns, day open/close), 3 inventory & purchases (brings supplier
-  import and the zero-stock rule), 4 expenses, 5 margin scheme,
+  permissions) and Phase 2 (POS for every business: discounts, price
+  lists, split payments, UPI QR, customers, barcode/keyboard, loose
+  quantities, favourites, item returns/exchange, voids, day open/close,
+  bill sharing, duplicate copies) are done - see Design notes. Next, in
+  order: 3 inventory & purchases (brings supplier import, the
+  zero-stock rule, and stock restored by returns in a real stock
+  ledger), 4 expenses, 5 margin scheme,
   6 receivables/payables, 7 P&L, 8 e-invoice/e-way bill (only with
   real credentials), 9 business-type modules, 10 platform polish.
 - **Remaining document types** - Delivery Challan and Receipt/Refund

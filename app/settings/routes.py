@@ -6,7 +6,7 @@ from app.extensions import db
 from app.models.tenant import BusinessType
 from app.models.user import UserRole
 from app.settings import settings_bp
-from app.settings.forms import TenantSettingsForm, feature_field_name
+from app.settings.forms import PAYMENT_MODE_CHOICES, TenantSettingsForm, feature_field_name
 from app.utils.audit import record_audit
 from app.utils.features import AVAILABLE_FEATURES, BUSINESS_TYPE_LABELS, apply_business_type_preset
 from app.utils.uploads import UploadError, delete_uploaded_image, save_uploaded_image
@@ -19,6 +19,7 @@ def index():
     form = TenantSettingsForm(obj=tenant)
     if request.method == "GET":
         form.business_type.data = tenant.business_type.value
+        form.pos_payment_modes.data = list(tenant.pos_payment_modes or [])
         for feature in AVAILABLE_FEATURES:
             getattr(form, feature_field_name(feature.key)).data = tenant.has_feature(feature.key)
     if form.validate_on_submit():
@@ -42,6 +43,16 @@ def index():
         tenant.font_family = form.font_family.data
         tenant.default_receipt_format = form.default_receipt_format.data
         tenant.aato = form.aato.data
+        # Only when the counter card was on the submitted page - an older
+        # client/test posting without it keeps the modes it has.
+        if request.form.get("pos_settings_shown"):
+            modes = [m for m, _ in PAYMENT_MODE_CHOICES if m in (form.pos_payment_modes.data or [])]
+            if not modes:
+                flash("Keep at least one payment mode switched on.", "error")
+                return _render(form, tenant)
+            tenant.pos_payment_modes = modes
+            tenant.upi_vpa = form.upi_vpa.data
+            tenant.upi_payee_name = form.upi_payee_name.data
 
         # The submitted value, not form.business_type.data: when the field
         # is absent, Optional() lets the obj-populated enum (stringified)

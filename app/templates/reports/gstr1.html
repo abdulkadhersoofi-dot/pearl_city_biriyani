@@ -94,7 +94,7 @@
         <tr>
           <td>{{ n.note_number }}</td>
           <td>{{ n.note_date.strftime('%d %b %Y') }}</td>
-          <td>{{ 'Credit' if n.document_type == 'credit_note' else 'Debit' }}</td>
+          <td>{{ 'Debit' if n.document_type == 'debit_note' else ('Sales return' if n.document_type == 'pos_return' else 'Credit') }}</td>
           <td>{{ n.against_invoice }}</td>
           <td>{{ n.customer_name }}</td>
           <td>{{ '%.2f'|format(n.total) }}</td>

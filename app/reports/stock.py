@@ -10,6 +10,7 @@ from decimal import Decimal
 
 from app.extensions import db
 from app.models.pos_bill import POSBill, POSBillLine, POSBillStatus
+from app.pos.stock import returned_qty
 from app.models.product import Product
 from app.models.stock import BranchStockAllocation
 from app.models.tenant import Tenant
@@ -57,6 +58,9 @@ def stock_report_data(tenant: Tenant, start: date, end: date, branch_ids: list[i
     if branch_ids:
         sold_query = sold_query.filter(POSBill.created_by_id.in_(branch_ids))
     sold = dict(sold_query.group_by(POSBillLine.product_id).all())
+    # Goods that came back (sales returns) are back in stock.
+    for product_id, qty in returned_qty(day_start, day_end, branch_ids or None, tenant_id=tenant.id).items():
+        sold[product_id] = sold.get(product_id, ZERO) - qty
 
     products = Product.query.filter_by(tenant_id=tenant.id, is_active=True).order_by(Product.name).all()
     rows = [

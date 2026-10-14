@@ -27,6 +27,9 @@
   {{ checkbox(form.can_void) }}
   {{ checkbox(form.can_view_reports) }}
   {{ checkbox(form.can_manage_stock, help="Applies once stock adjustments and transfers are switched on.") }}
+  {% if lists_on %}
+  {{ field(form.price_list_id, help="The prices this counter bills at. Only a login allowed to change prices can switch lists at the counter.") }}
+  {% endif %}
   <button type="submit" class="btn btn-primary btn-lg">Save permissions</button>
 </form>
 {% endblock %}

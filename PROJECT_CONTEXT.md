@@ -271,7 +271,15 @@ this list is just the index.
   `app/utils/gst_config.py`, item master (sku, barcode, mrp, prices,
   UQC unit, pack unit, service flag; `default_price` -> `sale_price`),
   Excel import/export (`app/bulk/`), `flask backup`, per-staff
-  permissions. Phases 2-10 still to build, in order.
+  permissions.
+- **Platform build Phase 2** (POS for every business): line/bill
+  discounts (% or Rs., capped per login), price edit + price lists,
+  split payments (`POSPayment`), cash tendered/change, UPI QR (segno),
+  customer lookup/quick-add (B2B POS bills), barcode/keyboard shortcuts,
+  decimal quantities for KGS/LTR..., favourites row, item-wise sales
+  returns/exchange (`POSReturn`, series SR), same-day voids, day
+  open/close per counter (`CashSession`), WhatsApp share links,
+  DUPLICATE COPY on reprints. Phases 3-10 still to build, in order.
 
 ## 5. Chronological development history (this session)
 

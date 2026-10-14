@@ -98,3 +98,8 @@ UQC_CODES = {
     "YDS": "Yards",
 }
 DEFAULT_UQC = "PCS"
+
+# Units an item is sold loose in - weighed or measured - so the POS takes
+# a decimal quantity for them (0.750 KGS) on a keypad instead of +1 taps.
+# Not a GST rule; kept beside the UQC list it is a subset of.
+LOOSE_QTY_UQC = frozenset({"KGS", "GMS", "QTL", "TON", "LTR", "MLT", "KLR", "MTR", "CMS", "KME", "YDS", "SQF", "SQM", "CBM", "CCM"})

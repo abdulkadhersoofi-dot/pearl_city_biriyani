@@ -33,3 +33,6 @@ class BranchPermissionsForm(FlaskForm):
     can_void = BooleanField("Void bills")
     can_view_reports = BooleanField("See the Day-book and Z-report")
     can_manage_stock = BooleanField("Adjust and transfer stock")
+    # Choices filled per request (the client's active price lists); only
+    # shown/used with the "multi_price_list" module on.
+    price_list_id = SelectField("Bills from price list", choices=[], validators=[Optional()], validate_choice=False)

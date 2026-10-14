@@ -1,0 +1,57 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @page { size: {{ page_size }}; margin: {{ '0.12in' if is_thermal else '16mm' }}; }
+  body { font-family: "Courier New", monospace; font-size: {{ '12pt' if is_narrow else ('15pt' if is_thermal else '11pt') }}; line-height: 1.25; color: #000; margin: 0; }
+  .center { text-align: center; } .right { text-align: right; } .bold { font-weight: 700; }
+  .rule { border-top: 1px dashed #000; margin: 8px 0; }
+  table { width: 100%; border-collapse: collapse; } td { padding: 2px 0; vertical-align: top; }
+  .grand { font-size: {{ '15pt' if is_narrow else ('18pt' if is_thermal else '14pt') }}; font-weight: 700; }
+  .small { font-size: {{ '10pt' if is_narrow else ('12pt' if is_thermal else '9pt') }}; }
+  .doc-number { text-align: center; font-weight: 700; word-break: break-all; }
+</style>
+</head>
+<body>
+  <div class="center">
+    <div class="bold">{{ firm_name }}</div>
+    {% if ret.gstin and ret.gstin.gstin %}<div class="small">GSTIN: {{ ret.gstin.gstin }}</div>{% endif %}
+    <div class="bold">SALES RETURN</div>
+  </div>
+  <div class="rule"></div>
+  <div class="doc-number">{{ ret.return_number }}</div>
+  <table>
+    <tr><td>Date</td><td class="right">{{ ret.returned_at.strftime('%d %b %Y %H:%M') }}</td></tr>
+    <tr><td>Against bill</td><td class="right">{{ ret.bill.bill_number }}</td></tr>
+    {% if ret.customer_snapshot %}<tr><td>Customer</td><td class="right">{{ ret.customer_snapshot.name }}</td></tr>{% endif %}
+    {% if ret.customer_snapshot and ret.customer_snapshot.gstin %}<tr><td>Cust. GSTIN</td><td class="right">{{ ret.customer_snapshot.gstin }}</td></tr>{% endif %}
+  </table>
+  <div class="rule"></div>
+  <table>
+    {% for l in ret.lines %}
+    <tr><td colspan="2">{{ l.description }}</td></tr>
+    <tr><td>{{ l.qty|qty }} {{ l.unit }} x {{ '%.2f'|format(l.rate) }}</td><td class="right">{{ '%.2f'|format(l.line_total) }}</td></tr>
+    {% endfor %}
+  </table>
+  <div class="rule"></div>
+  <table>
+    <tr><td>Taxable value</td><td class="right">{{ '%.2f'|format(ret.total_taxable_value) }}</td></tr>
+    {% if ret.total_cgst %}<tr><td>CGST</td><td class="right">{{ '%.2f'|format(ret.total_cgst) }}</td></tr>{% endif %}
+    {% if ret.total_sgst %}<tr><td>SGST</td><td class="right">{{ '%.2f'|format(ret.total_sgst) }}</td></tr>{% endif %}
+    {% if ret.total_igst %}<tr><td>IGST</td><td class="right">{{ '%.2f'|format(ret.total_igst) }}</td></tr>{% endif %}
+    <tr><td>Round off</td><td class="right">{{ '%.2f'|format(ret.round_off) }}</td></tr>
+    <tr class="grand"><td>RETURNED</td><td class="right">{{ '%.2f'|format(ret.grand_total) }}</td></tr>
+  </table>
+  <div class="rule"></div>
+  {% if ret.refund_mode.value == 'exchange' %}
+  <div class="center bold">EXCHANGE CREDIT Rs. {{ '%.2f'|format(ret.exchange_balance) }}</div>
+  <div class="center small">Give this slip number at billing to use it.</div>
+  {% else %}
+  <table><tr><td>Paid back via</td><td class="right">{{ ret.refund_mode.value|replace('_', ' ')|upper }}</td></tr></table>
+  {% endif %}
+  {% if ret.status.value == 'voided' %}<div class="rule"></div><div class="center bold">CANCELLED</div>{% endif %}
+  <div class="rule"></div>
+  <div class="center small">Reason: {{ ret.reason }}</div>
+</body>
+</html>

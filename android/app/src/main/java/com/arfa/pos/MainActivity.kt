@@ -1,7 +1,9 @@
 package com.arfa.pos
 
 import android.annotation.SuppressLint
+import android.content.ActivityNotFoundException
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.net.http.SslError
 import android.os.Bundle
@@ -170,6 +172,17 @@ class MainActivity : AppCompatActivity() {
 
         override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
             val uri = request.url
+            // "Share on WhatsApp" (POS bill sharing) - hand the wa.me
+            // click-to-chat link to the phone so WhatsApp opens, rather
+            // than loading it inside this WebView.
+            if (uri.scheme == "https" && uri.host?.let { it in SHARE_HOSTS } == true) {
+                try {
+                    startActivity(Intent(Intent.ACTION_VIEW, uri))
+                } catch (e: ActivityNotFoundException) {
+                    Toast.makeText(this@MainActivity, R.string.no_app_to_share, Toast.LENGTH_LONG).show()
+                }
+                return true
+            }
             if (uri.scheme != "http" && uri.scheme != "https") return true // tel:/mailto:/etc - not used by this app
             if (uri.host != baseHost) return true // never follow a link off this app's own server
             return false
@@ -287,3 +300,6 @@ class MainActivity : AppCompatActivity() {
         printManager.print("ARFA receipt", adapter, PrintAttributes.Builder().build())
     }
 }
+
+/** Links the WebView hands to the phone instead of opening itself. */
+private val SHARE_HOSTS = setOf("wa.me", "api.whatsapp.com")

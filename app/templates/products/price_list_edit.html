@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}{{ price_list.name }} - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>{{ price_list.name }}</h1>
+  <a href="{{ url_for('products.price_lists') }}" class="btn btn-quiet">All price lists</a>
+</div>
+<p class="text-muted">Leave a box empty to sell that item at its normal price. A price follows the item's own "includes GST" setting.</p>
+<form method="post" class="card table-wrap">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <table class="price-list-table">
+    <thead><tr><th>Item</th><th>Normal price</th><th>Price in {{ price_list.name }}</th></tr></thead>
+    <tbody>
+    {% for p in products %}
+      <tr>
+        <td>{{ p.name }}{% if p.sku %} <span class="text-muted">({{ p.sku }})</span>{% endif %}</td>
+        <td>Rs. {{ '%.2f'|format(p.sale_price) }}{% if p.price_includes_tax %} <span class="text-muted">incl. GST</span>{% endif %}</td>
+        <td><input type="number" name="price_{{ p.id }}" class="field-input list-price-input" min="0" step="0.01"
+                   value="{{ '%.2f'|format(prices[p.id]) if p.id in prices else '' }}" aria-label="Price of {{ p.name }}"></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="3" class="empty-state">Add items first.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <button class="btn btn-primary btn-lg" style="margin-top:16px;">Save prices</button>
+</form>
+{% endblock %}

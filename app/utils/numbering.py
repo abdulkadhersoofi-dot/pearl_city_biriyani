@@ -14,6 +14,7 @@ DEFAULT_PREFIXES = {
     DocumentType.CREDIT_NOTE: "CN",
     DocumentType.DEBIT_NOTE: "DN",
     DocumentType.POS_BILL: "POS",
+    DocumentType.POS_RETURN: "SR",
 }
 
 

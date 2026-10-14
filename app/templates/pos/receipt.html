@@ -8,6 +8,7 @@
     <p class="text-muted mt-0">
       {{ bill.completed_at.strftime('%d %b %Y %H:%M') if bill.completed_at else '' }} ·
       <span class="status-badge status-{{ 'issued' if bill.status.value == 'completed' else 'void' }}">{{ bill.status.value|title }}</span>
+      {% if bill.customer_snapshot %} · {{ bill.customer_snapshot.name }}{% if bill.customer_snapshot.gstin %} ({{ bill.customer_snapshot.gstin }}){% endif %}{% endif %}
     </p>
   </div>
   <div class="row">
@@ -22,8 +23,8 @@
     <tbody>
     {% for l in bill.lines %}
       <tr>
-        <td>{{ l.description }}</td>
-        <td>{{ l.qty }} {{ l.unit }}</td>
+        <td>{{ l.description }}{% if l.line_discount_kind %}<div class="text-muted" style="font-size:0.85rem;">less {{ ((l.line_discount_value|qty) ~ '%') if l.line_discount_kind == 'percent' else ('Rs. %.2f'|format(l.line_discount_value)) }}</div>{% endif %}</td>
+        <td>{{ l.qty|qty }} {{ l.unit }}</td>
         <td>Rs. {{ '%.2f'|format(l.line_total) }}</td>
       </tr>
     {% endfor %}
@@ -31,26 +32,45 @@
   </table>
   <div class="totals-panel" style="justify-content:stretch;">
     <div class="totals-box" style="width:100%;">
+      {% if bill.total_discount %}<div class="totals-row"><span>Discount</span><span>- Rs. {{ '%.2f'|format(bill.total_discount) }}</span></div>{% endif %}
       <div class="totals-row"><span>Taxable value</span><span>Rs. {{ '%.2f'|format(bill.total_taxable_value) }}</span></div>
       {% if bill.total_cgst %}<div class="totals-row"><span>CGST</span><span>Rs. {{ '%.2f'|format(bill.total_cgst) }}</span></div>{% endif %}
       {% if bill.total_sgst %}<div class="totals-row"><span>SGST</span><span>Rs. {{ '%.2f'|format(bill.total_sgst) }}</span></div>{% endif %}
       {% if bill.total_igst %}<div class="totals-row"><span>IGST</span><span>Rs. {{ '%.2f'|format(bill.total_igst) }}</span></div>{% endif %}
       <div class="totals-row grand"><span>Total</span><span>Rs. {{ '%.2f'|format(bill.grand_total) }}</span></div>
-      <div class="totals-row"><span>Paid via</span><span>{{ bill.payment_mode.value|upper if bill.payment_mode else '-' }}</span></div>
+      {% if bill.payments|length > 1 %}
+      {% for p in bill.payments %}<div class="totals-row"><span>{{ p.label }}{% if p.reference %} ({{ p.reference }}){% endif %}</span><span>Rs. {{ '%.2f'|format(p.amount) }}</span></div>{% endfor %}
+      {% else %}
+      <div class="totals-row"><span>Paid via</span><span>{{ bill.payment_summary()|upper }}</span></div>
+      {% endif %}
+      {% if bill.cash_tendered is not none %}<div class="totals-row"><span>Cash received / change</span><span>Rs. {{ '%.2f'|format(bill.cash_tendered) }} / Rs. {{ '%.2f'|format(bill.change_due or 0) }}</span></div>{% endif %}
     </div>
   </div>
 </div>
 
 <div class="row" style="margin-top:20px;">
   <button type="button" class="btn btn-secondary" @click="printReceipt()">Reprint</button>
+  <button type="button" class="btn btn-secondary" @click="share()">Share on WhatsApp</button>
+  {% if bill.status.value == 'completed' and can('refund') %}
+  <a href="{{ url_for('pos.return_items', bill_id=bill.id) }}" class="btn btn-secondary">Return items</a>
+  {% endif %}
 </div>
+{% if bill.returns %}
+<div class="card" style="max-width:420px; margin-top:16px;">
+  <strong>Returns against this bill</strong>
+  {% for r in bill.returns %}
+  <div class="totals-row"><a href="{{ url_for('pos.view_return', return_id=r.id) }}">{{ r.return_number }}</a><span>{{ 'Voided' if r.status.value == 'voided' else '- Rs. %.2f'|format(r.grand_total) }}</span></div>
+  {% endfor %}
+</div>
+{% endif %}
 
 {% if bill.status.value != 'completed' %}
 <p class="text-muted" style="margin-top:16px;">
   {% if bill.status.value == 'refunded' %}This sale was refunded - see the Day-book for the refund entry.{% endif %}
+  {% if bill.status.value == 'voided' %}Voided: {{ bill.void_reason }}{% endif %}
 </p>
 {% else %}
-<p class="text-muted" style="margin-top:16px;">To refund this sale, use the Refund action on the <a href="{{ url_for('pos.day_book') }}">Day-book</a> row.</p>
+<p class="text-muted" style="margin-top:16px;">Goods coming back: use Return items. To refund an amount only, use the Refund action on the <a href="{{ url_for('pos.day_book') }}">Day-book</a> row.</p>
 {% endif %}
 
 <iframe id="receipt-print-frame" style="display:none;"></iframe>
@@ -65,6 +85,11 @@ function receiptView() {
       const frame = document.getElementById("receipt-print-frame");
       frame.onload = () => { frame.contentWindow.print(); };
       frame.src = "{{ url_for('pos.receipt_pdf', bill_id=bill.id) }}?format={{ default_receipt_format }}";
+    },
+    async share() {
+      const res = await fetch("{{ url_for('pos.share_bill', bill_id=bill.id) }}");
+      const data = await res.json();
+      openShare(data.whatsapp);
     }
   };
 }

@@ -11,6 +11,7 @@ from decimal import Decimal
 
 from app.extensions import db
 from app.models.pos_bill import POSBill, POSBillLine, POSBillStatus
+from app.models.pos_return import POSReturn, POSReturnStatus
 from app.models.tenant import Tenant
 from app.models.user import User, UserRole
 
@@ -51,6 +52,21 @@ def branch_leaderboard(tenant: Tenant, on_date: date | None = None) -> list[Bran
         .group_by(POSBill.created_by_id)
         .all()
     )
+
+    # Net of goods that came back over that counter today.
+    returns_by_branch = (
+        db.session.query(POSReturn.created_by_id, db.func.sum(POSReturn.grand_total))
+        .filter(
+            POSReturn.tenant_id == tenant.id,
+            POSReturn.status == POSReturnStatus.COMPLETED,
+            POSReturn.returned_at >= day_start,
+            POSReturn.returned_at <= day_end,
+        )
+        .group_by(POSReturn.created_by_id)
+        .all()
+    )
+    for branch_id, amount in returns_by_branch:
+        revenue_by_branch[branch_id] = revenue_by_branch.get(branch_id, ZERO) - amount
 
     branches = User.query.filter_by(tenant_id=tenant.id, role=UserRole.STAFF, is_active=True).order_by(User.name).all()
     rows = [

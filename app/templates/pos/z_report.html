@@ -26,26 +26,56 @@
     <p class="text-muted mt-0">Refunds</p>
     <p style="font-size:1.8rem; font-weight:800; margin:0;">Rs. {{ '%.2f'|format(report.total_refunds) }}</p>
   </div>
+  {% if report.total_returns %}
+  <div class="card">
+    <p class="text-muted mt-0">Sales returns</p>
+    <p style="font-size:1.8rem; font-weight:800; margin:0;">Rs. {{ '%.2f'|format(report.total_returns) }}</p>
+  </div>
+  {% endif %}
 </div>
 
 <div class="card" style="margin-bottom:20px;">
   <h2 style="margin-top:0;">Payment mode split</h2>
   <table>
-    <thead><tr><th>Mode</th><th>Bills</th><th>Total</th></tr></thead>
+    <thead><tr><th>Mode</th><th>Bills</th><th>Total</th>{% if report.total_returns %}<th>Paid back</th>{% endif %}</tr></thead>
     <tbody>
-    {% for mode in PaymentMode %}
+    {% for mode in shown_modes %}
       <tr>
-        <td>{{ mode.value|upper }}</td>
+        <td>{{ labels[mode]|upper }}</td>
         <td>{{ report.by_mode[mode].count }}</td>
         <td>Rs. {{ '%.2f'|format(report.by_mode[mode].total) }}</td>
+        {% if report.total_returns %}<td>{{ ('Rs. %.2f'|format(report.refunds_by_mode[mode])) if report.refunds_by_mode[mode] else '' }}</td>{% endif %}
       </tr>
     {% endfor %}
     <tr class="bold">
       <td><strong>Net sales</strong></td>
       <td></td>
       <td><strong>Rs. {{ '%.2f'|format(report.net_sales) }}</strong></td>
+      {% if report.total_returns %}<td></td>{% endif %}
     </tr>
     </tbody>
   </table>
+  {% if report.voided_count %}<p class="text-muted">{{ report.voided_count }} bill(s) voided - not counted above.</p>{% endif %}
 </div>
+
+{% if sessions %}
+<div class="card">
+  <h2 class="mt-0">Counter days</h2>
+  <table>
+    <thead><tr><th>Counter</th><th>Opened</th><th>Closed</th><th>Expected cash</th><th>Counted</th><th>Difference</th></tr></thead>
+    <tbody>
+    {% for a in sessions %}
+      <tr>
+        <td><a href="{{ url_for('pos.day_session', session_id=a.session.id) }}">{{ a.session.user.name }}</a></td>
+        <td>{{ a.session.opened_at.strftime('%H:%M') }}</td>
+        <td>{{ a.session.closed_at.strftime('%H:%M') if a.session.closed_at else 'Open' }}</td>
+        <td>Rs. {{ '%.2f'|format(a.session.expected_cash if a.session.closed_at else a.expected_cash) }}</td>
+        <td>{{ ('Rs. %.2f'|format(a.session.counted_cash)) if a.session.closed_at else '-' }}</td>
+        <td>{% if a.session.closed_at %}<strong style="color:{{ 'var(--color-danger)' if a.session.difference < 0 else 'inherit' }};">Rs. {{ '%.2f'|format(a.session.difference) }}</strong>{% else %}-{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
 {% endblock %}

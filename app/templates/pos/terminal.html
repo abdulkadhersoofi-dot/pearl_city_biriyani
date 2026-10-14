@@ -25,39 +25,99 @@
     {% endfor %}
   ];
   const UNCATEGORIZED_PRODUCTS = [{% for p in uncategorized_products %}{{ product_js(p) }}, {% endfor %}];
+  const FAVOURITES = [{% for p in favourites %}{{ product_js(p) }}, {% endfor %}];
   const DEFAULT_RECEIPT_FORMAT = {{ default_receipt_format|tojson }};
   const STOCK_STATUS = [
     {% for s in stock_status %}
     {product_id: {{ s.product_id }}, name: {{ s.product_name|tojson }}, unit: {{ s.unit|tojson }}, allocated: {{ s.allocated }}, sold: {{ s.sold }}},
     {% endfor %}
   ];
-  const PREFILL_CART = [
-    {% for l in (resume_bill.lines if resume_bill else []) %}
-    {product_id: {{ l.product_id or 'null' }}, description: {{ l.description|tojson }}, hsn: {{ (l.hsn_or_sac_code or '')|tojson }}, rate: {{ l.rate }}, incl: {{ l.price_includes_tax|tojson }}, gst_rate: {{ l.gst_rate }}, unit: {{ (l.unit or 'pcs')|tojson }}, qty: {{ l.qty }}},
-    {% endfor %}
-  ];
+  const PREFILL = {
+    lines: [
+      {% for l in (resume_bill.lines if resume_bill else []) %}
+      {product_id: {{ l.product_id or 'null' }}, description: {{ l.description|tojson }}, hsn: {{ (l.hsn_or_sac_code or '')|tojson }}, rate: {{ l.rate }}, incl: {{ l.price_includes_tax|tojson }}, gst_rate: {{ l.gst_rate }}, unit: {{ (l.unit or 'pcs')|tojson }}, qty: {{ l.qty }}, loose: {{ (l.product.sells_loose if l.product else false)|tojson }}, disc_kind: {{ (l.line_discount_kind or '')|tojson }}, disc_value: {{ l.line_discount_value or 0 }}},
+      {% endfor %}
+    ],
+    customer: {{ ({"id": resume_bill.customer.id, "name": resume_bill.customer.name, "phone": resume_bill.customer.phone or "", "gstin": resume_bill.customer.gstin or ""} if resume_bill and resume_bill.customer else none)|tojson }},
+    bill_disc_kind: {{ ((resume_bill.bill_discount_kind or '') if resume_bill else '')|tojson }},
+    bill_disc_value: {{ (resume_bill.bill_discount_value if resume_bill else 0) or 0 }},
+    price_list_id: {{ ((resume_bill.price_list_id if resume_bill else none) or default_price_list_id)|tojson }},
+  };
   // bill_id=0 is a placeholder swapped for the real id once checkout
   // returns one - keeps the route structure in one place (url_for)
   // instead of hand-building the path in JS.
   const RECEIPT_PDF_URL_TEMPLATE = {{ url_for('pos.receipt_pdf', bill_id=0)|tojson }};
+  const SHARE_URL_TEMPLATE = {{ url_for('pos.share_bill', bill_id=0)|tojson }};
   const CSRF_TOKEN = {{ csrf_token()|tojson }};
   // Composition/unregistered clients never charge GST at the counter -
   // the cart preview must not add it either (app.pos.services._charge_gst).
   const CHARGES_GST = {{ charges_gst|tojson }};
+  const PAYMENT_MODES = {{ payment_modes|tojson }};
+  const UPI_READY = {{ upi_ready|tojson }};
+  const UPI_QR_URL = {{ url_for('pos.upi_qr')|tojson if upi_ready else '""' }};
+  // What this login may do - the server enforces the same limits.
+  const DISCOUNT_CAP = {{ discount_cap|float }};
+  const MAY_EDIT_PRICE = {{ may_edit_price|tojson }};
+  const PRICE_LISTS = {{ price_lists|tojson }};
+  const EXCHANGE = {{ exchange|tojson }};
+  const LAST_BILL_ID = {{ (last_bill.id if last_bill else none)|tojson }};
+  const CUSTOMER_SEARCH_URL = {{ url_for('pos.customer_search')|tojson }};
+  const CUSTOMER_ADD_URL = {{ url_for('pos.customer_quick_add')|tojson }};
 </script>
 {% endblock %}
 
 {% block content %}
-<div x-data="posTerminal()" x-init="init()">
+<div x-data="posTerminal()" x-init="init()" @keydown.window="onKey($event)">
   <div class="page-header">
     <h1>POS billing</h1>
     <div class="row">
+      {% if last_bill %}
+      <button type="button" class="btn btn-quiet" @click="reprintLast()" title="Prints a DUPLICATE COPY">Reprint last bill</button>
+      {% endif %}
+      {% if day_close and cash_session %}
+      <a href="{{ url_for('pos.day_close') }}" class="btn btn-quiet">Cash in/out &middot; Close day</a>
+      {% endif %}
       {% if can('view_reports') %}
       <a href="{{ url_for('pos.day_book') }}" class="btn btn-quiet">Day-book</a>
       <a href="{{ url_for('pos.z_report_view') }}" class="btn btn-quiet">Z-report</a>
       {% endif %}
+      <button type="button" class="btn btn-quiet shortcut-hint-btn" @click="showShortcuts = !showShortcuts" title="Keyboard shortcuts">?</button>
     </div>
   </div>
+
+  <div class="card shortcut-sheet" x-show="showShortcuts" x-cloak>
+    <strong>Keyboard &amp; scanner</strong>
+    <ul>
+      <li><kbd>F2</kbd> search items</li>
+      <li><kbd>F4</kbd> checkout</li>
+      <li><kbd>F8</kbd> hold bill</li>
+      <li><kbd>+</kbd> / <kbd>-</kbd> change the last item's quantity</li>
+      <li><kbd>Esc</kbd> close / cancel</li>
+      <li>Barcode scanner: just scan - the item is added. Typing a barcode or SKU in search and pressing <kbd>Enter</kbd> works too.</li>
+    </ul>
+  </div>
+
+  {% if day_close and not cash_session %}
+  <div class="card day-open-card">
+    <h2 class="mt-0">Open the day</h2>
+    <p class="text-muted mt-0">Count the cash in the drawer before the first bill.</p>
+    <form method="post" action="{{ url_for('pos.day_open') }}" class="row" style="gap:10px; align-items:flex-end;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label class="field" style="margin:0;">
+        <span class="field-label">Opening cash (Rs.)</span>
+        <input type="number" name="opening_cash" min="0" step="0.01" class="field-input" value="0" required>
+      </label>
+      <button class="btn btn-primary btn-lg">Open day</button>
+    </form>
+  </div>
+  {% endif %}
+
+  <template x-if="exchange">
+    <div class="card exchange-banner">
+      Exchange credit <strong x-text="exchange ? 'Rs. ' + exchange.balance.toFixed(2) : ''"></strong> from return <strong x-text="exchange ? exchange.number : ''"></strong> - it pays first at checkout.
+      <button type="button" class="btn btn-quiet btn-sm" @click="exchange = null">Don't use</button>
+    </div>
+  </template>
 
   <details class="card" style="margin-bottom:16px;" x-show="stock.length > 0" x-cloak>
     <summary>Today's stock ({{ stock_status|length }} item{{ 's' if stock_status|length != 1 }})</summary>
@@ -67,7 +127,7 @@
         <template x-for="s in stock" :key="s.product_id">
           <tr :style="stockRemaining(s.product_id) <= 0 ? 'color:var(--color-danger);' : ''">
             <td x-text="s.name"></td>
-            <td><span x-text="stockRemaining(s.product_id)"></span> <span x-text="s.unit"></span></td>
+            <td><span x-text="fmtQty(stockRemaining(s.product_id))"></span> <span x-text="s.unit"></span></td>
           </tr>
         </template>
       </tbody>
@@ -101,8 +161,9 @@
 
     <div>
       <div class="row" style="align-items:center; gap:10px;">
-        <input type="text" class="field-input pos-search" placeholder="Search items..."
-               x-model="search" autofocus style="flex:1; margin-bottom:0;">
+        <input type="text" class="field-input pos-search" placeholder="Search items or scan a barcode..."
+               x-model="search" x-ref="search" autofocus style="flex:1; margin-bottom:0;"
+               @keydown.enter.prevent="searchEnter()">
         <template x-if="categoryWise && !search">
           <div class="row" style="gap:8px; flex-shrink:0;">
             <button type="button" class="btn btn-quiet btn-sm" @click="expandAllCategories()">Expand all</button>
@@ -110,6 +171,18 @@
           </div>
         </template>
       </div>
+      <p class="scan-note" x-show="scanMessage" x-text="scanMessage" x-cloak></p>
+
+      <template x-if="favourites.length && !search">
+        <div class="favourites-row">
+          <template x-for="p in favourites" :key="'fav-'+p.id">
+            <button type="button" class="favourite-chip" @click="addToCart(p)">
+              <span x-text="p.name"></span>
+              <span class="text-muted" x-text="'Rs. ' + priceFor(p).toFixed(2)"></span>
+            </button>
+          </template>
+        </div>
+      </template>
 
       <!-- Category/sub-category tree - only when the tenant has turned
            this on, and only while not searching (a search result is
@@ -133,7 +206,7 @@
                           <template x-if="!p.image"><span class="tile-image-placeholder" x-text="p.name.charAt(0)"></span></template>
                         </div>
                         <span class="tile-name" x-text="p.name"></span>
-                        <span class="tile-price" x-text="'Rs. ' + p.rate.toFixed(2)"></span>
+                        <span class="tile-price" x-text="'Rs. ' + priceFor(p).toFixed(2) + (p.loose ? ' / ' + p.unit : '')"></span>
                       </button>
                     </template>
                   </div>
@@ -152,7 +225,7 @@
                             <template x-if="!p.image"><span class="tile-image-placeholder" x-text="p.name.charAt(0)"></span></template>
                           </div>
                           <span class="tile-name" x-text="p.name"></span>
-                          <span class="tile-price" x-text="'Rs. ' + p.rate.toFixed(2)"></span>
+                          <span class="tile-price" x-text="'Rs. ' + priceFor(p).toFixed(2) + (p.loose ? ' / ' + p.unit : '')"></span>
                         </button>
                       </template>
                     </div>
@@ -176,7 +249,7 @@
                         <template x-if="!p.image"><span class="tile-image-placeholder" x-text="p.name.charAt(0)"></span></template>
                       </div>
                       <span class="tile-name" x-text="p.name"></span>
-                      <span class="tile-price" x-text="'Rs. ' + p.rate.toFixed(2)"></span>
+                      <span class="tile-price" x-text="'Rs. ' + priceFor(p).toFixed(2) + (p.loose ? ' / ' + p.unit : '')"></span>
                     </button>
                   </template>
                 </div>
@@ -196,7 +269,7 @@
                   <template x-if="!p.image"><span class="tile-image-placeholder" x-text="p.name.charAt(0)"></span></template>
                 </div>
                 <span class="tile-name" x-text="p.name"></span>
-                <span class="tile-price" x-text="'Rs. ' + p.rate.toFixed(2)"></span>
+                <span class="tile-price" x-text="'Rs. ' + priceFor(p).toFixed(2) + (p.loose ? ' / ' + p.unit : '')"></span>
               </button>
             </template>
           </div>
@@ -212,23 +285,57 @@
         <h2 style="margin:0;">Cart</h2>
         <button type="button" class="btn btn-quiet" x-show="cart.length > 0" @click="clearCart()">Clear all</button>
       </div>
+
+      <div class="cart-tools">
+        <template x-if="customer">
+          <span class="customer-chip">
+            <span x-text="customer.name + (customer.gstin ? ' (B2B)' : '')"></span>
+            <button type="button" @click="customer = null" aria-label="Remove customer">&times;</button>
+          </span>
+        </template>
+        <template x-if="!customer">
+          <button type="button" class="btn btn-quiet btn-sm" @click="openCustomer()">+ Customer</button>
+        </template>
+        <template x-if="priceLists.length">
+          <select class="field-input price-list-select" x-model.number="priceListId" @change="repriceCart()"
+                  :disabled="!MAY_EDIT_PRICE" aria-label="Price list">
+            <option value="">Normal prices</option>
+            <template x-for="pl in priceLists" :key="pl.id">
+              <option :value="pl.id" x-text="pl.name" :selected="pl.id === priceListId"></option>
+            </template>
+          </select>
+        </template>
+      </div>
+
       <div class="cart-items">
         <template x-if="cart.length === 0">
           <div class="cart-empty">Tap an item to add it to the cart.</div>
         </template>
         <template x-for="(line, i) in cart" :key="i">
           <div class="cart-line">
-            <span class="cart-line-name" x-text="line.description"></span>
+            <span class="cart-line-name" role="button" tabindex="0" @click="openLine(i)" @keydown.enter="openLine(i)"
+                  :title="canTouchLine() ? 'Tap to change' : ''" x-text="line.description"></span>
             <div class="qty-stepper">
               <button type="button" @click="decrement(i)">&minus;</button>
-              <input type="number" min="0" step="1" class="qty-input" x-model.number="line.qty"
+              <input type="number" min="0" :step="line.loose ? '0.001' : '1'" class="qty-input" x-model.number="line.qty"
                      @change="setQty(i, line.qty)">
               <button type="button" @click="increment(i)">+</button>
             </div>
-            <span class="cart-line-amount" x-text="'Rs. ' + lineTotal(line).toFixed(2)"></span>
+            <span class="cart-line-amount" x-text="'Rs. ' + lineAmount(i).toFixed(2)"></span>
+            <template x-if="lineNote(line)">
+              <span class="cart-line-note" x-text="lineNote(line)"></span>
+            </template>
           </div>
         </template>
       </div>
+
+      <template x-if="computed().discount > 0">
+        <div class="cart-sub-row"><span>Discount</span><span x-text="'- Rs. ' + computed().discount.toFixed(2)"></span></div>
+      </template>
+      <template x-if="DISCOUNT_CAP > 0 && cart.length">
+        <button type="button" class="btn btn-quiet btn-sm" @click="openBillDiscount()"
+                x-text="billDisc.value ? 'Bill discount: ' + discLabel(billDisc.kind, billDisc.value) : '+ Bill discount'"></button>
+      </template>
 
       <div class="cart-total-row">
         <span>Total</span>
@@ -236,10 +343,14 @@
       </div>
 
       <button type="button" class="btn btn-primary btn-lg btn-block" :disabled="cart.length === 0"
-              @click="checkoutStep = 'payment'">Checkout</button>
+              @click="startCheckout()">Checkout</button>
 
       <form method="post" :action="holdUrl" x-ref="holdForm">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="customer_id" :value="customer ? customer.id : ''">
+        <input type="hidden" name="bill_discount_kind" :value="billDisc.value ? billDisc.kind : ''">
+        <input type="hidden" name="bill_discount_value" :value="billDisc.value || ''">
+        <input type="hidden" name="price_list_id" :value="priceListId || ''">
         <template x-for="(line, i) in cart" :key="'hold-'+i">
           <span>
             <input type="hidden" name="line_product_id[]" :value="line.product_id || ''">
@@ -250,6 +361,8 @@
             <input type="hidden" name="line_gst_rate[]" :value="line.gst_rate">
             <input type="hidden" name="line_incl[]" :value="line.incl ? '1' : '0'">
             <input type="hidden" name="line_unit[]" :value="line.unit">
+            <input type="hidden" name="line_discount_kind[]" :value="line.disc_value ? line.disc_kind : ''">
+            <input type="hidden" name="line_discount_value[]" :value="line.disc_value || ''">
           </span>
         </template>
         <button type="submit" class="btn btn-secondary btn-block" :disabled="cart.length === 0">Hold bill</button>
@@ -259,38 +372,188 @@
 
   <!-- 3-tap checkout: Checkout (above) -> pick payment mode -> Confirm -> prints immediately at the tenant's default paper size, no size prompt -->
   <div class="checkout-overlay" x-show="checkoutStep !== 'idle'" x-cloak>
-    <div class="checkout-sheet" @click.outside="checkoutStep === 'payment' || checkoutStep === 'confirm' ? checkoutStep = 'idle' : null">
+    <div class="checkout-sheet" @click.outside="['payment', 'confirm', 'split'].includes(checkoutStep) ? checkoutStep = 'idle' : null">
       <template x-if="checkoutStep === 'payment'">
         <div>
           <h2>Pick payment mode</h2>
+          <p class="text-muted mt-0" x-show="exchangeApplied() > 0"
+             x-text="'Exchange credit pays Rs. ' + exchangeApplied().toFixed(2) + ' - pick how the remaining Rs. ' + (cartTotal() - exchangeApplied()).toFixed(2) + ' is paid.'"></p>
           <div class="payment-mode-grid">
-            <button type="button" class="payment-mode-btn" @click="selectPayment('cash')">Cash</button>
-            <button type="button" class="payment-mode-btn" @click="selectPayment('upi')">UPI</button>
-            <button type="button" class="payment-mode-btn" @click="selectPayment('card')">Card</button>
+            <template x-for="m in paymentModes" :key="m.value">
+              <button type="button" class="payment-mode-btn" @click="selectPayment(m.value)" x-text="m.label"></button>
+            </template>
           </div>
+          <template x-if="exchangeApplied() > 0 && exchangeApplied() >= cartTotal()">
+            <button type="button" class="btn btn-primary btn-block" @click="selectPayment('exchange')">Pay all with exchange credit</button>
+          </template>
+          <template x-if="paymentModes.length > 1">
+            <button type="button" class="btn btn-secondary btn-block" style="margin-bottom:10px;" @click="startSplit()">Split payment</button>
+          </template>
           <button type="button" class="btn btn-quiet" @click="checkoutStep = 'idle'">Cancel</button>
         </div>
       </template>
-      <template x-if="checkoutStep === 'confirm'">
+
+      <template x-if="checkoutStep === 'split'">
         <div>
-          <h2>Confirm sale</h2>
-          <p class="totals-row grand" style="justify-content:center; font-size:2rem;" x-text="'Rs. ' + cartTotal().toFixed(2)"></p>
-          <p class="text-muted">Paid via <span x-text="paymentMode.toUpperCase()"></span></p>
+          <h2>Split payment</h2>
+          <p class="text-muted mt-0" x-text="'Bill total Rs. ' + cartTotal().toFixed(2)"></p>
+          <template x-for="(row, r) in splitRows" :key="'split-'+r">
+            <div class="split-row">
+              <select class="field-input" x-model="row.mode" :disabled="row.mode === 'exchange'">
+                <template x-for="m in paymentModes" :key="m.value"><option :value="m.value" x-text="m.label" :selected="m.value === row.mode"></option></template>
+                <template x-if="row.mode === 'exchange'"><option value="exchange" selected>Exchange credit</option></template>
+              </select>
+              <input type="number" class="field-input split-amount" min="0" step="0.01" x-model="row.amount" aria-label="Amount">
+              <button type="button" class="btn btn-quiet btn-sm" @click="splitRows.splice(r, 1)" x-show="splitRows.length > 1 && row.mode !== 'exchange'">&times;</button>
+            </div>
+          </template>
+          <button type="button" class="btn btn-quiet btn-sm" @click="addSplitRow()">+ Add another way</button>
+          <p class="split-remaining" :class="splitRemaining() === 0 ? 'ok' : ''"
+             x-text="splitRemaining() === 0 ? 'Adds up to the bill.' : (splitRemaining() > 0 ? 'Still to pay: Rs. ' + splitRemaining().toFixed(2) : 'Over by Rs. ' + (-splitRemaining()).toFixed(2))"></p>
+          <template x-if="splitRows.some(r => r.mode === 'cash')">
+            <label class="field">
+              <span class="field-label">Cash received (optional)</span>
+              <input type="number" class="field-input" min="0" step="0.01" x-model="cashTendered">
+            </label>
+          </template>
           <p class="text-muted" x-show="checkoutError" x-text="checkoutError" style="color:var(--color-danger);"></p>
-          <button type="button" class="btn btn-primary btn-lg btn-block" :disabled="submitting" @click="confirmCheckout()">
+          <button type="button" class="btn btn-primary btn-lg btn-block" :disabled="submitting || splitRemaining() !== 0" @click="confirmCheckout()">
             <span x-text="submitting ? 'Please wait...' : 'Confirm'"></span>
           </button>
           <button type="button" class="btn btn-quiet" style="margin-top:10px;" @click="checkoutStep = 'payment'" :disabled="submitting">Back</button>
         </div>
       </template>
+
+      <template x-if="checkoutStep === 'confirm'">
+        <div>
+          <h2>Confirm sale</h2>
+          <p class="totals-row grand" style="justify-content:center; font-size:2rem;" x-text="'Rs. ' + cartTotal().toFixed(2)"></p>
+          <p class="text-muted">Paid via <span x-text="modeLabel(paymentMode).toUpperCase()"></span><span x-show="exchangeApplied() > 0 && paymentMode !== 'exchange'" x-text="' + exchange credit Rs. ' + exchangeApplied().toFixed(2)"></span></p>
+          <template x-if="paymentMode === 'cash'">
+            <div class="tender-box">
+              <label class="field" style="margin:0;">
+                <span class="field-label">Cash received (optional)</span>
+                <input type="number" class="field-input tender-input" min="0" step="0.01" x-model="cashTendered" x-ref="tender">
+              </label>
+              <div class="tender-quick">
+                <template x-for="amt in quickTenders()" :key="'q'+amt">
+                  <button type="button" class="btn btn-quiet btn-sm" @click="cashTendered = amt" x-text="'Rs. ' + amt"></button>
+                </template>
+              </div>
+              <p class="change-due" x-show="changeDue() !== null" x-text="changeText()"
+                 :class="changeDue() !== null && changeDue() < 0 ? 'short' : ''"></p>
+            </div>
+          </template>
+          <template x-if="paymentMode === 'upi' && upiSrc">
+            <div class="upi-box">
+              <img :src="upiSrc" alt="Scan to pay with any UPI app" width="200" height="200">
+              <p class="text-muted mt-0">Customer scans to pay. Confirm once the money shows in your UPI app.</p>
+            </div>
+          </template>
+          <template x-if="paymentMode === 'credit'">
+            <p class="text-muted" x-text="customer ? 'On ' + customer.name + '\'s account - to be paid later.' : 'Add a customer to the bill first.'"></p>
+          </template>
+          <p class="text-muted" x-show="checkoutError" x-text="checkoutError" style="color:var(--color-danger);"></p>
+          <button type="button" class="btn btn-primary btn-lg btn-block" :disabled="submitting || (paymentMode === 'cash' && changeDue() !== null && changeDue() < 0)" @click="confirmCheckout()">
+            <span x-text="submitting ? 'Please wait...' : 'Confirm'"></span>
+          </button>
+          <button type="button" class="btn btn-quiet" style="margin-top:10px;" @click="checkoutStep = 'payment'" :disabled="submitting">Back</button>
+        </div>
+      </template>
+
       <template x-if="checkoutStep === 'done'">
         <div>
           <h2>Printed</h2>
           <p class="text-muted mt-0">Bill <strong x-text="completedBillNumber"></strong> sent to the printer.</p>
-          <button type="button" class="btn btn-secondary btn-block" @click="printReceipt(DEFAULT_RECEIPT_FORMAT)">Reprint</button>
+          <p class="change-due" x-show="completedChange !== null && completedChange > 0" x-text="'Give change: Rs. ' + (completedChange || 0).toFixed(2)"></p>
+          <button type="button" class="btn btn-secondary btn-block" @click="printReceipt(DEFAULT_RECEIPT_FORMAT, false)">Reprint</button>
+          <button type="button" class="btn btn-secondary btn-block" style="margin-top:10px;" @click="shareBill()">Share on WhatsApp</button>
           <button type="button" class="btn btn-primary btn-block" style="margin-top:10px;" @click="newSale()">New sale</button>
         </div>
       </template>
+    </div>
+  </div>
+
+  <!-- Line editor: quantity keypad (loose items), price (if allowed), discount (if allowed) -->
+  <div class="checkout-overlay" x-show="lineEditor.open" x-cloak>
+    <div class="checkout-sheet" @click.outside="lineEditor.open = false">
+      <h2 x-text="lineEditor.title"></h2>
+      <label class="field">
+        <span class="field-label" x-text="'Quantity' + (lineEditor.unit ? ' (' + lineEditor.unit + ')' : '')"></span>
+        <input type="text" inputmode="decimal" class="field-input keypad-display" x-model="lineEditor.qty" x-ref="lineQty">
+      </label>
+      <template x-if="lineEditor.loose">
+        <div class="keypad">
+          <template x-for="k in ['7','8','9','4','5','6','1','2','3','.','0','⌫']" :key="'k'+k">
+            <button type="button" @click="keypad(k)" x-text="k"></button>
+          </template>
+        </div>
+      </template>
+      <template x-if="MAY_EDIT_PRICE">
+        <label class="field">
+          <span class="field-label" x-text="'Price (Rs.)' + (lineEditor.incl ? ' incl. GST' : ' before GST')"></span>
+          <input type="number" class="field-input" min="0" step="0.01" x-model="lineEditor.rate">
+        </label>
+      </template>
+      <template x-if="DISCOUNT_CAP > 0">
+        <div class="field">
+          <span class="field-label" x-text="'Discount (up to ' + DISCOUNT_CAP + '%)'"></span>
+          <div class="discount-row">
+            <select class="field-input" x-model="lineEditor.disc_kind">
+              <option value="percent">%</option>
+              <option value="amount">Rs.</option>
+            </select>
+            <input type="number" class="field-input" min="0" step="0.01" x-model="lineEditor.disc_value">
+          </div>
+        </div>
+      </template>
+      <p class="text-muted" x-show="lineEditor.error" x-text="lineEditor.error" style="color:var(--color-danger);"></p>
+      <button type="button" class="btn btn-primary btn-lg btn-block" @click="saveLine()">Done</button>
+      <button type="button" class="btn btn-quiet" style="margin-top:10px;" @click="lineEditor.open = false">Cancel</button>
+    </div>
+  </div>
+
+  <!-- Bill discount -->
+  <div class="checkout-overlay" x-show="billDiscEditor.open" x-cloak>
+    <div class="checkout-sheet" @click.outside="billDiscEditor.open = false">
+      <h2>Bill discount</h2>
+      <p class="text-muted mt-0" x-text="'Up to ' + DISCOUNT_CAP + '% of the bill.'"></p>
+      <div class="discount-row">
+        <select class="field-input" x-model="billDiscEditor.kind">
+          <option value="percent">%</option>
+          <option value="amount">Rs.</option>
+        </select>
+        <input type="number" class="field-input" min="0" step="0.01" x-model="billDiscEditor.value">
+      </div>
+      <p class="text-muted" x-show="billDiscEditor.error" x-text="billDiscEditor.error" style="color:var(--color-danger);"></p>
+      <button type="button" class="btn btn-primary btn-lg btn-block" style="margin-top:16px;" @click="saveBillDiscount()">Apply</button>
+      <button type="button" class="btn btn-quiet" style="margin-top:10px;" @click="billDisc = {kind: 'percent', value: 0}; billDiscEditor.open = false">Remove discount</button>
+    </div>
+  </div>
+
+  <!-- Customer: find by phone/name or quick-add -->
+  <div class="checkout-overlay" x-show="customerEditor.open" x-cloak>
+    <div class="checkout-sheet" @click.outside="customerEditor.open = false">
+      <h2>Customer</h2>
+      <input type="text" class="field-input" placeholder="Phone or name" x-model="customerEditor.q" x-ref="customerQ"
+             @input.debounce.300ms="searchCustomers()">
+      <div class="customer-results">
+        <template x-for="c in customerEditor.results" :key="'c'+c.id">
+          <button type="button" class="customer-result" @click="pickCustomer(c)">
+            <strong x-text="c.name"></strong>
+            <span class="text-muted" x-text="[c.phone, c.gstin].filter(Boolean).join(' · ')"></span>
+          </button>
+        </template>
+      </div>
+      <details class="customer-add" :open="customerEditor.q.length >= 2 && !customerEditor.results.length">
+        <summary>New customer</summary>
+        <input type="text" class="field-input" placeholder="Name" x-model="customerEditor.name">
+        <input type="tel" class="field-input" placeholder="Phone" x-model="customerEditor.phone">
+        <input type="text" class="field-input" placeholder="GSTIN (only for a business)" x-model="customerEditor.gstin">
+        <button type="button" class="btn btn-primary btn-block" @click="addCustomer()">Add to bill</button>
+      </details>
+      <p class="text-muted" x-show="customerEditor.error" x-text="customerEditor.error" style="color:var(--color-danger);"></p>
+      <button type="button" class="btn btn-quiet" style="margin-top:10px;" @click="customerEditor.open = false">Close</button>
     </div>
   </div>
 
@@ -308,24 +571,80 @@ function posTerminal() {
     categoryWise: CATEGORY_WISE,
     categoryTree: CATEGORY_TREE,
     uncategorizedProducts: UNCATEGORIZED_PRODUCTS,
+    favourites: FAVOURITES,
+    paymentModes: PAYMENT_MODES,
+    priceLists: PRICE_LISTS,
+    priceListId: null,
+    exchange: EXCHANGE,
+    customer: null,
+    billDisc: {kind: "percent", value: 0},
     expandedGroups: {},
     checkoutStep: "idle",
     paymentMode: "",
+    splitRows: [],
+    cashTendered: "",
     submitting: false,
     checkoutError: "",
     completedBillId: null,
     completedBillNumber: "",
+    completedChange: null,
+    showShortcuts: false,
+    scanMessage: "",
+    scanBuffer: "",
+    scanLastAt: 0,
+    lineEditor: {open: false},
+    billDiscEditor: {open: false, kind: "percent", value: "", error: ""},
+    customerEditor: {open: false, q: "", results: [], name: "", phone: "", gstin: "", error: ""},
     holdUrl: "{{ url_for('pos.hold_bill') }}",
     checkoutUrl: "{{ url_for('pos.checkout_route') }}",
     init() {
-      if (PREFILL_CART.length) {
-        this.cart = PREFILL_CART.map(l => ({...l}));
+      this.priceListId = PREFILL.price_list_id || null;
+      if (PREFILL.lines.length) {
+        this.cart = PREFILL.lines.map(l => ({...l, disc_kind: l.disc_kind || "percent"}));
       }
+      if (PREFILL.customer) this.customer = PREFILL.customer;
+      if (PREFILL.bill_disc_kind) this.billDisc = {kind: PREFILL.bill_disc_kind, value: Number(PREFILL.bill_disc_value)};
+    },
+    // --- catalog -----------------------------------------------------
+    activeList() { return this.priceLists.find(pl => pl.id === this.priceListId) || null; },
+    priceFor(p) {
+      const pl = this.activeList();
+      if (pl && pl.prices[String(p.id)] !== undefined) return Number(pl.prices[String(p.id)]);
+      return Number(p.rate);
+    },
+    repriceCart() {
+      this.cart.forEach(l => {
+        if (!l.product_id || l.priceEdited) return;
+        const p = PRODUCTS.find(x => x.id === l.product_id);
+        if (p) l.rate = this.priceFor(p);
+      });
     },
     filteredProducts() {
       const q = this.search.trim().toLowerCase();
       if (!q) return PRODUCTS;
-      return PRODUCTS.filter(p => p.name.toLowerCase().includes(q));
+      return PRODUCTS.filter(p => p.name.toLowerCase().includes(q) || (p.sku && p.sku.toLowerCase() === q) || (p.barcode && p.barcode === q));
+    },
+    findByCode(code) {
+      code = (code || "").trim();
+      if (!code) return null;
+      const lower = code.toLowerCase();
+      return PRODUCTS.find(p => p.barcode && p.barcode === code) || PRODUCTS.find(p => p.sku && p.sku.toLowerCase() === lower) || null;
+    },
+    searchEnter() {
+      const byCode = this.findByCode(this.search);
+      const matches = this.filteredProducts();
+      const p = byCode || (matches.length === 1 ? matches[0] : null);
+      if (p) {
+        this.addToCart(p);
+        this.search = "";
+      } else {
+        this.flashScan(matches.length ? "More than one item matches - tap the one you want." : "No item with that barcode or SKU.");
+      }
+    },
+    flashScan(msg) {
+      this.scanMessage = msg;
+      clearTimeout(this._scanTimer);
+      this._scanTimer = setTimeout(() => { this.scanMessage = ""; }, 2500);
     },
     // Category/sub-category tree expand-collapse state. Keyed by
     // "cat-<id>" / "sub-<id>" / "uncat" - nothing persists across a
@@ -346,47 +665,275 @@ function posTerminal() {
     // a hard stop); this just shows the running total going negative.
     stockEntry(productId) { return this.stock.find(s => s.product_id === productId); },
     cartQtyFor(productId) {
-      return this.cart.reduce((sum, l) => (l.product_id === productId ? sum + (l.qty || 0) : sum), 0);
+      return this.cart.reduce((sum, l) => (l.product_id === productId ? sum + (Number(l.qty) || 0) : sum), 0);
     },
     stockRemaining(productId) {
       const s = this.stockEntry(productId);
       if (!s) return 0;
       return s.allocated - s.sold - this.cartQtyFor(productId);
     },
+    fmtQty(q) { return Number(q.toFixed(3)).toString(); },
+    // --- cart --------------------------------------------------------
     addToCart(p) {
-      const existing = this.cart.find(l => l.product_id === p.id);
+      if (p.loose) {
+        // Weighed/measured items: ask how much on a keypad.
+        this.cart.push({product_id: p.id, description: p.name, hsn: p.hsn, rate: this.priceFor(p), incl: p.incl, gst_rate: p.gst_rate, unit: p.unit, qty: 1, loose: true, disc_kind: "percent", disc_value: 0});
+        this.openLine(this.cart.length - 1, true);
+        return;
+      }
+      const existing = this.cart.find(l => l.product_id === p.id && !l.disc_value && !l.priceEdited);
       if (existing) {
         existing.qty += 1;
       } else {
-        this.cart.push({product_id: p.id, description: p.name, hsn: p.hsn, rate: p.rate, incl: p.incl, gst_rate: p.gst_rate, unit: p.unit, qty: 1});
+        this.cart.push({product_id: p.id, description: p.name, hsn: p.hsn, rate: this.priceFor(p), incl: p.incl, gst_rate: p.gst_rate, unit: p.unit, qty: 1, loose: false, disc_kind: "percent", disc_value: 0});
       }
     },
-    increment(i) { this.cart[i].qty += 1; },
+    increment(i) { this.cart[i].qty = Number(this.cart[i].qty) + 1; },
     decrement(i) {
-      this.cart[i].qty -= 1;
+      this.cart[i].qty = Number(this.cart[i].qty) - 1;
       if (this.cart[i].qty <= 0) this.cart.splice(i, 1);
     },
     setQty(i, qty) {
       if (!qty || qty <= 0) { this.cart.splice(i, 1); return; }
-      this.cart[i].qty = qty;
+      this.cart[i].qty = this.cart[i].loose ? Math.round(qty * 1000) / 1000 : qty;
     },
-    clearCart() { this.cart = []; },
+    clearCart() { this.cart = []; this.billDisc = {kind: "percent", value: 0}; this.customer = null; },
+    discLabel(kind, value) { return kind === "amount" ? "Rs. " + Number(value).toFixed(2) : Number(value) + "%"; },
+    lineNote(line) {
+      const bits = [];
+      if (line.loose) bits.push(this.fmtQty(Number(line.qty)) + " " + line.unit + " x Rs. " + Number(line.rate).toFixed(2));
+      if (line.priceEdited) bits.push("price changed");
+      if (Number(line.disc_value)) bits.push("less " + this.discLabel(line.disc_kind, line.disc_value));
+      return bits.join(" · ");
+    },
+    // The same arithmetic the server does (app.pos.services
+    // apply_counter_rules + app.utils.gst), via GstCalc - preview only.
+    computed() {
+      const base = this.cart.map(l => {
+        const pct = l.disc_kind === "percent" ? Number(l.disc_value) || 0 : 0;
+        const flat = l.disc_kind === "amount" ? GstCalc.priceBasis(l.disc_value, l.gst_rate, l.incl, CHARGES_GST) : 0;
+        return {pct: pct, flat: flat, r: GstCalc.line(l.qty, l.rate, pct, l.gst_rate, l.incl, CHARGES_GST, true, flat)};
+      });
+      const billValue = Number(this.billDisc.value) || 0;
+      if (billValue > 0 && base.length) {
+        const payables = base.map(b => b.r.total);
+        const sum = payables.reduce((s, x) => s + x, 0);
+        const amount = this.billDisc.kind === "percent" ? GstCalc.round2(sum * billValue / 100) : GstCalc.round2(billValue);
+        const parts = GstCalc.allocate(payables, Math.min(amount, sum));
+        base.forEach((b, i) => {
+          const l = this.cart[i];
+          b.flat = GstCalc.round2(b.flat + GstCalc.priceBasis(parts[i], l.gst_rate, l.incl, CHARGES_GST));
+          b.r = GstCalc.line(l.qty, l.rate, b.pct, l.gst_rate, l.incl, CHARGES_GST, true, b.flat);
+        });
+      }
+      const exact = base.reduce((s, b) => s + b.r.total, 0);
+      const discount = base.reduce((s, b) => s + b.r.discount, 0);
+      // One rupee round-off on the whole bill, half-up (compute_invoice_totals).
+      const grand = Math.floor(GstCalc.round2(exact) + 0.5 + 1e-9);
+      return {lines: base.map(b => b.r), discount: GstCalc.round2(discount), grand: grand};
+    },
     lineTotal(line) {
       return GstCalc.line(line.qty, line.rate, 0, line.gst_rate, line.incl, CHARGES_GST, true).total;
     },
-    cartTotal() {
-      return this.cart.reduce((sum, l) => sum + this.lineTotal(l), 0);
+    cartTotal() { return this.cart.length ? this.computed().grand : 0; },
+    // Safe while Alpine is still tearing down a row that was just removed.
+    lineAmount(i) { const r = this.computed().lines[i]; return r ? r.total : 0; },
+    // --- line editor ---------------------------------------------------
+    canTouchLine() { return MAY_EDIT_PRICE || DISCOUNT_CAP > 0; },
+    openLine(i, fresh) {
+      const l = this.cart[i];
+      if (!l) return;
+      if (!fresh && !l.loose && !this.canTouchLine()) return;
+      this.lineEditor = {
+        open: true, index: i, title: l.description, unit: l.unit, loose: l.loose, incl: l.incl, fresh: !!fresh,
+        qty: fresh ? "" : String(l.qty), rate: String(l.rate), disc_kind: l.disc_kind || "percent",
+        disc_value: Number(l.disc_value) ? String(l.disc_value) : "", error: "",
+      };
+      this.$nextTick(() => { if (this.$refs.lineQty) this.$refs.lineQty.focus(); });
+    },
+    keypad(k) {
+      const e = this.lineEditor;
+      if (k === "⌫") { e.qty = e.qty.slice(0, -1); return; }
+      if (k === "." && e.qty.includes(".")) return;
+      e.qty = (e.qty + k).replace(/^0+(?=\d)/, "");
+    },
+    saveLine() {
+      const e = this.lineEditor;
+      const l = this.cart[e.index];
+      const qty = Number(e.qty);
+      if (!qty || qty <= 0) {
+        if (e.fresh) { this.cart.splice(e.index, 1); e.open = false; return; }
+        e.error = "Enter a quantity more than 0."; return;
+      }
+      const rate = MAY_EDIT_PRICE ? Number(e.rate) : Number(l.rate);
+      if (!(rate >= 0)) { e.error = "Enter a valid price."; return; }
+      const discValue = DISCOUNT_CAP > 0 ? Number(e.disc_value) || 0 : 0;
+      if (discValue < 0) { e.error = "A discount can't be negative."; return; }
+      const gross = GstCalc.round2(qty * rate);
+      const off = e.disc_kind === "percent" ? GstCalc.round2(gross * discValue / 100)
+        : GstCalc.priceBasis(discValue, l.gst_rate, l.incl, CHARGES_GST);
+      if (off > GstCalc.round2(gross * DISCOUNT_CAP / 100) + 0.01) {
+        e.error = "That's more than the " + DISCOUNT_CAP + "% this login can give."; return;
+      }
+      l.qty = l.loose ? Math.round(qty * 1000) / 1000 : qty;
+      if (MAY_EDIT_PRICE && rate !== Number(l.rate)) { l.rate = rate; l.priceEdited = true; }
+      l.disc_kind = e.disc_kind;
+      l.disc_value = discValue;
+      e.open = false;
+    },
+    // --- bill discount ---------------------------------------------------
+    openBillDiscount() {
+      this.billDiscEditor = {open: true, kind: this.billDisc.kind || "percent", value: this.billDisc.value ? String(this.billDisc.value) : "", error: ""};
+    },
+    saveBillDiscount() {
+      const e = this.billDiscEditor;
+      const value = Number(e.value) || 0;
+      if (value < 0) { e.error = "A discount can't be negative."; return; }
+      const before = {...this.billDisc};
+      this.billDisc = {kind: e.kind, value: value};
+      // Each line's total discount must stay within this login's limit.
+      const over = this.cart.some((l, i) => {
+        const gross = GstCalc.round2(Number(l.qty) * Number(l.rate));
+        const r = this.computed().lines[i];
+        const net = l.incl || !CHARGES_GST ? r.total : r.taxable;
+        return gross - net > GstCalc.round2(gross * DISCOUNT_CAP / 100) + 0.01;
+      });
+      if (over) { this.billDisc = before; e.error = "That's more than the " + DISCOUNT_CAP + "% this login can give."; return; }
+      e.open = false;
+    },
+    // --- customer --------------------------------------------------------
+    openCustomer() {
+      this.customerEditor = {open: true, q: "", results: [], name: "", phone: "", gstin: "", error: ""};
+      this.$nextTick(() => { if (this.$refs.customerQ) this.$refs.customerQ.focus(); });
+    },
+    async searchCustomers() {
+      const e = this.customerEditor;
+      const q = e.q.trim();
+      if (/^\d{6,}$/.test(q)) e.phone = q; else if (q.length >= 2) e.name = q;
+      if (q.length < 2) { e.results = []; return; }
+      try {
+        const res = await fetch(CUSTOMER_SEARCH_URL + "?q=" + encodeURIComponent(q));
+        e.results = await res.json();
+      } catch (err) { e.results = []; }
+    },
+    pickCustomer(c) { this.customer = c; this.customerEditor.open = false; },
+    async addCustomer() {
+      const e = this.customerEditor;
+      const body = new FormData();
+      body.append("csrf_token", CSRF_TOKEN);
+      body.append("name", e.name);
+      body.append("phone", e.phone);
+      body.append("gstin", e.gstin);
+      try {
+        const res = await fetch(CUSTOMER_ADD_URL, {method: "POST", body, headers: {"X-Requested-With": "XMLHttpRequest"}});
+        const data = await res.json();
+        if (!res.ok) { e.error = data.error || "Couldn't add the customer."; return; }
+        this.pickCustomer(data);
+      } catch (err) { e.error = "Could not reach the server."; }
+    },
+    // --- checkout --------------------------------------------------------
+    modeLabel(value) {
+      if (value === "exchange") return "Exchange credit";
+      const m = this.paymentModes.find(x => x.value === value);
+      return m ? m.label : value;
+    },
+    exchangeApplied() {
+      if (!this.exchange) return 0;
+      return Math.min(this.exchange.balance, this.cartTotal());
+    },
+    startCheckout() {
+      if (!this.cart.length) return;
+      this.checkoutError = "";
+      this.cashTendered = "";
+      this.checkoutStep = "payment";
     },
     selectPayment(mode) {
       this.paymentMode = mode;
+      this.upiSrc = mode === "upi" && UPI_READY && this.upiAmount() > 0
+        ? UPI_QR_URL + "?amount=" + this.upiAmount().toFixed(2) : "";
+      this.cashTendered = "";
+      this.checkoutError = "";
       this.checkoutStep = "confirm";
+      if (mode === "cash") this.$nextTick(() => { if (this.$refs.tender) this.$refs.tender.focus(); });
+    },
+    cashDue() {
+      if (this.checkoutStep === "split") {
+        return this.splitRows.filter(r => r.mode === "cash").reduce((s, r) => s + (Number(r.amount) || 0), 0);
+      }
+      return this.paymentMode === "cash" ? this.cartTotal() - this.exchangeApplied() : 0;
+    },
+    changeDue() {
+      if (this.cashTendered === "" || this.cashTendered === null) return null;
+      return GstCalc.round2(Number(this.cashTendered) - this.cashDue());
+    },
+    quickTenders() {
+      const due = this.cashDue();
+      const out = [due];
+      [50, 100, 200, 500, 2000].forEach(n => {
+        const up = Math.ceil(due / n) * n;
+        if (up > due && !out.includes(up) && out.length < 4) out.push(up);
+      });
+      return out;
+    },
+    upiAmount() { return GstCalc.round2(this.cartTotal() - this.exchangeApplied()); },
+    // Fixed when UPI is picked, so the QR is fetched once for that amount
+    // and never re-fetched as the screen changes underneath it.
+    upiSrc: "",
+    changeText() {
+      const c = this.changeDue();
+      if (c === null) return "";
+      return c >= 0 ? "Change: Rs. " + c.toFixed(2) : "Short by Rs. " + (-c).toFixed(2);
+    },
+    startSplit() {
+      const rows = [];
+      if (this.exchangeApplied() > 0) rows.push({mode: "exchange", amount: this.exchangeApplied().toFixed(2)});
+      const rest = this.cartTotal() - this.exchangeApplied();
+      rows.push({mode: this.paymentModes[0].value, amount: rest > 0 ? rest.toFixed(2) : ""});
+      this.splitRows = rows;
+      this.cashTendered = "";
+      this.checkoutError = "";
+      this.checkoutStep = "split";
+    },
+    addSplitRow() {
+      const used = this.splitRows.map(r => r.mode);
+      const next = this.paymentModes.find(m => !used.includes(m.value)) || this.paymentModes[0];
+      const rem = this.splitRemaining();
+      this.splitRows.push({mode: next.value, amount: rem > 0 ? rem.toFixed(2) : ""});
+    },
+    splitRemaining() {
+      const paid = this.splitRows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+      return GstCalc.round2(this.cartTotal() - paid);
+    },
+    paymentsForSubmit() {
+      if (this.checkoutStep === "split") return this.splitRows.filter(r => Number(r.amount) > 0);
+      const ex = this.exchangeApplied();
+      if (this.paymentMode === "exchange") return [{mode: "exchange", amount: this.cartTotal().toFixed(2)}];
+      if (ex > 0) return [{mode: "exchange", amount: ex.toFixed(2)}, {mode: this.paymentMode, amount: (this.cartTotal() - ex).toFixed(2)}];
+      return null;  // single mode, whole bill - the original 3-tap post
     },
     async confirmCheckout() {
       this.submitting = true;
       this.checkoutError = "";
       const body = new FormData();
       body.append("csrf_token", CSRF_TOKEN);
-      body.append("payment_mode", this.paymentMode);
+      const payments = this.paymentsForSubmit();
+      if (payments) {
+        payments.forEach(p => {
+          body.append("pay_mode[]", p.mode);
+          body.append("pay_amount[]", p.amount);
+          body.append("pay_ref[]", "");
+          body.append("pay_return[]", p.mode === "exchange" && this.exchange ? this.exchange.number : "");
+        });
+      } else {
+        body.append("payment_mode", this.paymentMode);
+      }
+      if (this.cashTendered !== "" && this.cashTendered !== null) body.append("cash_tendered", this.cashTendered);
+      if (this.customer) body.append("customer_id", this.customer.id);
+      if (Number(this.billDisc.value)) {
+        body.append("bill_discount_kind", this.billDisc.kind);
+        body.append("bill_discount_value", this.billDisc.value);
+      }
+      if (this.priceListId) body.append("price_list_id", this.priceListId);
       this.cart.forEach(line => {
         body.append("line_product_id[]", line.product_id || "");
         body.append("line_description[]", line.description);
@@ -396,6 +943,8 @@ function posTerminal() {
         body.append("line_gst_rate[]", line.gst_rate);
         body.append("line_incl[]", line.incl ? "1" : "0");
         body.append("line_unit[]", line.unit);
+        body.append("line_discount_kind[]", Number(line.disc_value) ? line.disc_kind : "");
+        body.append("line_discount_value[]", Number(line.disc_value) ? line.disc_value : "");
       });
       try {
         const res = await fetch(this.checkoutUrl, {
@@ -410,17 +959,20 @@ function posTerminal() {
         }
         this.completedBillId = data.bill_id;
         this.completedBillNumber = data.bill_number;
+        this.completedChange = data.change_due;
         if (data.stock_status) this.stock = data.stock_status;
-        this.printReceipt(DEFAULT_RECEIPT_FORMAT);
+        if (this.exchange && payments && payments.some(p => p.mode === "exchange")) this.exchange = null;
+        this.printReceipt(DEFAULT_RECEIPT_FORMAT, true);
       } catch (e) {
         this.checkoutError = "Could not reach the server - check your connection and try again.";
       } finally {
         this.submitting = false;
       }
     },
-    printReceipt(format) {
-      if (!this.completedBillId) return;
-      const url = RECEIPT_PDF_URL_TEMPLATE.replace("/0/", "/" + this.completedBillId + "/") + "?format=" + format;
+    receiptUrl(billId, format, original) {
+      return RECEIPT_PDF_URL_TEMPLATE.replace("/0/", "/" + billId + "/") + "?format=" + format + (original ? "&original=1" : "");
+    },
+    printUrl(url) {
       // The Android branch app injects window.AndroidPrint (see
       // android/app/.../MainActivity.kt) since its WebView has no
       // built-in PDF viewer or window.print() support to drive the
@@ -434,15 +986,86 @@ function posTerminal() {
         frame.onload = () => { frame.contentWindow.print(); };
         frame.src = url;
       }
+    },
+    // original=true only for the print straight after checkout - the
+    // server hands out the original once; every later print is marked
+    // DUPLICATE COPY.
+    printReceipt(format, original) {
+      if (!this.completedBillId) return;
+      this.printUrl(this.receiptUrl(this.completedBillId, format, original));
       this.checkoutStep = "done";
     },
+    reprintLast() {
+      const id = this.completedBillId || LAST_BILL_ID;
+      if (id) this.printUrl(this.receiptUrl(id, DEFAULT_RECEIPT_FORMAT, false));
+    },
+    async shareBill() {
+      if (!this.completedBillId) return;
+      const phone = this.customer && this.customer.phone ? this.customer.phone : "";
+      try {
+        const res = await fetch(SHARE_URL_TEMPLATE.replace("/0/", "/" + this.completedBillId + "/") + (phone ? "?phone=" + encodeURIComponent(phone) : ""));
+        const data = await res.json();
+        openShare(data.whatsapp);
+      } catch (e) {
+        this.checkoutError = "Could not make a share link.";
+      }
+    },
     newSale() {
+      this.upiSrc = "";
       this.cart = [];
       this.checkoutStep = "idle";
       this.paymentMode = "";
       this.checkoutError = "";
+      this.cashTendered = "";
       this.completedBillId = null;
       this.completedBillNumber = "";
+      this.completedChange = null;
+      this.customer = null;
+      this.billDisc = {kind: "percent", value: 0};
+      this.$nextTick(() => { if (this.$refs.search) this.$refs.search.focus(); });
+    },
+    // --- keyboard + barcode scanner ----------------------------------------
+    anySheetOpen() {
+      return this.checkoutStep !== "idle" || this.lineEditor.open || this.billDiscEditor.open || this.customerEditor.open;
+    },
+    onKey(ev) {
+      const typing = ["INPUT", "TEXTAREA", "SELECT"].includes(ev.target.tagName);
+      if (ev.key === "F2") { ev.preventDefault(); this.$refs.search.focus(); this.$refs.search.select(); return; }
+      if (ev.key === "F4") { ev.preventDefault(); if (!this.anySheetOpen()) this.startCheckout(); return; }
+      if (ev.key === "F8") { ev.preventDefault(); if (this.cart.length && !this.anySheetOpen()) this.$refs.holdForm.submit(); return; }
+      if (ev.key === "Escape") {
+        if (this.lineEditor.open) this.lineEditor.open = false;
+        else if (this.billDiscEditor.open) this.billDiscEditor.open = false;
+        else if (this.customerEditor.open) this.customerEditor.open = false;
+        else if (this.checkoutStep === "done") this.newSale();
+        else if (this.checkoutStep !== "idle" && !this.submitting) this.checkoutStep = "idle";
+        else if (this.showShortcuts) this.showShortcuts = false;
+        else if (this.search) this.search = "";
+        return;
+      }
+      if (typing || this.anySheetOpen()) return;
+      // A keyboard-wedge scanner "types" the code very fast then Enter.
+      const now = Date.now();
+      if (ev.key === "Enter") {
+        if (this.scanBuffer.length >= 3) {
+          const p = this.findByCode(this.scanBuffer);
+          if (p) this.addToCart(p); else this.flashScan("No item with barcode " + this.scanBuffer + ".");
+          ev.preventDefault();
+        }
+        this.scanBuffer = "";
+        return;
+      }
+      if (ev.key === "+" || ev.key === "-") {
+        if (this.scanBuffer) return;
+        const i = this.cart.length - 1;
+        if (i >= 0) { ev.preventDefault(); ev.key === "+" ? this.increment(i) : this.decrement(i); }
+        return;
+      }
+      if (ev.key === "?") { this.showShortcuts = !this.showShortcuts; return; }
+      if (ev.key.length === 1) {
+        this.scanBuffer = (now - this.scanLastAt > 80 ? "" : this.scanBuffer) + ev.key;
+        this.scanLastAt = now;
+      }
     }
   };
 }

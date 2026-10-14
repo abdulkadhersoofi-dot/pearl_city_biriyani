@@ -11,6 +11,7 @@ from decimal import Decimal
 
 from app.models.invoice import Invoice, InvoiceLine, InvoiceStatus
 from app.models.pos_bill import POSBill, POSBillLine, POSBillStatus
+from app.models.pos_return import POSReturn, POSReturnLine, POSReturnStatus
 from app.models.tenant import Tenant
 
 ZERO = Decimal("0")
@@ -38,9 +39,9 @@ def item_sales_data(tenant: Tenant, start: date, end: date, branch_ids: list[int
             Invoice.status != InvoiceStatus.VOID,
         )
     )
-    # Completed + refunded bills, same as the Sales report - this is
-    # gross quantity sold, not netted for partial refunds (a refund is
-    # tracked as an amount against the bill, not a line-level reversal).
+    # Completed + refunded bills, same as the Sales report - gross of
+    # amount-only refunds (those don't say which items), but net of
+    # item-wise sales returns, which do (subtracted below).
     pos_lines_query = (
         POSBillLine.query.join(POSBill, POSBill.id == POSBillLine.bill_id)
         .filter(
@@ -50,13 +51,23 @@ def item_sales_data(tenant: Tenant, start: date, end: date, branch_ids: list[int
             POSBill.completed_at <= day_end,
         )
     )
+    return_lines_query = (
+        POSReturnLine.query.join(POSReturn, POSReturn.id == POSReturnLine.return_id)
+        .filter(
+            POSReturn.tenant_id == tenant.id,
+            POSReturn.status == POSReturnStatus.COMPLETED,
+            POSReturn.returned_at >= day_start,
+            POSReturn.returned_at <= day_end,
+        )
+    )
     if branch_ids:
         invoice_lines_query = invoice_lines_query.filter(Invoice.branch_user_id.in_(branch_ids))
         pos_lines_query = pos_lines_query.filter(POSBill.created_by_id.in_(branch_ids))
+        return_lines_query = return_lines_query.filter(POSReturn.created_by_id.in_(branch_ids))
 
     buckets: dict[tuple, ItemSalesRow] = {}
 
-    def _add(line):
+    def _add(line, sign=1):
         key = ("p", line.product_id) if line.product_id else ("d", line.description)
         row = buckets.get(key)
         if row is None:
@@ -69,14 +80,16 @@ def item_sales_data(tenant: Tenant, start: date, end: date, branch_ids: list[int
                 total=ZERO,
             )
             buckets[key] = row
-        row.qty += line.qty
-        row.taxable_value += line.taxable_value
-        row.total += line.line_total
+        row.qty += sign * line.qty
+        row.taxable_value += sign * line.taxable_value
+        row.total += sign * line.line_total
 
     for line in invoice_lines_query.all():
         _add(line)
     for line in pos_lines_query.all():
         _add(line)
+    for line in return_lines_query.all():
+        _add(line, sign=-1)
 
     rows = sorted(buckets.values(), key=lambda r: r.total, reverse=True)
     totals = {

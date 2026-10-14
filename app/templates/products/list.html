@@ -8,6 +8,7 @@
     <a href="{{ url_for('products.categories') }}" class="btn btn-quiet">Categories</a>
     {% endif %}
     <a href="{{ url_for('bulk.index', kind='products') }}" class="btn btn-quiet">Import / Export</a>
+    {% if has_feature('multi_price_list') %}<a href="{{ url_for('products.price_lists') }}" class="btn btn-secondary">Price lists</a>{% endif %}
     <a href="{{ url_for('products.new_product') }}" class="btn btn-primary">+ Add item</a>
   </div>
 </div>

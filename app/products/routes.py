@@ -4,10 +4,12 @@ from flask_login import current_user
 from app.auth.decorators import roles_required
 from app.extensions import db
 from app.models.category import Category, SubCategory
+from app.models.price_list import PriceList, PriceListItem
 from app.models.product import Product
 from app.models.user import UserRole
 from app.products import products_bp
 from app.products.forms import CategoryForm, ProductForm, SubCategoryForm
+from app.utils.audit import record_audit
 from app.utils.features import feature_required
 from app.utils.gst_config import UQC_CODES
 from app.utils.tenant_scope import assert_owns, tenant_query
@@ -93,6 +95,8 @@ def new_product():
     if form.validate_on_submit():
         product = Product(tenant_id=current_user.tenant_id)
         form.populate_obj(product)
+        if not tenant.has_feature("favourites"):
+            product.is_favourite = False
         _normalize_optional_fields(product)
         _apply_category_selection(form, product)
         try:
@@ -120,7 +124,10 @@ def edit_product(product_id):
         form.sub_category_id.data = str(product.sub_category_id) if product.sub_category_id else ""
         form.alt_unit.data = product.alt_unit or ""
     if form.validate_on_submit():
+        was_favourite = product.is_favourite
         form.populate_obj(product)
+        if not current_user.tenant.has_feature("favourites"):
+            product.is_favourite = was_favourite  # the box wasn't on the page
         _normalize_optional_fields(product)
         _apply_category_selection(form, product)
         if form.image.data and form.image.data.filename:
@@ -222,3 +229,106 @@ def deactivate_sub_category(sub_category_id):
     db.session.commit()
     flash(f"{sub_category.name} removed.", "success")
     return redirect(url_for("products.categories"))
+
+
+# --- price lists (feature "multi_price_list") -----------------------------------
+
+@products_bp.route("/price-lists")
+@roles_required(UserRole.CLIENT_ADMIN)
+@feature_required("multi_price_list")
+def price_lists():
+    lists = tenant_query(PriceList).order_by(PriceList.is_active.desc(), PriceList.name).all()
+    return render_template("products/price_lists.html", lists=lists)
+
+
+@products_bp.route("/price-lists/new", methods=["POST"])
+@roles_required(UserRole.CLIENT_ADMIN)
+@feature_required("multi_price_list")
+def new_price_list():
+    name = (request.form.get("name") or "").strip()[:100]
+    if not name:
+        flash("Give the price list a name.", "error")
+        return redirect(url_for("products.price_lists"))
+    if tenant_query(PriceList).filter(db.func.lower(PriceList.name) == name.lower()).first():
+        flash(f"There's already a price list called {name}.", "error")
+        return redirect(url_for("products.price_lists"))
+    price_list = PriceList(tenant_id=current_user.tenant_id, name=name)
+    db.session.add(price_list)
+    db.session.flush()
+    if request.form.get("copy_wholesale"):
+        for product in tenant_query(Product).filter(Product.is_active.is_(True), Product.wholesale_price.isnot(None)):
+            db.session.add(PriceListItem(tenant_id=current_user.tenant_id, price_list_id=price_list.id,
+                                         product_id=product.id, price=product.wholesale_price))
+    record_audit(current_user, "price_list_created", tenant_id=current_user.tenant_id, entity_type="price_list",
+                 entity_id=price_list.id, details={"name": name})
+    db.session.commit()
+    flash(f"Price list {name} created - set its prices below.", "success")
+    return redirect(url_for("products.edit_price_list", list_id=price_list.id))
+
+
+@products_bp.route("/price-lists/<int:list_id>", methods=["GET", "POST"])
+@roles_required(UserRole.CLIENT_ADMIN)
+@feature_required("multi_price_list")
+def edit_price_list(list_id):
+    price_list = tenant_query(PriceList).filter_by(id=list_id).first_or_404()
+    assert_owns(price_list)
+    products = tenant_query(Product).filter_by(is_active=True).order_by(Product.name).all()
+    if request.method == "POST":
+        from decimal import Decimal, InvalidOperation
+
+        current = {item.product_id: item for item in price_list.items}
+        errors = []
+        changed = 0
+        for product in products:
+            raw = (request.form.get(f"price_{product.id}") or "").strip()
+            item = current.get(product.id)
+            if not raw:
+                if item is not None:
+                    db.session.delete(item)
+                    changed += 1
+                continue
+            try:
+                price = Decimal(raw).quantize(Decimal("0.01"))
+            except InvalidOperation:
+                errors.append(product.name)
+                continue
+            if price < 0:
+                errors.append(product.name)
+                continue
+            if item is None:
+                db.session.add(PriceListItem(tenant_id=current_user.tenant_id, price_list_id=price_list.id,
+                                             product_id=product.id, price=price))
+                changed += 1
+            elif item.price != price:
+                item.price = price
+                changed += 1
+        if errors:
+            db.session.rollback()
+            flash("Not a valid price for: " + ", ".join(errors[:5]) + ". Nothing was saved.", "error")
+            return redirect(url_for("products.edit_price_list", list_id=price_list.id))
+        record_audit(current_user, "price_list_updated", tenant_id=current_user.tenant_id, entity_type="price_list",
+                     entity_id=price_list.id, details={"name": price_list.name, "changed": changed})
+        db.session.commit()
+        flash(f"{price_list.name}: {changed} price(s) updated.", "success")
+        return redirect(url_for("products.edit_price_list", list_id=price_list.id))
+    return render_template("products/price_list_edit.html", price_list=price_list, products=products,
+                           prices=price_list.price_map())
+
+
+@products_bp.route("/price-lists/<int:list_id>/deactivate", methods=["POST"])
+@roles_required(UserRole.CLIENT_ADMIN)
+@feature_required("multi_price_list")
+def deactivate_price_list(list_id):
+    from app.models.user import User
+
+    price_list = tenant_query(PriceList).filter_by(id=list_id).first_or_404()
+    assert_owns(price_list)
+    price_list.is_active = False
+    # Counters billing from it go back to normal prices.
+    for user in tenant_query(User).filter_by(price_list_id=price_list.id):
+        user.price_list_id = None
+    record_audit(current_user, "price_list_deactivated", tenant_id=current_user.tenant_id, entity_type="price_list",
+                 entity_id=price_list.id, details={"name": price_list.name})
+    db.session.commit()
+    flash(f"{price_list.name} switched off.", "success")
+    return redirect(url_for("products.price_lists"))

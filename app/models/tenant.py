@@ -99,6 +99,16 @@ class Tenant(db.Model, TimestampMixin):
     # Optional; drives compliance thresholds kept in app.utils.gst_config
     # (e.g. minimum HSN digits). Unknown is treated as the lowest bracket.
     aato = db.Column(db.Numeric(15, 2))
+    # POS payment modes offered at the counter, as PaymentMode values in
+    # display order (app.models.pos_bill.SELECTABLE_PAYMENT_MODES). Cash,
+    # UPI and Card are what every counter offered before this existed.
+    pos_payment_modes = db.Column(
+        db.JSON, nullable=False, default=lambda: ["cash", "upi", "card"], server_default='["cash", "upi", "card"]'
+    )
+    # UPI ID (VPA) for the dynamic "scan to pay" QR at checkout - blank
+    # means no QR anywhere.
+    upi_vpa = db.Column(db.String(100))
+    upi_payee_name = db.Column(db.String(100))
 
     # Access gating - see app.utils.billing.tenant_access_status, which
     # combines these with `is_active` (above) into one go/no-go check,

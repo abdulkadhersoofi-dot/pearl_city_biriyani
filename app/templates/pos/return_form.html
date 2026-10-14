@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Return items - {{ bill.bill_number }} - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Return items</h1>
+    <p class="text-muted mt-0">Bill {{ bill.bill_number }} &middot; {{ bill.completed_at.strftime('%d %b %Y %H:%M') if bill.completed_at else '' }}{% if bill.customer_snapshot %} &middot; {{ bill.customer_snapshot.name }}{% endif %}</p>
+  </div>
+  <a href="{{ url_for('pos.view_receipt', bill_id=bill.id) }}" class="btn btn-quiet">Back</a>
+</div>
+
+<form method="post" class="card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <table class="return-table">
+    <thead><tr><th>Item</th><th>Sold</th><th>Already back</th><th>Coming back now</th></tr></thead>
+    <tbody>
+    {% for entry in lines %}
+      <tr>
+        <td>{{ entry.line.description }}<div class="text-muted" style="font-size:0.85rem;">Rs. {{ '%.2f'|format(entry.line.line_total) }} for {{ entry.line.qty|qty }}</div></td>
+        <td>{{ entry.line.qty|qty }} {{ entry.line.unit }}</td>
+        <td>{{ entry.returned_qty|qty if entry.returned_qty else '-' }}</td>
+        <td>
+          {% if entry.remaining_qty > 0 %}
+          <input type="number" name="qty_{{ entry.line.id }}" class="field-input return-qty" min="0" max="{{ entry.remaining_qty }}"
+                 step="{{ '0.001' if entry.line.product and entry.line.product.sells_loose else '1' }}" placeholder="0" aria-label="Quantity of {{ entry.line.description }} coming back">
+          <span class="text-muted">of {{ entry.remaining_qty|qty }}</span>
+          {% else %}<span class="text-muted">All returned</span>{% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="form-grid" style="margin-top:16px;">
+    <label class="field">
+      <span class="field-label">Money goes back as</span>
+      <select name="refund_mode" class="field-input">
+        {% for value, label in modes %}
+        <option value="{{ value }}" {% if value == default_mode %}selected{% endif %}>{{ label if value != 'exchange' else 'Exchange - credit for a new bill' }}{% if value == 'credit' %} - reduce what they owe{% endif %}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="field">
+      <span class="field-label">Reason</span>
+      <input type="text" name="reason" class="field-input" required maxlength="500" placeholder="e.g. wrong size, damaged">
+    </label>
+  </div>
+  <p class="text-muted">The amount is worked out from what was charged on the bill (with its discount and GST), and gets its own return number. The bill itself is not changed.</p>
+  <button class="btn btn-primary btn-lg">Save return</button>
+</form>
+{% endblock %}

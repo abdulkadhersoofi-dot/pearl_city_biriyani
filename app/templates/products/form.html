@@ -56,6 +56,9 @@
         {{ field(form.min_stock_level) }}
       </div>
       {{ checkbox(form.allow_negative_stock, help="Untick to stop billing this item once stock runs out (applies once stock tracking is on).") }}
+      {% if has_feature('favourites') %}
+      {{ checkbox(form.is_favourite, help="Shown first in the favourites row, ahead of your automatic best sellers.") }}
+      {% endif %}
     </div>
   </details>
 

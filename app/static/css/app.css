@@ -390,3 +390,73 @@ tr:last-child td { border-bottom: none; }
 /* --- Item form: optional "More details" section --- */
 .more-details { border-top: 1px solid var(--color-border); padding-top: 12px; }
 .more-details > summary { cursor: pointer; font-weight: 600; color: var(--color-primary); min-height: var(--touch); display: flex; align-items: center; }
+
+/* --- POS for every business (Phase 2) ---
+   Two-class selectors throughout where they touch inputs - the global
+   `input[type="number"]` reset outranks a single class (see .qty-stepper). */
+.shortcut-sheet { margin-bottom: 16px; }
+.shortcut-sheet ul { margin: 8px 0 0; padding-left: 18px; line-height: 1.8; }
+.shortcut-sheet kbd { border: 1px solid var(--color-border); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; font-size: 0.85em; background: var(--color-bg); }
+.shortcut-hint-btn { min-width: 44px; font-weight: 800; }
+.day-open-card { margin-bottom: 16px; border-color: var(--color-primary); }
+.exchange-banner { margin-bottom: 16px; display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; background: var(--color-success-bg); }
+.scan-note { margin: 8px 0 0; color: var(--color-danger); font-weight: 600; }
+
+.favourites-row { display: flex; gap: 8px; overflow-x: auto; padding: 12px 0 2px; }
+.favourite-chip {
+  flex: 0 0 auto; display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  min-height: 56px; padding: 8px 14px; border-radius: var(--radius); border: 1px solid var(--color-border);
+  background: var(--color-surface); cursor: pointer; font-weight: 700; text-align: left;
+}
+.favourite-chip:hover, .favourite-chip:active { border-color: var(--color-primary); background: var(--color-success-bg); }
+.favourite-chip .text-muted { font-weight: 400; font-size: 0.85rem; }
+
+.cart-tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.customer-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 6px 4px 12px; border-radius: 999px; background: var(--color-success-bg); font-weight: 600; font-size: 0.9rem; max-width: 100%; }
+.customer-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.customer-chip button { border: none; background: none; font-size: 1.1rem; cursor: pointer; line-height: 1; }
+.cart-tools .price-list-select { width: auto; min-height: 36px; padding: 4px 8px; margin: 0; flex: 1; min-width: 120px; }
+.cart-line .cart-line-name { cursor: pointer; }
+.cart-line .cart-line-note { grid-column: 1 / -1; margin-top: -6px; font-size: 0.8rem; color: var(--color-text-muted); }
+.cart-sub-row { display: flex; justify-content: space-between; color: var(--color-text-muted); font-weight: 600; }
+
+.checkout-sheet .field { text-align: left; }
+.split-row { display: grid; grid-template-columns: minmax(0, 1fr) 120px 36px; gap: 8px; align-items: center; margin-bottom: 8px; }
+.split-row .field-input { margin: 0; }
+.split-row .split-amount { width: 100%; min-height: 44px; }
+.split-remaining { font-weight: 700; color: var(--color-danger); }
+.split-remaining.ok { color: var(--color-primary); }
+.tender-box { margin: 10px 0 16px; text-align: left; }
+.tender-box .tender-input { font-size: 1.3rem; }
+.tender-quick { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.change-due { font-size: 1.8rem; font-weight: 800; color: var(--color-primary); margin: 12px 0 4px; text-align: center; }
+.change-due.short { color: var(--color-danger); font-size: 1.2rem; }
+.upi-box { margin: 10px 0 16px; }
+.upi-box img { display: block; margin: 0 auto 8px; background: #fff; padding: 6px; border-radius: 8px; }
+
+.keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 4px 0 14px; }
+.keypad button { min-height: 56px; font-size: 1.4rem; font-weight: 700; border-radius: var(--radius); border: 1px solid var(--color-border); background: var(--color-bg); cursor: pointer; }
+.checkout-sheet .keypad-display { font-size: 1.6rem; text-align: center; font-weight: 800; }
+
+.customer-results { display: flex; flex-direction: column; gap: 6px; margin: 10px 0; max-height: 240px; overflow-y: auto; }
+.customer-result { display: flex; flex-direction: column; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-bg); cursor: pointer; text-align: left; }
+.customer-add { text-align: left; }
+.customer-add summary { cursor: pointer; font-weight: 700; margin-bottom: 8px; }
+.customer-add .field-input { margin-bottom: 8px; }
+
+@media (max-width: 480px) {
+  .split-row { grid-template-columns: minmax(0, 1fr) 96px 32px; }
+  .checkout-sheet { padding: 20px 16px; }
+}
+.return-table .return-qty { width: 110px; display: inline-block; margin: 0 6px 0 0; }
+.checkbox-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 6px 16px; margin-top: 6px; }
+.checkbox-grid ul { display: contents; }
+.price-list-table .list-price-input { max-width: 160px; margin: 0; }
+/* Grid items default to min-width:auto, so a long favourites row (which
+   scrolls sideways on its own) would otherwise widen the middle column
+   and push the cart off the right edge of the screen. */
+.pos-layout > * { min-width: 0; }
+.daybook-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.daybook-actions form { margin: 0; }
+.discount-row { display: grid; grid-template-columns: 90px minmax(0, 1fr); gap: 8px; }
+.discount-row .field-input { margin: 0; }

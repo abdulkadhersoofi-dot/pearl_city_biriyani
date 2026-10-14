@@ -7,4 +7,5 @@
     <string name="branch_only_body">This app is for branch (POS) staff logins only. Sign in with a branch account, or use the website for other logins.</string>
     <string name="ok">OK</string>
     <string name="exit_confirm">Press back again to exit</string>
+    <string name="no_app_to_share">WhatsApp isn\'t installed on this device.</string>
 </resources>

@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}{{ ret.return_number }} - {{ firm_name }}{% endblock %}
+{% block content %}
+<div x-data="{ print() { const f = document.getElementById('receipt-print-frame'); f.onload = () => f.contentWindow.print(); f.src = '{{ url_for('pos.return_pdf', return_id=ret.id) }}?format={{ default_receipt_format }}'; } }">
+<div class="page-header">
+  <div>
+    <h1>{{ ret.return_number }}</h1>
+    <p class="text-muted mt-0">
+      Sales return against <a href="{{ url_for('pos.view_receipt', bill_id=ret.bill_id) }}">{{ ret.bill.bill_number }}</a>
+      &middot; {{ ret.returned_at.strftime('%d %b %Y %H:%M') }}
+      &middot; <span class="status-badge status-{{ 'void' if ret.status.value == 'voided' else 'issued' }}">{{ ret.status.value|title }}</span>
+    </p>
+  </div>
+  <div class="row">
+    <button type="button" class="btn btn-secondary" @click="print()">Print slip</button>
+    {% if ret.refund_mode.value == 'exchange' and ret.exchange_balance > 0 %}
+    <a href="{{ url_for('pos.terminal', exchange=ret.return_number) }}" class="btn btn-primary">Start exchange bill</a>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card" style="max-width:480px;">
+  <table>
+    <thead><tr><th>Item</th><th>Qty</th><th>Amount</th></tr></thead>
+    <tbody>
+    {% for l in ret.lines %}
+      <tr><td>{{ l.description }}</td><td>{{ l.qty|qty }} {{ l.unit }}</td><td>Rs. {{ '%.2f'|format(l.line_total) }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <div class="totals-box" style="width:100%;">
+    <div class="totals-row"><span>Taxable value</span><span>Rs. {{ '%.2f'|format(ret.total_taxable_value) }}</span></div>
+    {% if ret.total_cgst %}<div class="totals-row"><span>CGST</span><span>Rs. {{ '%.2f'|format(ret.total_cgst) }}</span></div>{% endif %}
+    {% if ret.total_sgst %}<div class="totals-row"><span>SGST</span><span>Rs. {{ '%.2f'|format(ret.total_sgst) }}</span></div>{% endif %}
+    {% if ret.total_igst %}<div class="totals-row"><span>IGST</span><span>Rs. {{ '%.2f'|format(ret.total_igst) }}</span></div>{% endif %}
+    <div class="totals-row grand"><span>Returned</span><span>Rs. {{ '%.2f'|format(ret.grand_total) }}</span></div>
+    <div class="totals-row"><span>Paid back as</span><span>{{ labels[ret.refund_mode] }}</span></div>
+    {% if ret.refund_mode.value == 'exchange' %}<div class="totals-row"><span>Exchange credit left</span><span>Rs. {{ '%.2f'|format(ret.exchange_balance) }}</span></div>{% endif %}
+  </div>
+  <p class="text-muted">Reason: {{ ret.reason }}</p>
+  {% if ret.status.value == 'voided' %}<p class="text-muted">Voided: {{ ret.void_reason }}</p>{% endif %}
+</div>
+
+{% if ret.status.value == 'completed' and can('void') %}
+<form method="post" action="{{ url_for('pos.void_return_route', return_id=ret.id) }}" style="margin-top:16px;"
+      onsubmit="var r = prompt('Why is this return being voided?'); if (!r) { return false; } this.reason.value = r; return true;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="reason">
+  <button class="btn btn-quiet" style="color:var(--color-danger);">Void this return</button>
+</form>
+{% endif %}
+<iframe id="receipt-print-frame" style="display:none;"></iframe>
+</div>
+{% endblock %}

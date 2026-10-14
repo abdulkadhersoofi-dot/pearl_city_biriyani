@@ -13,7 +13,8 @@ from decimal import Decimal
 
 from app.models.invoice import Invoice, InvoiceStatus
 from app.models.invoice_series import DOCUMENT_TYPE_LABELS
-from app.models.pos_bill import POSBill, POSBillStatus
+from app.models.pos_bill import PaymentMode, POSBill, POSBillStatus
+from app.models.pos_return import POSReturn, POSReturnStatus
 from app.models.tenant import Tenant
 from app.reports.gstr import normalized_customer_gstin
 
@@ -65,8 +66,18 @@ def sales_report_data(tenant: Tenant, start: date, end: date, branch_ids: list[i
         invoice_query = invoice_query.filter(Invoice.branch_user_id.in_(branch_ids))
         pos_bill_query = pos_bill_query.filter(POSBill.created_by_id.in_(branch_ids))
 
+    pos_return_query = POSReturn.query.filter(
+        POSReturn.tenant_id == tenant.id,
+        POSReturn.status == POSReturnStatus.COMPLETED,
+        POSReturn.returned_at >= day_start,
+        POSReturn.returned_at <= day_end,
+    )
+    if branch_ids:
+        pos_return_query = pos_return_query.filter(POSReturn.created_by_id.in_(branch_ids))
+
     invoices = invoice_query.order_by(Invoice.invoice_date, Invoice.invoice_number).all()
     pos_bills = pos_bill_query.order_by(POSBill.completed_at).all()
+    pos_returns = pos_return_query.order_by(POSReturn.returned_at).all()
 
     rows: list[SalesReportRow] = []
 
@@ -96,7 +107,11 @@ def sales_report_data(tenant: Tenant, start: date, end: date, branch_ids: list[i
     for bill in pos_bills:
         cust = bill.customer_snapshot or {}
         billing_gstin = bill.gstin.display_label if bill.gstin else ""
-        payment_mode = bill.payment_mode.value if bill.payment_mode else None
+        # A split bill shows as e.g. "cash 300.00 + upi 200.00".
+        if bill.payment_mode == PaymentMode.MIXED and bill.payments:
+            payment_mode = " + ".join(f"{p.mode.value} {p.amount:.2f}" for p in bill.payments)
+        else:
+            payment_mode = bill.payment_mode.value if bill.payment_mode else None
         rows.append(
             SalesReportRow(
                 doc_type="POS Bill",
@@ -138,6 +153,28 @@ def sales_report_data(tenant: Tenant, start: date, end: date, branch_ids: list[i
                     )
                 )
 
+    # Item-wise sales returns: their own numbered documents, dated the day
+    # the goods came back.
+    for ret in pos_returns:
+        cust = ret.customer_snapshot or {}
+        rows.append(
+            SalesReportRow(
+                doc_type="POS Sales Return",
+                doc_number=ret.return_number,
+                doc_date=ret.returned_at.date(),
+                billing_gstin=ret.gstin.display_label if ret.gstin else "",
+                customer_name=cust.get("name", "Walk-in"),
+                customer_gstin=normalized_customer_gstin(cust),
+                payment_mode=ret.refund_mode.value,
+                taxable_value=ret.total_taxable_value,
+                cgst=ret.total_cgst,
+                sgst=ret.total_sgst,
+                igst=ret.total_igst,
+                total=ret.grand_total,
+                sign=-1,
+            )
+        )
+
     rows.sort(key=lambda r: (r.doc_date, r.doc_number))
 
     totals = {
@@ -155,5 +192,6 @@ def sales_report_data(tenant: Tenant, start: date, end: date, branch_ids: list[i
         "rows": rows,
         "invoice_count": len(invoices),
         "pos_bill_count": len(pos_bills),
+        "pos_return_count": len(pos_returns),
         "totals": totals,
     }

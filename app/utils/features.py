@@ -47,8 +47,32 @@ FEATURES = {
         Feature("weighing", "Weighing scale items", "Price per kg, weight entry at billing."),
         Feature("restaurant_mode", "Restaurant tables & KOT", "Tables, kitchen order tickets, order types."),
         Feature("job_cards", "Job cards", "Repair and service jobs from receipt to delivery."),
-        Feature("credit_sales", "Credit sales", "Sell on account and track what customers owe."),
-        Feature("multi_price_list", "Price lists", "Retail, wholesale and per-branch prices."),
+        Feature(
+            "credit_sales",
+            "Credit sales",
+            "Sell on account: \"Credit\" becomes a payment option at the counter, for a named customer only.",
+            available=True,
+        ),
+        Feature(
+            "multi_price_list",
+            "Price lists",
+            "Keep more than one selling price per item - wholesale, per branch, per delivery app - and pick "
+            "which one each counter bills from.",
+            available=True,
+        ),
+        Feature(
+            "favourites",
+            "Favourites row at the counter",
+            "A row of your best sellers (and any items you pin) at the top of the POS screen.",
+            available=True,
+        ),
+        Feature(
+            "day_close",
+            "Day open / close",
+            "Each counter opens the day with the cash in the drawer, records cash in/out, and closes with a "
+            "count - the Z-report shows expected vs actual. A closed day's bills can't be voided.",
+            available=True,
+        ),
         Feature("einvoice", "e-Invoice", "Generate IRN and QR for B2B invoices."),
         Feature("eway_bill", "e-Way Bill", "e-Way bills for goods movement."),
         Feature("loyalty", "Loyalty points", "Points on purchases, redeemable at billing."),
@@ -61,17 +85,17 @@ AVAILABLE_FEATURES = [f for f in FEATURES.values() if f.available]
 # is onboarded (or when the Client Admin explicitly asks Settings to reset
 # to these), never retroactively.
 BUSINESS_TYPE_PRESETS: dict[BusinessType, set[str]] = {
-    BusinessType.RETAIL: {"inventory", "purchases", "expenses", "credit_sales", "categories"},
+    BusinessType.RETAIL: {"inventory", "purchases", "expenses", "credit_sales", "categories", "favourites"},
     BusinessType.WHOLESALE: {"inventory", "purchases", "expenses", "credit_sales", "multi_price_list", "eway_bill"},
     BusinessType.RESTAURANT: {"categories", "restaurant_mode", "expenses"},
     BusinessType.MOBILE_ELECTRONICS: {
         "inventory", "purchases", "expenses", "credit_sales", "serial_imei", "margin_scheme", "job_cards",
     },
-    BusinessType.PHARMACY: {"inventory", "purchases", "expenses", "credit_sales", "batch_expiry"},
+    BusinessType.PHARMACY: {"inventory", "purchases", "expenses", "credit_sales", "batch_expiry", "favourites"},
     BusinessType.APPAREL: {"inventory", "purchases", "expenses", "variants", "categories", "loyalty"},
     BusinessType.HARDWARE: {"inventory", "purchases", "expenses", "credit_sales", "multi_price_list", "categories"},
     BusinessType.JEWELLERY: {"inventory", "purchases", "expenses", "credit_sales", "weighing"},
-    BusinessType.BAKERY: {"inventory", "purchases", "expenses", "weighing", "batch_expiry", "categories"},
+    BusinessType.BAKERY: {"inventory", "purchases", "expenses", "weighing", "batch_expiry", "categories", "favourites"},
     BusinessType.SERVICES: {"expenses", "credit_sales", "job_cards"},
     BusinessType.OTHER: set(),
 }

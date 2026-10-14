@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Price lists - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Price lists</h1>
+  <a href="{{ url_for('products.list_products') }}" class="btn btn-quiet">Items</a>
+</div>
+<p class="text-muted">A price list sells chosen items at a different price - wholesale, a delivery app, a particular branch. Items not in a list sell at their normal price. Pick which list each counter bills from under Branches &rarr; Permissions.</p>
+
+<form method="post" action="{{ url_for('products.new_price_list') }}" class="card row" style="gap:10px; align-items:flex-end; flex-wrap:wrap;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label class="field" style="margin:0; flex:1; min-width:200px;">
+    <span class="field-label">New price list</span>
+    <input type="text" name="name" class="field-input" maxlength="100" placeholder="e.g. Wholesale" required>
+  </label>
+  <label class="row" style="gap:6px; align-items:center;"><input type="checkbox" name="copy_wholesale" value="1"> Start from items' wholesale prices</label>
+  <button class="btn btn-primary">Create</button>
+</form>
+
+<div class="card table-wrap" style="margin-top:16px;">
+  <table>
+    <thead><tr><th>Name</th><th>Items priced</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+    {% for pl in lists %}
+      <tr>
+        <td><a href="{{ url_for('products.edit_price_list', list_id=pl.id) }}">{{ pl.name }}</a></td>
+        <td>{{ pl.items|length }}</td>
+        <td>{{ 'Active' if pl.is_active else 'Off' }}</td>
+        <td>
+          {% if pl.is_active %}
+          <form method="post" action="{{ url_for('products.deactivate_price_list', list_id=pl.id) }}" onsubmit="return confirm('Switch off {{ pl.name }}? Counters using it go back to normal prices.');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-quiet btn-sm">Switch off</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="4" class="empty-state">No price lists yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

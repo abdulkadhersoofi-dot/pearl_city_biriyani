@@ -1,19 +1,64 @@
 import enum
 
 from app.extensions import db
-from app.models.mixins import TenantScopedMixin, TimestampMixin
+from app.models.mixins import TenantScopedMixin, TimestampMixin, utcnow
 
 
 class POSBillStatus(str, enum.Enum):
     HELD = "held"
     COMPLETED = "completed"
     REFUNDED = "refunded"
+    # Cancelled the same day it was billed (a mistake, not a return) -
+    # kept, numbered and reported as cancelled, never deleted.
+    VOIDED = "voided"
 
 
 class PaymentMode(str, enum.Enum):
     CASH = "cash"
     UPI = "upi"
     CARD = "card"
+    # On account - the customer pays later. Needs a named customer.
+    CREDIT = "credit"
+    WALLET = "wallet"
+    CHEQUE = "cheque"
+    BANK_TRANSFER = "bank_transfer"
+    # Paid with the value of goods returned on a POS sales return (an
+    # exchange) - never picked at the counter directly.
+    EXCHANGE = "exchange"
+    # POSBill.payment_mode only, when a bill was paid more than one way -
+    # the actual split is in POSPayment rows. Never a POSPayment's mode.
+    MIXED = "mixed"
+
+
+PAYMENT_MODE_LABELS = {
+    PaymentMode.CASH: "Cash",
+    PaymentMode.UPI: "UPI",
+    PaymentMode.CARD: "Card",
+    PaymentMode.CREDIT: "Credit (on account)",
+    PaymentMode.WALLET: "Wallet",
+    PaymentMode.CHEQUE: "Cheque",
+    PaymentMode.BANK_TRANSFER: "Bank transfer",
+    PaymentMode.EXCHANGE: "Exchange credit",
+    PaymentMode.MIXED: "Split",
+}
+
+# What a client can switch on for its counters (Settings), in display
+# order. Cash/UPI/Card are what every client had before this list existed.
+SELECTABLE_PAYMENT_MODES = [
+    PaymentMode.CASH,
+    PaymentMode.UPI,
+    PaymentMode.CARD,
+    PaymentMode.WALLET,
+    PaymentMode.CHEQUE,
+    PaymentMode.BANK_TRANSFER,
+    PaymentMode.CREDIT,
+]
+DEFAULT_PAYMENT_MODES = ["cash", "upi", "card"]
+
+
+class DiscountKind(str, enum.Enum):
+    PERCENT = "percent"
+    AMOUNT = "amount"
 
 
 class POSBill(db.Model, TenantScopedMixin, TimestampMixin):
@@ -56,17 +101,66 @@ class POSBill(db.Model, TenantScopedMixin, TimestampMixin):
     refund_reason = db.Column(db.Text)
     refunded_at = db.Column(db.DateTime(timezone=True))
     refunded_by_id = db.Column(db.Integer, db.ForeignKey("users.id"))
+    # How the refund was paid out, and which open counter day it came out
+    # of (day open/close on) - so that day's expected cash accounts for it.
+    refund_mode = db.Column(db.Enum(PaymentMode, name="payment_mode"))
+    refund_session_id = db.Column(db.Integer, db.ForeignKey("cash_sessions.id", name="fk_pos_bills_refund_session"))
+
+    # Bill-level discount exactly as the cashier entered it (a % of the
+    # bill, or a rupee amount off it). It is spread over the lines as
+    # POSBillLine.discount_flat - the lines are what tax is computed on.
+    bill_discount_kind = db.Column(db.String(7))
+    bill_discount_value = db.Column(db.Numeric(12, 2), nullable=False, default=0, server_default="0")
+    price_list_id = db.Column(db.Integer, db.ForeignKey("price_lists.id", name="fk_pos_bills_price_list"))
+    # The counter day (CashSession) this bill was rung up in - only set
+    # while the client has day open/close switched on.
+    cash_session_id = db.Column(db.Integer, db.ForeignKey("cash_sessions.id", name="fk_pos_bills_cash_session"), index=True)
+    # Cash handed over and change given back, when paid (partly) in cash.
+    cash_tendered = db.Column(db.Numeric(12, 2))
+    change_due = db.Column(db.Numeric(12, 2))
+
+    voided_at = db.Column(db.DateTime(timezone=True))
+    void_reason = db.Column(db.Text)
+    voided_by_id = db.Column(db.Integer, db.ForeignKey("users.id", name="fk_pos_bills_voided_by"))
+    # When the original was printed. Every later print - a reprint, the
+    # day-book's copy - is marked DUPLICATE COPY (app.pos.receipt).
+    original_printed_at = db.Column(db.DateTime(timezone=True))
 
     gstin = db.relationship("Gstin")
     customer = db.relationship("Customer")
     created_by = db.relationship("User", foreign_keys=[created_by_id])
     refunded_by = db.relationship("User", foreign_keys=[refunded_by_id])
+    voided_by = db.relationship("User", foreign_keys=[voided_by_id])
+    price_list = db.relationship("PriceList")
     lines = db.relationship(
         "POSBillLine",
         backref="bill",
         cascade="all, delete-orphan",
         order_by="POSBillLine.sort_order",
     )
+    payments = db.relationship(
+        "POSPayment",
+        backref="bill",
+        cascade="all, delete-orphan",
+        order_by="POSPayment.id",
+    )
+
+    @property
+    def is_b2b(self) -> bool:
+        return bool(((self.customer_snapshot or {}).get("gstin") or "").strip())
+
+    @property
+    def credit_amount(self):
+        return sum((p.amount for p in self.payments if p.mode == PaymentMode.CREDIT), 0)
+
+    def payment_summary(self) -> str:
+        """"Cash" for a single-mode bill, "Cash 300.00 + UPI 200.00" for a
+        split one - what the day-book and receipt print."""
+        if len(self.payments) > 1:
+            return " + ".join(f"{PAYMENT_MODE_LABELS[p.mode]} {p.amount:.2f}" for p in self.payments)
+        if self.payments:
+            return PAYMENT_MODE_LABELS[self.payments[0].mode]
+        return PAYMENT_MODE_LABELS.get(self.payment_mode, "-") if self.payment_mode else "-"
 
     def __repr__(self):
         return f"<POSBill {self.bill_number or f'held-{self.id}'}>"
@@ -85,6 +179,15 @@ class POSBillLine(db.Model, TimestampMixin):
     unit = db.Column(db.String(20), nullable=False, default="pcs")
     rate = db.Column(db.Numeric(12, 2), nullable=False, default=0)
     discount_percent = db.Column(db.Numeric(5, 2), nullable=False, default=0)
+    # Rupees off the line on its own price basis (pre-tax for an exclusive
+    # price, GST-inclusive for an inclusive one) - a line's own rupee
+    # discount plus its share of any bill discount. With discount_percent,
+    # exactly what app.utils.gst.compute_line was given.
+    discount_flat = db.Column(db.Numeric(12, 2), nullable=False, default=0, server_default="0")
+    # The line's own discount as entered (for resuming a held bill and for
+    # the receipt) - a % or a rupee amount off what the customer pays.
+    line_discount_kind = db.Column(db.String(7))
+    line_discount_value = db.Column(db.Numeric(12, 2), nullable=False, default=0, server_default="0")
     discount_amount = db.Column(db.Numeric(12, 2), nullable=False, default=0)
 
     taxable_value = db.Column(db.Numeric(12, 2), nullable=False, default=0)
@@ -105,3 +208,27 @@ class POSBillLine(db.Model, TimestampMixin):
 
     def __repr__(self):
         return f"<POSBillLine {self.id} {self.description}>"
+
+
+class POSPayment(db.Model, TenantScopedMixin):
+    """One way a POS bill was paid - a bill paid Rs. 300 cash + Rs. 200 UPI
+    has two rows. Every completed bill has at least one; they always add
+    up to its grand total."""
+
+    __tablename__ = "pos_payments"
+
+    id = db.Column(db.Integer, primary_key=True)
+    bill_id = db.Column(db.Integer, db.ForeignKey("pos_bills.id", name="fk_pos_payments_bill"), nullable=False, index=True)
+    mode = db.Column(db.Enum(PaymentMode, name="payment_mode"), nullable=False)
+    amount = db.Column(db.Numeric(12, 2), nullable=False)
+    # UPI ref / card slip / cheque number - optional, free text.
+    reference = db.Column(db.String(100))
+    # For an EXCHANGE payment, the sales return whose value paid for it.
+    pos_return_id = db.Column(db.Integer, db.ForeignKey("pos_returns.id", name="fk_pos_payments_return"))
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow)
+
+    pos_return = db.relationship("POSReturn")
+
+    @property
+    def label(self) -> str:
+        return PAYMENT_MODE_LABELS[self.mode]

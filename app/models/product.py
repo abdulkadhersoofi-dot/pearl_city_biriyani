@@ -56,6 +56,9 @@ class Product(db.Model, TenantScopedMixin, TimestampMixin):
     # Stored in uploaded_images (database row, not a disk path) so it
     # survives a container restart/redeploy - see app/models/media.py.
     image_id = db.Column(db.Integer, db.ForeignKey("uploaded_images.id"))
+    # Pinned to the top of the POS favourites row (feature "favourites"),
+    # ahead of the automatic best sellers.
+    is_favourite = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
     is_active = db.Column(db.Boolean, nullable=False, default=True)
     # Optional even when the tenant has the "categories" feature on - an
     # item with neither just shows under "Uncategorized" in the POS
@@ -67,6 +70,13 @@ class Product(db.Model, TenantScopedMixin, TimestampMixin):
 
     category = db.relationship("Category")
     sub_category = db.relationship("SubCategory")
+
+    @property
+    def sells_loose(self) -> bool:
+        """Weighed/measured (KGS, LTR, MTR...) - billed in decimal quantities."""
+        from app.utils.gst_config import LOOSE_QTY_UQC
+
+        return (self.unit or "").upper() in LOOSE_QTY_UQC
 
     def __repr__(self):
         return f"<Product {self.id} {self.name}>"

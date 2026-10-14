@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Day close - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>{% if session and session.closed_at %}Closed day{% else %}Cash &amp; day close{% endif %}</h1>
+    {% if session %}<p class="text-muted mt-0">{{ session.user.name }} &middot; opened {{ session.opened_at.strftime('%d %b %Y %H:%M') }}{% if session.closed_at %} &middot; closed {{ session.closed_at.strftime('%H:%M') }}{% endif %}</p>{% endif %}
+  </div>
+  <a href="{{ url_for('pos.terminal') }}" class="btn btn-quiet">Back to billing</a>
+</div>
+
+{% if not session %}
+<div class="card"><p class="mt-0">The day isn't open on this counter. Open it from the billing screen.</p></div>
+{% else %}
+<div class="form-grid" style="margin-bottom:20px;">
+  <div class="card">
+    <p class="text-muted mt-0">Bills</p>
+    <p style="font-size:1.6rem; font-weight:800; margin:0;">{{ activity.bill_count }}{% if activity.voided_count %} <span class="text-muted" style="font-size:0.9rem;">+ {{ activity.voided_count }} voided</span>{% endif %}</p>
+  </div>
+  <div class="card">
+    <p class="text-muted mt-0">Sales</p>
+    <p style="font-size:1.6rem; font-weight:800; margin:0;">Rs. {{ '%.2f'|format(activity.total_sales) }}</p>
+  </div>
+  <div class="card">
+    <p class="text-muted mt-0">Expected cash in drawer</p>
+    <p style="font-size:1.6rem; font-weight:800; margin:0;">Rs. {{ '%.2f'|format(session.expected_cash if session.closed_at else activity.expected_cash) }}</p>
+  </div>
+  {% if session.closed_at %}
+  <div class="card">
+    <p class="text-muted mt-0">Counted / difference</p>
+    <p style="font-size:1.6rem; font-weight:800; margin:0; color:{{ 'var(--color-danger)' if session.difference < 0 else 'inherit' }};">Rs. {{ '%.2f'|format(session.counted_cash) }} / {{ '%.2f'|format(session.difference) }}</p>
+  </div>
+  {% endif %}
+</div>
+
+<div class="card" style="margin-bottom:20px;">
+  <h2 class="mt-0">How the cash adds up</h2>
+  <table>
+    <tbody>
+      <tr><td>Opening cash</td><td>Rs. {{ '%.2f'|format(session.opening_cash) }}</td></tr>
+      <tr><td>+ Cash sales</td><td>Rs. {{ '%.2f'|format(activity.cash_sales) }}</td></tr>
+      <tr><td>- Cash refunds</td><td>Rs. {{ '%.2f'|format(activity.cash_refunds) }}</td></tr>
+      <tr><td>- Cash paid back on returns</td><td>Rs. {{ '%.2f'|format(activity.cash_returns) }}</td></tr>
+      <tr><td>+ Cash in</td><td>Rs. {{ '%.2f'|format(activity.cash_in) }}</td></tr>
+      <tr><td>- Cash out</td><td>Rs. {{ '%.2f'|format(activity.cash_out) }}</td></tr>
+      <tr><td><strong>Expected in drawer</strong></td><td><strong>Rs. {{ '%.2f'|format(activity.expected_cash) }}</strong></td></tr>
+    </tbody>
+  </table>
+  <h3>Sales by payment mode</h3>
+  <table>
+    <tbody>
+    {% for mode, row in activity.by_mode.items() if row.count %}
+      <tr><td>{{ labels[mode] }}</td><td>{{ row.count }}</td><td>Rs. {{ '%.2f'|format(row.total) }}</td></tr>
+    {% else %}
+      <tr><td class="text-muted">No sales yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% if session.movements %}
+  <h3>Cash in / out</h3>
+  <table>
+    <tbody>
+    {% for m in session.movements %}
+      <tr><td>{{ m.created_at.strftime('%H:%M') }}</td><td>{{ 'In' if m.kind == 'in' else 'Out' }}</td><td>{{ m.reason }}</td><td>Rs. {{ '%.2f'|format(m.amount) }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+
+{% if session.is_open and session.user_id == current_user.id %}
+<div class="form-grid">
+  <form method="post" action="{{ url_for('pos.day_cash') }}" class="card">
+    <h2 class="mt-0">Cash in / out</h2>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="field"><span class="field-label">Type</span>
+      <select name="kind" class="field-input"><option value="out">Cash out (petty cash, sent to bank)</option><option value="in">Cash in (float added)</option></select>
+    </label>
+    <label class="field"><span class="field-label">Amount (Rs.)</span><input type="number" name="amount" min="0.01" step="0.01" class="field-input" required></label>
+    <label class="field"><span class="field-label">What for</span><input type="text" name="reason" maxlength="255" class="field-input" required placeholder="e.g. tea and snacks, courier"></label>
+    <button class="btn btn-secondary btn-block">Record</button>
+  </form>
+  <form method="post" action="{{ url_for('pos.day_close') }}" class="card"
+        onsubmit="return confirm('Close the day? Bills from today can no longer be voided after this.');">
+    <h2 class="mt-0">Close the day</h2>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="field"><span class="field-label">Cash counted in the drawer (Rs.)</span><input type="number" name="counted_cash" min="0" step="0.01" class="field-input" required></label>
+    <label class="field"><span class="field-label">Note (optional)</span><input type="text" name="note" maxlength="500" class="field-input"></label>
+    <button class="btn btn-primary btn-block">Close day</button>
+  </form>
+</div>
+{% endif %}
+{% if session.closing_note %}<p class="text-muted">Note: {{ session.closing_note }}</p>{% endif %}
+{% endif %}
+{% endblock %}
