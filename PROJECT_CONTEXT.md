@@ -293,7 +293,13 @@ this list is just the index.
   the GSTR-3B working paper (3.1(d), table 4 - only with Purchases on),
   batches/FEFO/expired-sale block, serial/IMEI capture + POS picker +
   receipt print, size/colour variants, stock reports, barcode labels.
-  Phases 4-10 still to build, in order.
+- **Platform build Phase 4** (expenses, flag `expenses`): expense
+  vouchers (EXP series, drafts, voids) with GST bills computed by
+  `app/utils/itc.compute_expense_gst`, seeded editable categories,
+  recurring expenses making drafts (`flask expenses-generate-drafts`),
+  POS cash-out booked as petty-cash expense, expense report
+  (category/branch/month, Excel/PDF), expense ITC in GSTR-3B table 4.
+  Phases 5-10 still to build, in order.
 
 ## 5. Chronological development history (this session)
 

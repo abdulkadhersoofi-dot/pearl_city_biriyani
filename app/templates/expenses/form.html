@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Check draft expense' if expense else 'Add expense' }} - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header"><h1>{{ 'Check draft expense' if expense else 'Add expense' }}</h1></div>
+{% include "expenses/_nav.html" %}
+{% if expense and expense.recurring %}<p class="text-muted">From the recurring expense <strong>{{ expense.recurring.name }}</strong>, due {{ expense.due_date.strftime('%d %b %Y') }}. Adjust it to what was actually paid, add the GST bill if there is one, then post.</p>{% endif %}
+<form method="post" enctype="multipart/form-data"
+      x-data='expenseForm({{ (form.get("is_gst_bill") == "1")|tojson }}, {{ (form.get("is_rcm") == "1")|tojson }}, {{ (form.get("amount_includes_gst") == "1")|tojson }})'>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="card" style="margin-bottom:16px;">
+    <div class="form-grid">
+      <label class="field"><span class="field-label">Date</span>
+        <input type="date" name="expense_date" class="field-input" max="{{ today.isoformat() }}" value="{{ form.get('expense_date', '') }}" required></label>
+      <label class="field"><span class="field-label">Category</span>
+        <select name="category_id" class="field-input" required>
+          <option value="">- pick -</option>
+          {% for c in categories %}<option value="{{ c.id }}" {{ 'selected' if form.get('category_id') == c.id|string }}>{{ c.name }}</option>{% endfor %}
+        </select>
+        <a href="{{ url_for('expenses.categories') }}" class="field-help">Edit categories</a></label>
+      <label class="field"><span class="field-label">Paid to</span>
+        <input type="text" name="payee_name" maxlength="255" class="field-input" value="{{ form.get('payee_name', '') }}" placeholder="e.g. Landlord, TNEB, Ravi (driver)"></label>
+      {% if suppliers %}
+      <label class="field"><span class="field-label">...or a supplier</span>
+        <select name="supplier_id" class="field-input">
+          <option value="">- none -</option>
+          {% for s in suppliers %}<option value="{{ s.id }}" {{ 'selected' if form.get('supplier_id') == s.id|string }}>{{ s.name }}</option>{% endfor %}
+        </select></label>
+      {% endif %}
+      <label class="field"><span class="field-label" x-text="gst && !rcm && incl ? 'Amount (bill total, GST included)' : (gst ? 'Taxable value (before GST)' : 'Amount')">Amount</span>
+        <input type="number" name="amount" step="0.01" min="0.01" class="field-input" x-model="amount" required></label>
+      <label class="field"><span class="field-label">Paid by</span>
+        <select name="payment_mode" class="field-input">
+          {% for m, label in modes.items() %}<option value="{{ m.value }}" {{ 'selected' if form.get('payment_mode', 'cash') == m.value }}>{{ label }}</option>{% endfor %}
+        </select></label>
+      <label class="field"><span class="field-label">Reference (optional)</span>
+        <input type="text" name="reference" maxlength="100" class="field-input" value="{{ form.get('reference', '') }}" placeholder="Cheque no. / UTR"></label>
+      {% if branches %}
+      <label class="field"><span class="field-label">Branch</span>
+        <select name="branch_user_id" class="field-input">
+          <option value="">Head office</option>
+          {% for b in branches %}<option value="{{ b.id }}" {{ 'selected' if form.get('branch_user_id') == b.id|string }}>{{ b.name }}</option>{% endfor %}
+        </select></label>
+      {% endif %}
+    </div>
+    <label class="row" style="gap:8px; align-items:center; margin-top:8px;">
+      <input type="checkbox" name="is_gst_bill" value="1" x-model="gst"> This is a GST bill (the supplier charged GST)</label>
+  </div>
+
+  <div class="card" style="margin-bottom:16px;" x-show="gst">
+    <h2 class="mt-0">GST bill</h2>
+    {% if not claims_itc %}<p class="field-help">Your business isn't a regular GST registration, so GST on expenses can't be claimed back - it's recorded as part of the cost.</p>{% endif %}
+    <div class="form-grid">
+      <label class="field"><span class="field-label">Supplier's GSTIN</span>
+        <input type="text" name="supplier_gstin" maxlength="15" class="field-input" style="text-transform:uppercase;" value="{{ form.get('supplier_gstin', '') }}"></label>
+      <label class="field"><span class="field-label">Bill number</span>
+        <input type="text" name="bill_number" maxlength="50" class="field-input" value="{{ form.get('bill_number', '') }}"></label>
+      <label class="field"><span class="field-label">GST rate</span>
+        <select name="gst_rate" class="field-input" x-model="rate">
+          {% for s in slabs %}<option value="{{ s }}" {{ 'selected' if form.get('gst_rate', '18') == s }}>{{ s }}%</option>{% endfor %}
+        </select></label>
+      <label class="field"><span class="field-label">Input tax credit</span>
+        <select name="itc_eligibility" class="field-input">
+          {% for k, label in itc_labels.items() %}<option value="{{ k.value }}" {{ 'selected' if form.get('itc_eligibility') == k.value }}>{{ label }}</option>{% endfor %}
+        </select>
+        <span class="field-help">Blocked u/s 17(5): food & beverages, club fees, personal vehicles and similar.</span></label>
+      {% if gstins|length > 1 %}
+      <label class="field"><span class="field-label">Your registration</span>
+        <select name="gstin_id" class="field-input">{% for g in gstins %}<option value="{{ g.id }}" {{ 'selected' if form.get('gstin_id') == g.id|string }}>{{ g.display_label }}</option>{% endfor %}</select></label>
+      {% endif %}
+    </div>
+    <label class="row" style="gap:8px; align-items:center;" x-show="!rcm"><input type="checkbox" name="amount_includes_gst" value="1" x-model="incl"> The amount above is the bill total, GST included</label>
+    <label class="row" style="gap:8px; align-items:center; margin-top:6px;"><input type="checkbox" name="is_rcm" value="1" x-model="rcm"> Reverse charge - the supplier doesn't charge GST; you pay it to the government</label>
+    <p class="text-muted" x-show="amount > 0">Taxable <strong x-text="money(taxable())"></strong> + GST <strong x-text="money(tax())"></strong>
+      <span x-show="!rcm">= paid <strong x-text="money(taxable() + tax())"></strong></span>
+      <span x-show="rcm">- you pay the supplier <strong x-text="money(taxable())"></strong> and the GST to the government</span>
+      <small>(a preview; the saved figures are worked out exactly)</small></p>
+  </div>
+
+  <div class="card form-grid" style="margin-bottom:16px;">
+    <label class="field"><span class="field-label">Bill photo or PDF (optional)</span>
+      <input type="file" name="attachment" accept=".pdf,.jpg,.jpeg,.png" class="field-input">
+      {% if expense and expense.attachment_id %}<span class="field-help">A bill is already attached - choose a file only to replace it.</span>{% endif %}</label>
+    <label class="field"><span class="field-label">Notes</span>
+      <input type="text" name="notes" class="field-input" value="{{ form.get('notes', '') }}"></label>
+  </div>
+  <div class="row" style="justify-content:flex-end; gap:8px;">
+    <a href="{{ url_for('expenses.index') }}" class="btn btn-quiet">Cancel</a>
+    <button name="action" value="draft" class="btn btn-secondary">Save as draft</button>
+    <button name="action" value="post" class="btn btn-primary">Post expense</button>
+  </div>
+</form>
+<script>
+  function expenseForm(gst, rcm, incl) {
+    const r2 = (x) => Math.round((x + Number.EPSILON) * 100) / 100;
+    return {
+      gst: gst, rcm: rcm, incl: incl,
+      amount: {{ (form.get('amount') or '')|tojson }},
+      rate: {{ (form.get('gst_rate') or '18')|tojson }},
+      taxable() {
+        const a = parseFloat(this.amount) || 0, r = parseFloat(this.rate) || 0;
+        return (this.incl && !this.rcm) ? r2(a * 100 / (100 + r)) : r2(a);
+      },
+      tax() { return (this.incl && !this.rcm) ? r2((parseFloat(this.amount) || 0) - this.taxable()) : r2(this.taxable() * (parseFloat(this.rate) || 0) / 100); },
+      money(x) { return "Rs. " + (x || 0).toFixed(2); },
+    };
+  }
+</script>
+{% endblock %}

@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}{{ recurring.name if recurring else 'New recurring expense' }} - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header"><h1>{{ recurring.name if recurring else 'New recurring expense' }}</h1></div>
+{% include "expenses/_nav.html" %}
+<form method="post" class="card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="form-grid">
+    <label class="field"><span class="field-label">Name</span>
+      <input type="text" name="name" maxlength="100" class="field-input" value="{{ form.get('name', '') }}" placeholder="e.g. Shop rent" required></label>
+    <label class="field"><span class="field-label">Category</span>
+      <select name="category_id" class="field-input" required>
+        <option value="">- pick -</option>
+        {% for c in categories %}<option value="{{ c.id }}" {{ 'selected' if form.get('category_id') == c.id|string }}>{{ c.name }}</option>{% endfor %}
+      </select></label>
+    <label class="field"><span class="field-label">Paid to</span>
+      <input type="text" name="payee_name" maxlength="255" class="field-input" value="{{ form.get('payee_name', '') }}"></label>
+    {% if suppliers %}
+    <label class="field"><span class="field-label">...or a supplier</span>
+      <select name="supplier_id" class="field-input"><option value="">- none -</option>
+        {% for s in suppliers %}<option value="{{ s.id }}" {{ 'selected' if form.get('supplier_id') == s.id|string }}>{{ s.name }}</option>{% endfor %}</select></label>
+    {% endif %}
+    <label class="field"><span class="field-label">Amount</span>
+      <input type="number" name="amount" step="0.01" min="0.01" class="field-input" value="{{ form.get('amount', '') }}" required></label>
+    <label class="field"><span class="field-label">How often</span>
+      <select name="frequency" class="field-input">
+        {% for f, label in frequencies.items() %}<option value="{{ f.value }}" {{ 'selected' if form.get('frequency') == f.value }}>{{ label }}</option>{% endfor %}
+      </select></label>
+    <label class="field"><span class="field-label">First due on</span>
+      <input type="date" name="start_date" class="field-input" value="{{ form.get('start_date', '') }}" required>
+      <span class="field-help">Monthly ones fall on this day each month (the month's last day when it's shorter).</span></label>
+    <label class="field"><span class="field-label">Ends on (optional)</span>
+      <input type="date" name="end_date" class="field-input" value="{{ form.get('end_date', '') }}"></label>
+    <label class="field"><span class="field-label">Usually paid by</span>
+      <select name="payment_mode" class="field-input">
+        {% for m, label in modes.items() %}<option value="{{ m.value }}" {{ 'selected' if form.get('payment_mode') == m.value }}>{{ label }}</option>{% endfor %}
+      </select></label>
+    {% if branches %}
+    <label class="field"><span class="field-label">Branch</span>
+      <select name="branch_user_id" class="field-input"><option value="">Head office</option>
+        {% for b in branches %}<option value="{{ b.id }}" {{ 'selected' if form.get('branch_user_id') == b.id|string }}>{{ b.name }}</option>{% endfor %}</select></label>
+    {% endif %}
+  </div>
+  <label class="field"><span class="field-label">Notes</span>
+    <input type="text" name="notes" class="field-input" value="{{ form.get('notes', '') }}"></label>
+  <div class="row" style="justify-content:flex-end; gap:8px;">
+    <a href="{{ url_for('expenses.recurring') }}" class="btn btn-quiet">Cancel</a>
+    <button class="btn btn-primary">Save</button>
+  </div>
+</form>
+{% if recurring and recurring.expenses %}
+<h2>Made so far</h2>
+<div class="table-wrap card">
+  <table>
+    <thead><tr><th>Due</th><th>Voucher</th><th>Status</th><th class="num">Amount</th></tr></thead>
+    <tbody>
+    {% for e in recurring.expenses|reverse %}
+      <tr><td>{{ e.due_date.strftime('%d %b %Y') }}</td><td><a href="{{ url_for('expenses.view_expense', expense_id=e.id) }}">{{ e.number or 'Draft' }}</a></td>
+        <td>{{ e.status.value|title }}</td><td class="num">{{ '%.2f'|format(e.amount) }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endblock %}

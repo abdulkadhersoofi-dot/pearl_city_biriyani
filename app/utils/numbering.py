@@ -20,6 +20,7 @@ DEFAULT_PREFIXES = {
     DocumentType.PURCHASE_ORDER: "PO",
     DocumentType.STOCK_TRANSFER: "TDC",
     DocumentType.STOCK_ADJUSTMENT: "ADJ",
+    DocumentType.EXPENSE: "EXP",
 }
 
 

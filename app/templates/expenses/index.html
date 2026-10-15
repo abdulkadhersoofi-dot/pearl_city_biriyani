@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Expenses - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Expenses</h1>
+    <p class="text-muted mt-0">This month so far: <strong>Rs. {{ '%.2f'|format(month_total) }}</strong></p>
+  </div>
+  <a href="{{ url_for('expenses.new_expense') }}" class="btn btn-primary">+ Add expense</a>
+</div>
+{% include "expenses/_nav.html" %}
+
+{% if drafts and status != 'draft' %}
+<div class="card" style="margin-bottom:16px;">
+  <strong>{{ drafts }} draft expense{{ 's' if drafts != 1 }} waiting</strong>{% if new_drafts %} ({{ new_drafts }} new from your recurring expenses){% endif %} -
+  check and post {{ 'them' if drafts != 1 else 'it' }} once paid. <a href="{{ url_for('expenses.index', status='draft') }}">Show drafts</a>
+</div>
+{% endif %}
+
+<form class="search-bar" method="get">
+  <select name="status" class="field-input" style="max-width:150px;">
+    {% for value, label in (('posted', 'Posted'), ('draft', 'Drafts'), ('voided', 'Voided')) %}<option value="{{ value }}" {{ 'selected' if value == status }}>{{ label }}</option>{% endfor %}
+  </select>
+  <select name="category" class="field-input" style="max-width:220px;">
+    <option value="">All categories</option>
+    {% for c in categories %}<option value="{{ c.id }}" {{ 'selected' if c.id == category_id }}>{{ c.name }}</option>{% endfor %}
+  </select>
+  <input type="text" name="q" value="{{ q }}" placeholder="Search payee, voucher no., notes" class="field-input">
+  <button class="btn btn-secondary">Show</button>
+</form>
+
+<div class="table-wrap card">
+  <table>
+    <thead><tr><th>Date</th><th>Voucher</th><th>Category</th><th>Paid to</th><th>Branch</th><th class="num">GST</th><th class="num">Amount</th></tr></thead>
+    <tbody>
+    {% for e in rows %}
+      <tr>
+        <td>{{ e.expense_date.strftime('%d %b %Y') }}</td>
+        <td><a href="{{ url_for('expenses.view_expense', expense_id=e.id) }}">{{ e.number or 'Draft' }}</a>{% if e.recurring_id %} <span class="tag">Recurring</span>{% endif %}{% if e.cash_movement_id %} <span class="tag">Petty cash</span>{% endif %}</td>
+        <td>{{ e.category.name }}</td>
+        <td>{{ e.payee }}</td>
+        <td>{{ e.branch_user.name if e.branch_user else 'Head office' }}</td>
+        <td class="num">{{ '%.2f'|format(e.total_tax) if e.is_gst_bill else '-' }}</td>
+        <td class="num">{{ '%.2f'|format(e.amount) }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="7" class="empty-state">{{ 'No drafts waiting.' if status == 'draft' else ('Nothing voided.' if status == 'voided' else 'No expenses yet. Add your first one, or set up rent and salaries under Recurring.') }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

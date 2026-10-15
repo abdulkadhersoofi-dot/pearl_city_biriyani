@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}{{ expense.number or 'Draft expense' }} - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>{{ expense.number or 'Draft expense' }}</h1>
+    <p class="text-muted mt-0">Expense voucher ·
+      <span class="status-badge {{ {'posted': 'status-issued', 'voided': 'status-void'}.get(expense.status.value, 'status-draft') }}">{{ expense.status.value|title }}</span>
+      {% if expense.recurring %} · from <a href="{{ url_for('expenses.edit_recurring', recurring_id=expense.recurring_id) }}">{{ expense.recurring.name }}</a>{% endif %}
+      {% if expense.cash_movement_id %} · petty cash from the counter drawer{% endif %}</p>
+  </div>
+  <div class="row">
+    {% if expense.attachment_id %}<a href="{{ url_for('expenses.expense_attachment', expense_id=expense.id) }}" target="_blank" class="btn btn-secondary">Bill</a>{% endif %}
+    {% if expense.status.value == 'draft' %}
+      <a href="{{ url_for('expenses.edit_expense', expense_id=expense.id) }}" class="btn btn-secondary">Check &amp; edit</a>
+      <form method="post" action="{{ url_for('expenses.post_expense', expense_id=expense.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-primary">Post as it is</button></form>
+    {% endif %}
+  </div>
+</div>
+{% include "expenses/_nav.html" %}
+<div class="card" style="margin-bottom:16px;">
+  <div class="form-grid">
+    <div><strong>Date</strong><p>{{ expense.expense_date.strftime('%d %b %Y') }}</p></div>
+    <div><strong>Category</strong><p>{{ expense.category.name }}</p></div>
+    <div><strong>Paid to</strong><p>{{ expense.payee }}</p></div>
+    <div><strong>Branch</strong><p>{{ expense.branch_user.name if expense.branch_user else 'Head office' }}</p></div>
+    <div><strong>Paid by</strong><p>{{ modes[expense.payment_mode] }}{% if expense.reference %}<br><small>{{ expense.reference }}</small>{% endif %}</p></div>
+    <div><strong>Amount</strong><p>Rs. {{ '%.2f'|format(expense.amount) }}</p></div>
+  </div>
+  {% if expense.notes %}<p><strong>Notes:</strong> {{ expense.notes }}</p>{% endif %}
+  {% if expense.void_reason %}<p><strong>{{ 'Skipped' if not expense.number else 'Voided' }}:</strong> {{ expense.void_reason }}</p>{% endif %}
+</div>
+{% if expense.is_gst_bill %}
+<div class="card" style="margin-bottom:16px;">
+  <h2 class="mt-0">GST bill{% if expense.is_rcm %} - reverse charge{% endif %}</h2>
+  <div class="form-grid">
+    <div><strong>Supplier GSTIN</strong><p>{{ expense.supplier_gstin or '-' }}</p></div>
+    <div><strong>Bill no.</strong><p>{{ expense.bill_number or '-' }}</p></div>
+    <div><strong>Taxable</strong><p>{{ '%.2f'|format(expense.taxable_value) }} @ {{ expense.gst_rate|qty }}%</p></div>
+    <div><strong>GST</strong><p>{% if expense.igst_amount %}IGST {{ '%.2f'|format(expense.igst_amount) }}{% else %}CGST {{ '%.2f'|format(expense.cgst_amount) }} + SGST {{ '%.2f'|format(expense.sgst_amount) }}{% endif %}</p></div>
+    <div><strong>Input tax credit</strong><p>{{ '%.2f'|format(expense.itc_total) }} <small class="text-muted">({{ itc_labels[expense.itc_eligibility] }})</small></p></div>
+  </div>
+</div>
+{% endif %}
+{% if expense.status.value != 'voided' %}
+<form method="post" action="{{ url_for('expenses.void_expense', expense_id=expense.id) }}" class="card row void-box" style="gap:10px; align-items:flex-end;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label class="field" style="margin:0; flex:1;"><span class="field-label">{{ 'Skip this draft' if expense.status.value == 'draft' else 'Void this expense' }} - reason</span>
+    <input type="text" name="reason" class="field-input" required></label>
+  <button class="btn btn-danger" onclick="return confirm('{{ 'Skip this draft?' if expense.status.value == 'draft' else 'Void ' ~ expense.number ~ '?' }}');">{{ 'Skip' if expense.status.value == 'draft' else 'Void' }}</button>
+</form>
+{% endif %}
+{% endblock %}

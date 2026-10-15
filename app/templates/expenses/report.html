@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Expense report - {{ firm_name }}{% endblock %}
+{% macro bucket_table(title, rows, first) %}
+<div class="card table-wrap">
+  <h2 class="mt-0">{{ title }}</h2>
+  <table>
+    <thead><tr><th>{{ first }}</th><th class="num">Expenses</th><th class="num">GST</th><th class="num">ITC</th><th class="num">Amount</th></tr></thead>
+    <tbody>
+    {% for label, b in rows %}
+      <tr><td>{{ label }}</td><td class="num">{{ b.count }}</td><td class="num">{{ '%.2f'|format(b.tax) }}</td><td class="num">{{ '%.2f'|format(b.itc) }}</td><td class="num">{{ '%.2f'|format(b.amount) }}</td></tr>
+    {% else %}
+      <tr><td colspan="5" class="empty-state">None in this period.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endmacro %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Expense report</h1>
+    <p class="text-muted mt-0">{{ data.start.strftime('%d %b %Y') }} - {{ data.end.strftime('%d %b %Y') }} · posted expenses only</p>
+  </div>
+  <div class="row">
+    <a href="{{ url_for('expenses.report_xlsx', **request.args.to_dict(flat=False)) }}" class="btn btn-secondary">Excel</a>
+    <a href="{{ url_for('expenses.report_pdf', **request.args.to_dict(flat=False)) }}" class="btn btn-secondary" target="_blank">PDF</a>
+  </div>
+</div>
+{% include "expenses/_nav.html" %}
+{% include "reports/_filter_bar.html" %}
+<form method="get" class="card row" style="gap:12px; align-items:flex-end; flex-wrap:wrap; margin-bottom:16px;">
+  {% for key, values in request.args.to_dict(flat=False).items() if key != 'category_id' %}{% for v in values %}<input type="hidden" name="{{ key }}" value="{{ v }}">{% endfor %}{% endfor %}
+  <label class="field" style="margin:0; min-width:240px;"><span class="field-label">Categories</span>
+  <select name="category_id" multiple size="5" class="field-input" style="height:auto;" aria-label="Categories">
+    {% for c in categories %}<option value="{{ c.id }}" {{ 'selected' if c.id in category_ids }}>{{ c.name }}</option>{% endfor %}
+  </select></label>
+  <button class="btn btn-secondary">Only these categories</button>
+  {% if category_ids %}<a href="{{ all_categories_url }}" class="btn btn-quiet">All categories</a>{% endif %}
+</form>
+
+<div class="form-grid" style="margin-bottom:16px;">
+  <div class="card"><div class="text-muted">Total spent</div><div style="font-size:1.5rem; font-weight:800;">Rs. {{ '%.2f'|format(data.totals.amount) }}</div><div class="text-muted">{{ data.totals.count }} expense(s)</div></div>
+  <div class="card"><div class="text-muted">GST on bills</div><div style="font-size:1.5rem; font-weight:800;">Rs. {{ '%.2f'|format(data.totals.tax) }}</div></div>
+  <div class="card"><div class="text-muted">Input tax credit</div><div style="font-size:1.5rem; font-weight:800;">Rs. {{ '%.2f'|format(data.totals.itc) }}</div><div class="text-muted">goes to GSTR-3B table 4</div></div>
+</div>
+<div class="form-grid" style="margin-bottom:16px;">
+  {{ bucket_table('By category', data.by_category, 'Category') }}
+  {{ bucket_table('By branch', data.by_branch, 'Branch') }}
+</div>
+<div style="margin-bottom:16px;">{{ bucket_table('By month', data.by_month, 'Month') }}</div>
+<div class="table-wrap card">
+  <h2 class="mt-0">Every expense</h2>
+  <table>
+    <thead><tr><th>Date</th><th>Voucher</th><th>Category</th><th>Paid to</th><th>Branch</th><th class="num">GST</th><th class="num">Amount</th></tr></thead>
+    <tbody>
+    {% for e in data.rows %}
+      <tr><td>{{ e.expense_date.strftime('%d %b %Y') }}</td><td><a href="{{ url_for('expenses.view_expense', expense_id=e.id) }}">{{ e.number }}</a></td>
+        <td>{{ e.category.name }}</td><td>{{ e.payee }}</td><td>{{ e.branch_user.name if e.branch_user else 'Head office' }}</td>
+        <td class="num">{{ '%.2f'|format(e.total_tax) }}</td><td class="num">{{ '%.2f'|format(e.amount) }}</td></tr>
+    {% else %}
+      <tr><td colspan="7" class="empty-state">No posted expenses in this period.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

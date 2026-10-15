@@ -56,7 +56,7 @@
     <tr{% if loop.last %} class="grand"{% endif %}><td>{{ label }}</td><td class="num">{{ '%.2f'|format(row.cgst) }}</td><td class="num">{{ '%.2f'|format(row.sgst) }}</td><td class="num">{{ '%.2f'|format(row.igst) }}</td></tr>
     {% endfor %}
   </table>
-  <p class="note">ITC from {{ itc.bill_count }} purchase bill(s) entered this month - claim only what GSTR-2B shows. Tax on reverse-charge purchases (Rs. {{ '%.2f'|format(itc.rcm_tax_payable) }}) is payable in cash.</p>
+  <p class="note">ITC from {{ itc.bill_count }} purchase bill(s) and {{ itc.expense_count }} expense(s) with a GST bill this month - claim only what GSTR-2B shows. Tax on reverse-charge purchases (Rs. {{ '%.2f'|format(itc.rcm_tax_payable) }}) is payable in cash.</p>
   {% else %}
   <p class="note">
     Input Tax Credit is not tracked in this system - it records sales only. Add eligible ITC from

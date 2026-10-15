@@ -1075,6 +1075,89 @@ Gunicorn workers or add app servers behind Nginx as load grows.
   test covers guessed ids in every URL (404), B's ids smuggled into A's
   forms (refused), lists, and `tenant_query` for each model.
 
+### Platform build - Phase 4 (expenses)
+
+- **Expense vouchers (`Expense`).** A posted expense is numbered
+  `EXP/<FY>/0001` from the same row-locked allocator as every other
+  document. It is never deleted: it is voided with a reason, and every
+  post and void is audit-logged. A **draft** has no number. Numbers are
+  given only on posting, so drafts never leave gaps in the series. A
+  draft that isn't wanted is "skipped", which voids it with a reason, so
+  its recurring expense doesn't make it again.
+- **Categories (`ExpenseCategory`)** are seeded on first use with Rent,
+  Salary & Wages, Electricity, Fuel, Transport, Repairs,
+  Telephone/Internet, Professional Fees, Bank Charges, Packing Material,
+  Advertisement, Office Expenses and Miscellaneous. They are committed
+  straight away, so the ids on the page are real: a first-visit form
+  once had uncommitted ids, and the regression test posts using only
+  what the page offers. Clients can add, rename and switch off
+  categories. A switched-off category keeps its past expenses.
+- **An entry records:** date, category, payee (free text or a supplier
+  when Purchases is on), amount, payment mode (cash / UPI / card /
+  bank / cheque / not paid yet), a reference, the branch (head office
+  when empty), notes, and a bill photo/PDF. The bill is stored privately
+  like a supplier's bill: the public media route refuses it, and it is
+  served only through the expense's tenant-checked route.
+- **GST bills use the existing tax module.** GST on an expense is
+  computed by `itc.compute_expense_gst`, a thin layer over
+  `gst.compute_line`, so all Decimal ROUND_HALF_UP rounding is shared
+  with sales and purchase bills. An expense carries one rate.
+  - The amount can be the bill total with GST inside it, or the taxable
+    value.
+  - CGST+SGST or IGST follows the supplier GSTIN's state code.
+  - Under reverse charge the payee is paid the taxable value only, and
+    the tax is still computed.
+  - Eligible / ineligible / blocked u/s 17(5) works per expense, as on a
+    purchase line.
+  - Only a regular registration with a GSTIN can claim ITC
+    (`purchases.services.can_claim_itc`). Composition and unregistered
+    clients get "No ITC", and the GST is part of the cost.
+  - A forward-charge GST bill needs the supplier's GSTIN, as credit
+    requires one on the bill (s.16(2)).
+- **Recurring expenses (`RecurringExpense`)**: weekly, monthly,
+  quarterly or yearly, with an optional end date.
+  - **Drafts**: `generate_due_drafts` makes one draft per due period.
+    A unique (`recurring_id`, `due_date`) constraint and the advancing
+    `next_due_date` mean it can run any number of times without
+    duplicating anything. It catches up at most 36 periods per run.
+  - **Due dates**: monthly dates stay on the start day, or the month's
+    last day when that month is shorter (31 Jan -> 28 Feb -> 31 Mar).
+  - **When it runs**: on every visit to the Expenses page, and from cron
+    with `flask expenses-generate-drafts`.
+  - **Checking a draft**: the client adjusts the amount, adds the GST
+    bill if any, and posts it.
+  - **Stopping and restarting**: a restarted recurring expense doesn't
+    back-fill the periods it was stopped for.
+- **Petty cash from the POS drawer.** With Expenses on, a counter's
+  "Cash out" (Phase 2 day open/close) is booked as a posted cash expense
+  of that counter. The branch is the counter's own; a client admin's
+  counter is head office. It is filed under Miscellaneous unless the
+  cashier picks another category. "Not an expense (sent to bank / taken
+  by owner)" books nothing. Each cash movement can make at most one
+  expense (unique `cash_movement_id`). With Expenses off, cash out works
+  exactly as before.
+- **Expense report** (Expenses -> Report): posted expenses only. It is
+  grouped by category, branch and month, with GST and ITC totals. It
+  uses the same period/branch filter bar as the sales reports, plus a
+  category filter. The Excel download has the expenses plus by-category,
+  by-branch and by-month sheets; there is also a PDF.
+- **ITC in GSTR-3B.** A GST-bill expense counts like a purchase bill, by
+  its expense date:
+  - its tax is availed in 4A(5) (4A(3) and 3.1(d) under reverse charge)
+  - whatever isn't credit is reversed in 4B(1)
+
+  The ITC section now shows when Purchases or Expenses is on. With both
+  off, the working paper and its JSON are unchanged.
+- **Flag.** Every expense screen is behind `feature_required("expenses")`,
+  which returns 404 when off; staff logins get 403. The nav link and the
+  POS category picker render only with the flag.
+- **Tenant isolation.** Each new table has `tenant_id` and
+  `tenant_query`, and `tests/test_expenses.py` proves:
+  - guessed ids 404 on every route
+  - another client's category, branch or registration is refused in a
+    form
+  - drafts are only ever made from a client's own recurring expenses
+
 ## Roadmap
 
 - **Platform build (ARFA general-purpose POS), phase by phase.**
@@ -1087,10 +1170,13 @@ Gunicorn workers or add app servers behind Nginx as load grows.
     returns, purchase orders, GSTR-2B match, ITC in 3B, batches/FEFO,
     serial/IMEI, variants, stock documents, stock reports, barcode
     labels.
+  - Phase 4: expense vouchers with GST/ITC, categories, recurring
+    drafts, POS petty cash, expense report, expense ITC in 3B.
 
-  Next, in order: 4 expenses, 5 margin scheme, 6 receivables/payables
-  (supplier ledger and payments build on Phase 3's opening balances and
-  credit days), 7 P&L (cost of goods sold from the ledger's costs),
+  Next, in order: 5 margin scheme, 6 receivables/payables (supplier
+  ledger and payments build on Phase 3's opening balances and credit
+  days; expenses marked "not paid yet" become payables there), 7 P&L
+  (cost of goods sold from the stock ledger, expenses by category),
   8 e-invoice/e-way bill (only with real credentials; e-way bills for
   transfers), 9 business-type modules, 10 platform polish.
 
@@ -1100,6 +1186,13 @@ Gunicorn workers or add app servers behind Nginx as load grows.
   - Batch/serial pickers are at the POS only: invoices sell FEFO
     automatically and don't carry serials.
   - Stock valuation is weighted average only (no FIFO).
+
+  Phase 4 limits:
+  - One GST rate per expense: a multi-rate bill is entered as one
+    expense per rate.
+  - Expense bills aren't matched against GSTR-2B (purchase bills are).
+  - Drafts appear when the Expenses page is opened or the cron command
+    runs; there is no built-in scheduler.
 - **Remaining document types** - a Delivery Challan for stock moved
   between the client's own places exists since Phase 3 (Stock ->
   Transfers). A challan for goods sent out on approval / job work, and

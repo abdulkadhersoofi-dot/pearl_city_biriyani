@@ -73,8 +73,8 @@
       <tr><td><strong>(C) Net ITC available (A) - (B)</strong></td><td class="num"><strong>{{ '%.2f'|format(itc.net.cgst) }}</strong></td><td class="num"><strong>{{ '%.2f'|format(itc.net.sgst) }}</strong></td><td class="num"><strong>{{ '%.2f'|format(itc.net.igst) }}</strong></td></tr>
     </tbody>
   </table></div>
-  <p class="text-muted" style="margin-bottom:0;">From {{ itc.bill_count }} purchase bill(s) entered this month. Claim only what your GSTR-2B shows -
-    check it under <a href="{{ url_for('purchases.gstr2b_imports') }}">Purchases &rarr; GSTR-2B match</a>. The order of set-off (IGST credit first) is applied on the portal.</p>
+  <p class="text-muted" style="margin-bottom:0;">From {{ itc.bill_count }} purchase bill(s) and {{ itc.expense_count }} expense(s) with a GST bill this month. Claim only what your GSTR-2B shows{% if has_feature('purchases') %} -
+    check it under <a href="{{ url_for('purchases.gstr2b_imports') }}">Purchases &rarr; GSTR-2B match</a>{% endif %}. The order of set-off (IGST credit first) is applied on the portal.</p>
 </div>
 <div class="card" style="margin-top:20px;">
   <p class="text-muted mt-0" style="margin-bottom:0;">

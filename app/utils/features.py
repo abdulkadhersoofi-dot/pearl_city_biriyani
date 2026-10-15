@@ -52,7 +52,13 @@ FEATURES = {
             "suppliers (debit notes) and GSTR-2B matching.",
             available=True,
         ),
-        Feature("expenses", "Expenses", "Record rent, salary, electricity and other expenses."),
+        Feature(
+            "expenses",
+            "Expenses",
+            "Rent, salary, electricity and other expenses - GST bills give input tax credit, rent and salaries "
+            "repeat every month, and petty cash from the counter drawer is booked automatically.",
+            available=True,
+        ),
         Feature(
             "variants",
             "Size / colour variants",

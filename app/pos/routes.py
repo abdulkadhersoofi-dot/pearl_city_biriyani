@@ -683,12 +683,45 @@ def day_cash():
         movement = add_movement(session, current_user, request.form.get("kind"), request.form.get("amount"), request.form.get("reason"))
         record_audit(current_user, "pos_cash_movement", tenant_id=current_user.tenant_id, entity_type="cash_session",
                      entity_id=session.id, details={"kind": movement.kind, "amount": str(movement.amount), "reason": movement.reason})
+        expense = _petty_cash(movement)
         db.session.commit()
-        flash(f"Cash {'in' if movement.kind == 'in' else 'out'} of Rs. {movement.amount:.2f} recorded.", "success")
+        flash(f"Cash {'in' if movement.kind == 'in' else 'out'} of Rs. {movement.amount:.2f} recorded"
+              + (f" - booked as expense {expense.number}." if expense else "."), "success")
     except POSValidationError as exc:
         db.session.rollback()
         flash(exc.message, "error")
     return redirect(request.form.get("next") or url_for("pos.day_close"))
+
+
+def _petty_cash(movement):
+    """With Expenses on, cash paid out of the drawer is booked as a cash
+    expense of this counter - unless the cashier said it isn't one (cash
+    sent to the bank or taken by the owner)."""
+    from app.expenses.services import ExpenseError, petty_cash_expense
+
+    if movement.kind != movement.OUT or not current_tenant_has("expenses"):
+        return None
+    choice = request.form.get("expense_category_id", "")
+    if choice == "none":
+        return None
+    try:
+        expense = petty_cash_expense(current_user.tenant, current_user, movement, _int_or_none(choice))
+    except ExpenseError as exc:
+        raise POSValidationError(exc.message)
+    record_audit(current_user, "expense_posted", tenant_id=current_user.tenant_id, entity_type="expense",
+                 entity_id=expense.id, details={"number": expense.number, "amount": str(expense.amount),
+                                                "category": expense.category.name, "petty_cash": True})
+    return expense
+
+
+def _expense_categories():
+    if not current_tenant_has("expenses"):
+        return []
+    from app.expenses.services import ensure_categories
+
+    rows = ensure_categories(current_user.tenant_id)
+    db.session.commit()  # so the ids on the page exist when the form comes back
+    return rows
 
 
 @pos_bp.route("/day/close", methods=["GET", "POST"])
@@ -712,7 +745,8 @@ def day_close():
             db.session.rollback()
             flash(exc.message, "error")
     activity = session_activity(session) if session else None
-    return render_template("pos/day_close.html", session=session, activity=activity, labels=PAYMENT_MODE_LABELS)
+    return render_template("pos/day_close.html", session=session, activity=activity, labels=PAYMENT_MODE_LABELS,
+                           expense_categories=_expense_categories())
 
 
 @pos_bp.route("/day/<int:session_id>")

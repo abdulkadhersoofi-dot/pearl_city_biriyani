@@ -97,3 +97,32 @@ def landed_costs(lines: list[dict], qtys: list[Decimal], eligibilities: list[Itc
 def return_itc(line: dict, eligibility: ItcEligibility) -> tuple[Decimal, Decimal, Decimal]:
     """ITC to reverse for goods sent back - the credit their GST gave."""
     return claimable(line, eligibility)
+
+
+def compute_expense_gst(amount, gst_rate, is_intra_state: bool, includes_gst: bool, is_rcm: bool,
+                        eligibility: ItcEligibility, can_claim: bool) -> dict:
+    """An expense's GST bill, kept to one rate: taxable value, the tax
+    split, what the payee is paid, and the credit it gives.
+
+    `amount` is the bill total with GST inside it (includes_gst) or the
+    taxable value. Under reverse charge the payee never charges GST, so
+    the amount is always the taxable value and the payee is paid just
+    that; the tax is still computed (the business pays it) and credited
+    if eligible. No credit at all when the business can't claim ITC
+    (not a regular registration - see purchases.services.can_claim_itc)."""
+    includes_gst = includes_gst and not is_rcm
+    line = compute_line(qty=Decimal("1"), rate=Decimal(amount), discount_percent=ZERO, gst_rate=gst_rate,
+                        is_intra_state=is_intra_state, charge_gst=True, price_includes_tax=includes_gst)
+    tax = line_tax(line)
+    taxable = Decimal(line["taxable_value"])
+    cgst, sgst, igst = claimable(line, eligibility) if can_claim else (ZERO, ZERO, ZERO)
+    return {
+        "taxable_value": taxable,
+        "cgst_amount": Decimal(line["cgst_amount"]),
+        "sgst_amount": Decimal(line["sgst_amount"]),
+        "igst_amount": Decimal(line["igst_amount"]),
+        "amount": round_money(taxable if is_rcm else taxable + tax),
+        "itc_cgst": cgst,
+        "itc_sgst": sgst,
+        "itc_igst": igst,
+    }

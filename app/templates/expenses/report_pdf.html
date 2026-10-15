@@ -1,0 +1,51 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @page { size: A4; margin: 14mm 12mm; }
+  body { font-family: "Helvetica Neue", Arial, sans-serif; color: #1f2a24; font-size: 9.5pt; }
+  h1 { font-size: 15pt; margin: 0 0 2px; }
+  h2 { font-size: 11pt; margin: 14px 0 6px; }
+  .sub { color: #5c6b62; margin: 0 0 12px; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+  th, td { border: 1px solid #d8ddd6; padding: 4px 6px; text-align: left; }
+  th { background: #f0f2ee; }
+  .num { text-align: right; }
+  .total td { font-weight: 700; }
+  .cols { display: flex; justify-content: space-between; }
+  .cols > div { width: 49%; }
+</style>
+</head>
+<body>
+  <h1>{{ firm_name }} - Expense report</h1>
+  <p class="sub">{{ data.start.strftime('%d %b %Y') }} - {{ data.end.strftime('%d %b %Y') }} · posted expenses only ·
+    total Rs. {{ '%.2f'|format(data.totals.amount) }} · GST Rs. {{ '%.2f'|format(data.totals.tax) }} · ITC Rs. {{ '%.2f'|format(data.totals.itc) }}</p>
+  <div class="cols">
+    {% for title, key, first in (('By category', 'by_category', 'Category'), ('By branch', 'by_branch', 'Branch')) %}
+    <div>
+      <h2>{{ title }}</h2>
+      <table>
+        <tr><th>{{ first }}</th><th class="num">No.</th><th class="num">Amount</th></tr>
+        {% for label, b in data[key] %}<tr><td>{{ label }}</td><td class="num">{{ b.count }}</td><td class="num">{{ '%.2f'|format(b.amount) }}</td></tr>{% endfor %}
+        <tr class="total"><td>Total</td><td class="num">{{ data.totals.count }}</td><td class="num">{{ '%.2f'|format(data.totals.amount) }}</td></tr>
+      </table>
+    </div>
+    {% endfor %}
+  </div>
+  <h2>By month</h2>
+  <table>
+    <tr><th>Month</th><th class="num">No.</th><th class="num">GST</th><th class="num">ITC</th><th class="num">Amount</th></tr>
+    {% for label, b in data.by_month %}<tr><td>{{ label }}</td><td class="num">{{ b.count }}</td><td class="num">{{ '%.2f'|format(b.tax) }}</td><td class="num">{{ '%.2f'|format(b.itc) }}</td><td class="num">{{ '%.2f'|format(b.amount) }}</td></tr>{% endfor %}
+  </table>
+  <h2>Expenses</h2>
+  <table>
+    <tr><th>Date</th><th>Voucher</th><th>Category</th><th>Paid to</th><th>Branch</th><th class="num">GST</th><th class="num">Amount</th></tr>
+    {% for e in data.rows %}
+    <tr><td>{{ e.expense_date.strftime('%d-%m-%Y') }}</td><td>{{ e.number }}</td><td>{{ e.category.name }}</td><td>{{ e.payee }}</td>
+      <td>{{ e.branch_user.name if e.branch_user else 'Head office' }}</td><td class="num">{{ '%.2f'|format(e.total_tax) }}</td><td class="num">{{ '%.2f'|format(e.amount) }}</td></tr>
+    {% endfor %}
+    <tr class="total"><td colspan="5">Total</td><td class="num">{{ '%.2f'|format(data.totals.tax) }}</td><td class="num">{{ '%.2f'|format(data.totals.amount) }}</td></tr>
+  </table>
+</body>
+</html>

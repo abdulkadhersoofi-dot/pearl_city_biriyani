@@ -584,7 +584,8 @@ def gstr3b_data(tenant: Tenant, gstin: Gstin, period: str) -> dict:
         "gross_tax_payable": gross_tax_payable,
         # Only for clients with the Purchases module on - everyone else's
         # working paper (and its JSON) stays exactly as it was.
-        **({"itc": itc_summary(tenant, gstin, period)} if tenant.has_feature("purchases") else {}),
+        **({"itc": itc_summary(tenant, gstin, period)}
+           if tenant.has_feature("purchases") or tenant.has_feature("expenses") else {}),
     }
 
 
@@ -604,6 +605,9 @@ def itc_summary(tenant: Tenant, gstin: Gstin, period: str) -> dict:
               otherwise ineligible) - availed in 4A, reversed here
       4B(2)   reversed: credit of goods sent back to suppliers
       4C      net ITC available = 4A - 4B
+
+    Posted expenses with a GST bill (module "expenses") are counted the
+    same way, by their expense date.
 
     As with the rest of this working paper, the claim must still be
     checked against GSTR-2B (Purchases -> GSTR-2B match) before filing."""
@@ -644,6 +648,28 @@ def itc_summary(tenant: Tenant, gstin: Gstin, period: str) -> dict:
         b2["cgst"] += ret.itc_cgst
         b2["sgst"] += ret.itc_sgst
         b2["igst"] += ret.itc_igst
+    # Expenses with a GST bill count exactly like a purchase bill: their
+    # tax is availed in 4A and whatever of it isn't credit (blocked, or
+    # the client can't claim) is reversed in 4B(1).
+    from app.models.expense import Expense, ExpenseStatus
+
+    expenses = Expense.query.filter(
+        Expense.tenant_id == tenant.id, Expense.gstin_id == gstin.id, Expense.status == ExpenseStatus.POSTED,
+        Expense.is_gst_bill.is_(True), Expense.expense_date >= start, Expense.expense_date <= end,
+    ).all()
+    for e in expenses:
+        target = a3 if e.is_rcm else a5
+        target["taxable_value"] += e.taxable_value
+        if e.is_rcm:
+            rcm_inward["taxable_value"] += e.taxable_value
+        for head in ("cgst", "sgst", "igst"):
+            tax, credit = getattr(e, f"{head}_amount"), getattr(e, f"itc_{head}")
+            target[head] += tax
+            b1[head] += tax - credit
+            if e.is_rcm:
+                rcm_inward[head] += tax
+        if e.itc_total != e.total_tax:
+            b1["taxable_value"] += e.taxable_value
     net = {h: a3[h] + a5[h] - b1[h] - b2[h] for h in ("cgst", "sgst", "igst")}
     return {
         "rcm_inward": rcm_inward,
@@ -655,4 +681,5 @@ def itc_summary(tenant: Tenant, gstin: Gstin, period: str) -> dict:
         "net_total": net["cgst"] + net["sgst"] + net["igst"],
         "rcm_tax_payable": rcm_inward["cgst"] + rcm_inward["sgst"] + rcm_inward["igst"],
         "bill_count": len(bills),
+        "expense_count": len(expenses),
     }

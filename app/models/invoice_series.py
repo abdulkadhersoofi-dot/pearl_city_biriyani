@@ -24,6 +24,7 @@ class DocumentType(str, enum.Enum):
     PURCHASE_ORDER = "purchase_order"
     STOCK_TRANSFER = "stock_transfer"
     STOCK_ADJUSTMENT = "stock_adjustment"
+    EXPENSE = "expense"
 
 
 # Document types a tenant may issue, gated by their GST registration type.
@@ -47,6 +48,7 @@ DOCUMENT_TYPE_LABELS = {
     DocumentType.PURCHASE_ORDER: "Purchase Order",
     DocumentType.STOCK_TRANSFER: "Delivery Challan (stock transfer)",
     DocumentType.STOCK_ADJUSTMENT: "Stock Adjustment",
+    DocumentType.EXPENSE: "Expense Voucher",
 }
 
 

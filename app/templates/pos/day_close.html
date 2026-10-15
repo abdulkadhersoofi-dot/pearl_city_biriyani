@@ -78,6 +78,14 @@
     </label>
     <label class="field"><span class="field-label">Amount (Rs.)</span><input type="number" name="amount" min="0.01" step="0.01" class="field-input" required></label>
     <label class="field"><span class="field-label">What for</span><input type="text" name="reason" maxlength="255" class="field-input" required placeholder="e.g. tea and snacks, courier"></label>
+    {% if expense_categories %}
+    <label class="field"><span class="field-label">Book a cash-out as expense</span>
+      <select name="expense_category_id" class="field-input">
+        {% for c in expense_categories %}<option value="{{ c.id }}" {{ 'selected' if c.name == 'Miscellaneous' }}>{{ c.name }}</option>{% endfor %}
+        <option value="none">Not an expense (sent to bank / taken by owner)</option>
+      </select>
+      <span class="field-help">Petty cash paid out is booked as a cash expense of this counter automatically.</span></label>
+    {% endif %}
     <button class="btn btn-secondary btn-block">Record</button>
   </form>
   <form method="post" action="{{ url_for('pos.day_close') }}" class="card"

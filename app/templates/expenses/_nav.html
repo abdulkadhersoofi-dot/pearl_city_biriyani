@@ -1,0 +1,6 @@
+<nav class="subnav">
+  <a href="{{ url_for('expenses.index') }}" class="{{ 'active' if request.endpoint in ('expenses.index', 'expenses.view_expense', 'expenses.edit_expense', 'expenses.new_expense') }}">Expenses</a>
+  <a href="{{ url_for('expenses.recurring') }}" class="{{ 'active' if 'recurring' in request.endpoint }}">Recurring (rent, salary)</a>
+  <a href="{{ url_for('expenses.categories') }}" class="{{ 'active' if 'categor' in request.endpoint }}">Categories</a>
+  <a href="{{ url_for('expenses.report') }}" class="{{ 'active' if request.endpoint == 'expenses.report' }}">Report</a>
+</nav>

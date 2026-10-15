@@ -59,6 +59,7 @@ def _register_blueprints(app: Flask) -> None:
     from app.branches import branches_bp
     from app.bulk import bulk_bp
     from app.customers import customers_bp
+    from app.expenses import expenses_bp
     from app.inventory import inventory_bp
     from app.invoicing import invoicing_bp
     from app.live import live_bp
@@ -87,6 +88,7 @@ def _register_blueprints(app: Flask) -> None:
     app.register_blueprint(bulk_bp)
     app.register_blueprint(inventory_bp)
     app.register_blueprint(purchases_bp)
+    app.register_blueprint(expenses_bp)
 
 
 def _register_error_handlers(app: Flask) -> None:
@@ -250,6 +252,22 @@ def _register_cli(app: Flask) -> None:
         db.session.add(user)
         db.session.commit()
         click.echo(f"Super Admin '{email}' created.")
+
+    @app.cli.command("expenses-generate-drafts")
+    def expenses_generate_drafts():
+        """Makes the draft expenses that have fallen due on every client's
+        recurring expenses (rent, salary). The Expenses screen does the
+        same for its own client whenever it's opened; run this daily from
+        cron so drafts are waiting even before anyone looks."""
+        from app.expenses.services import generate_due_drafts
+        from app.models.tenant import Tenant
+
+        made = 0
+        for tenant in Tenant.query.order_by(Tenant.id).all():
+            if tenant.has_feature("expenses"):
+                made += len(generate_due_drafts(tenant))
+                db.session.commit()
+        click.echo(f"{made} draft expense(s) made.")
 
     @app.cli.command("bootstrap-super-admin")
     def bootstrap_super_admin():
