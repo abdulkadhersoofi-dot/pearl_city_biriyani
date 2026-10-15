@@ -21,6 +21,7 @@ DEFAULT_PREFIXES = {
     DocumentType.STOCK_TRANSFER: "TDC",
     DocumentType.STOCK_ADJUSTMENT: "ADJ",
     DocumentType.EXPENSE: "EXP",
+    DocumentType.MARGIN_SCHEME_INVOICE: "MSI",
 }
 
 

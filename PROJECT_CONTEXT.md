@@ -299,7 +299,14 @@ this list is just the index.
   recurring expenses making drafts (`flask expenses-generate-drafts`),
   POS cash-out booked as petty-cash expense, expense report
   (category/branch/month, Excel/PDF), expense ITC in GSTR-3B table 4.
-  Phases 5-10 still to build, in order.
+- **Platform build Phase 5** (margin scheme, flag `margin_scheme`):
+  `app/utils/margin.py` (Rule 32(5) math), `app/margin/services.py`
+  (lots by IMEI / FIFO via `MarginAllocation`, release on void/refund,
+  returns), separate MSI-series margin invoices at POS and in Invoicing
+  (mixed sales refused - the user's decision), no ITC on margin
+  purchases, GSTR-1 HSN margin row + 0% remainder row, margin register
+  (Excel/PDF), editable declaration in Settings.
+  Phases 6-10 still to build, in order.
 
 ## 5. Chronological development history (this session)
 

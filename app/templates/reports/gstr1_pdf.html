@@ -73,7 +73,7 @@
     <tr><th>HSN/SAC</th><th>Rate</th><th>Unit</th><th>Qty</th><th>Taxable</th><th>CGST</th><th>SGST</th><th>IGST</th><th>Total</th></tr>
     {% for h in data.hsn_summary %}
     <tr>
-      <td>{{ h.hsn or '-' }}</td><td>{{ h.gst_rate }}%</td><td>{{ h.unit }}</td><td class="num">{{ h.qty }}</td>
+      <td>{{ h.hsn or '-' }}{% if h.margin_remainder %}<br><small>Margin scheme - value other than margin</small>{% endif %}</td><td>{{ h.gst_rate }}%</td><td>{{ h.unit }}</td><td class="num">{{ h.qty }}</td>
       <td class="num">{{ '%.2f'|format(h.taxable_value) }}</td><td class="num">{{ '%.2f'|format(h.cgst) }}</td>
       <td class="num">{{ '%.2f'|format(h.sgst) }}</td><td class="num">{{ '%.2f'|format(h.igst) }}</td>
       <td class="num">{{ '%.2f'|format(h.total) }}</td>

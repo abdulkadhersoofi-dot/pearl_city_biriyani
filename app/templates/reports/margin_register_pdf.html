@@ -1,0 +1,36 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @page { size: A4 landscape; margin: 12mm 10mm; }
+  body { font-family: "Helvetica Neue", Arial, sans-serif; color: #1f2a24; font-size: 8.5pt; }
+  h1 { font-size: 14pt; margin: 0 0 2px; }
+  .sub { color: #5c6b62; margin: 0 0 10px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { border: 1px solid #d8ddd6; padding: 3px 5px; text-align: left; vertical-align: top; }
+  th { background: #f0f2ee; }
+  .num { text-align: right; }
+  .total td { font-weight: 700; }
+  .note { margin-top: 8px; color: #5c6b62; }
+</style>
+</head>
+<body>
+  <h1>{{ firm_name }} - Margin register</h1>
+  <p class="sub">Second-hand goods under the margin scheme (Rule 32(5) CGST Rules) · {{ data.start.strftime('%d %b %Y') }} - {{ data.end.strftime('%d %b %Y') }}</p>
+  <table>
+    <tr><th>Item / Serial</th><th>Purchase date</th><th>Purchase bill / supplier</th><th>Sale date</th><th>Sale invoice</th><th class="num">Qty</th>
+      <th class="num">Purchase price</th><th class="num">Sale price</th><th class="num">Margin</th><th class="num">Taxable margin</th><th class="num">CGST</th><th class="num">SGST</th><th class="num">IGST</th></tr>
+    {% for r in data.rows %}
+    <tr><td>{{ r.item }}{% if r.serial %}<br>{{ r.serial }}{% endif %}</td><td>{{ r.purchase_date.strftime('%d-%m-%Y') }}</td><td>{{ r.purchase_ref }}<br>{{ r.supplier }}</td>
+      <td>{{ r.sale_date.strftime('%d-%m-%Y') }}</td><td>{{ r.sale_ref }}</td><td class="num">{{ r.qty|qty }}</td>
+      <td class="num">{{ '%.2f'|format(r.purchase_value) }}</td><td class="num">{{ '%.2f'|format(r.sale_value) }}</td><td class="num">{{ '%.2f'|format(r.margin) }}</td>
+      <td class="num">{{ '%.2f'|format(r.taxable_value) }}</td><td class="num">{{ '%.2f'|format(r.cgst) }}</td><td class="num">{{ '%.2f'|format(r.sgst) }}</td><td class="num">{{ '%.2f'|format(r.igst) }}</td></tr>
+    {% endfor %}
+    {% set t = data.totals %}
+    <tr class="total"><td colspan="5">Total</td><td class="num">{{ t.qty|qty }}</td><td class="num">{{ '%.2f'|format(t.purchase_value) }}</td><td class="num">{{ '%.2f'|format(t.sale_value) }}</td>
+      <td class="num">{{ '%.2f'|format(t.margin) }}</td><td class="num">{{ '%.2f'|format(t.taxable_value) }}</td><td class="num">{{ '%.2f'|format(t.cgst) }}</td><td class="num">{{ '%.2f'|format(t.sgst) }}</td><td class="num">{{ '%.2f'|format(t.igst) }}</td></tr>
+  </table>
+  <p class="note">A sale below its purchase price has a margin of 0; the loss is not set off against other sales.</p>
+</body>
+</html>

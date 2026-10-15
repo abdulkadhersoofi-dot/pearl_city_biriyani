@@ -8,6 +8,7 @@
     <p class="text-muted mt-0">
       {{ bill.completed_at.strftime('%d %b %Y %H:%M') if bill.completed_at else '' }} ·
       <span class="status-badge status-{{ 'issued' if bill.status.value == 'completed' else 'void' }}">{{ bill.status.value|title }}</span>
+      {% if bill.is_margin_scheme %} · <span class="tag">Margin scheme invoice</span>{% endif %}
       {% if bill.customer_snapshot %} · {{ bill.customer_snapshot.name }}{% if bill.customer_snapshot.gstin %} ({{ bill.customer_snapshot.gstin }}){% endif %}{% endif %}
     </p>
   </div>
@@ -33,7 +34,7 @@
   <div class="totals-panel" style="justify-content:stretch;">
     <div class="totals-box" style="width:100%;">
       {% if bill.total_discount %}<div class="totals-row"><span>Discount</span><span>- Rs. {{ '%.2f'|format(bill.total_discount) }}</span></div>{% endif %}
-      <div class="totals-row"><span>Taxable value</span><span>Rs. {{ '%.2f'|format(bill.total_taxable_value) }}</span></div>
+      <div class="totals-row"><span>{{ 'Taxable margin (not shown to the buyer)' if bill.is_margin_scheme else 'Taxable value' }}</span><span>Rs. {{ '%.2f'|format(bill.total_taxable_value) }}</span></div>
       {% if bill.total_cgst %}<div class="totals-row"><span>CGST</span><span>Rs. {{ '%.2f'|format(bill.total_cgst) }}</span></div>{% endif %}
       {% if bill.total_sgst %}<div class="totals-row"><span>SGST</span><span>Rs. {{ '%.2f'|format(bill.total_sgst) }}</span></div>{% endif %}
       {% if bill.total_igst %}<div class="totals-row"><span>IGST</span><span>Rs. {{ '%.2f'|format(bill.total_igst) }}</span></div>{% endif %}

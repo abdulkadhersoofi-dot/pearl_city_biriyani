@@ -46,6 +46,9 @@ def create_note(tenant: Tenant, created_by, data: NoteInput) -> CreditDebitNote:
         raise NoteValidationError("Cannot issue a note against a voided invoice.")
     if original.branch_user_id:
         raise NoteValidationError("Credit/debit notes aren't supported for branch deliveries - void the invoice instead.")
+    if original.document_type.value == "margin_scheme_invoice":
+        raise NoteValidationError("Notes against a margin-scheme invoice aren't supported - the margin is worked out "
+                                  "per unit sold. Void the invoice and bill it again instead.")
 
     gstin = original.gstin
     # Same rule as a Bill of Supply / POS sale: unregistered and

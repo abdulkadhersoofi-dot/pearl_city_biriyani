@@ -59,6 +59,9 @@
       {% if has_feature('favourites') %}
       {{ checkbox(form.is_favourite, help="Shown first in the favourites row, ahead of your automatic best sellers.") }}
       {% endif %}
+      {% if has_feature('margin_scheme') %}
+      {{ checkbox(form.is_margin_scheme, help="GST is paid only on your margin over the purchase price; no input tax credit is taken when buying it; it's billed on its own margin-scheme invoice. The sale price is always what the buyer pays.") }}
+      {% endif %}
       {% if has_feature('batch_expiry') %}
       {{ checkbox(form.track_batch, help="Medicines, food, cosmetics: batch no. and expiry are entered on each purchase; the counter sells the earliest expiry first and won't sell expired stock.") }}
       {% endif %}

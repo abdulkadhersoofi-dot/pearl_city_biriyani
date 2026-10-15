@@ -324,6 +324,24 @@ def _compute_lines(tenant: Tenant, lines: list[CartLineInput]) -> list[dict]:
     return computed
 
 
+def _compute_margin_lines(tenant: Tenant, lines: list[CartLineInput]) -> list[dict]:
+    """A margin-scheme bill's lines (Rule 32(5)): GST on each unit's margin
+    over its purchase price, never on the price (app.utils.margin)."""
+    from app.margin import services as margin_services
+
+    products = margin_services.margin_products(tenant, [l.product_id for l in lines])
+    computed = []
+    for line in lines:
+        try:
+            plan = margin_services.plan_line(tenant, products[line.product_id], line.qty, line.serials)
+        except margin_services.MarginError as exc:
+            raise POSValidationError(exc.message)
+        priced = margin_services.price_line(line.qty, line.rate, line.discount_percent, line.discount_flat,
+                                            line.gst_rate, True, plan)
+        computed.append({**priced, "input": line})
+    return computed
+
+
 def _persist_lines(bill: POSBill, computed_lines: list[dict], charge_gst: bool) -> None:
     for order, item in enumerate(computed_lines):
         line_in = item["input"]
@@ -348,6 +366,9 @@ def _persist_lines(bill: POSBill, computed_lines: list[dict], charge_gst: bool) 
                 sgst_amount=item["sgst_amount"],
                 igst_amount=item["igst_amount"],
                 line_total=item["line_total"],
+                is_margin_scheme=item.get("is_margin_scheme", False),
+                margin_purchase_value=item.get("margin_purchase_value", Decimal("0")),
+                margin_value=item.get("margin_value", Decimal("0")),
                 sort_order=order,
             )
         )
@@ -489,8 +510,21 @@ def checkout(
     customer = _customer(tenant, cart.customer_id)
     price_list = apply_counter_rules(tenant, created_by, cart)
     charge_gst = _charge_gst(tenant)
-    computed_lines = _compute_lines(tenant, cart.lines)
-    totals = compute_invoice_totals(computed_lines)
+    # Second-hand goods under the margin scheme are their own invoice, in
+    # their own series - never mixed with regular goods on one bill.
+    from app.margin import services as margin_services
+    from app.utils.margin import compute_margin_totals
+
+    try:
+        is_margin = margin_services.sale_kind(tenant, [l.product_id for l in cart.lines])
+    except margin_services.MarginError as exc:
+        raise POSValidationError(exc.message)
+    if is_margin:
+        computed_lines = _compute_margin_lines(tenant, cart.lines)
+        totals = compute_margin_totals(computed_lines)
+    else:
+        computed_lines = _compute_lines(tenant, cart.lines)
+        totals = compute_invoice_totals(computed_lines)
 
     payments = [PaymentInput(payment)] if isinstance(payment, PaymentMode) else list(payment)
     settled = _settle_payments(tenant, payments, totals["grand_total"], customer)
@@ -517,7 +551,9 @@ def checkout(
     except inventory_ledger.StockError as exc:
         raise POSValidationError(exc.message)
 
-    series = get_or_create_series(tenant.id, gstin.id, DocumentType.POS_BILL, financial_year_for(date.today()))
+    series = get_or_create_series(tenant.id, gstin.id,
+                                  DocumentType.MARGIN_SCHEME_INVOICE if is_margin else DocumentType.POS_BILL,
+                                  financial_year_for(date.today()))
     bill_number = allocate_number(series)
     modes = {p.mode for p, _, _ in settled}
 
@@ -538,6 +574,7 @@ def checkout(
         cash_session_id=cash_session.id if cash_session is not None else None,
         cash_tendered=cash_tendered,
         change_due=change_due,
+        is_margin_scheme=is_margin,
         **totals,
     )
     db.session.add(bill)
@@ -557,6 +594,10 @@ def checkout(
             exchange_return.exchange_used = (exchange_return.exchange_used or 0) + amount
     db.session.flush()
     saved_lines = POSBillLine.query.filter_by(bill_id=bill.id).order_by(POSBillLine.sort_order).all()
+    if is_margin:
+        for saved, item in zip(saved_lines, computed_lines):
+            margin_services.record(tenant.id, "pos_bill", bill.id, saved.id, bill.bill_number, date.today(),
+                                   saved.product_id, item)
     inventory_hooks.post_sale(
         tenant, location.id,
         [inventory_hooks.SaleLine(saved.product_id, saved.qty, saved.id, line_in.serials)
@@ -584,6 +625,10 @@ def refund_bill(
     # As on the branch's daily counter, a refunded bill counts as not sold:
     # its goods go back into stock.
     inventory_hooks.undo_sale(bill.tenant_id, "pos_bill", bill.id, refunded_by.id, f"{bill.bill_number} refunded")
+    if bill.is_margin_scheme:
+        from app.margin.services import release
+
+        release(bill.tenant_id, "pos_bill", bill.id)
     bill.status = POSBillStatus.REFUNDED
     bill.refunded_amount = amount
     bill.refund_reason = reason.strip()
@@ -620,6 +665,10 @@ def void_bill(bill: POSBill, voided_by, reason: str, today: date | None = None) 
         if payment.mode == PaymentMode.EXCHANGE and payment.pos_return is not None:
             payment.pos_return.exchange_used = (payment.pos_return.exchange_used or 0) - payment.amount
     inventory_hooks.undo_sale(bill.tenant_id, "pos_bill", bill.id, voided_by.id, f"{bill.bill_number} voided")
+    if bill.is_margin_scheme:
+        from app.margin.services import release
+
+        release(bill.tenant_id, "pos_bill", bill.id)
     bill.status = POSBillStatus.VOIDED
     bill.void_reason = reason.strip()
     bill.voided_at = utcnow()

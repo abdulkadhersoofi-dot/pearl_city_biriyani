@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Margin register - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Margin register</h1>
+    <p class="text-muted mt-0">Second-hand goods sold under the margin scheme (Rule 32(5)) · {{ data.start.strftime('%d %b %Y') }} - {{ data.end.strftime('%d %b %Y') }}</p>
+  </div>
+  <div class="row">
+    <a href="{{ url_for('reports.margin_register_xlsx', mode='range', start=data.start.isoformat(), end=data.end.isoformat()) }}" class="btn btn-secondary">Excel</a>
+    <a href="{{ url_for('reports.margin_register_pdf', mode='range', start=data.start.isoformat(), end=data.end.isoformat()) }}" class="btn btn-secondary" target="_blank">PDF</a>
+    <a href="{{ url_for('reports.index') }}" class="btn btn-quiet">Back</a>
+  </div>
+</div>
+<form method="get" class="card row" style="gap:12px; align-items:flex-end; flex-wrap:wrap; margin-bottom:16px;">
+  <input type="hidden" name="mode" value="range">
+  <label class="field" style="margin:0;"><span class="field-label">From</span><input type="date" name="start" value="{{ data.start.isoformat() }}" class="field-input"></label>
+  <label class="field" style="margin:0;"><span class="field-label">To</span><input type="date" name="end" value="{{ data.end.isoformat() }}" class="field-input"></label>
+  <button class="btn btn-primary">Show</button>
+</form>
+<div class="form-grid" style="margin-bottom:16px;">
+  <div class="card"><div class="text-muted">Sold for</div><div style="font-size:1.4rem; font-weight:800;">Rs. {{ '%.2f'|format(data.totals.sale_value) }}</div><div class="text-muted">{{ data.totals.qty|qty }} unit(s)</div></div>
+  <div class="card"><div class="text-muted">Bought for</div><div style="font-size:1.4rem; font-weight:800;">Rs. {{ '%.2f'|format(data.totals.purchase_value) }}</div></div>
+  <div class="card"><div class="text-muted">Taxable margin</div><div style="font-size:1.4rem; font-weight:800;">Rs. {{ '%.2f'|format(data.totals.taxable_value) }}</div><div class="text-muted">GST Rs. {{ '%.2f'|format(data.totals.tax) }}</div></div>
+</div>
+<div class="table-wrap card">
+  <table>
+    <thead><tr><th>Item</th><th>Bought</th><th>Sold</th><th class="num">Qty</th><th class="num">Purchase price</th><th class="num">Sale price</th><th class="num">Margin</th><th class="num">Taxable margin</th><th class="num">GST</th></tr></thead>
+    <tbody>
+    {% for r in data.rows %}
+      <tr>
+        <td>{{ r.item }}{% if r.serial %}<br><small class="text-muted">{{ r.serial }}</small>{% endif %}</td>
+        <td>{{ r.purchase_date.strftime('%d %b %Y') }}<br><small class="text-muted">{{ r.purchase_ref }} · {{ r.supplier }}</small></td>
+        <td>{{ r.sale_date.strftime('%d %b %Y') }}<br><small class="text-muted">{{ r.sale_ref }}</small></td>
+        <td class="num">{{ r.qty|qty }}</td>
+        <td class="num">{{ '%.2f'|format(r.purchase_value) }}</td>
+        <td class="num">{{ '%.2f'|format(r.sale_value) }}</td>
+        <td class="num {{ 'qty-neg' if r.raw_margin < 0 }}">{{ '%.2f'|format(r.margin) }}{% if r.raw_margin < 0 %}<br><small>loss {{ '%.2f'|format(-r.raw_margin) }} - not taxed</small>{% endif %}</td>
+        <td class="num">{{ '%.2f'|format(r.taxable_value) }}</td>
+        <td class="num">{{ '%.2f'|format(r.tax) }}{% if r.igst %}<br><small class="text-muted">IGST</small>{% endif %}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="9" class="empty-state">No margin-scheme sales in this period.</td></tr>
+    {% endfor %}
+    </tbody>
+    {% if data.rows %}
+    <tfoot><tr><th colspan="3">Total</th><th class="num">{{ data.totals.qty|qty }}</th><th class="num">{{ '%.2f'|format(data.totals.purchase_value) }}</th>
+      <th class="num">{{ '%.2f'|format(data.totals.sale_value) }}</th><th class="num">{{ '%.2f'|format(data.totals.margin) }}</th>
+      <th class="num">{{ '%.2f'|format(data.totals.taxable_value) }}</th><th class="num">{{ '%.2f'|format(data.totals.tax) }}</th></tr></tfoot>
+    {% endif %}
+  </table>
+</div>
+<p class="text-muted">A unit sold below what it was bought for has a margin of 0 - the loss isn't set off against other sales. Units that came back on a sales return are left out; voided and refunded sales too.</p>
+{% endblock %}

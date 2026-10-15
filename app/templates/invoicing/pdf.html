@@ -21,6 +21,7 @@
   .totals .grand td { border-top: 1.5px solid #1f2a24; font-weight: 700; font-size: 12pt; }
   .rcm-badge { display: inline-block; background: #fdecea; color: #b3261e; padding: 2px 8px; border-radius: 4px; font-size: 9pt; font-weight: 700; }
   .footer-note { margin-top: 24px; font-size: 9pt; color: #5c6b62; }
+  .margin-declaration { border: 1px solid #1f2a24; padding: 8px 10px; font-size: 9.5pt; margin-top: 8px; }
   .firm-logo { max-height: 48px; max-width: 160px; object-fit: contain; margin-bottom: 6px; }
 </style>
 </head>
@@ -59,6 +60,26 @@
     </div>
   </div>
 
+  {% if invoice.document_type.value == 'margin_scheme_invoice' %}
+  {# Margin scheme (Rule 32(5)): the buyer pays the price; GST is not
+     charged separately and is not shown - only the declaration. #}
+  <table>
+    <thead><tr><th>#</th><th>Description</th><th>HSN/SAC</th><th class="num">Qty</th><th class="num">Rate</th><th class="num">Discount</th><th class="num">Amount</th></tr></thead>
+    <tbody>
+    {% for l in invoice.lines %}
+      <tr><td>{{ loop.index }}</td><td>{{ l.description }}</td><td>{{ l.hsn_or_sac_code or '' }}</td>
+        <td class="num">{{ l.qty|qty }} {{ l.unit }}</td><td class="num">{{ '%.2f'|format(l.rate) }}</td>
+        <td class="num">{{ '%.2f'|format(l.discount_amount) if l.discount_amount else '-' }}</td>
+        <td class="num">{{ '%.2f'|format(l.line_total) }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <table class="totals">
+    {% if invoice.round_off %}<tr><td>Round off</td><td class="num">Rs. {{ '%.2f'|format(invoice.round_off) }}</td></tr>{% endif %}
+    <tr class="grand"><td>Total</td><td class="num">Rs. {{ '%.2f'|format(invoice.grand_total) }}</td></tr>
+  </table>
+  <p class="margin-declaration"><strong>Declaration:</strong> {{ margin_declaration_for(invoice.tenant_id) }}</p>
+  {% else %}
   {% set is_rcm = invoice.document_type.value == 'rcm_invoice' %}
   <table>
     <thead>
@@ -108,6 +129,8 @@
     <tr class="grand"><td>Total</td><td class="num">Rs. {{ '%.2f'|format(invoice.grand_total) }}</td></tr>
   </table>
 
+  {% endif %}
+
   {% if invoice.notes %}<p>{{ invoice.notes }}</p>{% endif %}
 
   {% if invoice.irn %}
@@ -121,7 +144,7 @@
   {% endif %}
 
   <p class="footer-note">
-    {% if invoice.lines|selectattr('price_includes_tax')|list %}* Rate includes GST; the taxable value shown is net of tax.<br>{% endif %}
+    {% if invoice.lines|selectattr('price_includes_tax')|list and invoice.document_type.value != 'margin_scheme_invoice' %}* Rate includes GST; the taxable value shown is net of tax.<br>{% endif %}
     This is a system-generated {{ document_label|lower }}{% if invoice.status.value == 'void' %} - VOID{% endif %}.
   </p>
 </body>

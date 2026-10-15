@@ -71,6 +71,9 @@ class Product(db.Model, TenantScopedMixin, TimestampMixin):
     # Pinned to the top of the POS favourites row (feature "favourites"),
     # ahead of the automatic best sellers.
     is_favourite = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
+    # Second-hand goods sold under the margin scheme (Rule 32(5), module
+    # "margin_scheme"): GST on the margin only, no ITC on buying them.
+    is_margin_scheme = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
     is_active = db.Column(db.Boolean, nullable=False, default=True)
     # Optional even when the tenant has the "categories" feature on - an
     # item with neither just shows under "Uncategorized" in the POS

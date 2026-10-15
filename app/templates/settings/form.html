@@ -83,6 +83,14 @@
     </div>
   </div>
 
+  {% if tenant.has_feature('margin_scheme') %}
+  <div class="card stack" style="margin-top:16px;">
+    <input type="hidden" name="margin_settings_shown" value="1">
+    <h2 style="margin:0; font-size:1.05rem;">Margin scheme (second-hand goods)</h2>
+    {{ field(form.margin_scheme_declaration, help="Printed on every margin-scheme invoice. Leave blank for the standard wording: \"" ~ default_margin_declaration ~ "\"") }}
+  </div>
+  {% endif %}
+
   <div class="card stack" style="margin-top:16px;">
     <h2 style="margin:0; font-size:1.05rem;">Print sizes</h2>
     <div class="form-grid">

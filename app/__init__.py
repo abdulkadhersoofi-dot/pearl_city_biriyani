@@ -172,6 +172,15 @@ def _register_context_processors(app: Flask) -> None:
     app.jinja_env.globals["can"] = current_user_can
     app.jinja_env.globals["app_version"] = _app_version()
 
+    def margin_declaration_for(tenant_id):
+        from app.models.tenant import Tenant
+        from app.utils.margin import declaration_for
+
+        return declaration_for(db.session.get(Tenant, tenant_id))
+
+    # The Rule 32(5) wording printed on a client's margin-scheme invoices.
+    app.jinja_env.globals["margin_declaration_for"] = margin_declaration_for
+
     @app.template_filter("qty")
     def qty_filter(value):
         """1.000 -> "1", 0.750 -> "0.75", 10.00 -> "10" (never "1E+1")."""

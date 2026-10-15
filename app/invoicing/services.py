@@ -159,6 +159,28 @@ def create_invoice(tenant: Tenant, created_by, data: InvoiceInput) -> Invoice:
             "pincode": customer.pincode,
         }
 
+    # Second-hand goods under the margin scheme (Rule 32(5)) are billed on
+    # their own invoice, in their own series - never mixed with regular
+    # goods, never to a branch, never as an export / RCM / bill of supply.
+    from app.margin import services as margin_services
+
+    try:
+        is_margin = margin_services.sale_kind(tenant, [l.product_id for l in data.lines])
+    except margin_services.MarginError as exc:
+        raise InvoiceValidationError(exc.message)
+    margin_items = {}
+    if is_margin:
+        if branch:
+            raise InvoiceValidationError("Margin-scheme goods can't be billed to a branch.")
+        if document_type != DocumentType.TAX_INVOICE:
+            raise InvoiceValidationError("Margin-scheme goods are billed on a margin-scheme invoice - "
+                                         "pick Tax Invoice and it is issued as one.")
+        margin_items = margin_services.margin_products(tenant, [l.product_id for l in data.lines])
+        if tenant.has_feature("serial_imei") and any(p.track_serial for p in margin_items.values()):
+            raise InvoiceValidationError("Serial-tracked margin-scheme goods are sold at the counter (POS), where "
+                                         "the serial/IMEI being sold - and so its purchase price - is picked.")
+        document_type = DocumentType.MARGIN_SCHEME_INVOICE
+
     # A branch-owned (internal) transfer never carries GST, same as a
     # Bill of Supply - everything else charges GST as normal.
     charge_gst = document_type not in (DocumentType.BILL_OF_SUPPLY, DocumentType.DELIVERY_CHALLAN)
@@ -172,6 +194,15 @@ def create_invoice(tenant: Tenant, created_by, data: InvoiceInput) -> Invoice:
 
     computed_lines = []
     for line in data.lines:
+        if is_margin:
+            try:
+                plan = margin_services.plan_line(tenant, margin_items[line.product_id], line.qty)
+            except margin_services.MarginError as exc:
+                raise InvoiceValidationError(exc.message)
+            priced = margin_services.price_line(line.qty, line.rate, line.discount_percent, 0, line.gst_rate,
+                                                is_intra_state, plan)
+            computed_lines.append({**priced, "input": line})
+            continue
         computed = compute_line(
             qty=line.qty,
             rate=line.rate,
@@ -183,7 +214,12 @@ def create_invoice(tenant: Tenant, created_by, data: InvoiceInput) -> Invoice:
         )
         computed_lines.append({**computed, "input": line})
 
-    totals = compute_invoice_totals(computed_lines)
+    if is_margin:
+        from app.utils.margin import compute_margin_totals
+
+        totals = compute_margin_totals(computed_lines)
+    else:
+        totals = compute_invoice_totals(computed_lines)
     if is_rcm:
         totals["total_rcgst"] = totals.pop("total_cgst")
         totals["total_rsgst"] = totals.pop("total_sgst")
@@ -260,6 +296,9 @@ def create_invoice(tenant: Tenant, created_by, data: InvoiceInput) -> Invoice:
                 rsgst_amount=rsgst_amount,
                 rigst_amount=rigst_amount,
                 line_total=item["line_total"],
+                is_margin_scheme=item.get("is_margin_scheme", False),
+                margin_purchase_value=item.get("margin_purchase_value", Decimal("0")),
+                margin_value=item.get("margin_value", Decimal("0")),
                 sort_order=order,
             )
         )
@@ -275,6 +314,10 @@ def create_invoice(tenant: Tenant, created_by, data: InvoiceInput) -> Invoice:
 
     db.session.flush()
     db.session.refresh(invoice)
+    if is_margin:
+        for saved, item in zip(invoice.lines, computed_lines):
+            margin_services.record(tenant.id, "invoice", invoice.id, saved.id, invoice.invoice_number,
+                                   data.invoice_date, saved.product_id, item)
     inventory_hooks.post_invoice(tenant, invoice, created_by.id)
     return invoice
 
@@ -292,6 +335,10 @@ def void_invoice(invoice: Invoice, voided_by, reason: str) -> None:
     # invoice billed to a branch - back out of the branch's stock, both in
     # the ledger and on the branch's daily counter for that day.
     inventory_hooks.undo_sale(invoice.tenant_id, "invoice", invoice.id, voided_by.id, f"Invoice {invoice.invoice_number} voided")
+    if invoice.document_type == DocumentType.MARGIN_SCHEME_INVOICE:
+        from app.margin.services import release
+
+        release(invoice.tenant_id, "invoice", invoice.id)
     if invoice.branch_user_id:
         back = [(line.product_id, -line.qty) for line in invoice.lines if line.product_id]
         if back:

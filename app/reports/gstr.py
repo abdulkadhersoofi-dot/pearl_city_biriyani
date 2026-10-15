@@ -89,6 +89,10 @@ class SupplyLine:
     rsgst: Decimal = ZERO
     rigst: Decimal = ZERO
     sign: int = 1
+    # Margin scheme (Rule 32(5)): taxable_value / tax above are the
+    # margin's; this is the rest of the selling price, which the HSN
+    # summary discloses on a 0% row of the same HSN.
+    margin_remainder: Decimal = ZERO
 
     @property
     def is_b2b(self) -> bool:
@@ -99,11 +103,20 @@ class SupplyLine:
         return self.sign * (self.taxable_value + self.cgst + self.sgst + self.igst + self.rcgst + self.rsgst + self.rigst)
 
 
+def _remainder(line) -> Decimal:
+    """Selling price - margin, for a margin-scheme sale line (0 otherwise)."""
+    if not getattr(line, "is_margin_scheme", False):
+        return ZERO
+    return line.line_total - line.taxable_value - line.cgst_amount - line.sgst_amount - line.igst_amount
+
+
 @dataclass
 class HsnBucket:
     hsn: str
     gst_rate: Decimal
     unit: str
+    # The 0% row disclosing the non-margin part of margin-scheme sales.
+    margin_remainder: bool = False
     qty: Decimal = ZERO
     taxable_value: Decimal = ZERO
     cgst: Decimal = ZERO
@@ -240,6 +253,7 @@ def _collect_supply_lines(tenant: Tenant, gstin: Gstin, period: str) -> tuple[li
                     rsgst=l.rsgst_amount,
                     rigst=l.rigst_amount,
                     sign=1,
+                    margin_remainder=_remainder(l),
                 )
             )
 
@@ -272,6 +286,7 @@ def _collect_supply_lines(tenant: Tenant, gstin: Gstin, period: str) -> tuple[li
                     sgst=l.sgst_amount,
                     igst=l.igst_amount,
                     sign=1,
+                    margin_remainder=_remainder(l),
                 )
             )
             if refund_ratio:
@@ -292,16 +307,20 @@ def _collect_supply_lines(tenant: Tenant, gstin: Gstin, period: str) -> tuple[li
                         sgst=l.sgst_amount * refund_ratio,
                         igst=l.igst_amount * refund_ratio,
                         sign=-1,
+                        margin_remainder=_remainder(l) * refund_ratio,
                     )
                 )
 
     for ret in pos_returns:
         cust = ret.customer_snapshot or {}
+        margin_return = bool(ret.bill and ret.bill.is_margin_scheme)
         for l in ret.lines:
             lines.append(
                 SupplyLine(
                     doc_type=DocumentType.POS_RETURN.value,
                     doc_number=ret.return_number,
+                    margin_remainder=(l.line_total - l.taxable_value - l.cgst_amount - l.sgst_amount - l.igst_amount)
+                    if margin_return else ZERO,
                     doc_date=ret.returned_at.date(),
                     customer_name=cust.get("name", "Walk-in"),
                     customer_gstin=normalized_customer_gstin(cust),
@@ -381,13 +400,15 @@ def _document_summaries(tenant: Tenant, gstin: Gstin, raw: dict) -> list[DocSeri
             inv.invoice_number,
             cancelled=True,
         )
+    margin_label = DOCUMENT_TYPE_LABELS[DocumentType.MARGIN_SCHEME_INVOICE]
     for bill in raw["pos_bills"]:
         if bill.bill_number:
             prefix = bill.bill_number.rsplit("/", 1)[0]
-            record("POS Bill", prefix, bill.bill_number)
+            record(margin_label if bill.is_margin_scheme else "POS Bill", prefix, bill.bill_number)
     for bill in raw["voided_pos_bills"]:
         if bill.bill_number:
-            record("POS Bill", bill.bill_number.rsplit("/", 1)[0], bill.bill_number, cancelled=True)
+            record(margin_label if bill.is_margin_scheme else "POS Bill", bill.bill_number.rsplit("/", 1)[0],
+                   bill.bill_number, cancelled=True)
     for ret in raw["pos_returns_all"]:
         record(
             DOCUMENT_TYPE_LABELS[DocumentType.POS_RETURN],
@@ -426,6 +447,13 @@ def gstr1_data(tenant: Tenant, gstin: Gstin, period: str) -> dict:
         hb.cgst += l.sign * eff_cgst
         hb.sgst += l.sign * eff_sgst
         hb.igst += l.sign * eff_igst
+        if l.margin_remainder:
+            # Margin scheme: the part of the price that isn't margin, on a
+            # 0% row of the same HSN (no quantity - the units are on the
+            # margin row above).
+            mkey = (l.hsn, ZERO, l.unit, "margin")
+            mb = hsn.setdefault(mkey, HsnBucket(hsn=l.hsn, gst_rate=ZERO, unit=l.unit, margin_remainder=True))
+            mb.taxable_value += l.sign * l.margin_remainder
 
         if l.is_b2b:
             entry = b2b_by_customer.setdefault(
@@ -463,7 +491,7 @@ def gstr1_data(tenant: Tenant, gstin: Gstin, period: str) -> dict:
     b2b.sort(key=lambda e: e["customer_gstin"])
 
     b2c_list = sorted(b2c.values(), key=lambda b: (b.place_of_supply, b.gst_rate))
-    hsn_list = sorted(hsn.values(), key=lambda h: (h.hsn, h.gst_rate))
+    hsn_list = sorted(hsn.values(), key=lambda h: (h.hsn, h.margin_remainder, h.gst_rate))
     hsn_list = [h for h in hsn_list if h.qty or h.taxable_value]
 
     credit_debit_notes = [

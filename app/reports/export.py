@@ -76,9 +76,10 @@ def build_gstr1_workbook(data: dict) -> BytesIO:
     _autosize(cdn)
 
     hsn = wb.create_sheet("HSN Summary")
-    _write_header(hsn, 1, ["HSN/SAC", "GST rate %", "Unit", "Qty", "Taxable value", "CGST", "SGST", "IGST", "Total"])
+    _write_header(hsn, 1, ["HSN/SAC", "GST rate %", "Unit", "Qty", "Taxable value", "CGST", "SGST", "IGST", "Total", "Note"])
     for h in data["hsn_summary"]:
-        hsn.append([h.hsn, _money(h.gst_rate), h.unit, float(h.qty), _money(h.taxable_value), _money(h.cgst), _money(h.sgst), _money(h.igst), _money(h.total)])
+        hsn.append([h.hsn, _money(h.gst_rate), h.unit, float(h.qty), _money(h.taxable_value), _money(h.cgst), _money(h.sgst), _money(h.igst), _money(h.total),
+                    "Margin scheme - value other than margin (Rule 32(5))" if h.margin_remainder else ""])
     _autosize(hsn)
 
     docs = wb.create_sheet("Documents issued")

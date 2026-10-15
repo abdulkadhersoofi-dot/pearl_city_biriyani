@@ -104,6 +104,9 @@ def create_return(
         line = entry.line
         if qty > entry.remaining_qty:
             raise POSValidationError(f"Only {entry.remaining_qty.normalize():f} of {line.description} can still come back.")
+        if line.is_margin_scheme:
+            computed.append((line, qty, _margin_return_amounts(line, entry, qty)))
+            continue
         amounts = return_line_amounts(
             original={
                 "rate": line.rate,
@@ -123,7 +126,12 @@ def create_return(
     if picked:
         raise POSValidationError("An item picked isn't on this bill.")
 
-    totals = compute_invoice_totals([amounts for _, _, amounts in computed])
+    if bill.is_margin_scheme:
+        from app.utils.margin import compute_margin_totals
+
+        totals = compute_margin_totals([amounts for _, _, amounts in computed])
+    else:
+        totals = compute_invoice_totals([amounts for _, _, amounts in computed])
     series = get_or_create_series(bill.tenant_id, bill.gstin_id, DocumentType.POS_RETURN, financial_year_for(date.today()))
     ret = POSReturn(
         tenant_id=bill.tenant_id,
@@ -164,7 +172,26 @@ def create_return(
 
     location = inventory_ledger.location_for_user(bill.tenant_id, created_by)
     inventory_hooks.post_return(bill.tenant_id, location.id, ret, created_by.id)
+    if bill.is_margin_scheme:
+        from app.margin.services import return_units
+
+        for line, qty, _ in computed:
+            return_units(bill.tenant_id, "pos_bill", bill.id, line.id, qty)
     return ret
+
+
+def _margin_return_amounts(line, entry, qty) -> dict:
+    """Goods coming back on a margin-scheme bill (Rule 32(5)): the line's
+    selling price, margin and tax are taken back in proportion to the
+    quantity; the return that empties the line takes exactly what is
+    left, so the returns add up to the line to the paisa."""
+    from app.utils.gst import round_money
+
+    fields = ("discount_amount", "taxable_value", "cgst_amount", "sgst_amount", "igst_amount", "line_total")
+    if qty == entry.remaining_qty:
+        return {f: round_money(Decimal(getattr(line, f)) - Decimal(entry.returned.get(f) or 0)) for f in fields}
+    share = Decimal(qty) / Decimal(line.qty)
+    return {f: round_money(Decimal(getattr(line, f)) * share) for f in fields}
 
 
 def void_return(ret: POSReturn, voided_by, reason: str, today: date | None = None) -> None:
@@ -189,6 +216,11 @@ def void_return(ret: POSReturn, voided_by, reason: str, today: date | None = Non
     from app.inventory import ledger as inventory_ledger
 
     inventory_ledger.reverse_source(ret.tenant_id, "pos_return", ret.id, voided_by.id, f"{ret.return_number} voided")
+    if ret.bill.is_margin_scheme:
+        from app.margin.services import return_units
+
+        for rl in ret.lines:
+            return_units(ret.tenant_id, "pos_bill", ret.bill_id, rl.bill_line_id, rl.qty, undo=True)
     ret.status = POSReturnStatus.VOIDED
     ret.void_reason = reason
     ret.voided_at = utcnow()

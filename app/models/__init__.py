@@ -17,6 +17,7 @@ from app.models.purchase import (
     Supplier, PurchaseBill, PurchaseBillLine, PurchaseReturn, PurchaseReturnLine, PurchaseOrder,
     PurchaseOrderLine, Gstr2bImport, Gstr2bEntry,
 )
+from app.models.margin import MarginAllocation
 from app.models.expense import ExpenseCategory, Expense, RecurringExpense
 from app.models.note import CreditDebitNote, NoteLine, NoteStatus
 from app.models.audit_log import AuditLog

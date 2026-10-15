@@ -25,6 +25,8 @@ class DocumentType(str, enum.Enum):
     STOCK_TRANSFER = "stock_transfer"
     STOCK_ADJUSTMENT = "stock_adjustment"
     EXPENSE = "expense"
+    # Second-hand goods under Rule 32(5) - its own series (Phase 5).
+    MARGIN_SCHEME_INVOICE = "margin_scheme_invoice"
 
 
 # Document types a tenant may issue, gated by their GST registration type.
@@ -49,6 +51,7 @@ DOCUMENT_TYPE_LABELS = {
     DocumentType.STOCK_TRANSFER: "Delivery Challan (stock transfer)",
     DocumentType.STOCK_ADJUSTMENT: "Stock Adjustment",
     DocumentType.EXPENSE: "Expense Voucher",
+    DocumentType.MARGIN_SCHEME_INVOICE: "Invoice - Margin Scheme",
 }
 
 

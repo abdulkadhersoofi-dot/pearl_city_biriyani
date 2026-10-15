@@ -115,7 +115,7 @@
       <tbody>
       {% for h in data.hsn_summary %}
         <tr>
-          <td>{{ h.hsn or '-' }}</td>
+          <td>{{ h.hsn or '-' }}{% if h.margin_remainder %}<br><small class="text-muted">Margin scheme - value other than margin (Rule 32(5))</small>{% endif %}</td>
           <td>{{ h.gst_rate }}%</td>
           <td>{{ h.unit }}</td>
           <td>{{ h.qty }}</td>

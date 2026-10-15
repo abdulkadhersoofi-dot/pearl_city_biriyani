@@ -50,7 +50,8 @@ def _allow_legacy_unit(form: ProductForm, unit: str | None) -> None:
 # Product fields whose form controls only show with a module on - with the
 # module off they aren't on the page, so the stored value must be kept,
 # not reset to the unticked default.
-_MODULE_FIELDS = {"batch_expiry": ("track_batch",), "serial_imei": ("track_serial", "warranty_months")}
+_MODULE_FIELDS = {"batch_expiry": ("track_batch",), "serial_imei": ("track_serial", "warranty_months"),
+                  "margin_scheme": ("is_margin_scheme",)}
 
 
 def _snapshot_module_fields(product: Product) -> dict:
@@ -63,6 +64,10 @@ def _restore_switched_off(product: Product, before: dict) -> None:
         if not tenant.has_feature(key):
             for f in fields:
                 setattr(product, f, before[f])
+    # A margin-scheme price is what the buyer pays - GST is never added on
+    # top (it's inside the margin), so it's always a tax-inclusive price.
+    if product.is_margin_scheme:
+        product.price_includes_tax = True
 
 
 def _normalize_optional_fields(product: Product) -> None:
@@ -113,7 +118,8 @@ def new_product():
     if form.validate_on_submit():
         product = Product(tenant_id=current_user.tenant_id)
         form.populate_obj(product)
-        _restore_switched_off(product, {"track_batch": False, "track_serial": False, "warranty_months": None})
+        _restore_switched_off(product, {"track_batch": False, "track_serial": False, "warranty_months": None,
+                                        "is_margin_scheme": False})
         if not tenant.has_feature("favourites"):
             product.is_favourite = False
         _normalize_optional_fields(product)

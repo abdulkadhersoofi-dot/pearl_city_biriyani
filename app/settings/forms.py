@@ -1,6 +1,6 @@
 from flask_wtf import FlaskForm
 from flask_wtf.file import FileAllowed, FileField, FileSize
-from wtforms import BooleanField, DecimalField, SelectField, SelectMultipleField, StringField, widgets
+from wtforms import BooleanField, DecimalField, SelectField, SelectMultipleField, StringField, TextAreaField, widgets
 from wtforms.validators import DataRequired, Length, NumberRange, Optional, Regexp
 
 from app.models.pos_bill import PAYMENT_MODE_LABELS, SELECTABLE_PAYMENT_MODES
@@ -67,6 +67,10 @@ class TenantSettingsForm(FlaskForm):
     upi_payee_name = StringField(
         "Name shown in the customer's UPI app", filters=[lambda v: (v or "").strip() or None],
         validators=[Optional(), Length(max=100)],
+    )
+    margin_scheme_declaration = TextAreaField(
+        "Declaration on margin-scheme invoices", filters=[lambda v: (v or "").strip() or None],
+        validators=[Optional(), Length(max=1000)],
     )
 
 

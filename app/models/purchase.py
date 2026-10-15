@@ -158,10 +158,23 @@ class PurchaseBillLine(db.Model, TimestampMixin):
     charges_share = db.Column(db.Numeric(12, 2), nullable=False, default=0, server_default="0")
     unit_cost = db.Column(db.Numeric(14, 4), nullable=False, default=0, server_default="0")
     batch_id = db.Column(db.Integer, db.ForeignKey("product_batches.id", name="fk_purchase_bill_lines_batch"))
+    # Bought for resale under the margin scheme: never gives ITC, and each
+    # unit's price is what the margin is later worked out against.
+    is_margin_scheme = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
     sort_order = db.Column(db.Integer, nullable=False, default=0)
 
     product = db.relationship("Product")
     batch = db.relationship("ProductBatch")
+
+    @property
+    def margin_unit_price(self):
+        """Purchase price of one unit for the margin scheme: what was paid
+        for the line (after discount, with any GST - no credit is taken on
+        it), per unit. Freight and other bill charges aren't part of it."""
+        from decimal import ROUND_HALF_UP, Decimal
+
+        return (Decimal(self.line_total) / Decimal(self.qty)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP) \
+            if self.qty else Decimal("0")
 
 
 class PurchaseReturn(db.Model, TenantScopedMixin, TimestampMixin):

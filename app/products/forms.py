@@ -67,6 +67,7 @@ class ProductForm(FlaskForm):
     is_favourite = BooleanField("Pin to the favourites row at the counter")
     # Only on the page with the matching module on (products.routes keeps
     # the stored value when it's off).
+    is_margin_scheme = BooleanField("Second-hand goods sold under the margin scheme (Rule 32(5))")
     track_batch = BooleanField("Track batches and expiry dates")
     track_serial = BooleanField("Track each unit by serial number / IMEI")
     warranty_months = IntegerField("Warranty (months)", validators=[Optional(), NumberRange(min=0, max=240)])

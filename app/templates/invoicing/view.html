@@ -72,7 +72,8 @@
 
 <div class="totals-panel">
   <div class="totals-box">
-    <div class="totals-row"><span>Taxable value</span><span>Rs. {{ '%.2f'|format(invoice.total_taxable_value) }}</span></div>
+    {% set is_margin = invoice.document_type.value == 'margin_scheme_invoice' %}
+    <div class="totals-row"><span>{{ 'Taxable margin (not shown to the buyer)' if is_margin else 'Taxable value' }}</span><span>Rs. {{ '%.2f'|format(invoice.total_taxable_value) }}</span></div>
     {% if invoice.total_cgst %}<div class="totals-row"><span>CGST</span><span>Rs. {{ '%.2f'|format(invoice.total_cgst) }}</span></div>{% endif %}
     {% if invoice.total_sgst %}<div class="totals-row"><span>SGST</span><span>Rs. {{ '%.2f'|format(invoice.total_sgst) }}</span></div>{% endif %}
     {% if invoice.total_igst %}<div class="totals-row"><span>IGST</span><span>Rs. {{ '%.2f'|format(invoice.total_igst) }}</span></div>{% endif %}
@@ -83,6 +84,11 @@
     <div class="totals-row grand"><span>Total</span><span>Rs. {{ '%.2f'|format(invoice.grand_total) }}</span></div>
   </div>
 </div>
+{% if is_margin %}
+<div class="card" style="margin-top:12px;"><strong>Margin scheme (Rule 32(5)).</strong> The buyer pays the total above; the GST shown here is on your margin and is not printed on the invoice, which carries this declaration instead:
+  <p class="text-muted" style="margin-bottom:0;">{{ margin_declaration_for(invoice.tenant_id) }}</p>
+</div>
+{% endif %}
 
 {% if invoice.irn %}
 <div class="card" style="margin-top:20px;">

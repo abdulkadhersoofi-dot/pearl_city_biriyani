@@ -14,6 +14,16 @@
     </p>
     <a href="{{ url_for('reports.sales_view') }}" class="btn btn-primary">View sales report</a>
   </div>
+  {% if has_feature('margin_scheme') %}
+  <div class="card">
+    <h2 style="margin-top:0;">Margin register</h2>
+    <p class="text-muted">
+      Every second-hand unit sold under the margin scheme (Rule 32(5)): purchase date and price,
+      sale date and price, margin, taxable margin and GST - Excel or PDF.
+    </p>
+    <a href="{{ url_for('reports.margin_register') }}" class="btn btn-primary">View margin register</a>
+  </div>
+  {% endif %}
   <div class="card">
     <h2 style="margin-top:0;">Stock report</h2>
     <p class="text-muted">

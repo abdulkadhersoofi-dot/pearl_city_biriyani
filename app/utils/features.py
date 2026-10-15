@@ -79,7 +79,14 @@ FEATURES = {
             "with warranty dates and a search to find any unit.",
             available=True,
         ),
-        Feature("margin_scheme", "Margin scheme", "GST on margin for second-hand goods."),
+        Feature(
+            "margin_scheme",
+            "Margin scheme (second-hand goods)",
+            "Used phones, vehicles and other second-hand goods: GST on your margin only (Rule 32(5)), on a "
+            "separate margin-scheme invoice, with a margin register. Needs Purchases on to record what each "
+            "item cost.",
+            available=True,
+        ),
         Feature("weighing", "Weighing scale items", "Price per kg, weight entry at billing."),
         Feature("restaurant_mode", "Restaurant tables & KOT", "Tables, kitchen order tickets, order types."),
         Feature("job_cards", "Job cards", "Repair and service jobs from receipt to delivery."),

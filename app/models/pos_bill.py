@@ -115,6 +115,9 @@ class POSBill(db.Model, TenantScopedMixin, TimestampMixin):
     # The counter day (CashSession) this bill was rung up in - only set
     # while the client has day open/close switched on.
     cash_session_id = db.Column(db.Integer, db.ForeignKey("cash_sessions.id", name="fk_pos_bills_cash_session"), index=True)
+    # A margin-scheme invoice (all its lines second-hand goods under Rule
+    # 32(5)) - numbered in its own series, no GST shown to the buyer.
+    is_margin_scheme = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
     # Cash handed over and change given back, when paid (partly) in cash.
     cash_tendered = db.Column(db.Numeric(12, 2))
     change_due = db.Column(db.Numeric(12, 2))
@@ -202,6 +205,13 @@ class POSBillLine(db.Model, TimestampMixin):
     igst_amount = db.Column(db.Numeric(12, 2), nullable=False, default=0)
     line_total = db.Column(db.Numeric(12, 2), nullable=False, default=0)
 
+    # Margin scheme (Rule 32(5)): on such a line taxable_value and the tax
+    # are the margin's; line_total is the selling price. What it cost to
+    # buy (margin_purchase_value) and the margin itself (never below 0)
+    # are kept for the margin register and the HSN 0% row.
+    is_margin_scheme = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
+    margin_purchase_value = db.Column(db.Numeric(12, 2), nullable=False, default=0, server_default="0")
+    margin_value = db.Column(db.Numeric(12, 2), nullable=False, default=0, server_default="0")
     sort_order = db.Column(db.Integer, nullable=False, default=0)
 
     product = db.relationship("Product")

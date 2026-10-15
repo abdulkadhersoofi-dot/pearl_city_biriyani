@@ -237,6 +237,14 @@ def create_purchase_bill(tenant, user, data: PurchaseInput) -> PurchaseBill:
     if not can_claim_itc(tenant, gstin):
         for line in data.lines:
             line.itc_eligibility = ItcEligibility.INELIGIBLE
+    # Goods bought for resale under the margin scheme never give ITC
+    # (Rule 32(5)) - their full price is what the margin is worked from.
+    from app.margin.services import margin_on
+
+    margin_ids = {pid for pid, p in products.items() if p.is_margin_scheme} if margin_on(tenant) else set()
+    for line in data.lines:
+        if line.product_id in margin_ids:
+            line.itc_eligibility = ItcEligibility.INELIGIBLE
 
     is_intra = (supplier.state_code or gstin.state_code) == gstin.state_code
     computed = [itc.compute_purchase_line(l.qty, l.rate, l.discount_percent, l.gst_rate, is_intra) for l in data.lines]
@@ -270,6 +278,7 @@ def create_purchase_bill(tenant, user, data: PurchaseInput) -> PurchaseBill:
             hsn_or_sac_code=line.hsn_or_sac_code, qty=line.qty, unit=line.unit, rate=line.rate,
             discount_percent=line.discount_percent, gst_rate=line.gst_rate, itc_eligibility=line.itc_eligibility,
             charges_share=share, unit_cost=unit_cost, batch_id=batch.id if batch else None, sort_order=order,
+            is_margin_scheme=line.product_id in margin_ids,
             **{f: amounts[f] for f in _AMOUNT_FIELDS},
         )
         db.session.add(bill_line)
@@ -307,6 +316,11 @@ def void_purchase_bill(bill: PurchaseBill, user, reason: str) -> None:
         raise PurchaseError("A reason is required to void a purchase bill.")
     if PurchaseReturn.query.filter_by(purchase_bill_id=bill.id, status=PurchaseStatus.POSTED).first() is not None:
         raise PurchaseError("Goods on this bill were returned to the supplier - void those returns first.")
+    from app.margin.services import sold_from
+
+    if sold_from([l.id for l in bill.lines if l.is_margin_scheme]):
+        raise PurchaseError("Goods on this bill were sold under the margin scheme - their sales use its price. "
+                            "Void those sales first.")
     sold = ProductSerial.query.filter(ProductSerial.purchase_bill_id == bill.id, ProductSerial.status != SerialStatus.IN_STOCK).first()
     if sold is not None:
         raise PurchaseError(f"Serial/IMEI {sold.serial_no} from this bill was already sold.")
@@ -359,6 +373,13 @@ def create_purchase_return(bill: PurchaseBill, user, quantities: dict[int, Decim
             continue
         if qty > line.qty - done_qty:
             raise PurchaseError(f"Only {(line.qty - done_qty).normalize():f} of {line.description} can still go back.")
+        if line.is_margin_scheme:
+            from app.margin.services import lot_remaining
+
+            unsold = lot_remaining(line)
+            if qty > unsold:
+                raise PurchaseError(f"Only {unsold.normalize():f} of {line.description} from this bill are unsold "
+                                    "- the rest were sold under the margin scheme.")
         amounts = return_line_amounts(
             original={"rate": line.rate, "discount_percent": line.discount_percent, "discount_flat": 0,
                       "gst_rate": line.gst_rate, "price_includes_tax": False, "is_intra_state": not line.igst_amount,

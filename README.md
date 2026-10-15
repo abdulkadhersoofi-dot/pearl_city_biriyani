@@ -1158,6 +1158,85 @@ Gunicorn workers or add app servers behind Nginx as load grows.
     form
   - drafts are only ever made from a client's own recurring expenses
 
+### Platform build - Phase 5 (margin scheme, Rule 32(5))
+
+- **Who it's for.** Dealers in second-hand goods (used phones,
+  vehicles...). The module is `margin_scheme`. An item is marked "sold
+  under the margin scheme" on its item form, which also makes its price
+  tax-inclusive: the buyer pays the price and GST is never added on top.
+  It only applies to a regular GST registration.
+- **One tax module, `app/utils/margin.py`** (Decimal, half-up, fully
+  unit-tested):
+  - margin = selling price - purchase price
+  - a margin of zero or less means taxable 0 and GST 0
+  - otherwise the margin is tax-inclusive: taxable = margin x 100 /
+    (100 + rate), GST = margin - taxable
+  - GST is split CGST/SGST (half-up, with the odd paisa on SGST) or IGST
+    by place of supply
+
+  A sale line is worked out lot by lot, so a loss on one unit never
+  cancels the tax on another.
+- **Purchase price is always tracked (`MarginAllocation`).** Each unit
+  sold is tied to the purchase bill line it came from:
+  - with `serial_imei`, the IMEI picked at the counter, which sets that
+    unit's own price
+  - otherwise the oldest margin-scheme purchase with units left (FIFO)
+
+  The unit purchase price is what was paid for the line, GST included
+  (no credit is taken on it), per unit. A unit with no purchase on
+  record can't be sold under the scheme. One allocation row per (sale
+  line, lot) is kept, and that is the margin register:
+  - rows are never deleted
+  - voids and refunds release them
+  - sales returns count the units that came back, and voiding the
+    return undoes that
+  - a purchase bill can't be voided once its margin goods were sold
+  - a purchase return can't send back units already sold
+- **No ITC on margin purchases.** A purchase line for a margin-scheme
+  item is forced to "ineligible" and flagged `is_margin_scheme`, so it
+  never feeds GSTR-3B table 4.
+- **Separate invoices only (the client's decision).** A sale that mixes
+  margin-scheme and regular items is refused, at the counter and in
+  Invoicing, before a number is used, with "bill them in two sales". An
+  all-margin sale is an **Invoice - Margin Scheme** in its own series
+  `MSI/<FY>/0001`, shared by POS and Invoicing for each GSTIN.
+  - **What's stored on a line:** taxable value and tax are the margin's,
+    the line total is the selling price, and the purchase value and
+    margin are kept too.
+  - **Document totals** (`compute_margin_totals`): the grand total is
+    the sum of the prices.
+  - **Printing:** the POS receipt and the invoice PDF show item and
+    price only - no taxable value or GST - under a "Margin Scheme"
+    title, with the declaration. The declaration text is editable in
+    Settings; blank means the standard wording.
+  - **Restrictions:**
+    - Invoicing refuses margin goods to a branch, as an export / RCM /
+      bill of supply, and serial-tracked margin goods (those are sold at
+      the counter, where the IMEI is picked).
+    - Credit/debit notes against a margin invoice are refused; void and
+      re-bill instead.
+- **GSTR-1.** B2B/B2C is split by the buyer's GSTIN as usual, at the
+  taxable margin. The HSN summary gets two rows per HSN:
+  - the taxable margin at the item's rate, with its quantity and tax
+  - a 0% row (no quantity) with the rest of the sale value (sale value -
+    margin), labelled "Margin scheme - value other than margin" in the
+    page, PDF and Excel
+
+  The two rows' totals add up to the full sale value; returns and
+  refunds reduce both. "Documents issued" lists the MSI series once,
+  covering POS and invoices. GSTR-3B counts the taxable margin and its
+  tax only.
+- **Margin register** (Reports -> Margin register, Excel/PDF):
+  - columns: item and IMEI, purchase date / bill / supplier / price,
+    sale date / invoice / price, margin, taxable margin, CGST/SGST/IGST
+  - a loss is shown as such and not taxed
+  - returned units are left out, and so are voided and refunded sales
+- **Flag.** With `margin_scheme` off, the item flag is ignored: such
+  items sell as regular goods, exactly as before. The register returns
+  404, and the item-form and Settings fields aren't shown. Tenant
+  isolation: lots and register rows are per client
+  (`tests/test_margin_scheme.py`).
+
 ## Roadmap
 
 - **Platform build (ARFA general-purpose POS), phase by phase.**
@@ -1172,8 +1251,11 @@ Gunicorn workers or add app servers behind Nginx as load grows.
     labels.
   - Phase 4: expense vouchers with GST/ITC, categories, recurring
     drafts, POS petty cash, expense report, expense ITC in 3B.
+  - Phase 5: margin scheme (Rule 32(5)) - margin math, lots by IMEI /
+    FIFO, separate MSI invoices, no ITC on margin purchases, GSTR-1 HSN
+    margin + 0% rows, margin register.
 
-  Next, in order: 5 margin scheme, 6 receivables/payables (supplier
+  Next, in order: 6 receivables/payables (supplier
   ledger and payments build on Phase 3's opening balances and credit
   days; expenses marked "not paid yet" become payables there), 7 P&L
   (cost of goods sold from the stock ledger, expenses by category),
@@ -1186,6 +1268,13 @@ Gunicorn workers or add app servers behind Nginx as load grows.
   - Batch/serial pickers are at the POS only: invoices sell FEFO
     automatically and don't carry serials.
   - Stock valuation is weighted average only (no FIFO).
+
+  Phase 5 limits:
+  - The margin-scheme flag is per item, not per individual IMEI unit.
+  - Margin goods need a purchase bill (Purchases module); opening stock
+    entered as an adjustment has no purchase price to work from.
+  - The HSN 0% remainder row carries no quantity (the units are on the
+    margin row).
 
   Phase 4 limits:
   - One GST rate per expense: a multi-rate bill is entered as one

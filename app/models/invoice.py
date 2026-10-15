@@ -135,6 +135,13 @@ class InvoiceLine(db.Model, TimestampMixin):
     rigst_amount = db.Column(db.Numeric(12, 2), nullable=False, default=0)
     line_total = db.Column(db.Numeric(12, 2), nullable=False, default=0)
 
+    # Margin scheme (Rule 32(5)): on such a line taxable_value and the tax
+    # are the margin's; line_total is the selling price. What it cost to
+    # buy (margin_purchase_value) and the margin itself (never below 0)
+    # are kept for the margin register and the HSN 0% row.
+    is_margin_scheme = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
+    margin_purchase_value = db.Column(db.Numeric(12, 2), nullable=False, default=0, server_default="0")
+    margin_value = db.Column(db.Numeric(12, 2), nullable=False, default=0, server_default="0")
     sort_order = db.Column(db.Integer, nullable=False, default=0)
 
     product = db.relationship("Product")

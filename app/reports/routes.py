@@ -22,6 +22,7 @@ from app.reports.gstr import ReportPeriodError, gstr1_data, gstr3b_data
 from app.reports.items import item_sales_data
 from app.reports.sales import sales_report_data
 from app.reports.stock import stock_report_data
+from app.utils.features import feature_required
 
 
 def _current_period() -> str:
@@ -182,3 +183,43 @@ def gstr3b_pdf():
 def gstr3b_json():
     data = gstr3b_data(current_user.tenant, _resolve_gstin(request.args.get("gstin_id", type=int)), request.args.get("period", _current_period()))
     return send_file(BytesIO(to_json_bytes(data)), as_attachment=True, download_name=f"GSTR3B_{data['period']}.json", mimetype="application/json")
+
+
+# --- margin register (module "margin_scheme") ----------------------------------------
+
+def _margin_register():
+    from app.margin.reports import register_data
+
+    filters = parse_report_filters(request.args)
+    return filters, register_data(current_user.tenant, filters.start, filters.end)
+
+
+@reports_bp.route("/margin-register")
+@roles_required(UserRole.CLIENT_ADMIN)
+@feature_required("margin_scheme")
+def margin_register():
+    filters, data = _margin_register()
+    return render_template("reports/margin_register.html", data=data, filters=filters, branches=[])
+
+
+@reports_bp.route("/margin-register.xlsx")
+@roles_required(UserRole.CLIENT_ADMIN)
+@feature_required("margin_scheme")
+def margin_register_xlsx():
+    from app.margin.reports import build_register_workbook
+
+    filters, data = _margin_register()
+    return send_file(build_register_workbook(data), as_attachment=True,
+                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                     download_name=f"Margin_register_{filters.start.isoformat()}_to_{filters.end.isoformat()}.xlsx")
+
+
+@reports_bp.route("/margin-register.pdf")
+@roles_required(UserRole.CLIENT_ADMIN)
+@feature_required("margin_scheme")
+def margin_register_pdf():
+    from app.margin.reports import render_register_pdf
+
+    filters, data = _margin_register()
+    return send_file(BytesIO(render_register_pdf(data)), mimetype="application/pdf",
+                     download_name=f"Margin_register_{filters.start.isoformat()}_to_{filters.end.isoformat()}.pdf")

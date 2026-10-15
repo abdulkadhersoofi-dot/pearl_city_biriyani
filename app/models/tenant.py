@@ -108,6 +108,9 @@ class Tenant(db.Model, TimestampMixin):
     # UPI ID (VPA) for the dynamic "scan to pay" QR at checkout - blank
     # means no QR anywhere.
     upi_vpa = db.Column(db.String(100))
+    # Printed on every margin-scheme invoice (Rule 32(5)); blank = the
+    # standard wording (app.utils.margin.DEFAULT_DECLARATION).
+    margin_scheme_declaration = db.Column(db.Text)
     upi_payee_name = db.Column(db.String(100))
 
     # Access gating - see app.utils.billing.tenant_access_status, which

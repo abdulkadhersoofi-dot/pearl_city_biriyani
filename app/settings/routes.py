@@ -53,6 +53,9 @@ def index():
             tenant.pos_payment_modes = modes
             tenant.upi_vpa = form.upi_vpa.data
             tenant.upi_payee_name = form.upi_payee_name.data
+        # Only when its card was on the page (the margin_scheme module was on).
+        if request.form.get("margin_settings_shown"):
+            tenant.margin_scheme_declaration = form.margin_scheme_declaration.data
 
         # The submitted value, not form.business_type.data: when the field
         # is absent, Optional() lets the obj-populated enum (stringified)
@@ -86,6 +89,9 @@ def index():
 
 
 def _render(form, tenant):
+    from app.utils.margin import DEFAULT_DECLARATION
+
     return render_template(
-        "settings/form.html", form=form, tenant=tenant, features=AVAILABLE_FEATURES, feature_field_name=feature_field_name
+        "settings/form.html", form=form, tenant=tenant, features=AVAILABLE_FEATURES, feature_field_name=feature_field_name,
+        default_margin_declaration=DEFAULT_DECLARATION
     )
