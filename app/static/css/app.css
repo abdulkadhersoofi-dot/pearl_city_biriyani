@@ -479,3 +479,8 @@ td.num, th.num { text-align: right; white-space: nowrap; }
 .stock-lines input, .stock-lines select { min-height: 38px; width: 100%; }
 .void-box { margin-top: 20px; }
 .cart-line .cart-serials { grid-column: 1 / -1; min-height: 36px; font-size: 0.85rem; }
+
+/* Home dashboard (Phase 7): compact lists that stay inside their cards. */
+.dash-list { width: 100%; table-layout: auto; font-size: 0.92rem; margin-bottom: 10px; }
+.dash-list td { padding: 6px 4px; background: transparent; word-break: break-word; }
+.dash-list td.num { white-space: nowrap; }

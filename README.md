@@ -1328,6 +1328,77 @@ Five new flags, all off by default; with them off nothing changes (routes
   allocate against, convert or issue anything by guessing ids
   (`tests/test_accounts.py`, `tests/test_sales_documents.py`).
 
+### Platform build - Phase 7 (P&L, business reports, GST returns, Tally, filing)
+
+- **New flag `business_reports`** (off by default; on in new clients'
+  business-type presets): with it on the Client Admin lands on a **Home
+  dashboard** and Reports gains P&L, gross profit by item and the daily
+  summary. Off: the landing page, menus and reports are exactly as before
+  and the new routes 404.
+- **Profit & loss (`app/finance/pnl.py`)** - computed from the documents,
+  no ledger yet, but every figure is an *account line* (code, label,
+  amount) so a double-entry ledger can later supply the same codes:
+  - revenue = invoices + counter bills + debit notes - credit notes -
+    returns / refunds, all excluding GST; margin-scheme sales at full
+    selling price with "GST paid on margin" deducted.
+  - COGS = opening stock + purchases (net of returns; non-claimable GST is
+    cost, claimable isn't) + opening stock entered - closing stock, valued
+    from the stock ledger (Σ qty × unit cost, weighted average). Damage,
+    wastage and count differences fall in through closing stock. Stock of
+    third-party branches (independent buyers) is not the client's.
+  - expenses by category at cost (excluding claimable GST); gross profit,
+    GP %, net profit; comparison with the previous period or the same
+    period last year; one location or all (counter sales by the till's
+    location, invoices at the main store, purchases at their location,
+    expenses by branch); Excel and PDF.
+  - without Inventory: Revenue - Purchases - Expenses, labelled a
+    cash-basis estimate.
+- **Gross profit by item / category** (`app/finance/sales_analysis.py`):
+  sales excluding GST vs the stock ledger's cost of the units that went
+  out; typed-in lines and services show "no cost". Excel.
+- **Daily sales summary**: counter sales by payment mode net of money paid
+  back, by hour (bar), by cashier (bills, discounts, returns, voids),
+  discounted bills, and every void / return / refund with reason. PDF.
+- **Dashboard**: sales and money received today / this month, cash in
+  hand (cash book, or today's counter cash), dues both ways, biggest
+  debtors, top items, low stock, expiring batches - each tile only with
+  its module on.
+- **GSTR-3B net payable - one module, `app/utils/gst_setoff.py`** (Rule
+  88A, unit-tested): IGST credit first (IGST, then CGST/SGST, spread to
+  minimise cash), then CGST/SGST credit on their own head then IGST, never
+  across; reverse-charge tax always in cash; credit carried forward.
+  Table 6.1 on the page, PDF, Excel and JSON - with Purchases or Expenses
+  on (ITC excludes blocked, ineligible and margin-scheme purchases).
+- **GSTR-1 B2CL**: inter-state invoices to unregistered buyers above
+  `gst_config.B2CL_INVOICE_VALUE_THRESHOLD` (Rs. 1 lakh, Notification
+  12/2024-CT, from 01.08.2024) listed invoice by invoice; the rest stays
+  B2C Small. **HSN summary split B2B / B2C** (the combined table stays).
+  New Excel sheets B2CL, HSN B2B, HSN B2C.
+- **Purchase register / expense register** (Excel, one month; Reports
+  and the monthly pack): bill-wise per GST rate with supplier invoice,
+  GSTIN, tax and ITC taken (blocked / margin lines show none); returns as
+  minus rows; expenses with GST bill details.
+- **Tally export** (`app/finance/journal.py` + `tally.py`): every sale,
+  counter bill, note, return, purchase, purchase return, receipt, payment,
+  refund and expense becomes a balanced voucher (rounding to "Round
+  Off"; a test asserts debits = credits) on ledgers in Tally's standard
+  groups (Sundry Debtors / Creditors, Sales @ rate, Purchases @ rate,
+  Output / Input CGST-SGST-IGST, Cash, Bank...). A ZIP with
+  `1_masters.xml` and `2_vouchers.xml` (TallyPrime Import Data XML,
+  debit = negative amount with ISDEEMEDPOSITIVE Yes). Admin console.
+- **Filing tracker** (`FilingStatus`, Filing in the admin menu): per
+  client GSTIN and month, GSTR-1 (due 11th) and GSTR-3B (due 20th) -
+  dates from `gst_config` - with document count, data ready (the client
+  marks it under Reports -> GST filing, or the firm does) and filed with
+  date and ARN; overdue in red. Auditors see only their own clients.
+- **Monthly pack** (client page in the admin console, and the bulk GST
+  export now sends one per client): GSTR-1 and GSTR-3B (Excel, PDF,
+  JSON) per GSTIN, HSN summary (all / B2B / B2C), purchase and expense
+  registers (when recorded), P&L, Tally files.
+- Tenant isolation: filing rows are per client - another client can't
+  read or change them, an auditor can't reach clients that aren't theirs
+  (`tests/test_phase7_reports.py`).
+
 ## Roadmap
 
 - **Platform build (ARFA general-purpose POS), phase by phase.**
@@ -1351,11 +1422,23 @@ Five new flags, all off by default; with them off nothing changes (routes
     11A/11B, 3B), quotation / proforma / sales order / delivery challan
     with one-click invoicing, void & re-issue, recurring invoices, cash
     and bank book.
+  - Phase 7: P&L (COGS from the stock ledger), gross profit by item,
+    daily summary, dashboard, GSTR-3B set-off, GSTR-1 B2CL and HSN
+    B2B/B2C, purchase/expense registers, Tally XML, filing tracker,
+    monthly pack.
 
-  Next, in order: 7 P&L
-  (cost of goods sold from the stock ledger, expenses by category),
-  8 e-invoice/e-way bill (only with real credentials; e-way bills for
-  transfers), 9 business-type modules, 10 platform polish.
+  Next, in order: 8 e-invoice/e-way bill (only with real credentials; e-way
+  bills for transfers), 9 business-type modules, 10 platform polish.
+
+  Phase 7 limits:
+  - Purchases in COGS are dated by when the stock arrived in the ledger,
+    so a bill entered late lands in the month it was entered.
+  - Round-off on documents is not a P&L line.
+  - Returns / credit notes against B2C sales stay in B2C Small (no CDNUR
+    table); B2CL lists invoices only.
+  - The filing tracker is for monthly filers (no QRMP dates).
+  - The Tally export uses one "Bank" and one "Cash" ledger; advances are
+    plain receipts (no GST-on-advance entries in Tally).
 
   Phase 3 limits, stated plainly:
   - Purchase orders have no PDF.
@@ -1397,12 +1480,14 @@ Five new flags, all off by default; with them off nothing changes (routes
 - **Done, with explicit scope limits:**
   - **GSTR-1/3B** (`app/reports/gstr.py`) are *working papers* computed
     from this tenant's own invoices/POS bills/notes, not an auto-filer or
-    an exact replica of the government JSON schema. Two limits:
-    **Input Tax Credit** is only there for clients with the Purchases
-    module (table 4 from their purchase bills; for everyone else 3B shows
-    gross output tax only), and **B2C is one aggregated
-    bucket**, not split into Large/Small by GSTR-1's Rs. 2.5 lakh
-    inter-state threshold. Everything else - taxable value, CGST/SGST/
+    an exact replica of the government JSON schema. **Input Tax Credit**
+    is only there for clients with the Purchases or Expenses module
+    (table 4 and the 6.1 set-off; for everyone else 3B shows gross output
+    tax only). **B2C Large** (inter-state, unregistered buyer, invoice
+    above Rs. 1 lakh - `gst_config.B2CL_INVOICE_VALUE_THRESHOLD`,
+    Notification 12/2024-CT, from 01.08.2024) is listed invoice by
+    invoice since Phase 7; returns against B2C supplies stay in B2C Small
+    (no separate CDNUR table). Everything else - taxable value, CGST/SGST/
     IGST, the B2B/B2C split by whether the customer has a GSTIN on file,
     HSN-wise summary, and the document-number-series summary - is exact,
     computed straight from the tenant's own records. Excel/PDF/JSON

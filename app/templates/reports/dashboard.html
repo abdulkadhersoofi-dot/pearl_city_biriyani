@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Today at a glance</h1>
+    <p class="text-muted mt-0">{{ d.today.strftime('%A, %d %b %Y') }}</p>
+  </div>
+  <div class="row">
+    <a href="{{ url_for('reports.daily_summary_view') }}" class="btn btn-secondary">Daily summary</a>
+    <a href="{{ url_for('reports.profit_loss') }}" class="btn btn-secondary">Profit &amp; loss</a>
+  </div>
+</div>
+<div class="form-grid dash-tiles" style="margin-bottom:16px;">
+  <div class="card"><span class="text-muted">Sales today</span><h2 class="mt-0">Rs. {{ '{:,.2f}'.format(d.sales_today) }}</h2><small class="text-muted">This month Rs. {{ '{:,.2f}'.format(d.sales_month) }}</small></div>
+  <div class="card"><span class="text-muted">Money received today</span><h2 class="mt-0">Rs. {{ '{:,.2f}'.format(d.collections_today) }}</h2><small class="text-muted">This month Rs. {{ '{:,.2f}'.format(d.collections_month) }}</small></div>
+  <div class="card"><span class="text-muted">{{ d.cash_label }}</span><h2 class="mt-0">Rs. {{ '{:,.2f}'.format(d.cash_in_hand) }}</h2></div>
+  {% if d.receivable is defined %}<div class="card"><span class="text-muted">Customers owe you</span><h2 class="mt-0"><a href="{{ url_for('accounts.receivables_index') }}">Rs. {{ '{:,.2f}'.format(d.receivable) }}</a></h2>{% if d.overdue %}<small class="text-muted">Overdue Rs. {{ '{:,.2f}'.format(d.overdue) }}</small>{% endif %}</div>{% endif %}
+  {% if d.payable is defined %}<div class="card"><span class="text-muted">You owe suppliers</span><h2 class="mt-0"><a href="{{ url_for('accounts.payables_index') }}">Rs. {{ '{:,.2f}'.format(d.payable) }}</a></h2></div>{% endif %}
+</div>
+<div class="form-grid">
+  <div class="card">
+    <h3 class="mt-0">Top items this month</h3>
+    <table class="dash-list"><tbody>
+    {% for r in d.top_items %}<tr><td>{{ r.name }}</td><td class="num">{{ r.qty|qty }}</td><td class="num">Rs. {{ '{:,.2f}'.format(r.sales) }}</td></tr>
+    {% else %}<tr><td class="empty-state">No sales yet this month.</td></tr>{% endfor %}
+    </tbody></table>
+    <a href="{{ url_for('reports.item_profit') }}">Gross profit by item &rarr;</a>
+  </div>
+  {% if d.top_debtors is defined %}
+  <div class="card">
+    <h3 class="mt-0">Biggest dues</h3>
+    <table class="dash-list"><tbody>
+    {% for r in d.top_debtors %}<tr><td><a href="{{ url_for('accounts.customer_ledger', customer_id=r.customer.id) }}">{{ r.customer.name }}</a>{% if r.over_limit %} <span class="tag tag-warn">over limit</span>{% endif %}</td><td class="num">Rs. {{ '{:,.2f}'.format(r.balance) }}</td></tr>
+    {% else %}<tr><td class="empty-state">Nobody owes you anything.</td></tr>{% endfor %}
+    </tbody></table>
+  </div>
+  {% endif %}
+  {% if d.low_stock is defined %}
+  <div class="card">
+    <h3 class="mt-0">Low stock</h3>
+    <table class="dash-list"><tbody>
+    {% for r in d.low_stock %}<tr><td>{{ r.product.name }}</td><td class="num"><span class="tag tag-low">{{ r.qty|qty }}</span> <small class="text-muted">min {{ r.product.min_stock_level|qty }}</small></td></tr>
+    {% else %}<tr><td class="empty-state">Nothing below its minimum.</td></tr>{% endfor %}
+    </tbody></table>
+    <a href="{{ url_for('inventory.reorder') }}">Reorder list &rarr;</a>
+  </div>
+  {% endif %}
+  {% if d.expiring is defined %}
+  <div class="card">
+    <h3 class="mt-0">Expiring batches (30 days)</h3>
+    <table class="dash-list"><tbody>
+    {% for r in d.expiring %}<tr><td>{{ r.batch.product.name }} <small class="text-muted">{{ r.batch.batch_no }}</small></td><td>{{ r.batch.expiry_date.strftime('%d %b %Y') }}</td><td class="num">{% if r.days_left < 0 %}<span class="tag tag-expired">expired</span>{% else %}{{ r.days_left }} days{% endif %}</td></tr>
+    {% else %}<tr><td class="empty-state">Nothing expiring soon.</td></tr>{% endfor %}
+    </tbody></table>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

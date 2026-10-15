@@ -223,3 +223,198 @@ def margin_register_pdf():
     filters, data = _margin_register()
     return send_file(BytesIO(render_register_pdf(data)), mimetype="application/pdf",
                      download_name=f"Margin_register_{filters.start.isoformat()}_to_{filters.end.isoformat()}.pdf")
+
+
+# --- Phase 7: business reports (feature "business_reports") ------------------------
+
+XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+def _filters(default_mode: str):
+    """The shared period filter, defaulting to this month / today when the
+    page is first opened."""
+    from werkzeug.datastructures import MultiDict
+
+    args = request.args
+    if not args.get("mode"):
+        args = MultiDict(args)
+        args["mode"] = default_mode if not (args.get("start") or args.get("end")) else "range"
+    return parse_report_filters(args)
+
+
+def _month_filters():
+    return _filters("month")
+
+
+def _location(tenant):
+    from app.finance.pnl import own_locations
+
+    locations = own_locations(tenant)
+    wanted = request.args.get("location_id", type=int)
+    chosen = next((l for l in locations if l.id == wanted), None)
+    return locations, chosen
+
+
+def _pnl():
+    from app.finance.pnl import statement
+
+    tenant = current_user.tenant
+    filters = _month_filters()
+    locations, chosen = _location(tenant)
+    compare = request.args.get("compare", "previous")
+    if compare not in ("previous", "last_year", "none"):
+        compare = "previous"
+    st = statement(tenant, filters.start, filters.end, chosen.id if chosen else None, compare)
+    return st, filters, locations, chosen, compare
+
+
+@reports_bp.route("/dashboard")
+@roles_required(UserRole.CLIENT_ADMIN)
+@feature_required("business_reports")
+def dashboard():
+    from app.finance.dashboard import dashboard as dashboard_data
+
+    return render_template("reports/dashboard.html", d=dashboard_data(current_user.tenant))
+
+
+@reports_bp.route("/profit-loss")
+@roles_required(UserRole.CLIENT_ADMIN)
+@feature_required("business_reports")
+def profit_loss():
+    st, filters, locations, chosen, compare = _pnl()
+    return render_template("reports/profit_loss.html", st=st, filters=filters, locations=locations, chosen=chosen,
+                           compare=compare)
+
+
+@reports_bp.route("/profit-loss.<any(xlsx, pdf):fmt>")
+@roles_required(UserRole.CLIENT_ADMIN)
+@feature_required("business_reports")
+def profit_loss_export(fmt):
+    from app.finance.exports import pnl_workbook, render_pnl_pdf
+
+    st, filters, locations, chosen, compare = _pnl()
+    name = chosen.name if chosen else "All locations"
+    stem = f"Profit_and_loss_{filters.start.isoformat()}_to_{filters.end.isoformat()}"
+    if fmt == "xlsx":
+        return send_file(pnl_workbook(st, name), as_attachment=True, download_name=f"{stem}.xlsx", mimetype=XLSX)
+    return send_file(BytesIO(render_pnl_pdf(st, name)), as_attachment=False, download_name=f"{stem}.pdf",
+                     mimetype="application/pdf")
+
+
+def _item_profit():
+    from app.finance.sales_analysis import item_gross_profit
+
+    tenant = current_user.tenant
+    filters = _month_filters()
+    locations, chosen = _location(tenant)
+    return item_gross_profit(tenant, filters.start, filters.end, chosen.id if chosen else None), filters, locations, chosen
+
+
+@reports_bp.route("/item-profit")
+@roles_required(UserRole.CLIENT_ADMIN)
+@feature_required("business_reports")
+def item_profit():
+    data, filters, locations, chosen = _item_profit()
+    args = request.args.to_dict()
+    view_urls = {v: url_for("reports.item_profit", **{**args, "view": v}) for v in ("items", "categories")}
+    return render_template("reports/item_profit.html", data=data, filters=filters, locations=locations, chosen=chosen,
+                           view=request.args.get("view", "items"), view_urls=view_urls)
+
+
+@reports_bp.route("/item-profit.xlsx")
+@roles_required(UserRole.CLIENT_ADMIN)
+@feature_required("business_reports")
+def item_profit_xlsx():
+    from app.finance.exports import item_profit_workbook
+
+    data, filters, _, _ = _item_profit()
+    return send_file(item_profit_workbook(data, current_user.tenant), as_attachment=True, mimetype=XLSX,
+                     download_name=f"Gross_profit_{filters.start.isoformat()}_to_{filters.end.isoformat()}.xlsx")
+
+
+def _daily():
+    from app.finance.sales_analysis import daily_summary
+
+    filters = _filters("day")
+    return daily_summary(current_user.tenant, filters.start, filters.end), filters
+
+
+@reports_bp.route("/daily-summary")
+@roles_required(UserRole.CLIENT_ADMIN)
+@feature_required("business_reports")
+def daily_summary_view():
+    data, filters = _daily()
+    return render_template("reports/daily_summary.html", data=data, filters=filters, locations=[], chosen=None)
+
+
+@reports_bp.route("/daily-summary.pdf")
+@roles_required(UserRole.CLIENT_ADMIN)
+@feature_required("business_reports")
+def daily_summary_pdf():
+    from app.finance.exports import render_daily_pdf
+
+    data, filters = _daily()
+    return send_file(BytesIO(render_daily_pdf(data, current_user.tenant)), mimetype="application/pdf",
+                     as_attachment=False, download_name=f"Daily_summary_{filters.start.isoformat()}.pdf")
+
+
+@reports_bp.route("/<any(purchase, expense):kind>-register.xlsx")
+@roles_required(UserRole.CLIENT_ADMIN)
+def register_xlsx(kind):
+    from app.reports.registers import expense_register_workbook, purchase_register_workbook
+
+    tenant = current_user.tenant
+    if not tenant.has_feature("purchases" if kind == "purchase" else "expenses"):
+        abort(404)
+    filters = _month_filters()
+    build = purchase_register_workbook if kind == "purchase" else expense_register_workbook
+    return send_file(build(tenant, filters.start, filters.end), as_attachment=True, mimetype=XLSX,
+                     download_name=f"{kind.title()}_register_{filters.start.isoformat()}_to_{filters.end.isoformat()}.xlsx")
+
+
+def _previous_period() -> str:
+    first = date.today().replace(day=1)
+    last = first.fromordinal(first.toordinal() - 1)
+    return f"{last.year:04d}-{last.month:02d}"
+
+
+def filing_cards(tenant, period: str) -> list[dict]:
+    """The client's own view of the firm's filing tracker for a month."""
+    from app.finance.filing import due_date
+    from app.models.filing import RETURN_LABELS, FilingStatus, ReturnType
+    from app.utils.tenant_scope import tenant_query
+
+    rows = {(s.gstin_id, s.return_type): s for s in tenant_query(FilingStatus).filter_by(period=period)}
+    cards = []
+    for gstin in tenant.gstins.filter_by(is_active=True).all():
+        returns = [{"label": RETURN_LABELS[rt], "due": due_date(period, rt), "status": rows.get((gstin.id, rt))}
+                   for rt in ReturnType]
+        cards.append({"gstin": gstin, "returns": returns,
+                      "ready": all(r["status"] is not None and r["status"].data_ready for r in returns)})
+    return cards
+
+
+@reports_bp.route("/filing", methods=["GET", "POST"])
+@roles_required(UserRole.CLIENT_ADMIN)
+@feature_required("business_reports")
+def filing_status():
+    from app.finance.filing import mark_ready, period_bounds
+    from app.utils.audit import record_audit
+    from app.extensions import db
+
+    tenant = current_user.tenant
+    period = request.values.get("period") or _previous_period()
+    try:
+        period_bounds(period)
+    except (ValueError, TypeError):
+        abort(404)
+    if request.method == "POST":
+        gstin = _resolve_gstin(request.form.get("gstin_id", type=int))
+        ready = request.form.get("action") != "not_ready"
+        mark_ready(tenant.id, gstin.id, period, current_user, ready)
+        record_audit(current_user, "filing_data_ready" if ready else "filing_data_not_ready", tenant_id=tenant.id,
+                     entity_type="gstin", entity_id=gstin.id, details={"period": period})
+        db.session.commit()
+        flash(f"{period} marked {'ready for filing' if ready else 'not ready yet'}.", "success")
+        return redirect(url_for("reports.filing_status", period=period))
+    return render_template("reports/filing.html", cards=filing_cards(tenant, period), period=period)

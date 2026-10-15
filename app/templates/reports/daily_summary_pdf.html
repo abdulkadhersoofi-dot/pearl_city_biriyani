@@ -1,0 +1,7 @@
+<!doctype html>
+<html><head><meta charset="utf-8">{% include "accounts/_pdf_style.html" %}</head>
+<body>
+<h1>{{ firm_name }} - Daily sales summary</h1>
+<p class="sub">{{ data.start.strftime('%d %b %Y') }}{% if data.end != data.start %} - {{ data.end.strftime('%d %b %Y') }}{% endif %} · {{ data.bill_count }} counter bills Rs. {{ '{:,.2f}'.format(data.bill_total) }} · {{ data.invoice_count }} invoices Rs. {{ '{:,.2f}'.format(data.invoice_total) }}</p>
+{% include "reports/_daily_body.html" %}
+</body></html>

@@ -17,8 +17,7 @@ from app.models.note import CreditDebitNote
 from app.models.pos_bill import POSBill
 from app.models.tenant import BillingCycle, BusinessType, Gstin, RegistrationType, Tenant
 from app.models.user import User, UserRole
-from app.reports.export import build_gstr1_workbook, build_gstr3b_workbook
-from app.reports.gstr import ReportPeriodError, gstr1_data, gstr3b_data
+from app.reports.gstr import ReportPeriodError
 from app.tenants import tenants_bp
 from app.tenants.forms import (
     AddGstinForm,
@@ -199,6 +198,7 @@ def detail(tenant_id):
         billing_form=billing_form,
         auditors=auditors,
         access_status=tenant_access_status(tenant),
+        default_period=_current_period(),
     )
 
 
@@ -987,20 +987,16 @@ def gst_exports_download():
         flash("Pick at least one client to export.", "error")
         return redirect(url_for("tenants.gst_exports"))
 
-    buf = BytesIO()
-    with ZipFile(buf, "w", ZIP_DEFLATED) as zf:
-        for tenant in selected:
-            gstin = tenant.gstins.filter_by(is_primary=True, is_active=True).first() or tenant.gstins.filter_by(is_active=True).first()
-            safe_name = "".join(c if c.isalnum() or c in " -_" else "_" for c in tenant.legal_name).strip() or f"tenant-{tenant.id}"
-            try:
-                g1 = gstr1_data(tenant, gstin, period)
-                g3b = gstr3b_data(tenant, gstin, period)
-            except ReportPeriodError as exc:
-                flash(exc.message, "error")
-                return redirect(url_for("tenants.gst_exports"))
-            zf.writestr(f"{safe_name}/GSTR1_{period}.xlsx", build_gstr1_workbook(g1).getvalue())
-            zf.writestr(f"{safe_name}/GSTR3B_{period}.xlsx", build_gstr3b_workbook(g3b).getvalue())
-    buf.seek(0)
+    # Each client's full monthly pack (GSTR-1/3B in Excel, PDF and JSON per
+    # GSTIN, HSN summary, purchase / expense registers, P&L, Tally files).
+    from app.finance.filing import monthly_pack_zip, period_bounds
+
+    try:
+        period_bounds(period)
+        buf = monthly_pack_zip(selected, period)
+    except (ReportPeriodError, ValueError):
+        flash("Pick a valid month.", "error")
+        return redirect(url_for("tenants.gst_exports"))
 
     record_audit(
         current_user,
@@ -1012,3 +1008,104 @@ def gst_exports_download():
     return send_file(
         buf, as_attachment=True, download_name=f"GST_exports_{period}.zip", mimetype="application/zip"
     )
+
+
+# --- Phase 7: filing tracker, monthly pack, Tally export ---------------------------
+
+def _scoped_tenants():
+    ids = auditor_tenant_ids(current_user)
+    tenants = _exportable_tenants()
+    return [t for t in tenants if ids is None or t.id in ids]
+
+
+def _period_arg(value=None) -> str:
+    from app.finance.filing import period_bounds
+
+    period = value or request.values.get("period") or _current_period()
+    try:
+        period_bounds(period)
+    except (ValueError, TypeError):
+        abort(404)
+    return period
+
+
+@tenants_bp.route("/filing")
+@admin_or_auditor_required
+def filing_tracker():
+    from app.finance.filing import tracker_rows
+
+    period = _period_arg()
+    rows = tracker_rows(_scoped_tenants(), period)
+    return render_template("tenants/filing.html", rows=rows, period=period, today=date.today())
+
+
+@tenants_bp.route("/clients/<int:tenant_id>/filing", methods=["POST"])
+@admin_or_auditor_required
+def filing_update(tenant_id):
+    from app.finance.filing import mark_filed, mark_ready
+    from app.models.filing import ReturnType
+
+    tenant = Tenant.query.get_or_404(tenant_id)
+    assert_auditor_owns_tenant(current_user, tenant)
+    gstin = tenant.gstins.filter_by(id=request.form.get("gstin_id", type=int)).first_or_404()
+    period = _period_arg(request.form.get("period"))
+    action = request.form.get("action")
+    if action in ("ready", "not_ready"):
+        mark_ready(tenant.id, gstin.id, period, current_user, action == "ready")
+        details = {"period": period, "gstin": gstin.gstin, "data_ready": action == "ready"}
+    else:
+        try:
+            rt = ReturnType(request.form.get("return_type", ""))
+        except ValueError:
+            abort(400)
+        filed_on = None
+        if request.form.get("filed_on"):
+            try:
+                filed_on = date.fromisoformat(request.form["filed_on"])
+            except ValueError:
+                filed_on = None
+        mark_filed(tenant.id, gstin.id, period, rt, current_user, action == "filed", filed_on, request.form.get("arn"))
+        details = {"period": period, "gstin": gstin.gstin, "return": rt.value, "filed": action == "filed",
+                   "arn": request.form.get("arn") or None}
+    record_audit(current_user, "filing_status_updated", tenant_id=tenant.id, entity_type="tenant",
+                 entity_id=tenant.id, details=details)
+    db.session.commit()
+    flash(f"{tenant.legal_name} - {period} updated.", "success")
+    return redirect(url_for("tenants.filing_tracker", period=period))
+
+
+@tenants_bp.route("/clients/<int:tenant_id>/monthly-pack.zip")
+@admin_or_auditor_required
+def monthly_pack(tenant_id):
+    from app.finance.filing import pack_files, safe_name
+
+    tenant = Tenant.query.get_or_404(tenant_id)
+    assert_auditor_owns_tenant(current_user, tenant)
+    period = _period_arg()
+    buf = BytesIO()
+    with ZipFile(buf, "w", ZIP_DEFLATED) as zf:
+        for name, data in pack_files(tenant, period):
+            zf.writestr(name, data)
+    buf.seek(0)
+    record_audit(current_user, "monthly_pack_export", tenant_id=tenant.id, entity_type="tenant", entity_id=tenant.id,
+                 details={"period": period})
+    db.session.commit()
+    return send_file(buf, as_attachment=True, mimetype="application/zip",
+                     download_name=f"{safe_name(tenant)}_{period}_pack.zip")
+
+
+@tenants_bp.route("/clients/<int:tenant_id>/tally.zip")
+@admin_or_auditor_required
+def tally_export(tenant_id):
+    from app.finance.filing import period_bounds, safe_name
+    from app.finance.tally import tally_zip
+
+    tenant = Tenant.query.get_or_404(tenant_id)
+    assert_auditor_owns_tenant(current_user, tenant)
+    period = _period_arg()
+    start, end = period_bounds(period)
+    record_audit(current_user, "tally_export", tenant_id=tenant.id, entity_type="tenant", entity_id=tenant.id,
+                 details={"period": period})
+    db.session.commit()
+    return send_file(tally_zip(tenant, start, end), as_attachment=True, mimetype="application/zip",
+                     download_name=f"{safe_name(tenant)}_{period}_tally.zip")

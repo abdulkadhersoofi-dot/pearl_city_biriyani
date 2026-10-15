@@ -43,7 +43,7 @@
     {% endfor %}{% else %}<tr><td colspan="8">None this period.</td></tr>{% endfor %}
   </table>
 
-  <h2>B2C (by place of supply &amp; rate)</h2>
+  <h2>B2C Small (by place of supply &amp; rate)</h2>
   <table>
     <tr><th>Place of supply</th><th>Rate</th><th>Taxable</th><th>CGST</th><th>SGST</th><th>IGST</th></tr>
     {% for b in data.b2c %}
@@ -81,6 +81,7 @@
     {% else %}<tr><td colspan="9">None this period.</td></tr>{% endfor %}
   </table>
 
+  <h2>B2C Large / HSN by B2B and B2C</h2>{% include "reports/_b2cl_hsn.html" %}
   {% if data.advances is defined %}<h2>Advances (11A / 11B)</h2>{% include "reports/_advances.html" %}{% endif %}
   <h2>Documents issued</h2>
   <table>
@@ -90,6 +91,6 @@
     {% else %}<tr><td colspan="6">None this period.</td></tr>{% endfor %}
   </table>
 
-  <p class="note">This is a working paper computed from this tenant's own records - verify before filing. B2C is aggregated, not split into Large/Small by the Rs. 2.5 lakh inter-state threshold.</p>
+  <p class="note">This is a working paper computed from this tenant's own records - verify before filing. B2C Large lists inter-state invoices to unregistered buyers above Rs. {{ '{:,.0f}'.format(b2cl_threshold) }} (Notification 12/2024-CT); returns and credit notes on B2C supplies stay in B2C Small.</p>
 </body>
 </html>

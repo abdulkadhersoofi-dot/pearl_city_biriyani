@@ -78,8 +78,14 @@
     </tbody>
   </table></div>
   <p class="text-muted" style="margin-bottom:0;">From {{ itc.bill_count }} purchase bill(s) and {{ itc.expense_count }} expense(s) with a GST bill this month. Claim only what your GSTR-2B shows{% if has_feature('purchases') %} -
-    check it under <a href="{{ url_for('purchases.gstr2b_imports') }}">Purchases &rarr; GSTR-2B match</a>{% endif %}. The order of set-off (IGST credit first) is applied on the portal.</p>
+    check it under <a href="{{ url_for('purchases.gstr2b_imports') }}">Purchases &rarr; GSTR-2B match</a>{% endif %}.</p>
 </div>
+{% if data.payment is defined %}
+<div class="card" style="margin-top:20px;">
+  <h2 style="margin-top:0;">6.1 Tax payable - after setting off credit</h2>
+  <div class="table-wrap">{% include "reports/_payment.html" %}</div>
+</div>
+{% endif %}
 <div class="card" style="margin-top:20px;">
   <p class="text-muted mt-0" style="margin-bottom:0;">
     Reverse Charge Invoices you <em>issued</em> are excluded from the output tax above - under reverse charge the

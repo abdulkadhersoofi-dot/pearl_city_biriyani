@@ -103,3 +103,19 @@ DEFAULT_UQC = "PCS"
 # a decimal quantity for them (0.750 KGS) on a keypad instead of +1 taps.
 # Not a GST rule; kept beside the UQC list it is a subset of.
 LOOSE_QTY_UQC = frozenset({"KGS", "GMS", "QTL", "TON", "LTR", "MLT", "KLR", "MTR", "CMS", "KME", "YDS", "SQF", "SQM", "CBM", "CCM"})
+
+# --- GSTR-1: B2C Large invoices -------------------------------------------
+# An inter-state supply to an unregistered person is reported invoice by
+# invoice (table 5, B2CL) when the invoice value is above this; below it,
+# it goes into the B2CS summary (table 7). Source: Notification No.
+# 12/2024-Central Tax dated 10.07.2024, amending Rule 59(4)(a)(ii) -
+# reduced from Rs. 2,50,000 to Rs. 1,00,000, effective 01.08.2024.
+B2CL_INVOICE_VALUE_THRESHOLD = Decimal("100000")
+
+# --- Return due dates (monthly filers) -------------------------------------
+# GSTR-1 by the 11th of the following month (Rule 59(1) / s.37(1)); GSTR-3B
+# by the 20th of the following month (Rule 61(5)). Quarterly (QRMP) filers
+# have different dates - not tracked here. Source: CGST Rules as amended
+# by Notification No. 82/2020-Central Tax (effective 01.01.2021).
+GSTR1_DUE_DAY = 11
+GSTR3B_DUE_DAY = 20

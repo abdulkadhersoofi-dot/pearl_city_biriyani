@@ -1,0 +1,15 @@
+{# GSTR-3B table 6.1 - tax payable after setting off ITC (data.payment). #}
+{% set pay = data.payment %}
+<table>
+  <thead><tr><th>Head</th><th class="num">Output tax</th><th class="num">IGST credit</th><th class="num">CGST credit</th><th class="num">SGST credit</th><th class="num">Cash: output</th><th class="num">Cash: RCM</th><th class="num">Total cash</th></tr></thead>
+  <tbody>
+  {% for head in ('igst', 'cgst', 'sgst') %}
+    <tr><td>{{ head|upper }}</td><td class="num">{{ '%.2f'|format(pay.output[head]) }}</td>
+      <td class="num">{{ '%.2f'|format(pay.utilised.igst[head]) }}</td><td class="num">{{ '%.2f'|format(pay.utilised.cgst[head]) }}</td><td class="num">{{ '%.2f'|format(pay.utilised.sgst[head]) }}</td>
+      <td class="num">{{ '%.2f'|format(pay.output_in_cash[head]) }}</td><td class="num">{{ '%.2f'|format(pay.rcm_in_cash[head]) }}</td><td class="num"><strong>{{ '%.2f'|format(pay.cash[head]) }}</strong></td></tr>
+  {% endfor %}
+    <tr><td colspan="7"><strong>Net payable in cash</strong></td><td class="num"><strong>{{ '%.2f'|format(pay.cash_total) }}</strong></td></tr>
+  </tbody>
+</table>
+<p class="text-muted note"><small>Set-off order of Rule 88A: IGST credit first (against IGST, then CGST / SGST), then CGST and SGST credit against their own head and then IGST - CGST never pays SGST or the other way round. Tax on reverse-charge purchases is always paid in cash.
+  Credit carried forward: IGST {{ '%.2f'|format(pay.carry_forward.igst) }}, CGST {{ '%.2f'|format(pay.carry_forward.cgst) }}, SGST {{ '%.2f'|format(pay.carry_forward.sgst) }}.</small></p>

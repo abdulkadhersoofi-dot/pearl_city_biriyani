@@ -184,6 +184,9 @@ def _register_context_processors(app: Flask) -> None:
 
     # The Rule 32(5) wording printed on a client's margin-scheme invoices.
     app.jinja_env.globals["margin_declaration_for"] = margin_declaration_for
+    from app.utils.gst_config import B2CL_INVOICE_VALUE_THRESHOLD
+
+    app.jinja_env.globals["b2cl_threshold"] = B2CL_INVOICE_VALUE_THRESHOLD
 
     @app.template_filter("qty")
     def qty_filter(value):

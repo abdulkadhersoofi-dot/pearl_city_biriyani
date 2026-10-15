@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Filing tracker - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Filing tracker</h1>
+    <p class="text-muted mt-0">GSTR-1 and GSTR-3B for {{ period }} - monthly filers. Due dates from the GST rules; overdue in red.</p>
+  </div>
+  <form method="get" class="row" style="gap:8px; align-items:flex-end;">
+    <label class="field" style="margin:0;"><span class="field-label">Month</span><input type="month" name="period" value="{{ period }}" class="field-input"></label>
+    <button class="btn btn-secondary">Show</button>
+  </form>
+</div>
+<div class="table-wrap card">
+  <table>
+    <thead><tr><th>Client / GSTIN</th><th>Return</th><th>Due</th><th class="num">Documents</th><th>Data</th><th>Filed</th><th></th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      {% set st = r.status %}
+      <tr>
+        <td>{% if r.return_type.value == 'gstr1' %}<a href="{{ url_for('tenants.detail', tenant_id=r.tenant.id) }}">{{ r.tenant.legal_name }}</a><br><small class="text-muted">{{ r.gstin.gstin or ("No GSTIN no. - " ~ r.gstin.state_name) }}</small>{% endif %}</td>
+        <td>{{ r.label }}</td>
+        <td>{% if r.overdue %}<span class="tag tag-low">{{ r.due.strftime('%d %b') }}</span>{% else %}{{ r.due.strftime('%d %b %Y') }}{% endif %}</td>
+        <td class="num">{{ r.documents }}</td>
+        <td>
+          {% if st and st.data_ready %}<span class="tag tag-fast">Ready</span>{% else %}<span class="tag">Not yet</span>{% endif %}
+          {% if r.return_type.value == 'gstr1' %}
+          <form method="post" action="{{ url_for('tenants.filing_update', tenant_id=r.tenant.id) }}" style="display:inline;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="gstin_id" value="{{ r.gstin.id }}"><input type="hidden" name="period" value="{{ period }}">
+            <button name="action" value="{{ 'not_ready' if st and st.data_ready else 'ready' }}" class="btn btn-quiet btn-sm">{{ 'Undo' if st and st.data_ready else 'Mark ready' }}</button>
+          </form>
+          {% endif %}
+        </td>
+        <td>{% if st and st.filed %}<span class="tag tag-fast">Filed {{ st.filed_on.strftime('%d %b') }}</span>{% if st.arn %}<br><small class="text-muted">ARN {{ st.arn }}</small>{% endif %}{% else %}-{% endif %}</td>
+        <td>
+          <form method="post" action="{{ url_for('tenants.filing_update', tenant_id=r.tenant.id) }}" class="row" style="gap:4px; justify-content:flex-end;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="gstin_id" value="{{ r.gstin.id }}"><input type="hidden" name="period" value="{{ period }}"><input type="hidden" name="return_type" value="{{ r.return_type.value }}">
+            {% if st and st.filed %}
+              <button name="action" value="not_filed" class="btn btn-quiet btn-sm">Undo</button>
+            {% else %}
+              <input type="date" name="filed_on" value="{{ today.isoformat() }}" class="field-input" style="max-width:150px;">
+              <input type="text" name="arn" placeholder="ARN (optional)" class="field-input" style="max-width:150px;" maxlength="30">
+              <button name="action" value="filed" class="btn btn-primary btn-sm">Filed</button>
+            {% endif %}
+          </form>
+          {% if r.return_type.value == 'gstr3b' %}
+          <p style="margin:6px 0 0; text-align:right;"><a href="{{ url_for('tenants.monthly_pack', tenant_id=r.tenant.id, period=period) }}">Monthly pack</a> · <a href="{{ url_for('tenants.tally_export', tenant_id=r.tenant.id, period=period) }}">Tally</a></p>
+          {% endif %}
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="7" class="empty-state">No Regular-scheme clients with a GSTIN to track.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

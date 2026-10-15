@@ -47,14 +47,18 @@
         {% if current_user.is_super_admin %}
           <a href="{{ url_for('tenants.auditors_directory') }}" class="{{ 'active' if request.endpoint in ('tenants.auditors_directory', 'tenants.auditor_detail', 'tenants.new_auditor') }}">Auditors</a>
           <a href="{{ url_for('tenants.directory') }}" class="{{ 'active' if request.endpoint in ('tenants.directory', 'tenants.detail', 'tenants.onboard') }}">All clients</a>
+          <a href="{{ url_for('tenants.filing_tracker') }}" class="{{ 'active' if request.endpoint == 'tenants.filing_tracker' }}">Filing</a>
           <a href="{{ url_for('tenants.gst_exports') }}">GST exports</a>
           <a href="{{ url_for('tenants.audit_log') }}">Audit log</a>
         {% elif current_user.is_auditor %}
           <a href="{{ url_for('tenants.directory') }}" class="{{ 'active' if request.endpoint in ('tenants.directory', 'tenants.detail', 'tenants.onboard') }}">Clients</a>
           <a href="{{ url_for('tenants.auditors_directory') }}" class="{{ 'active' if request.endpoint in ('tenants.auditors_directory', 'tenants.auditor_detail', 'tenants.new_auditor') }}">Sub-Auditors</a>
+          <a href="{{ url_for('tenants.filing_tracker') }}" class="{{ 'active' if request.endpoint == 'tenants.filing_tracker' }}">Filing</a>
         {% elif current_user.is_sub_auditor %}
-          <a href="{{ url_for('tenants.directory') }}" class="{{ 'active' if request.blueprint == 'tenants' }}">Clients</a>
+          <a href="{{ url_for('tenants.directory') }}" class="{{ 'active' if request.blueprint == 'tenants' and request.endpoint != 'tenants.filing_tracker' }}">Clients</a>
+          <a href="{{ url_for('tenants.filing_tracker') }}" class="{{ 'active' if request.endpoint == 'tenants.filing_tracker' }}">Filing</a>
         {% else %}
+          {% if has_feature('business_reports') %}<a href="{{ url_for('reports.dashboard') }}" class="{{ 'active' if request.endpoint == 'reports.dashboard' }}">Home</a>{% endif %}
           <a href="{{ url_for('invoicing.list_invoices') }}" class="{{ 'active' if request.blueprint == 'invoicing' }}">Invoices</a>
           <a href="{{ url_for('notes.list_notes') }}" class="{{ 'active' if request.blueprint == 'notes' }}">Notes</a>
           {% if has_feature('sales_documents') %}<a href="{{ url_for('sales.documents') }}" class="{{ 'active' if request.blueprint == 'sales' }}">Quotes &amp; orders</a>

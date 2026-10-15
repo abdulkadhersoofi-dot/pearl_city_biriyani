@@ -30,6 +30,8 @@ def _post_login_redirect(user: User):
     if user.is_admin_hierarchy:
         return redirect(url_for("tenants.directory"))
     if user.is_client_admin:
+        if user.tenant and user.tenant.has_feature("business_reports"):
+            return redirect(url_for("reports.dashboard"))
         return redirect(url_for("invoicing.list_invoices"))
     return redirect(url_for("pos.terminal"))
 

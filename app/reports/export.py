@@ -75,6 +75,23 @@ def build_gstr1_workbook(data: dict) -> BytesIO:
         ])
     _autosize(cdn)
 
+    b2cl = wb.create_sheet("B2CL")
+    _write_header(b2cl, 1, ["Invoice no.", "Date", "Customer", "Place of supply", "GST rate %", "Taxable value", "IGST", "Invoice value"])
+    for d in data.get("b2cl", []):
+        for r in d["rates"]:
+            b2cl.append([d["doc_number"], d["doc_date"].isoformat(), d["customer_name"], d["place_of_supply"],
+                         _money(r["gst_rate"]), _money(r["taxable_value"]), _money(r["igst"]), _money(d["total"])])
+    _autosize(b2cl)
+
+    for title, key in (("HSN B2B", "hsn_b2b"), ("HSN B2C", "hsn_b2c")):
+        sheet = wb.create_sheet(title)
+        _write_header(sheet, 1, ["HSN/SAC", "GST rate %", "Unit", "Qty", "Taxable value", "CGST", "SGST", "IGST", "Total", "Note"])
+        for h in data.get(key, []):
+            sheet.append([h.hsn, _money(h.gst_rate), h.unit, float(h.qty), _money(h.taxable_value), _money(h.cgst),
+                          _money(h.sgst), _money(h.igst), _money(h.total),
+                          "Margin scheme - value other than margin (Rule 32(5))" if h.margin_remainder else ""])
+        _autosize(sheet)
+
     hsn = wb.create_sheet("HSN Summary")
     _write_header(hsn, 1, ["HSN/SAC", "GST rate %", "Unit", "Qty", "Taxable value", "CGST", "SGST", "IGST", "Total", "Note"])
     for h in data["hsn_summary"]:
@@ -138,6 +155,18 @@ def build_gstr3b_workbook(data: dict) -> BytesIO:
             row = itc[key]
             ws.append([label, "", _money(row["cgst"]), _money(row["sgst"]), _money(row["igst"])])
         ws.append([])
+        pay = data.get("payment")
+        if pay is not None:
+            ws.append([])
+            _write_header(ws, ws.max_row + 1, ["6.1 Tax payable", "Output tax", "Paid by IGST credit", "Paid by CGST credit",
+                                               "Paid by SGST credit", "Output tax in cash", "Reverse charge (cash)", "Total cash"])
+            for head in ("igst", "cgst", "sgst"):
+                ws.append([head.upper(), _money(pay["output"][head]), _money(pay["utilised"]["igst"][head]),
+                           _money(pay["utilised"]["cgst"][head]), _money(pay["utilised"]["sgst"][head]),
+                           _money(pay["output_in_cash"][head]), _money(pay["rcm_in_cash"][head]), _money(pay["cash"][head])])
+            ws.append(["Net payable in cash", "", "", "", "", "", "", _money(pay["cash_total"])])
+            ws.append(["Credit carried forward", _money(pay["carry_forward"]["igst"]), _money(pay["carry_forward"]["cgst"]),
+                       _money(pay["carry_forward"]["sgst"])])
         ws.append(["Claim only the ITC your GSTR-2B shows. Tax on reverse-charge purchases is payable in cash."])
     else:
         ws.append(["Input Tax Credit is not tracked in this system - this app records sales only."])

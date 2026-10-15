@@ -62,7 +62,7 @@
 </div>
 
 <div class="card" style="margin-bottom:20px;">
-  <h2 style="margin-top:0;">B2C - aggregated by place of supply &amp; rate</h2>
+  <h2 style="margin-top:0;">B2C Small - aggregated by place of supply &amp; rate</h2>
   <div class="table-wrap">
     <table>
       <thead><tr><th>Place of supply</th><th>Rate</th><th>Taxable</th><th>CGST</th><th>SGST</th><th>IGST</th></tr></thead>
@@ -131,6 +131,11 @@
       </tbody>
     </table>
   </div>
+</div>
+
+<div class="card" style="margin-bottom:20px;">
+  <h2 style="margin-top:0;">B2C Large and HSN by B2B / B2C</h2>
+  <div class="table-wrap">{% include "reports/_b2cl_hsn.html" %}</div>
 </div>
 
 {% if data.advances is defined %}

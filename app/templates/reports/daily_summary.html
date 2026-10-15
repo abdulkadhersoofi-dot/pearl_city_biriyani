@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Daily sales summary - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Daily sales summary</h1>
+    <p class="text-muted mt-0">{{ data.start.strftime('%d %b %Y') }}{% if data.end != data.start %} - {{ data.end.strftime('%d %b %Y') }}{% endif %} ·
+      {{ data.bill_count }} counter bill{{ 's' if data.bill_count != 1 }} Rs. {{ '{:,.2f}'.format(data.bill_total) }} · {{ data.invoice_count }} invoice{{ 's' if data.invoice_count != 1 }} Rs. {{ '{:,.2f}'.format(data.invoice_total) }}</p>
+  </div>
+  <a href="{{ url_for('reports.daily_summary_pdf', **request.args) }}" target="_blank" class="btn btn-secondary">PDF</a>
+</div>
+{% include "reports/_period_location.html" %}
+<div class="card daily-summary">{% include "reports/_daily_body.html" %}</div>
+{% endblock %}

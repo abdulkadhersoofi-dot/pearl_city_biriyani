@@ -49,5 +49,7 @@ def index():
     if current_user.is_super_admin:
         return redirect(url_for("tenants.directory"))
     if current_user.is_client_admin:
+        if current_user.tenant and current_user.tenant.has_feature("business_reports"):
+            return redirect(url_for("reports.dashboard"))
         return redirect(url_for("invoicing.list_invoices"))
     return redirect(url_for("pos.terminal"))

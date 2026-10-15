@@ -207,6 +207,14 @@
   </table>
 </div>
 
+<form method="get" class="card row" style="gap:10px; align-items:flex-end; margin-bottom:20px;">
+  <div><h2 style="margin:0 0 4px;">Month-end</h2><p class="text-muted mt-0" style="margin-bottom:0;">GSTR-1/3B, HSN, registers, P&amp;L and Tally files in one ZIP.</p></div>
+  <label class="field" style="margin:0;"><span class="field-label">Month</span><input type="month" name="period" value="{{ request.args.get('period') or default_period }}" class="field-input" required></label>
+  <button formaction="{{ url_for('tenants.monthly_pack', tenant_id=tenant.id) }}" class="btn btn-primary">Monthly pack</button>
+  <button formaction="{{ url_for('tenants.tally_export', tenant_id=tenant.id) }}" class="btn btn-secondary">Tally export</button>
+  <a href="{{ url_for('tenants.filing_tracker') }}" class="btn btn-quiet">Filing tracker</a>
+</form>
+
 <div class="card" style="margin-bottom:20px;">
   <h2 style="margin-top:0;">Recent invoices (read-only)</h2>
   <table>

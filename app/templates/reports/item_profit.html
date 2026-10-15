@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Gross profit by item - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Gross profit by {{ 'category' if view == 'categories' else 'item' }}</h1>
+    <p class="text-muted mt-0">{{ data.start.strftime('%d %b %Y') }} - {{ data.end.strftime('%d %b %Y') }} · sales Rs. {{ '{:,.2f}'.format(data.totals.sales) }} · cost Rs. {{ '{:,.2f}'.format(data.totals.cost) }} · gross profit <strong>Rs. {{ '{:,.2f}'.format(data.totals.gross_profit) }}</strong>{% if data.totals.gp_pct is not none %} ({{ data.totals.gp_pct }}%){% endif %}</p>
+  </div>
+  <a href="{{ url_for('reports.item_profit_xlsx', **request.args) }}" class="btn btn-secondary">Excel</a>
+</div>
+<nav class="subnav">
+  <a href="{{ view_urls.items }}" class="{{ 'active' if view != 'categories' }}">By item</a>
+  <a href="{{ view_urls.categories }}" class="{{ 'active' if view == 'categories' }}">By category</a>
+</nav>
+{% include "reports/_period_location.html" %}
+<div class="table-wrap card">
+  <table>
+    <thead><tr><th>{{ 'Category' if view == 'categories' else 'Item' }}</th>{% if view != 'categories' %}<th>Category</th>{% endif %}<th class="num">Qty</th><th class="num">Sales (excl. GST)</th><th class="num">Cost</th><th class="num">Gross profit</th><th class="num">GP %</th></tr></thead>
+    <tbody>
+    {% for r in (data.categories if view == 'categories' else data.rows) %}
+      <tr>
+        <td>{{ r.name }}{% if view != 'categories' and not r.has_cost %} <span class="tag" title="No stock cost recorded - a service, a typed-in line, or an item never bought in">no cost</span>{% endif %}</td>
+        {% if view != 'categories' %}<td>{{ r.category }}</td>{% endif %}
+        <td class="num">{{ r.qty|qty }}</td><td class="num">{{ '{:,.2f}'.format(r.sales) }}</td><td class="num">{{ '{:,.2f}'.format(r.cost) }}</td>
+        <td class="num" style="color:{{ 'var(--color-danger)' if r.gross_profit < 0 else 'inherit' }};">{{ '{:,.2f}'.format(r.gross_profit) }}</td>
+        <td class="num">{{ r.gp_pct if r.gp_pct is not none else '-' }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="7" class="empty-state">No sales in this period.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+<p class="text-muted"><small>Cost is what the stock ledger valued the units at when they went out (weighted average), less units that came back.</small></p>
+{% endblock %}

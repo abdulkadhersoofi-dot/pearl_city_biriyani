@@ -1,0 +1,18 @@
+<!doctype html>
+<html><head><meta charset="utf-8">{% include "accounts/_pdf_style.html" %}</head>
+<body>
+{% set cur, prior = st.current, st.prior %}
+<h1>{{ firm_name }} - Profit &amp; loss</h1>
+<p class="sub">{{ cur.start.strftime('%d %b %Y') }} to {{ cur.end.strftime('%d %b %Y') }} · {{ location_name }}{% if cur.basis == 'cash' %} · cash-basis estimate (no stock records){% endif %}</p>
+<table>
+  <tr><th></th><th class="num">This period</th>{% if prior %}<th class="num">{{ st.prior_span[0].strftime('%d %b %Y') }} - {{ st.prior_span[1].strftime('%d %b %Y') }}</th>{% endif %}</tr>
+  {% for sec in st.sections %}
+    <tr><td colspan="{{ 3 if prior else 2 }}"><strong>{{ sec.title }}</strong></td></tr>
+    {% for line in sec.lines %}<tr><td style="padding-left:18px;">{{ line.label }}</td><td class="num">{{ '{:,.2f}'.format(line.amount) }}</td>{% if prior %}<td class="num">{{ '{:,.2f}'.format(line.prior) }}</td>{% endif %}</tr>{% endfor %}
+    <tr class="total"><td>Total {{ sec.title|lower }}</td><td class="num">{{ '{:,.2f}'.format(sec.total) }}</td>{% if prior %}<td class="num">{{ '{:,.2f}'.format(sec.prior_total) }}</td>{% endif %}</tr>
+    {% if sec.key == 'cost' %}<tr class="total"><td>Gross profit{% if cur.gp_pct is not none %} ({{ cur.gp_pct }}%){% endif %}</td><td class="num">{{ '{:,.2f}'.format(cur.gross_profit) }}</td>{% if prior %}<td class="num">{{ '{:,.2f}'.format(prior.gross_profit) }}</td>{% endif %}</tr>{% endif %}
+  {% endfor %}
+  <tr class="total"><td>Net profit</td><td class="num">{{ '{:,.2f}'.format(cur.net_profit) }}</td>{% if prior %}<td class="num">{{ '{:,.2f}'.format(prior.net_profit) }}</td>{% endif %}</tr>
+</table>
+<p class="sub">Computed from the documents in ARFA (not a ledger). Sales and costs exclude GST that is passed on or claimed back.</p>
+</body></html>

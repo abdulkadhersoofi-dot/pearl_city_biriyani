@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}GST filing - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>GST filing - {{ period }}</h1>
+    <p class="text-muted mt-0">When every bill, purchase and expense for the month is in, mark it ready - your accountant files from it and marks it filed here.</p>
+  </div>
+  <form method="get" class="row" style="gap:8px; align-items:flex-end;">
+    <label class="field" style="margin:0;"><span class="field-label">Month</span><input type="month" name="period" value="{{ period }}" class="field-input"></label>
+    <button class="btn btn-secondary">Show</button>
+  </form>
+</div>
+{% for c in cards %}
+<div class="card" style="margin-bottom:16px;">
+  <div class="row" style="justify-content:space-between; align-items:center;">
+    <h2 class="mt-0" style="margin-bottom:0;">{{ c.gstin.display_label }}</h2>
+    <form method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="gstin_id" value="{{ c.gstin.id }}"><input type="hidden" name="period" value="{{ period }}">
+      {% if c.ready %}<button name="action" value="not_ready" class="btn btn-quiet">Not ready after all</button>
+      {% else %}<button name="action" value="ready" class="btn btn-primary">My {{ period }} data is complete</button>{% endif %}
+    </form>
+  </div>
+  <table style="margin-top:10px;">
+    <thead><tr><th>Return</th><th>Due</th><th>Data</th><th>Filed</th></tr></thead>
+    <tbody>
+    {% for r in c.returns %}
+      <tr><td>{{ r.label }}</td><td>{{ r.due.strftime('%d %b %Y') }}</td>
+        <td>{% if r.status and r.status.data_ready %}<span class="tag tag-fast">Ready</span>{% else %}<span class="tag">Not yet</span>{% endif %}</td>
+        <td>{% if r.status and r.status.filed %}<span class="tag tag-fast">Filed {{ r.status.filed_on.strftime('%d %b %Y') }}</span>{% if r.status.arn %} <small class="text-muted">ARN {{ r.status.arn }}</small>{% endif %}{% else %}-{% endif %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="card"><p class="empty-state">No GSTIN on file.</p></div>
+{% endfor %}
+{% endblock %}

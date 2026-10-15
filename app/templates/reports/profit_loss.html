@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Profit &amp; loss - {{ firm_name }}{% endblock %}
+{% block content %}
+{% set cur, prior = st.current, st.prior %}
+<div class="page-header">
+  <div>
+    <h1>Profit &amp; loss</h1>
+    <p class="text-muted mt-0">{{ cur.start.strftime('%d %b %Y') }} - {{ cur.end.strftime('%d %b %Y') }} · {{ chosen.name if chosen else 'All locations' }}</p>
+  </div>
+  <div class="row">
+    <a href="{{ url_for('reports.profit_loss_export', fmt='xlsx', **request.args) }}" class="btn btn-secondary">Excel</a>
+    <a href="{{ url_for('reports.profit_loss_export', fmt='pdf', **request.args) }}" target="_blank" class="btn btn-secondary">PDF</a>
+  </div>
+</div>
+{% include "reports/_period_location.html" %}
+{% if cur.basis == 'cash' %}
+<div class="flash flash-info" style="margin-bottom:16px;">Cash-basis estimate - without the Inventory module there is no stock value, so this is sales less everything bought and spent in the period, not a true gross profit.</div>
+{% endif %}
+<div class="form-grid" style="margin-bottom:16px;">
+  <div class="card"><span class="text-muted">Revenue</span><h2 class="mt-0">Rs. {{ '{:,.2f}'.format(cur.net_revenue) }}</h2></div>
+  <div class="card"><span class="text-muted">Gross profit</span><h2 class="mt-0">Rs. {{ '{:,.2f}'.format(cur.gross_profit) }}{% if cur.gp_pct is not none %} <small class="text-muted">({{ cur.gp_pct }}%)</small>{% endif %}</h2></div>
+  <div class="card"><span class="text-muted">Expenses</span><h2 class="mt-0">Rs. {{ '{:,.2f}'.format(cur.expense_total) }}</h2></div>
+  <div class="card"><span class="text-muted">Net profit</span><h2 class="mt-0" style="color:{{ 'var(--color-danger)' if cur.net_profit < 0 else 'inherit' }};">Rs. {{ '{:,.2f}'.format(cur.net_profit) }}</h2></div>
+</div>
+<div class="table-wrap card">
+  <table>
+    <thead><tr><th></th><th class="num">This period</th>{% if prior %}<th class="num">{{ st.prior_span[0].strftime('%d %b %Y') }} - {{ st.prior_span[1].strftime('%d %b %Y') }}</th>{% endif %}</tr></thead>
+    <tbody>
+    {% for sec in st.sections %}
+      <tr><td colspan="{{ 3 if prior else 2 }}"><strong>{{ sec.title }}</strong></td></tr>
+      {% for line in sec.lines %}
+      <tr><td style="padding-left:28px;">{{ line.label }}</td><td class="num">{{ '{:,.2f}'.format(line.amount) }}</td>{% if prior %}<td class="num">{{ '{:,.2f}'.format(line.prior) }}</td>{% endif %}</tr>
+      {% else %}
+      <tr><td style="padding-left:28px;" class="text-muted" colspan="{{ 3 if prior else 2 }}">Nothing in this period.</td></tr>
+      {% endfor %}
+      <tr><td><strong>Total {{ sec.title|lower }}</strong></td><td class="num"><strong>{{ '{:,.2f}'.format(sec.total) }}</strong></td>{% if prior %}<td class="num"><strong>{{ '{:,.2f}'.format(sec.prior_total) }}</strong></td>{% endif %}</tr>
+      {% if sec.key == 'cost' %}
+      <tr><td><strong>Gross profit</strong>{% if cur.gp_pct is not none %} <small class="text-muted">{{ cur.gp_pct }}%</small>{% endif %}</td><td class="num"><strong>{{ '{:,.2f}'.format(cur.gross_profit) }}</strong></td>{% if prior %}<td class="num"><strong>{{ '{:,.2f}'.format(prior.gross_profit) }}</strong>{% if prior.gp_pct is not none %} <small class="text-muted">{{ prior.gp_pct }}%</small>{% endif %}</td>{% endif %}</tr>
+      {% endif %}
+    {% endfor %}
+      <tr><td><strong>Net profit</strong></td><td class="num"><strong>{{ '{:,.2f}'.format(cur.net_profit) }}</strong></td>{% if prior %}<td class="num"><strong>{{ '{:,.2f}'.format(prior.net_profit) }}</strong></td>{% endif %}</tr>
+    </tbody>
+  </table>
+</div>
+<p class="text-muted"><small>Sales exclude GST; margin-scheme sales are at full selling price with the GST on the margin deducted. {% if cur.basis == 'accrual' %}Cost of goods sold = opening stock + purchases (GST you can't claim is part of cost) - closing stock, valued at weighted-average cost from the stock ledger; damage, wastage and count differences fall into it through closing stock.{% endif %} Expenses exclude GST you can claim back.</small></p>
+{% endblock %}

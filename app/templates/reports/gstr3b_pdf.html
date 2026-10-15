@@ -57,6 +57,7 @@
     <tr{% if loop.last %} class="grand"{% endif %}><td>{{ label }}</td><td class="num">{{ '%.2f'|format(row.cgst) }}</td><td class="num">{{ '%.2f'|format(row.sgst) }}</td><td class="num">{{ '%.2f'|format(row.igst) }}</td></tr>
     {% endfor %}
   </table>
+  {% if data.payment is defined %}<h2>6.1 Tax payable after set-off</h2>{% include "reports/_payment.html" %}{% endif %}
   <p class="note">ITC from {{ itc.bill_count }} purchase bill(s) and {{ itc.expense_count }} expense(s) with a GST bill this month - claim only what GSTR-2B shows. Tax on reverse-charge purchases (Rs. {{ '%.2f'|format(itc.rcm_tax_payable) }}) is payable in cash.</p>
   {% else %}
   <p class="note">

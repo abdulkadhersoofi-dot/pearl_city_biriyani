@@ -9,9 +9,13 @@ needs that this app has no way to know:
     and table 4 from their purchase bills (itc_summary); for everyone
     else it shows gross output tax only, with that limitation stated
     plainly next to it.
-  - The B2C Large / B2C Small split (GSTR-1 treats a B2C invoice over
-    Rs. 2.5 lakh to another state differently): out of scope here, B2C
-    is aggregated as a single "B2CS-style" bucket. Flagged in the UI.
+  - B2C Large: an inter-state invoice to an unregistered buyer above
+    gst_config.B2CL_INVOICE_VALUE_THRESHOLD (Rs. 1 lakh since 01.08.2024)
+    is listed invoice by invoice (table 5); the rest of B2C is summarised
+    by place of supply and rate (B2CS, table 7). Returns / credit notes
+    against B2C supplies stay in B2CS (the CDNUR table is not split out).
+  - The HSN summary is given in full and split into B2B and B2C tables,
+    as the portal asks for.
 
 Everything else - taxable value, CGST/SGST/IGST, B2B vs B2C split by
 whether the customer has a GSTIN on file, HSN-wise summary, and the
@@ -452,12 +456,51 @@ def _document_summaries(tenant: Tenant, gstin: Gstin, raw: dict) -> list[DocSeri
     return sorted(summaries.values(), key=lambda s: (s.label, s.prefix))
 
 
+_NOT_B2CL = {DocumentType.EXPORT_INVOICE_IGST.value, DocumentType.EXPORT_INVOICE_LUT.value}
+
+
+def _b2cl_documents(lines: list[SupplyLine], gstin: Gstin) -> set[tuple]:
+    """(doc_type, doc_number) of inter-state B2C invoices above the B2CL
+    threshold - by invoice value (taxable + tax)."""
+    from app.utils.gst_config import B2CL_INVOICE_VALUE_THRESHOLD
+
+    totals: dict[tuple, Decimal] = {}
+    for l in lines:
+        if l.is_b2b or l.sign < 0 or l.doc_type in _NOT_B2CL or l.place_of_supply == gstin.state_code:
+            continue
+        key = (l.doc_type, l.doc_number)
+        totals[key] = totals.get(key, ZERO) + l.total
+    return {k for k, v in totals.items() if v > B2CL_INVOICE_VALUE_THRESHOLD}
+
+
+def _hsn_add(table: dict, l: SupplyLine, cgst, sgst, igst):
+    hb = table.setdefault((l.hsn, l.gst_rate, l.unit), HsnBucket(hsn=l.hsn, gst_rate=l.gst_rate, unit=l.unit))
+    hb.qty += l.sign * l.qty
+    hb.taxable_value += l.sign * l.taxable_value
+    hb.cgst += l.sign * cgst
+    hb.sgst += l.sign * sgst
+    hb.igst += l.sign * igst
+    if l.margin_remainder:
+        mb = table.setdefault((l.hsn, ZERO, l.unit, "margin"),
+                              HsnBucket(hsn=l.hsn, gst_rate=ZERO, unit=l.unit, margin_remainder=True))
+        mb.taxable_value += l.sign * l.margin_remainder
+
+
+def _hsn_list(table: dict) -> list[HsnBucket]:
+    rows = sorted(table.values(), key=lambda h: (h.hsn, h.margin_remainder, h.gst_rate))
+    return [h for h in rows if h.qty or h.taxable_value]
+
+
 def gstr1_data(tenant: Tenant, gstin: Gstin, period: str) -> dict:
     lines, raw = _collect_supply_lines(tenant, gstin, period)
 
     b2b_by_customer: dict[str, dict] = {}
     b2c: dict[tuple, B2CBucket] = {}
     hsn: dict[tuple, HsnBucket] = {}
+    hsn_b2b: dict[tuple, HsnBucket] = {}
+    hsn_b2c: dict[tuple, HsnBucket] = {}
+    b2cl_keys = _b2cl_documents(lines, gstin)
+    b2cl: dict[tuple, dict] = {}
 
     for l in lines:
         # GSTR-1 still has to disclose an RCM supply's tax (a B2B invoice
@@ -468,6 +511,7 @@ def gstr1_data(tenant: Tenant, gstin: Gstin, period: str) -> dict:
         eff_cgst = l.cgst + l.rcgst
         eff_sgst = l.sgst + l.rsgst
         eff_igst = l.igst + l.rigst
+        _hsn_add(hsn_b2b if l.is_b2b else hsn_b2c, l, eff_cgst, eff_sgst, eff_igst)
 
         hkey = (l.hsn, l.gst_rate, l.unit)
         hb = hsn.setdefault(hkey, HsnBucket(hsn=l.hsn, gst_rate=l.gst_rate, unit=l.unit))
@@ -505,6 +549,18 @@ def gstr1_data(tenant: Tenant, gstin: Gstin, period: str) -> dict:
             doc["cgst"] += l.sign * eff_cgst
             doc["sgst"] += l.sign * eff_sgst
             doc["igst"] += l.sign * eff_igst
+        elif (l.doc_type, l.doc_number) in b2cl_keys:
+            doc = b2cl.setdefault((l.doc_type, l.doc_number), {
+                "doc_type": l.doc_type, "doc_number": l.doc_number, "doc_date": l.doc_date,
+                "customer_name": l.customer_name, "place_of_supply": l.place_of_supply, "rates": {},
+                "taxable_value": ZERO, "igst": ZERO, "total": ZERO,
+            })
+            rate = doc["rates"].setdefault(l.gst_rate, {"taxable_value": ZERO, "igst": ZERO})
+            rate["taxable_value"] += l.taxable_value
+            rate["igst"] += eff_igst
+            doc["taxable_value"] += l.taxable_value
+            doc["igst"] += eff_igst
+            doc["total"] += l.total
         else:
             bkey = (l.place_of_supply, l.gst_rate)
             bb = b2c.setdefault(bkey, B2CBucket(place_of_supply=l.place_of_supply, gst_rate=l.gst_rate))
@@ -519,6 +575,8 @@ def gstr1_data(tenant: Tenant, gstin: Gstin, period: str) -> dict:
         b2b.append({"customer_gstin": entry["customer_gstin"], "customer_name": entry["customer_name"], "documents": docs})
     b2b.sort(key=lambda e: e["customer_gstin"])
 
+    for doc in b2cl.values():
+        doc["rates"] = [{"gst_rate": r, **v} for r, v in sorted(doc["rates"].items())]
     b2c_list = sorted(b2c.values(), key=lambda b: (b.place_of_supply, b.gst_rate))
     hsn_list = sorted(hsn.values(), key=lambda h: (h.hsn, h.margin_remainder, h.gst_rate))
     hsn_list = [h for h in hsn_list if h.qty or h.taxable_value]
@@ -577,6 +635,9 @@ def gstr1_data(tenant: Tenant, gstin: Gstin, period: str) -> dict:
         "b2c": b2c_list,
         "credit_debit_notes": credit_debit_notes,
         "hsn_summary": hsn_list,
+        "hsn_b2b": _hsn_list(hsn_b2b),
+        "hsn_b2c": _hsn_list(hsn_b2c),
+        "b2cl": sorted(b2cl.values(), key=lambda d: (d["doc_date"], d["doc_number"])),
         "document_summary": _document_summaries(tenant, gstin, raw),
         "totals": totals,
         **({"advances": _advances(tenant, gstin, raw)} if tenant.has_feature("receivables") else {}),
@@ -638,6 +699,11 @@ def gstr3b_data(tenant: Tenant, gstin: Gstin, period: str) -> dict:
         for key in ("taxable_value", "cgst", "sgst", "igst"):
             buckets["taxable"][key] += advances["net"][key]
 
+    output_tax = {
+        "igst": buckets["taxable"]["igst"] + buckets["zero_rated"]["igst"],
+        "cgst": buckets["taxable"]["cgst"],
+        "sgst": buckets["taxable"]["sgst"],
+    }
     gross_tax_payable = (
         buckets["taxable"]["cgst"]
         + buckets["taxable"]["sgst"]
@@ -656,10 +722,23 @@ def gstr3b_data(tenant: Tenant, gstin: Gstin, period: str) -> dict:
         "gross_tax_payable": gross_tax_payable,
         # Only for clients with the Purchases module on - everyone else's
         # working paper (and its JSON) stays exactly as it was.
-        **({"itc": itc_summary(tenant, gstin, period)}
-           if tenant.has_feature("purchases") or tenant.has_feature("expenses") else {}),
+        **_itc_and_payment(tenant, gstin, period, output_tax),
         **({"advances": advances} if advances is not None else {}),
     }
+
+
+def _itc_and_payment(tenant, gstin, period, output_tax) -> dict:
+    """Table 4 and the net payable (table 6.1) - only for clients who
+    record purchases or expenses; everyone else's working paper is as
+    before. Credit is set off by app.utils.gst_setoff (Rule 88A); tax on
+    reverse-charge purchases is always paid in cash."""
+    if not (tenant.has_feature("purchases") or tenant.has_feature("expenses")):
+        return {}
+    from app.utils.gst_setoff import set_off
+
+    itc = itc_summary(tenant, gstin, period)
+    rcm = {h: itc["rcm_inward"][h] for h in ("igst", "cgst", "sgst")}
+    return {"itc": itc, "payment": set_off(output_tax, itc["net"], rcm)}
 
 
 def _heads() -> dict:

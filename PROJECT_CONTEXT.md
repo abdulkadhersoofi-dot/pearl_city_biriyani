@@ -318,7 +318,17 @@ this list is just the index.
   one-click or edit-then invoice; recurring invoices as numberless
   draft runs, `flask recurring-invoices-generate`), void & re-issue.
   Expense vouchers moved from prefix EXP to EV.
-  Phases 7-10 still to build, in order.
+- **Platform build Phase 7** (flag `business_reports` for the client
+  side): `app/finance/` - `pnl.py` (P&L from documents as account lines,
+  COGS from the stock ledger, comparison, per location, cash-basis
+  fallback), `sales_analysis.py` (item / category GP, daily summary),
+  `dashboard.py`, `journal.py` + `tally.py` (balanced vouchers, TallyPrime
+  XML), `filing.py` (due dates, tracker, monthly pack);
+  `app/utils/gst_setoff.py` (Rule 88A set-off, GSTR-3B 6.1);
+  `app/reports/registers.py`; GSTR-1 B2CL (Rs. 1 lakh in gst_config) and
+  HSN B2B/B2C; `FilingStatus` table; admin Filing page, monthly pack and
+  Tally export; bulk GST export now ships monthly packs.
+  Phases 8-10 still to build, in order.
 
 ## 5. Chronological development history (this session)
 
@@ -607,8 +617,9 @@ tracker state (see the warning in §11) — as of this file:
 - **GSTR-1/3B explicit, by-design limits** (not bugs, don't "fix"
   these without the user asking): Input Tax Credit appears in GSTR-3B
   only for clients with the Purchases module on (from their purchase
-  bills; everyone else sees gross output tax only, unchanged); B2C is one aggregated bucket, not split by GSTR-1's ₹2.5 lakh
-  inter-state threshold.
+  bills; everyone else sees gross output tax only, unchanged); B2C Large
+  uses the ₹1 lakh threshold (Notification 12/2024-CT) since Phase 7, but
+  returns on B2C supplies stay in B2C Small (no CDNUR table).
 - **Android app**: debug-signed only — no Play Store release signing
   key exists or was asked for. If the user wants a Play Store release
   later, that's a new, separate decision (key generation/management,

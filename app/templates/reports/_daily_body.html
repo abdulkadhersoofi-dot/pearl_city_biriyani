@@ -1,0 +1,45 @@
+{# Daily summary tables - shared by the page and its PDF. #}
+<h2>By payment mode</h2>
+<table>
+  <thead><tr><th>Mode</th><th class="num">Sales</th><th class="num">Refunds / returns paid back</th><th class="num">Net</th></tr></thead>
+  <tbody>
+  {% for m in data.modes %}<tr><td>{{ m.label }}</td><td class="num">{{ '{:,.2f}'.format(m.sales) }}</td><td class="num">{{ '{:,.2f}'.format(m.refunds) }}</td><td class="num"><strong>{{ '{:,.2f}'.format(m.net) }}</strong></td></tr>
+  {% else %}<tr><td colspan="4" class="empty-state">No counter sales.</td></tr>{% endfor %}
+  </tbody>
+</table>
+<h2>By hour</h2>
+<table>
+  <thead><tr><th>Hour</th><th class="num">Bills</th><th class="num">Sales</th><th></th></tr></thead>
+  <tbody>
+  {% set peak = (data.hours|map(attribute='total')|max) if data.hours else 0 %}
+  {% for h in data.hours %}<tr><td>{{ '%02d:00 - %02d:59'|format(h.hour, h.hour) }}</td><td class="num">{{ h.bills }}</td><td class="num">{{ '{:,.2f}'.format(h.total) }}</td>
+    <td style="width:40%;"><div style="background:var(--color-primary, #1f7a4d); opacity:.75; height:10px; border-radius:4px; width:{{ ((h.total / peak * 100) if peak else 0)|round(0) }}%;"></div></td></tr>
+  {% else %}<tr><td colspan="4" class="empty-state">No counter sales.</td></tr>{% endfor %}
+  </tbody>
+</table>
+<h2>By cashier</h2>
+<table>
+  <thead><tr><th>Cashier / counter</th><th class="num">Bills</th><th class="num">Sales</th><th class="num">Discounts given</th><th class="num">Returns / refunds</th><th class="num">Voids</th></tr></thead>
+  <tbody>
+  {% for c in data.cashiers %}<tr><td>{{ c.name }}</td><td class="num">{{ c.bills }}</td><td class="num">{{ '{:,.2f}'.format(c.total) }}</td><td class="num">{{ '{:,.2f}'.format(c.discount) }}</td><td class="num">{{ '{:,.2f}'.format(c.returns) }}</td><td class="num">{{ c.voids }}</td></tr>
+  {% else %}<tr><td colspan="6" class="empty-state">No counter activity.</td></tr>{% endfor %}
+  </tbody>
+</table>
+<h2>Discounts (Rs. {{ '{:,.2f}'.format(data.discount_total) }})</h2>
+<table>
+  <thead><tr><th>Bill</th><th>Time</th><th>Cashier</th><th class="num">Discount</th><th class="num">Bill total</th></tr></thead>
+  <tbody>
+  {% for b in data.discounted %}<tr><td>{{ b.bill_number }}</td><td>{{ b.completed_at.astimezone().strftime('%d %b %H:%M') }}</td><td>{{ data.users.get(b.created_by_id, '-') }}</td><td class="num">{{ '{:,.2f}'.format(b.total_discount) }}</td><td class="num">{{ '{:,.2f}'.format(b.grand_total) }}</td></tr>
+  {% else %}<tr><td colspan="5" class="empty-state">No discounted bills.</td></tr>{% endfor %}
+  </tbody>
+</table>
+<h2>Voids, returns and refunds</h2>
+<table>
+  <thead><tr><th>Type</th><th>Document</th><th>Time</th><th>By</th><th>Reason</th><th class="num">Amount</th></tr></thead>
+  <tbody>
+  {% for b in data.voids %}<tr><td>Void</td><td>{{ b.bill_number }}</td><td>{{ b.voided_at.astimezone().strftime('%d %b %H:%M') }}</td><td>{{ data.users.get(b.voided_by_id, '-') }}</td><td>{{ b.void_reason }}</td><td class="num">{{ '{:,.2f}'.format(b.grand_total) }}</td></tr>{% endfor %}
+  {% for r in data.returns %}<tr><td>Return{% if r.status.value != 'completed' %} (voided){% endif %}</td><td>{{ r.return_number }} <small class="text-muted">on {{ r.bill.bill_number if r.bill else '' }}</small></td><td>{{ r.returned_at.astimezone().strftime('%d %b %H:%M') }}</td><td>{{ data.users.get(r.created_by_id, '-') }}</td><td>{{ r.reason }}</td><td class="num">{{ '{:,.2f}'.format(r.grand_total) }}</td></tr>{% endfor %}
+  {% for b in data.refunds %}<tr><td>Refund</td><td>{{ b.bill_number }}</td><td>{{ b.refunded_at.astimezone().strftime('%d %b %H:%M') }}</td><td>{{ data.users.get(b.refunded_by_id, '-') }}</td><td>{{ b.refund_reason or '' }}</td><td class="num">{{ '{:,.2f}'.format(b.refunded_amount or 0) }}</td></tr>{% endfor %}
+  {% if not (data.voids or data.returns or data.refunds) %}<tr><td colspan="6" class="empty-state">None.</td></tr>{% endif %}
+  </tbody>
+</table>

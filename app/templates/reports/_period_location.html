@@ -1,0 +1,32 @@
+{# Period (month / range / day) + location + comparison for P&L and item profit. #}
+<form method="get" class="card stack" style="margin-bottom:20px;" x-data='{ mode: {{ filters.mode|tojson }} }'>
+  <div class="row" style="gap:16px; flex-wrap:wrap; align-items:flex-end;">
+    <label class="field" style="margin-bottom:0;"><span class="field-label">Period</span>
+      <select name="mode" class="field-input" x-model="mode">
+        <option value="month">Month</option><option value="range">Date range</option><option value="day">Single day</option>
+      </select></label>
+    <label class="field" style="margin-bottom:0;" x-show="mode === 'month'"><span class="field-label">Month</span>
+      <input type="month" name="month" value="{{ filters.month_value }}" class="field-input"></label>
+    <label class="field" style="margin-bottom:0;" x-show="mode === 'range'"><span class="field-label">From</span>
+      <input type="date" name="start" value="{{ filters.start.isoformat() }}" class="field-input"></label>
+    <label class="field" style="margin-bottom:0;" x-show="mode === 'range'"><span class="field-label">To</span>
+      <input type="date" name="end" value="{{ filters.end.isoformat() }}" class="field-input"></label>
+    <label class="field" style="margin-bottom:0;" x-show="mode === 'day'"><span class="field-label">Day</span>
+      <input type="date" name="date" value="{{ filters.day_value }}" class="field-input"></label>
+    {% if locations|length > 1 %}
+    <label class="field" style="margin-bottom:0;"><span class="field-label">Location</span>
+      <select name="location_id" class="field-input">
+        <option value="">All locations</option>
+        {% for l in locations %}<option value="{{ l.id }}" {{ 'selected' if chosen and chosen.id == l.id }}>{{ l.name }}</option>{% endfor %}
+      </select></label>
+    {% endif %}
+    {% if compare is defined %}
+    <label class="field" style="margin-bottom:0;"><span class="field-label">Compare with</span>
+      <select name="compare" class="field-input">
+        {% for v, t in (('previous', 'Previous period'), ('last_year', 'Same period last year'), ('none', 'Nothing')) %}<option value="{{ v }}" {{ 'selected' if compare == v }}>{{ t }}</option>{% endfor %}
+      </select></label>
+    {% endif %}
+    {% if view is defined %}<input type="hidden" name="view" value="{{ view }}">{% endif %}
+    <button class="btn btn-primary">Show</button>
+  </div>
+</form>

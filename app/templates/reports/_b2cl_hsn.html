@@ -1,0 +1,30 @@
+{# GSTR-1 B2CL (table 5) and HSN summary split B2B / B2C (table 12). #}
+<h3 style="margin:10px 0 6px;">B2C Large - inter-state invoices to unregistered buyers above Rs. {{ '{:,.0f}'.format(b2cl_threshold) }}</h3>
+<table>
+  <thead><tr><th>Invoice</th><th>Date</th><th>Customer</th><th>Place of supply</th><th class="num">Rate</th><th class="num">Taxable</th><th class="num">IGST</th><th class="num">Invoice value</th></tr></thead>
+  <tbody>
+  {% for d in data.b2cl %}
+    {% for r in d.rates %}
+    <tr><td>{{ d.doc_number if loop.first else '' }}</td><td>{{ d.doc_date.strftime('%d %b %Y') if loop.first else '' }}</td><td>{{ d.customer_name if loop.first else '' }}</td>
+      <td>{{ (d.place_of_supply ~ ' ' ~ (d.place_of_supply|state_name)) if loop.first else '' }}</td><td class="num">{{ r.gst_rate|qty }}%</td>
+      <td class="num">{{ '%.2f'|format(r.taxable_value) }}</td><td class="num">{{ '%.2f'|format(r.igst) }}</td><td class="num">{{ '%.2f'|format(d.total) if loop.first else '' }}</td></tr>
+    {% endfor %}
+  {% else %}
+    <tr><td colspan="8" class="empty-state">None this period.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% for title, rows in (('HSN summary - B2B supplies', data.hsn_b2b), ('HSN summary - B2C supplies', data.hsn_b2c)) %}
+<h3 style="margin:10px 0 6px;">{{ title }}</h3>
+<table>
+  <thead><tr><th>HSN/SAC</th><th>Rate</th><th>Unit</th><th class="num">Qty</th><th class="num">Taxable</th><th class="num">CGST</th><th class="num">SGST</th><th class="num">IGST</th><th class="num">Total</th></tr></thead>
+  <tbody>
+  {% for h in rows %}
+    <tr><td>{{ h.hsn or '-' }}{% if h.margin_remainder %}<br><small>Margin scheme - value other than margin</small>{% endif %}</td><td>{{ h.gst_rate }}%</td><td>{{ h.unit }}</td><td class="num">{{ h.qty }}</td>
+      <td class="num">{{ '%.2f'|format(h.taxable_value) }}</td><td class="num">{{ '%.2f'|format(h.cgst) }}</td><td class="num">{{ '%.2f'|format(h.sgst) }}</td><td class="num">{{ '%.2f'|format(h.igst) }}</td><td class="num">{{ '%.2f'|format(h.total) }}</td></tr>
+  {% else %}
+    <tr><td colspan="9" class="empty-state">None this period.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endfor %}

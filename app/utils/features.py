@@ -122,6 +122,14 @@ FEATURES = {
             "Day-by-day cash in hand and bank balance, built from counter sales, receipts, payments and expenses.",
             available=True,
         ),
+        Feature(
+            "business_reports",
+            "Profit & loss and business reports",
+            "A home dashboard (today's and this month's sales, collections, dues, low stock), profit & loss with "
+            "cost of goods sold, gross profit by item and category, and a daily sales summary by payment mode, "
+            "hour and cashier.",
+            available=True,
+        ),
         Feature("weighing", "Weighing scale items", "Price per kg, weight entry at billing."),
         Feature("restaurant_mode", "Restaurant tables & KOT", "Tables, kitchen order tickets, order types."),
         Feature("job_cards", "Job cards", "Repair and service jobs from receipt to delivery."),
@@ -163,24 +171,27 @@ AVAILABLE_FEATURES = [f for f in FEATURES.values() if f.available]
 # is onboarded (or when the Client Admin explicitly asks Settings to reset
 # to these), never retroactively.
 BUSINESS_TYPE_PRESETS: dict[BusinessType, set[str]] = {
-    BusinessType.RETAIL: {"inventory", "purchases", "expenses", "credit_sales", "categories", "favourites"},
+    BusinessType.RETAIL: {"business_reports", "inventory", "purchases", "expenses", "credit_sales", "categories", "favourites"},
     BusinessType.WHOLESALE: {
         "inventory", "purchases", "expenses", "credit_sales", "multi_price_list", "eway_bill", "receivables",
-        "payables", "sales_documents", "cash_bank_book",
+        "payables", "sales_documents", "cash_bank_book", "business_reports",
     },
-    BusinessType.RESTAURANT: {"categories", "restaurant_mode", "expenses"},
+    BusinessType.RESTAURANT: {"business_reports", "categories", "restaurant_mode", "expenses"},
     BusinessType.MOBILE_ELECTRONICS: {
-        "inventory", "purchases", "expenses", "credit_sales", "serial_imei", "margin_scheme", "job_cards",
+        "business_reports", "inventory", "purchases", "expenses", "credit_sales", "serial_imei", "margin_scheme", "job_cards",
     },
-    BusinessType.PHARMACY: {"inventory", "purchases", "expenses", "credit_sales", "batch_expiry", "favourites"},
-    BusinessType.APPAREL: {"inventory", "purchases", "expenses", "variants", "categories", "loyalty"},
+    BusinessType.PHARMACY: {"business_reports", "inventory", "purchases", "expenses", "credit_sales", "batch_expiry", "favourites"},
+    BusinessType.APPAREL: {"business_reports", "inventory", "purchases", "expenses", "variants", "categories", "loyalty"},
     BusinessType.HARDWARE: {
         "inventory", "purchases", "expenses", "credit_sales", "multi_price_list", "categories", "receivables",
-        "payables", "sales_documents",
+        "payables", "sales_documents", "business_reports",
     },
-    BusinessType.JEWELLERY: {"inventory", "purchases", "expenses", "credit_sales", "weighing"},
-    BusinessType.BAKERY: {"inventory", "purchases", "expenses", "weighing", "batch_expiry", "categories", "favourites"},
-    BusinessType.SERVICES: {"expenses", "credit_sales", "job_cards", "receivables", "sales_documents", "recurring_invoices"},
+    BusinessType.JEWELLERY: {"business_reports", "inventory", "purchases", "expenses", "credit_sales", "weighing"},
+    BusinessType.BAKERY: {
+        "business_reports", "inventory", "purchases", "expenses", "weighing", "batch_expiry", "categories", "favourites",
+    },
+    BusinessType.SERVICES: {"expenses", "credit_sales", "job_cards", "receivables", "sales_documents", "recurring_invoices",
+                            "business_reports"},
     BusinessType.OTHER: set(),
 }
 

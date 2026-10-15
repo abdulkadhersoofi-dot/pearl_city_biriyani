@@ -5,6 +5,40 @@
   <h1>Reports &amp; GST exports</h1>
 </div>
 
+{% if has_feature('business_reports') %}
+<div class="form-grid" style="margin-bottom:20px;">
+  <div class="card">
+    <h2 style="margin-top:0;">Profit &amp; loss</h2>
+    <p class="text-muted">Revenue, cost of goods sold, gross profit and expenses for any period - all locations or one - with last period or last year beside it. Excel or PDF.</p>
+    <a href="{{ url_for('reports.profit_loss') }}" class="btn btn-primary">View profit &amp; loss</a>
+  </div>
+  <div class="card">
+    <h2 style="margin-top:0;">Gross profit by item</h2>
+    <p class="text-muted">What each item and category sold for against what it cost you.</p>
+    <a href="{{ url_for('reports.item_profit') }}" class="btn btn-primary">View gross profit</a>
+  </div>
+  <div class="card">
+    <h2 style="margin-top:0;">GST filing</h2>
+    <p class="text-muted">Tell your accountant a month's data is complete, and see when GSTR-1 and GSTR-3B were filed.</p>
+    <a href="{{ url_for('reports.filing_status') }}" class="btn btn-primary">Filing status</a>
+  </div>
+  <div class="card">
+    <h2 style="margin-top:0;">Daily sales summary</h2>
+    <p class="text-muted">Payment modes, sales by hour and by cashier, discounts, voids and returns.</p>
+    <a href="{{ url_for('reports.daily_summary_view') }}" class="btn btn-primary">View daily summary</a>
+  </div>
+</div>
+{% endif %}
+{% if has_feature('purchases') or has_feature('expenses') %}
+<form method="get" class="card row" style="gap:12px; align-items:flex-end; margin-bottom:20px;">
+  <div><h2 style="margin:0 0 6px;">Registers for your auditor</h2><p class="text-muted mt-0" style="margin-bottom:0;">Excel, one month.</p></div>
+  <input type="hidden" name="mode" value="month">
+  <label class="field" style="margin:0;"><span class="field-label">Month</span><input type="month" name="month" value="{{ period }}" class="field-input"></label>
+  {% if has_feature('purchases') %}<button formaction="{{ url_for('reports.register_xlsx', kind='purchase') }}" class="btn btn-secondary">Purchase register</button>{% endif %}
+  {% if has_feature('expenses') %}<button formaction="{{ url_for('reports.register_xlsx', kind='expense') }}" class="btn btn-secondary">Expense register</button>{% endif %}
+</form>
+{% endif %}
+
 <div class="form-grid" style="margin-bottom:20px;">
   <div class="card">
     <h2 style="margin-top:0;">Sales report</h2>
@@ -59,8 +93,10 @@
   <p class="text-muted">
     Taxable value, tax and HSN figures below come straight from your own invoices, POS bills and
     notes. They're a working paper to make filing easier, not an auto-filer - always check the
-    numbers before submitting on the GST portal. Input Tax Credit isn't tracked here (this app
-    records sales only), so GSTR-3B shows gross output tax, not the net amount payable.
+    numbers before submitting on the GST portal. {% if has_feature('purchases') or has_feature('expenses') %}GSTR-3B
+    includes the input tax credit from your purchase bills and expenses, and the tax left to pay in
+    cash after setting it off.{% else %}Input Tax Credit isn't tracked here (this app
+    records sales only), so GSTR-3B shows gross output tax, not the net amount payable.{% endif %}
   </p>
   <form method="get" action="{{ url_for('reports.gstr1_view') }}" class="stack" id="report-form">
     <div class="field">
