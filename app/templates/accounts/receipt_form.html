@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Advance receipt' if is_advance else 'New receipt' }} - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>{{ 'Advance receipt voucher' if is_advance else 'Receipt from a customer' }}</h1>
+    <p class="text-muted mt-0">{% if is_advance %}Money received before the goods / service - a receipt voucher (Rule 50), set against the invoice once it is issued.{% else %}Money received against bills - set it against one or more of them, or leave it on account.{% endif %}</p>
+  </div>
+</div>
+{% include "accounts/_nav.html" %}
+
+<form method="get" class="search-bar">
+  {% if is_advance %}<input type="hidden" name="advance" value="1">{% endif %}
+  <select name="customer_id" class="field-input" onchange="this.form.submit()">
+    <option value="">Pick the customer...</option>
+    {% for c in customers %}<option value="{{ c.id }}" {{ 'selected' if customer and customer.id == c.id }}>{{ c.name }}</option>{% endfor %}
+  </select>
+  <noscript><button class="btn btn-secondary">Go</button></noscript>
+</form>
+
+{% if customer %}
+<form method="post" class="card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="customer_id" value="{{ customer.id }}">
+  {% if is_advance %}<input type="hidden" name="advance" value="1">{% endif %}
+  <p class="mt-0"><strong>{{ customer.name }}</strong> · balance Rs. {{ '%.2f'|format(account.balance) }}</p>
+  {% include "accounts/_money_fields.html" %}
+
+  {% if is_advance %}
+    {% if gst_on_advances %}
+    <div class="form-grid">
+      <label class="field"><span class="field-label">The advance is for</span>
+        <select name="for_services" class="field-input">
+          <option value="1" {{ 'selected' if form.get('for_services') == '1' }}>Services - GST is due now</option>
+          <option value="0" {{ 'selected' if form.get('for_services') == '0' }}>Goods - no GST on the advance</option>
+        </select></label>
+      <label class="field"><span class="field-label">GST rate of the service</span>
+        {% set chosen_rate = form.get('gst_rate') or '18' %}<select name="gst_rate" class="field-input">{% for r in rates if r > 0 %}<option value="{{ r|qty }}" {{ 'selected' if chosen_rate == r|qty }}>{{ r|qty }}%</option>{% endfor %}</select></label>
+      <label class="field"><span class="field-label">Place of supply</span>
+        <select name="place_of_supply_state_code" class="field-input">{% for code, name in states %}<option value="{{ code }}" {{ 'selected' if (form.get('place_of_supply_state_code') or customer.state_code) == code }}>{{ name }}</option>{% endfor %}</select></label>
+    </div>
+    <p class="text-muted"><small>The amount received includes the GST. Advances for goods carry no GST (Notification 66/2017-CT).</small></p>
+    {% else %}
+    <p class="text-muted"><small>No GST is charged on this voucher - only a regular GST registration pays tax on advances.</small></p>
+    {% endif %}
+  {% else %}
+    <h2>Set against bills</h2>
+    {% with items=account.open_items, inputs=True %}{% include "accounts/_open_items.html" %}{% endwith %}
+    {% if account.open_items %}{% include "accounts/_fill_oldest.html" %}{% endif %}
+  {% endif %}
+  <button class="btn btn-primary">Save {{ 'advance receipt voucher' if is_advance else 'receipt' }}</button>
+</form>
+{% endif %}
+{% endblock %}

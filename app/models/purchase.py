@@ -24,6 +24,7 @@ class Supplier(db.Model, TenantScopedMixin, TimestampMixin):
     email = db.Column(db.String(255))
     # What was owed to them when the client started using the app.
     opening_balance = db.Column(db.Numeric(12, 2), nullable=False, default=0, server_default="0")
+    opening_balance_date = db.Column(db.Date)
     payment_terms_days = db.Column(db.Integer)
     is_active = db.Column(db.Boolean, nullable=False, default=True, server_default=db.true())
 

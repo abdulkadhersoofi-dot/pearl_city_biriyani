@@ -1,0 +1,19 @@
+{% extends "invoicing/form.html" %}
+{% block form_title %}New {{ label|lower }}{% endblock %}
+{% block form_subtitle %}<p class="text-muted mt-0">{% if kind.value == 'delivery_challan' %}Goods sent without a sale yet (Rule 55) - job work, sale on approval, goods sent elsewhere. Any GST shown is for information; it is charged on the invoice. Stock isn't moved until it is invoiced.{% else %}Not a tax document - nothing is reported or moved from stock until it is turned into an invoice.{% endif %}</p>{% endblock %}
+{% block hidden_extras %}<input type="hidden" name="kind" value="{{ kind.value }}">{% endblock %}
+{% block bill_to_toggle %}{% endblock %}
+{% block header_extras %}
+  {% if kind.value == 'delivery_challan' %}
+  <label class="field"><span class="field-label">Purpose</span>
+    <select name="challan_purpose" class="field-input">{% for p, text in purposes.items() %}<option value="{{ p.value }}" {{ 'selected' if request.form.get('challan_purpose') == p.value }}>{{ text }}</option>{% endfor %}</select></label>
+  {% else %}
+  <label class="field"><span class="field-label">Valid until (optional)</span>
+    <input type="date" name="valid_until" value="{{ request.form.get('valid_until', '') }}" class="field-input"></label>
+  {% endif %}
+{% endblock %}
+{% block footer_extras %}
+  <label class="field"><span class="field-label">Terms (optional)</span>
+    <textarea name="terms" class="field-input" rows="2" placeholder="Prices valid for 15 days. 50% advance with order.">{{ request.form.get('terms', '') }}</textarea></label>
+{% endblock %}
+{% block submit_label %}Save {{ label|lower }}{% endblock %}

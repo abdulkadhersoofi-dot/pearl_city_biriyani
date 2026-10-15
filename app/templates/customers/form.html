@@ -16,6 +16,16 @@
     {{ field(form.phone) }}
   </div>
   {{ field(form.email) }}
+  {% if form.credit_limit %}
+  <h2>Account</h2>
+  <div class="form-grid">
+    {{ field(form.opening_balance, help=form.opening_balance.description) }}
+    {{ field(form.opening_balance_date) }}
+    {{ field(form.credit_limit, help=form.credit_limit.description) }}
+    {{ field(form.credit_days, help=form.credit_days.description) }}
+  </div>
+  {% if customer %}<p><a href="{{ url_for('accounts.customer_ledger', customer_id=customer.id) }}">Open {{ customer.name }}'s account</a></p>{% endif %}
+  {% endif %}
   <button type="submit" class="btn btn-primary btn-lg">Save</button>
 </form>
 {% if customer %}

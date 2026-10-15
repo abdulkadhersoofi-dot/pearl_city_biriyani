@@ -1,0 +1,14 @@
+<nav class="subnav">
+  {% if has_feature('receivables') %}
+  <a href="{{ url_for('accounts.receivables_index') }}" class="{{ 'active' if request.endpoint in ('accounts.receivables_index', 'accounts.customer_ledger') }}">Customers owe</a>
+  <a href="{{ url_for('accounts.receipts') }}" class="{{ 'active' if request.endpoint in ('accounts.receipts', 'accounts.new_receipt', 'accounts.view_receipt', 'accounts.new_refund', 'accounts.view_refund') }}">Receipts</a>
+  {% endif %}
+  {% if has_feature('payables') %}
+  <a href="{{ url_for('accounts.payables_index') }}" class="{{ 'active' if request.endpoint in ('accounts.payables_index', 'accounts.supplier_ledger') }}">You owe suppliers</a>
+  <a href="{{ url_for('accounts.payments') }}" class="{{ 'active' if request.endpoint in ('accounts.payments', 'accounts.new_payment', 'accounts.view_payment') }}">Payments</a>
+  {% endif %}
+  {% if has_feature('cash_bank_book') %}
+  <a href="{{ url_for('accounts.book', book='cash') }}" class="{{ 'active' if request.endpoint == 'accounts.book' and request.view_args.book == 'cash' }}">Cash book</a>
+  <a href="{{ url_for('accounts.book', book='bank') }}" class="{{ 'active' if request.endpoint == 'accounts.book' and request.view_args.book == 'bank' }}">Bank book</a>
+  {% endif %}
+</nav>

@@ -2,7 +2,7 @@
 categories they're filed under, recurring expenses that make a draft
 each period, and petty cash paid out of the POS drawer.
 
-An expense is posted (numbered EXP/<FY>/0001, from the same row-locked
+An expense is posted (numbered EV/<FY>/0001, from the same row-locked
 allocator as every other document) or a draft. A posted expense is never
 deleted - it's voided with a reason. A draft that isn't wanted (this
 month's rent was paid some other way) is voided the same way, so the
@@ -256,6 +256,9 @@ def void_expense(expense: Expense, user, reason: str) -> None:
         raise ExpenseError("A reason is required.")
     expense.status = ExpenseStatus.VOIDED
     expense.void_reason = reason
+    from app.accounts.services import release_payment_allocations
+
+    release_payment_allocations(expense.tenant_id, expense_id=expense.id)
     expense.voided_at = utcnow()
     expense.voided_by_id = user.id
 

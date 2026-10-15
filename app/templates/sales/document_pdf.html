@@ -1,0 +1,79 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @page { size: A4; margin: 18mm 16mm; }
+  body { font-family: "Helvetica Neue", Arial, sans-serif; color: #1f2a24; font-size: 11pt; }
+  h1 { font-size: 16pt; margin: 0 0 2px; }
+  .doc-type { font-size: 11pt; color: #5c6b62; margin: 0 0 16px; }
+  .header { display: flex; justify-content: space-between; border-bottom: 2px solid #1f7a4d; padding-bottom: 12px; margin-bottom: 16px; }
+  .header .firm { text-align: right; }
+  .meta-grid { display: flex; justify-content: space-between; margin-bottom: 16px; }
+  .meta-grid .block { width: 48%; }
+  .label { font-size: 8.5pt; text-transform: uppercase; color: #5c6b62; letter-spacing: .04em; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+  th, td { border: 1px solid #d8ddd6; padding: 6px 8px; font-size: 10pt; text-align: left; }
+  th { background: #f0f2ee; }
+  .num { text-align: right; }
+  .totals { width: 45%; margin-left: auto; }
+  .totals td { border: none; padding: 3px 8px; }
+  .totals .grand td { border-top: 1.5px solid #1f2a24; font-weight: 700; font-size: 12pt; }
+  .note { font-size: 9pt; color: #5c6b62; margin-top: 16px; }
+  .firm-logo { max-height: 48px; max-width: 160px; object-fit: contain; margin-bottom: 6px; }
+  .cancelled { color: #b3261e; font-weight: 700; }
+</style>
+</head>
+<body>
+  <div class="header">
+    <div>
+      <h1>{{ doc.label }}</h1>
+      <p class="doc-type">{{ doc.number }}{% if doc.status.value == 'cancelled' %} <span class="cancelled">CANCELLED</span>{% endif %}</p>
+    </div>
+    <div class="firm">
+      {% if logo_data_uri %}<img class="firm-logo" src="{{ logo_data_uri }}">{% endif %}
+      <strong>{{ firm_name }}</strong><br>
+      {% if doc.gstin.gstin %}GSTIN: {{ doc.gstin.gstin }}<br>{% endif %}
+      {{ doc.gstin.registered_address or '' }}
+    </div>
+  </div>
+  <div class="meta-grid">
+    <div class="block">
+      <div class="label">{{ 'Consignee' if doc.kind.value == 'delivery_challan' else 'To' }}</div>
+      <strong>{{ doc.customer_snapshot.name }}</strong><br>
+      {% if doc.customer_snapshot.gstin %}GSTIN: {{ doc.customer_snapshot.gstin }}<br>{% endif %}
+      {{ doc.customer_snapshot.address_line1 or '' }} {{ doc.customer_snapshot.address_line2 or '' }}<br>
+      {{ doc.customer_snapshot.city or '' }} {{ doc.customer_snapshot.state_name or '' }} {{ doc.customer_snapshot.pincode or '' }}
+    </div>
+    <div class="block">
+      <div class="label">Date</div>{{ doc.doc_date.strftime('%d %b %Y') }}<br>
+      {% if doc.valid_until %}<div class="label">Valid until</div>{{ doc.valid_until.strftime('%d %b %Y') }}<br>{% endif %}
+      {% if doc.challan_purpose %}<div class="label">Purpose</div>{{ purposes[doc.challan_purpose] }}<br>{% endif %}
+      <div class="label">Place of supply</div>{{ doc.place_of_supply_state_code|state_name }} ({{ doc.place_of_supply_state_code }})
+    </div>
+  </div>
+  <table>
+    <thead><tr><th>#</th><th>Description</th><th>HSN/SAC</th><th class="num">Qty</th><th class="num">Rate</th><th class="num">Taxable</th>
+      {% if doc.total_igst %}<th class="num">IGST</th>{% else %}<th class="num">CGST</th><th class="num">SGST</th>{% endif %}<th class="num">Total</th></tr></thead>
+    <tbody>
+    {% for l in doc.lines %}
+      <tr><td>{{ loop.index }}</td><td>{{ l.description }}</td><td>{{ l.hsn_or_sac_code or '-' }}</td><td class="num">{{ l.qty|qty }} {{ l.unit }}</td>
+        <td class="num">{{ '%.2f'|format(l.rate) }}{% if l.price_includes_tax %}*{% endif %}</td><td class="num">{{ '%.2f'|format(l.taxable_value) }}</td>
+        {% if doc.total_igst %}<td class="num">{{ '%.2f'|format(l.igst_amount) }}</td>{% else %}<td class="num">{{ '%.2f'|format(l.cgst_amount) }}</td><td class="num">{{ '%.2f'|format(l.sgst_amount) }}</td>{% endif %}
+        <td class="num">{{ '%.2f'|format(l.line_total) }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <table class="totals">
+    <tr><td>Taxable value</td><td class="num">Rs. {{ '%.2f'|format(doc.total_taxable_value) }}</td></tr>
+    {% if doc.total_igst %}<tr><td>IGST</td><td class="num">Rs. {{ '%.2f'|format(doc.total_igst) }}</td></tr>
+    {% else %}<tr><td>CGST</td><td class="num">Rs. {{ '%.2f'|format(doc.total_cgst) }}</td></tr><tr><td>SGST</td><td class="num">Rs. {{ '%.2f'|format(doc.total_sgst) }}</td></tr>{% endif %}
+    {% if doc.round_off %}<tr><td>Round off</td><td class="num">Rs. {{ '%.2f'|format(doc.round_off) }}</td></tr>{% endif %}
+    <tr class="grand"><td>Total</td><td class="num">Rs. {{ '%.2f'|format(doc.grand_total) }}</td></tr>
+  </table>
+  {% if doc.terms %}<p><strong>Terms:</strong> {{ doc.terms }}</p>{% endif %}
+  {% if doc.notes %}<p>{{ doc.notes }}</p>{% endif %}
+  <p class="note">{% if doc.kind.value == 'delivery_challan' %}Delivery challan under Rule 55 of the CGST Rules - not a tax invoice; GST, if any, is charged on the invoice when the goods are sold.{% elif doc.kind.value == 'proforma' %}This is a proforma invoice, not a tax invoice. A tax invoice will be issued on supply.{% else %}This is not a tax invoice.{% endif %}
+    {% if doc.lines|selectattr('price_includes_tax')|list %} * rate includes GST.{% endif %}</p>
+</body>
+</html>

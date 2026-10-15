@@ -112,6 +112,12 @@ class Tenant(db.Model, TimestampMixin):
     # standard wording (app.utils.margin.DEFAULT_DECLARATION).
     margin_scheme_declaration = db.Column(db.Text)
     upi_payee_name = db.Column(db.String(100))
+    # Accounts (Phase 6): the day the client started keeping its books
+    # here - documents before it are left to the opening balances - and
+    # the cash in hand / at bank on that day (cash & bank book).
+    books_opening_date = db.Column(db.Date)
+    cash_opening_balance = db.Column(db.Numeric(12, 2), nullable=False, default=0, server_default="0")
+    bank_opening_balance = db.Column(db.Numeric(12, 2), nullable=False, default=0, server_default="0")
 
     # Access gating - see app.utils.billing.tenant_access_status, which
     # combines these with `is_active` (above) into one go/no-go check,

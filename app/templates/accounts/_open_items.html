@@ -1,0 +1,25 @@
+{# items (OpenItem list), inputs (bool) - amount fields named alloc-<kind>-<id> #}
+<div class="table-wrap card">
+  <table>
+    <thead><tr><th>Date</th><th>Bill</th><th>Due</th><th class="num">Amount</th><th class="num">Settled</th><th class="num">Outstanding</th>{% if inputs %}<th class="num">Set against</th>{% endif %}</tr></thead>
+    <tbody>
+    {% for i in items %}
+      <tr>
+        <td>{{ i.doc_date.strftime('%d %b %Y') }}</td>
+        <td>{% if i.kind == 'invoice' %}<a href="{{ url_for('invoicing.view_invoice', invoice_id=i.id) }}">{{ i.number }}</a>
+            {% elif i.kind == 'pos_bill' %}<a href="{{ url_for('pos.view_receipt', bill_id=i.id) }}">{{ i.number }}</a> <span class="tag">Counter</span>
+            {% elif i.kind == 'purchase_bill' %}<a href="{{ url_for('purchases.view_bill', bill_id=i.id) }}">{{ i.number }}</a>
+            {% elif i.kind == 'expense' %}<a href="{{ url_for('expenses.view_expense', expense_id=i.id) }}">{{ i.number }}</a> <span class="tag">Expense</span>
+            {% else %}{{ i.number }}{% endif %}</td>
+        <td>{% if i.due_date < today %}<span class="tag tag-low">{{ i.due_date.strftime('%d %b') }}</span>{% else %}{{ i.due_date.strftime('%d %b %Y') }}{% endif %}</td>
+        <td class="num">{{ '%.2f'|format(i.amount) }}</td>
+        <td class="num">{{ '%.2f'|format(i.settled) if i.settled else '-' }}</td>
+        <td class="num"><strong>{{ '%.2f'|format(i.outstanding) }}</strong></td>
+        {% if inputs %}<td class="num"><input type="text" inputmode="decimal" name="alloc-{{ i.kind }}-{{ i.id or 0 }}" data-outstanding="{{ '%.2f'|format(i.outstanding) }}" class="field-input alloc-input" style="max-width:120px; text-align:right;" value="{{ form.get('alloc-' ~ i.kind ~ '-' ~ (i.id or 0), '') if form else '' }}"></td>{% endif %}
+      </tr>
+    {% else %}
+      <tr><td colspan="{{ 7 if inputs else 6 }}" class="empty-state">No open bills.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>

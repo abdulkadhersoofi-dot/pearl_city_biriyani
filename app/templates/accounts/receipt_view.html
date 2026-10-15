@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}{{ receipt.number }} - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>{{ receipt.number }}</h1>
+    <p class="text-muted mt-0">{{ 'Advance receipt voucher' if receipt.is_advance else 'Receipt' }} ·
+      <a href="{{ url_for('accounts.customer_ledger', customer_id=receipt.customer_id) }}">{{ receipt.customer.name }}</a> ·
+      <span class="status-badge {{ 'status-void' if receipt.status.value == 'voided' else 'status-issued' }}">{{ receipt.status.value|title }}</span>
+      {% if receipt.cheque_status %}<span class="tag {{ {'pending': 'tag-warn', 'cleared': 'tag-fast', 'bounced': 'tag-low'}[receipt.cheque_status.value] }}">Cheque {{ receipt.cheque_status.value }}</span>{% endif %}</p>
+  </div>
+  <div class="row">
+    <a href="{{ url_for('accounts.receipt_pdf', receipt_id=receipt.id) }}" target="_blank" class="btn btn-secondary">Print</a>
+    {% if can_refund %}
+      <a href="{{ url_for('accounts.new_refund', receipt_id=receipt.id) }}" class="btn btn-secondary">Refund voucher</a>
+    {% endif %}
+  </div>
+</div>
+{% include "accounts/_nav.html" %}
+<div class="card" style="margin-bottom:16px;">
+  <div class="form-grid">
+    <div><strong>Date</strong><p>{{ receipt.voucher_date.strftime('%d %b %Y') }}</p></div>
+    <div><strong>Amount</strong><p>Rs. {{ '%.2f'|format(receipt.amount) }}</p></div>
+    <div><strong>Paid by</strong><p>{{ modes[receipt.mode] }}{% if receipt.reference %}<br><small>{{ receipt.reference }}</small>{% endif %}</p></div>
+    {% if receipt.cheque_no %}<div><strong>Cheque</strong><p>No. {{ receipt.cheque_no }}{% if receipt.cheque_date %}, {{ receipt.cheque_date.strftime('%d %b %Y') }}{% endif %}{% if receipt.bank_name %}<br><small>{{ receipt.bank_name }}</small>{% endif %}{% if receipt.cleared_on %}<br><small>{{ receipt.cheque_status.value|title }} on {{ receipt.cleared_on.strftime('%d %b %Y') }}</small>{% endif %}</p></div>{% endif %}
+    <div><strong>Not yet set against a bill</strong><p>Rs. {{ '%.2f'|format(unused) }}</p></div>
+  </div>
+  {% if receipt.is_advance %}
+  <p>{% if receipt.for_services and receipt.total_tax %}For services · taxable Rs. {{ '%.2f'|format(receipt.taxable_value) }} @ {{ receipt.gst_rate|qty }}% ·
+    {% if receipt.igst_amount %}IGST {{ '%.2f'|format(receipt.igst_amount) }}{% else %}CGST {{ '%.2f'|format(receipt.cgst_amount) }} + SGST {{ '%.2f'|format(receipt.sgst_amount) }}{% endif %} · place of supply {{ receipt.place_of_supply_state_code|state_name }}
+    {% else %}No GST on this advance{% if not receipt.for_services %} (goods){% endif %}.{% endif %}</p>
+  {% endif %}
+  {% if receipt.notes %}<p><strong>Notes:</strong> {{ receipt.notes }}</p>{% endif %}
+  {% if receipt.void_reason %}<p><strong>Voided:</strong> {{ receipt.void_reason }}</p>{% endif %}
+</div>
+
+{% if receipt.status.value == 'posted' and receipt.cheque_status and receipt.cheque_status.value == 'pending' %}
+<form method="post" action="{{ url_for('accounts.receipt_cheque', receipt_id=receipt.id) }}" class="card row" style="gap:10px; align-items:flex-end; margin-bottom:16px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label class="field" style="margin:0;"><span class="field-label">Cheque status on</span><input type="date" name="on" value="{{ today.isoformat() }}" class="field-input"></label>
+  <button name="status" value="cleared" class="btn btn-primary">Cleared</button>
+  <button name="status" value="bounced" class="btn btn-danger" onclick="return confirm('Mark the cheque bounced? The bills it paid become outstanding again.');">Bounced</button>
+</form>
+{% endif %}
+
+<h2>Set against</h2>
+<div class="table-wrap card" style="margin-bottom:16px;">
+  <table>
+    <thead><tr><th>Date</th><th>Bill</th><th class="num">Amount</th>{% if receipt.is_advance %}<th class="num">Taxable</th><th class="num">GST adjusted</th>{% endif %}<th></th></tr></thead>
+    <tbody>
+    {% set tax_by_alloc = {} %}
+    {% for u in usage if u.kind == 'adjusted' %}{% set _ = tax_by_alloc.update({u.object.id: u}) %}{% endfor %}
+    {% for a in receipt.allocations %}
+      <tr>
+        <td>{{ a.allocated_on.strftime('%d %b %Y') }}</td>
+        <td>{% if a.invoice %}<a href="{{ url_for('invoicing.view_invoice', invoice_id=a.invoice_id) }}">{{ a.invoice.invoice_number }}</a>{% elif a.pos_bill %}<a href="{{ url_for('pos.view_receipt', bill_id=a.pos_bill_id) }}">{{ a.pos_bill.bill_number }}</a>{% else %}Opening balance{% endif %}</td>
+        <td class="num">{{ '%.2f'|format(a.amount) }}</td>
+        {% if receipt.is_advance %}{% set u = tax_by_alloc.get(a.id) %}<td class="num">{{ '%.2f'|format(u.taxable_value) if u else '' }}</td><td class="num">{{ '%.2f'|format(u.tax) if u else '' }}</td>{% endif %}
+        <td>{% if receipt.status.value == 'posted' %}
+          <form method="post" action="{{ url_for('accounts.remove_receipt_allocation', receipt_id=receipt.id, allocation_id=a.id) }}" style="display:inline;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-quiet btn-sm" onclick="return confirm('Take this amount off the bill?');">Remove</button></form>{% endif %}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6" class="empty-state">Not set against any bill - it's on account.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if receipt.refunds %}
+<h2>Refunds</h2>
+<div class="table-wrap card" style="margin-bottom:16px;">
+  <table><tbody>
+  {% for r in receipt.refunds %}<tr><td>{{ r.voucher_date.strftime('%d %b %Y') }}</td><td><a href="{{ url_for('accounts.view_refund', refund_id=r.id) }}">{{ r.number }}</a></td><td class="num">{{ '%.2f'|format(r.amount) }}</td><td>{{ r.status.value|title }}</td></tr>{% endfor %}
+  </tbody></table>
+</div>
+{% endif %}
+
+{% if can_allocate and account.open_items %}
+<form method="post" action="{{ url_for('accounts.allocate_receipt', receipt_id=receipt.id) }}" class="card" style="margin-bottom:16px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <h2 class="mt-0">Set the rest (Rs. {{ '%.2f'|format(unused) }}) against bills</h2>
+  <input type="hidden" id="voucher-amount" data-unused="{{ '%.2f'|format(unused) }}">
+  {% with items=account.open_items, inputs=True, form=None %}{% include "accounts/_open_items.html" %}{% endwith %}
+  {% include "accounts/_fill_oldest.html" %}
+  <div class="row" style="gap:10px; align-items:flex-end;">
+    <label class="field" style="margin:0;"><span class="field-label">Date</span><input type="date" name="allocated_on" value="{{ today.isoformat() }}" class="field-input"></label>
+    <button class="btn btn-primary">Set against bills</button>
+  </div>
+</form>
+{% endif %}
+
+{% if receipt.status.value == 'posted' %}
+<form method="post" action="{{ url_for('accounts.void_receipt', receipt_id=receipt.id) }}" class="card row void-box" style="gap:10px; align-items:flex-end;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label class="field" style="margin:0; flex:1;"><span class="field-label">Void this receipt - reason</span><input type="text" name="reason" class="field-input" required></label>
+  <button class="btn btn-danger" onclick="return confirm('Void {{ receipt.number }}?');">Void</button>
+</form>
+{% endif %}
+{% endblock %}

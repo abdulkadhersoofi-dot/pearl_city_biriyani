@@ -1,0 +1,13 @@
+<details class="card" style="margin-top:16px;">
+  <summary><strong>Books start date</strong>{% if current_user.tenant.books_opening_date %} - {{ current_user.tenant.books_opening_date.strftime('%d %b %Y') }}{% else %} - not set{% endif %}</summary>
+  <form method="post" action="{{ url_for('accounts.books_opening') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <p class="text-muted"><small>Invoices and bills dated before this day are left out of what customers and suppliers owe - enter what was due on that day as each one's opening balance instead.</small></p>
+    <div class="form-grid">
+      <label class="field"><span class="field-label">Books start on</span><input type="date" name="books_opening_date" value="{{ current_user.tenant.books_opening_date.isoformat() if current_user.tenant.books_opening_date else '' }}" class="field-input"></label>
+      <input type="hidden" name="cash_opening_balance" value="{{ '%.2f'|format(current_user.tenant.cash_opening_balance or 0) }}">
+      <input type="hidden" name="bank_opening_balance" value="{{ '%.2f'|format(current_user.tenant.bank_opening_balance or 0) }}">
+    </div>
+    <button class="btn btn-secondary">Save</button>
+  </form>
+</details>

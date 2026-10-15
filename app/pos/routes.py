@@ -346,6 +346,12 @@ def checkout_route():
                 "change_due": float(bill.change_due) if bill.change_due is not None else None,
                 "share_url": url_for("pos.share_bill", bill_id=bill.id),
             }
+            if bill.credit_amount and bill.customer_id:
+                from app.accounts.receivables import credit_warning
+
+                warning = credit_warning(tenant, bill.customer)
+                if warning:
+                    response["credit_warning"] = warning
             if current_user.is_staff:
                 # The terminal's own stock counter is rendered once at page
                 # load - without this, it only reflects what was just sold

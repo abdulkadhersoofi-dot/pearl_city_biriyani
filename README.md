@@ -1237,6 +1237,97 @@ Gunicorn workers or add app servers behind Nginx as load grows.
   isolation: lots and register rows are per client
   (`tests/test_margin_scheme.py`).
 
+### Platform build - Phase 6 (accounts, pre-sale documents, recurring invoices)
+
+Five new flags, all off by default; with them off nothing changes (routes
+404, no menu, no extra fields, GSTR output byte-for-byte the same):
+`receivables`, `payables`, `sales_documents`, `recurring_invoices`,
+`cash_bank_book` (Accounts and "Quotes & orders" in the menu).
+
+- **Balances are never stored.** What a customer or supplier owes is
+  worked out from the documents each time (`app/accounts/receivables.py`,
+  `payables.py`), so it can't drift:
+  - customer: opening balance + issued invoices (not branch challans; an
+    RCM invoice without the tax the customer pays the government) +
+    debit notes - credit notes + the credit part of counter bills -
+    credit-mode returns/refunds - receipts + refund vouchers
+  - supplier: opening balance + posted purchase bills - purchase returns
+    + expenses booked "unpaid" to the supplier - payments
+  - receipts / payments are set against bills (`ReceiptAllocation`,
+    `PaymentAllocation`: full, part, or opening balance); the rest stays
+    "on account". Balance = open bills' outstanding - on account = the
+    running ledger's last line (tested both ways).
+  - a voided invoice / counter bill / purchase bill / expense releases
+    what was received or paid against it back on account.
+  - **books opening date** (Accounts -> "Books start date", or the cash
+    book page): documents dated before it are left to the opening
+    balances, so a client switching on accounts mid-year doesn't see
+    every old invoice as unpaid.
+- **Vouchers**, each from the row-locked allocator, never deleted, voided
+  with a reason, audit-logged: receipt `RCT/`, advance receipt voucher
+  `RV/` (Rule 50), refund voucher `RFV/` (Rule 51), payment voucher
+  `PAY/`. Modes cash / UPI / card / bank / cheque. A cheque has its own
+  status: pending settles the bill but stays out of the bank book;
+  cleared lands in the bank book on the clearing date; bounced settles
+  nothing (the bill is outstanding again, the ledger shows the bounce).
+- **Ageing** 0-30 / 31-60 / 61-90 / 90+ days from the bill date, plus
+  overdue by the customer's credit days / supplier's terms. Customer
+  statement PDF (balance brought forward, running balance, open bills,
+  ageing). **WhatsApp reminder**: a wa.me click-to-chat link (no API)
+  with the balance and a signed, 15-day statement link anyone can open
+  without signing in (same pattern as the POS bill share link).
+- **Credit limit** (customer form, with accounts on) is a warning, never
+  a block: flashed after an invoice, shown on the POS "done" screen for
+  a credit sale.
+- **GST on advances - one module, `app/utils/advance_gst.py`** (Decimal,
+  half-up, unit-tested). An advance for services is tax-inclusive:
+  taxable = amount x 100 / (100 + rate); CGST/SGST (odd paisa on SGST)
+  or IGST by place of supply. Goods advances carry none (Notification
+  66/2017); composition / unregistered clients issue the voucher without
+  tax. When an advance is set against an invoice or refunded, that
+  part's tax is worked out cumulatively (`advance_portion`), so the
+  pieces always add back to exactly the tax paid.
+  - GSTR-1 (with `receivables` on): tables 11A (advances received) and
+    11B (adjusted / refunded) by place of supply and rate, on the page,
+    PDF, Excel ("Advances 11A-11B") and JSON; receipt and refund
+    vouchers in "Documents issued".
+  - GSTR-3B: 3.1(a) includes 11A - 11B, with a note saying so.
+- **Expense voucher prefix moved from `EXP` to `EV`.** `EXP` was already
+  the export invoice's prefix. The migration renames existing expense
+  series; vouchers already issued keep their numbers.
+- **Quotation `QTN/`, Proforma `PI/`, Sales Order `SO/`, Delivery
+  Challan `DC/`** (`SalesDocument`, `app/sales/`): same line editor as
+  the invoice form, same GST service, so converting never changes a
+  rupee. None is a tax document (no GSTR-1 sales, no stock movement).
+  - **Convert in one click** (issues the invoice with today's date, or
+    the date picked) or **Edit & invoice** (opens the invoice form
+    pre-filled; the document closes when it's saved). Once only.
+  - Challan purposes: job work, sale on approval, stock transfer, other.
+    Challans share the `DC` series with branch challans, so no number is
+    used twice, and appear in GSTR-1 "Documents issued" (cancelled ones
+    counted as cancelled). A challan can be marked "returned".
+  - Cancel with a reason; "Copy" starts a new one from it.
+- **Void & re-issue** (with `sales_documents` on): the void form on an
+  invoice also offers "Void & re-issue a corrected copy", which voids it
+  and opens the invoice form pre-filled from it (new number on save).
+- **Recurring invoices** (`RecurringInvoice` + `RecurringInvoiceRun`):
+  a template (customer, lines, weekly/monthly/quarterly/yearly, start,
+  optional end). Each due date becomes a draft run with **no number**
+  until it's issued - Issue (one click, dated the due date), Edit &
+  issue, or Skip with a reason - so a skipped month leaves no gap.
+  Generation is idempotent (unique recurring + due date) and runs when
+  the page opens or from cron: `flask recurring-invoices-generate`.
+- **Cash book and bank book** (`app/accounts/books.py`), derived from:
+  counter payments (cash vs UPI/card/bank/cheque/wallet), drawer cash
+  in/out, counter refunds/returns, receipts, refund vouchers, supplier
+  payments, expenses (petty-cash expenses are counted once, via the
+  drawer movement). Opening cash in hand / bank balance on the books
+  opening date. Credit and exchange move no money.
+- **Tenant isolation**: every new table carries `tenant_id` (allocations
+  through their voucher); tests prove another client can't read, void,
+  allocate against, convert or issue anything by guessing ids
+  (`tests/test_accounts.py`, `tests/test_sales_documents.py`).
+
 ## Roadmap
 
 - **Platform build (ARFA general-purpose POS), phase by phase.**
@@ -1254,10 +1345,14 @@ Gunicorn workers or add app servers behind Nginx as load grows.
   - Phase 5: margin scheme (Rule 32(5)) - margin math, lots by IMEI /
     FIFO, separate MSI invoices, no ITC on margin purchases, GSTR-1 HSN
     margin + 0% rows, margin register.
+  - Phase 6: customer and supplier accounts (receipts, payments,
+    allocations, cheques, ageing, statements, WhatsApp reminder, credit
+    warning), advance receipt / refund vouchers with GST (GSTR-1
+    11A/11B, 3B), quotation / proforma / sales order / delivery challan
+    with one-click invoicing, void & re-issue, recurring invoices, cash
+    and bank book.
 
-  Next, in order: 6 receivables/payables (supplier
-  ledger and payments build on Phase 3's opening balances and credit
-  days; expenses marked "not paid yet" become payables there), 7 P&L
+  Next, in order: 7 P&L
   (cost of goods sold from the stock ledger, expenses by category),
   8 e-invoice/e-way bill (only with real credentials; e-way bills for
   transfers), 9 business-type modules, 10 platform polish.
@@ -1276,18 +1371,26 @@ Gunicorn workers or add app servers behind Nginx as load grows.
   - The HSN 0% remainder row carries no quantity (the units are on the
     margin row).
 
+  Phase 6 limits:
+  - Ageing is by bill date; on-account money is shown beside the
+    buckets rather than set against the oldest bill automatically.
+  - A delivery challan doesn't move stock (stock moves when it is
+    invoiced; own-location moves use Stock -> Transfers).
+  - Sales documents can't be edited once saved - cancel and copy.
+  - An advance received and adjusted in the same month is reported in
+    both 11A and 11B (the net is the same; GSTN allows leaving it out).
+  - Bank book is one account (no per-bank books, no reconciliation).
+
   Phase 4 limits:
   - One GST rate per expense: a multi-rate bill is entered as one
     expense per rate.
   - Expense bills aren't matched against GSTR-2B (purchase bills are).
   - Drafts appear when the Expenses page is opened or the cron command
     runs; there is no built-in scheduler.
-- **Remaining document types** - a Delivery Challan for stock moved
-  between the client's own places exists since Phase 3 (Stock ->
-  Transfers). A challan for goods sent out on approval / job work, and
-  Receipt/Refund Vouchers (tied to an advance payment rather than a sale)
-  still need their own flow. Tax Invoice, Bill of Supply, and
-  both Export/RCM variants already work through Invoicing today.
+- **Document types** - all done: Tax Invoice, Bill of Supply,
+  Export/RCM, margin-scheme invoice, credit/debit notes, delivery
+  challans (own-location transfers since Phase 3; job work / approval
+  since Phase 6), receipt and refund vouchers for advances (Phase 6).
 - **Onboarding walkthrough polish** - still just the plain onboarding form;
   a guided first-run checklist for a new Client Admin (add a product, add a
   customer, issue the first invoice) hasn't been built.

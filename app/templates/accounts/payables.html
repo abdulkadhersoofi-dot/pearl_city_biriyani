@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}You owe suppliers - {{ firm_name }}{% include "accounts/_opening_form.html" %}
+{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>What you owe suppliers</h1>
+    <p class="text-muted mt-0">Unpaid bills by age as on {{ as_of.strftime('%d %b %Y') }} · total <strong>Rs. {{ '%.2f'|format(totals.balance) }}</strong></p>
+  </div>
+  <a href="{{ url_for('accounts.new_payment') }}" class="btn btn-primary">+ Payment</a>
+</div>
+{% include "accounts/_nav.html" %}
+<form class="search-bar" method="get">
+  <label class="field" style="margin:0;"><span class="field-label">As on</span><input type="date" name="as_of" value="{{ as_of.isoformat() }}" class="field-input"></label>
+  <button class="btn btn-secondary">Show</button>
+</form>
+{% with party_label='Supplier', party_key='supplier', party_endpoint='accounts.supplier_ledger', empty_text='Nothing owed to any supplier right now.' %}
+{% include "accounts/_ageing_table.html" %}
+{% endwith %}
+<p class="text-muted"><small>Purchase bills (less goods returned), expenses booked as unpaid to a supplier and opening balances, less payments set against them. "On account" is money paid ahead of a bill.</small></p>
+{% include "accounts/_opening_form.html" %}
+{% endblock %}

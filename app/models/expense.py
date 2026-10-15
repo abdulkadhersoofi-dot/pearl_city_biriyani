@@ -1,7 +1,7 @@
 """Expenses (module "expenses"): what the business spends that isn't stock
 - rent, salaries, electricity, fuel, a courier, tea from the drawer.
 
-An Expense is a numbered voucher (EXP/<FY>/0001) once posted, never
+An Expense is a numbered voucher (EV/<FY>/0001) once posted, never
 deleted, voided with a reason. A draft (made by a recurring expense, or
 waiting to be checked) has no number yet. When it was a GST bill, its tax
 is stored the same way a purchase bill's is, so its eligible input tax

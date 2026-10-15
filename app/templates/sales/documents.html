@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}{{ labels[kind] }}s - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>{{ labels[kind] }}s</h1>
+  <a href="{{ url_for('sales.new_document', kind=kind.value) }}" class="btn btn-primary">+ New {{ labels[kind]|lower }}</a>
+</div>
+{% with active_kind=kind.value %}{% include "sales/_nav.html" %}{% endwith %}
+<form class="search-bar" method="get">
+  <input type="hidden" name="kind" value="{{ kind.value }}">
+  <select name="status" class="field-input" style="max-width:200px;" onchange="this.form.submit()">
+    {% for value, text in (('open', 'Open'), ('converted', 'Invoiced'), ('returned', 'Returned'), ('cancelled', 'Cancelled'), ('all', 'All')) %}
+      {% if value != 'returned' or kind.value == 'delivery_challan' %}<option value="{{ value }}" {{ 'selected' if status == value }}>{{ text }}</option>{% endif %}
+    {% endfor %}
+  </select>
+</form>
+<div class="table-wrap card">
+  <table>
+    <thead><tr><th>Date</th><th>Number</th><th>Customer</th>{% if kind.value == 'delivery_challan' %}<th>Purpose</th>{% else %}<th>Valid until</th>{% endif %}<th class="num">Total</th><th>Status</th></tr></thead>
+    <tbody>
+    {% for d in rows %}
+      <tr>
+        <td>{{ d.doc_date.strftime('%d %b %Y') }}</td>
+        <td><a href="{{ url_for('sales.view_document', doc_id=d.id) }}">{{ d.number }}</a></td>
+        <td>{{ d.customer_snapshot.name }}</td>
+        {% if kind.value == 'delivery_challan' %}<td>{{ purposes[d.challan_purpose] if d.challan_purpose else '' }}</td>
+        {% else %}<td>{% if d.valid_until %}{{ d.valid_until.strftime('%d %b %Y') }}{% if d.status.value == 'open' and d.valid_until < today %} <span class="tag tag-low">Expired</span>{% endif %}{% endif %}</td>{% endif %}
+        <td class="num">{{ '%.2f'|format(d.grand_total) }}</td>
+        <td>{{ {'open': 'Open', 'converted': 'Invoiced', 'returned': 'Returned', 'cancelled': 'Cancelled'}[d.status.value] }}{% if d.converted_invoice %} · <a href="{{ url_for('invoicing.view_invoice', invoice_id=d.converted_invoice_id) }}">{{ d.converted_invoice.invoice_number }}</a>{% endif %}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6" class="empty-state">Nothing here.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

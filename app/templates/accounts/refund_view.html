@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}{{ refund.number }} - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>{{ refund.number }}</h1>
+    <p class="text-muted mt-0">Refund voucher · <a href="{{ url_for('accounts.customer_ledger', customer_id=refund.customer_id) }}">{{ refund.customer.name }}</a> ·
+      against <a href="{{ url_for('accounts.view_receipt', receipt_id=refund.receipt_id) }}">{{ refund.receipt.number }}</a> ·
+      <span class="status-badge {{ 'status-void' if refund.status.value == 'voided' else 'status-issued' }}">{{ refund.status.value|title }}</span></p>
+  </div>
+  <a href="{{ url_for('accounts.refund_pdf', refund_id=refund.id) }}" target="_blank" class="btn btn-secondary">Print</a>
+</div>
+{% include "accounts/_nav.html" %}
+<div class="card" style="margin-bottom:16px;">
+  <div class="form-grid">
+    <div><strong>Date</strong><p>{{ refund.voucher_date.strftime('%d %b %Y') }}</p></div>
+    <div><strong>Amount</strong><p>Rs. {{ '%.2f'|format(refund.amount) }}</p></div>
+    <div><strong>Paid back by</strong><p>{{ modes[refund.mode] }}{% if refund.reference %}<br><small>{{ refund.reference }}</small>{% endif %}</p></div>
+    {% if refund.total_tax %}<div><strong>GST reversed</strong><p>{{ '%.2f'|format(refund.total_tax) }} on taxable {{ '%.2f'|format(refund.taxable_value) }}</p></div>{% endif %}
+  </div>
+  <p><strong>Reason:</strong> {{ refund.reason }}</p>
+  {% if refund.void_reason %}<p><strong>Voided:</strong> {{ refund.void_reason }}</p>{% endif %}
+</div>
+{% if refund.status.value == 'posted' %}
+<form method="post" action="{{ url_for('accounts.void_refund', refund_id=refund.id) }}" class="card row void-box" style="gap:10px; align-items:flex-end;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label class="field" style="margin:0; flex:1;"><span class="field-label">Void this refund voucher - reason</span><input type="text" name="reason" class="field-input" required></label>
+  <button class="btn btn-danger" onclick="return confirm('Void {{ refund.number }}?');">Void</button>
+</form>
+{% endif %}
+{% endblock %}

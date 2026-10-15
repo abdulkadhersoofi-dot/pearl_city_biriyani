@@ -133,6 +133,13 @@
   </div>
 </div>
 
+{% if data.advances is defined %}
+<div class="card" style="margin-bottom:20px;">
+  <h2 style="margin-top:0;">Advances (tables 11A / 11B)</h2>
+  <div class="table-wrap">{% include "reports/_advances.html" %}</div>
+</div>
+{% endif %}
+
 <div class="card">
   <h2 style="margin-top:0;">Documents issued</h2>
   <div class="table-wrap">

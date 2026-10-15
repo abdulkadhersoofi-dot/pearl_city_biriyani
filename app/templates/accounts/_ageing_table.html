@@ -1,0 +1,24 @@
+{# rows: [{party, ageing, balance, overdue}], party_endpoint, party_key #}
+<div class="table-wrap card">
+  <table>
+    <thead><tr><th>{{ party_label }}</th>{% for name, _, _ in buckets %}<th class="num">{{ name }} days</th>{% endfor %}<th class="num">On account</th><th class="num">Balance</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      {% set p = r[party_key] %}
+      <tr>
+        <td><a href="{{ url_for(party_endpoint, **{party_key ~ '_id': p.id}) }}">{{ p.name }}</a>
+          {% if r.over_limit %} <span class="tag tag-warn">Over credit limit</span>{% endif %}
+          {% if r.overdue > 0 %} <small class="text-muted">· overdue {{ '%.2f'|format(r.overdue) }}</small>{% endif %}</td>
+        {% for name, _, _ in buckets %}<td class="num">{{ '%.2f'|format(r.ageing[name]) if r.ageing[name] else '-' }}</td>{% endfor %}
+        <td class="num">{{ '%.2f'|format(r.ageing.on_account) if r.ageing.on_account else '-' }}</td>
+        <td class="num"><strong>{{ '%.2f'|format(r.balance) }}</strong></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="{{ buckets|length + 3 }}" class="empty-state">{{ empty_text }}</td></tr>
+    {% endfor %}
+    </tbody>
+    {% if rows %}
+    <tfoot><tr><th>Total</th>{% for name, _, _ in buckets %}<th class="num">{{ '%.2f'|format(totals[name]) }}</th>{% endfor %}<th class="num">{{ '%.2f'|format(totals.on_account) }}</th><th class="num">{{ '%.2f'|format(totals.balance) }}</th></tr></tfoot>
+    {% endif %}
+  </table>
+</div>

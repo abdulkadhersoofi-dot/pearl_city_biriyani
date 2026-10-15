@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Refund voucher - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Refund voucher</h1>
+    <p class="text-muted mt-0">Money given back to {{ receipt.customer.name }} from {{ receipt.number }} (Rs. {{ '%.2f'|format(unused) }} not used against any bill){% if receipt.is_advance and receipt.total_tax %} - the GST paid on the part refunded comes off (Rule 51){% endif %}.</p>
+  </div>
+</div>
+{% include "accounts/_nav.html" %}
+<form method="post" class="card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="form-grid">
+    <label class="field"><span class="field-label">Date</span><input type="date" name="voucher_date" value="{{ form.get('voucher_date') or today.isoformat() }}" class="field-input" required></label>
+    <label class="field"><span class="field-label">Amount (Rs.)</span><input type="text" inputmode="decimal" name="amount" value="{{ form.get('amount') or '%.2f'|format(unused) }}" class="field-input" required></label>
+    <label class="field"><span class="field-label">Paid back by</span>
+      <select name="mode" class="field-input">{% for m, label in modes.items() %}<option value="{{ m.value }}" {{ 'selected' if form.get('mode') == m.value }}>{{ label }}</option>{% endfor %}</select></label>
+    <label class="field"><span class="field-label">Reference</span><input type="text" name="reference" value="{{ form.get('reference', '') }}" class="field-input" maxlength="100"></label>
+  </div>
+  <label class="field"><span class="field-label">Reason</span><input type="text" name="reason" value="{{ form.get('reason', '') }}" class="field-input" required placeholder="Order cancelled"></label>
+  <button class="btn btn-primary">Save refund voucher</button>
+  <a href="{{ url_for('accounts.view_receipt', receipt_id=receipt.id) }}" class="btn btn-quiet">Cancel</a>
+</form>
+{% endblock %}

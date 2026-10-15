@@ -669,6 +669,9 @@ def void_bill(bill: POSBill, voided_by, reason: str, today: date | None = None) 
         from app.margin.services import release
 
         release(bill.tenant_id, "pos_bill", bill.id)
+    from app.accounts.services import release_allocations
+
+    release_allocations(bill.tenant_id, pos_bill_id=bill.id)
     bill.status = POSBillStatus.VOIDED
     bill.void_reason = reason.strip()
     bill.voided_at = utcnow()

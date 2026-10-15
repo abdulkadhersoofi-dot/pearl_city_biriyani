@@ -108,10 +108,12 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="text" name="reason" placeholder="Reason for voiding" required class="field-input" style="flex:1; min-width:200px;">
     <button class="btn btn-danger">Void invoice</button>
+    {% if has_feature('sales_documents') %}<button class="btn btn-secondary" name="reissue" value="1">Void &amp; re-issue a corrected copy</button>{% endif %}
   </form>
 </div>
 {% elif invoice.status.value == 'void' %}
 <div class="card" style="margin-top:20px;">
+  {% if has_feature('sales_documents') and invoice.customer_id %}<p><a href="{{ url_for('invoicing.new_invoice', duplicate_from=invoice.id) }}" class="btn btn-secondary">Duplicate as a new invoice</a></p>{% endif %}
   <p><strong>Voided</strong> on {{ invoice.voided_at.strftime('%d %b %Y %H:%M') }} by {{ invoice.voided_by.name if invoice.voided_by else '-' }}.</p>
   <p class="text-muted">Reason: {{ invoice.void_reason }}</p>
 </div>

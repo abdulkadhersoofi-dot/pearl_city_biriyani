@@ -94,6 +94,13 @@ def suppliers():
     return render_template("purchases/suppliers.html", suppliers=query.order_by(Supplier.name).all(), search=search)
 
 
+def _supplier_form(**kwargs) -> SupplierForm:
+    form = SupplierForm(**kwargs)
+    if not current_user.tenant.has_feature("payables"):
+        del form.opening_balance_date
+    return form
+
+
 def _save_supplier(form, supplier):
     form.populate_obj(supplier)
     supplier.state_name = STATE_NAME_BY_CODE.get(supplier.state_code, "")
@@ -104,7 +111,7 @@ def _save_supplier(form, supplier):
 @roles_required(ADMIN)
 @feature_required("purchases")
 def new_supplier():
-    form = SupplierForm()
+    form = _supplier_form()
     if form.validate_on_submit():
         supplier = Supplier(tenant_id=current_user.tenant_id)
         _save_supplier(form, supplier)
@@ -125,7 +132,7 @@ def new_supplier():
 def edit_supplier(supplier_id):
     supplier = tenant_query(Supplier).filter_by(id=supplier_id).first_or_404()
     assert_owns(supplier)
-    form = SupplierForm(obj=supplier)
+    form = _supplier_form(obj=supplier)
     if form.validate_on_submit():
         _save_supplier(form, supplier)
         record_audit(current_user, "supplier_updated", tenant_id=current_user.tenant_id, entity_type="supplier",

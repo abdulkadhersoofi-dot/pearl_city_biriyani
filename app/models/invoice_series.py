@@ -27,6 +27,14 @@ class DocumentType(str, enum.Enum):
     EXPENSE = "expense"
     # Second-hand goods under Rule 32(5) - its own series (Phase 5).
     MARGIN_SCHEME_INVOICE = "margin_scheme_invoice"
+    # Accounts and pre-sale documents (Phase 6). RECEIPT_VOUCHER above is
+    # the Rule 50 voucher for an advance; PAYMENT_RECEIPT is an ordinary
+    # receipt for money received against bills.
+    PAYMENT_RECEIPT = "payment_receipt"
+    SUPPLIER_PAYMENT = "supplier_payment"
+    QUOTATION = "quotation"
+    PROFORMA_INVOICE = "proforma_invoice"
+    SALES_ORDER = "sales_order"
 
 
 # Document types a tenant may issue, gated by their GST registration type.
@@ -52,6 +60,11 @@ DOCUMENT_TYPE_LABELS = {
     DocumentType.STOCK_ADJUSTMENT: "Stock Adjustment",
     DocumentType.EXPENSE: "Expense Voucher",
     DocumentType.MARGIN_SCHEME_INVOICE: "Invoice - Margin Scheme",
+    DocumentType.PAYMENT_RECEIPT: "Receipt",
+    DocumentType.SUPPLIER_PAYMENT: "Payment Voucher",
+    DocumentType.QUOTATION: "Quotation",
+    DocumentType.PROFORMA_INVOICE: "Proforma Invoice",
+    DocumentType.SALES_ORDER: "Sales Order",
 }
 
 

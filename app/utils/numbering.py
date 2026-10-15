@@ -20,8 +20,15 @@ DEFAULT_PREFIXES = {
     DocumentType.PURCHASE_ORDER: "PO",
     DocumentType.STOCK_TRANSFER: "TDC",
     DocumentType.STOCK_ADJUSTMENT: "ADJ",
-    DocumentType.EXPENSE: "EXP",
+    # "EXP" is the export invoice's prefix; expense vouchers moved to "EV"
+    # (Phase 6 migration renames existing expense series).
+    DocumentType.EXPENSE: "EV",
     DocumentType.MARGIN_SCHEME_INVOICE: "MSI",
+    DocumentType.PAYMENT_RECEIPT: "RCT",
+    DocumentType.SUPPLIER_PAYMENT: "PAY",
+    DocumentType.QUOTATION: "QTN",
+    DocumentType.PROFORMA_INVOICE: "PI",
+    DocumentType.SALES_ORDER: "SO",
 }
 
 

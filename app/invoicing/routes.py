@@ -42,6 +42,66 @@ def _tenant_document_type_choices():
     return [(dt.value, DOCUMENT_TYPE_LABELS[dt]) for dt in INVOICING_DOCUMENT_TYPES if dt in allowed]
 
 
+def resolve_customer_id(form, tenant) -> int:
+    """The picked customer, or a new one made from the form's fields."""
+    customer_id = form.customer_id.data
+    if not customer_id:
+        raise InvoiceValidationError("Select a customer or a branch to bill.")
+    if customer_id != "new":
+        return int(customer_id)
+    if not form.new_customer_name.data:
+        raise InvoiceValidationError("Enter the new customer's name.")
+    customer = Customer(
+        tenant_id=tenant.id,
+        name=form.new_customer_name.data.strip(),
+        gstin=form.new_customer_gstin.data,  # already normalized/validated by the form field
+        address_line1=form.new_customer_address.data,
+        state_code=form.new_customer_state_code.data or form.place_of_supply_state_code.data,
+    )
+    customer.state_name = STATE_NAME_BY_CODE.get(customer.state_code, "")
+    db.session.add(customer)
+    db.session.flush()
+    return customer.id
+
+
+def posted_lines():
+    return parse_line_arrays(
+        request.form.getlist("line_description[]"),
+        request.form.getlist("line_hsn[]"),
+        request.form.getlist("line_qty[]"),
+        request.form.getlist("line_rate[]"),
+        request.form.getlist("line_discount[]"),
+        request.form.getlist("line_gst_rate[]"),
+        request.form.getlist("line_product_id[]"),
+        request.form.getlist("line_unit[]"),
+        request.form.getlist("line_incl[]"),
+    )
+
+
+def header_form_choices(form, tenant):
+    form.gstin_id.choices = [(g.id, g.display_label) for g in tenant.gstins.filter_by(is_active=True)]
+    form.document_type.choices = _tenant_document_type_choices()
+    customers = tenant_query(Customer).filter_by(is_active=True).order_by(Customer.name).all()
+    form.customer_id.choices = [("new", "+ New customer")] + [(str(c.id), c.name) for c in customers]
+    branches = tenant_query(User).filter_by(role=UserRole.STAFF, is_active=True).order_by(User.name).all()
+    form.branch_user_id.choices = [("", "")] + [(str(b.id), b.name) for b in branches]
+    return customers, branches
+
+
+def _linked_source():
+    """A quotation / order / challan or a recurring-invoice draft this
+    invoice is being made from ("Edit & invoice") - only with those
+    modules on, and only the client's own."""
+    tenant = current_user.tenant
+    source = request.values.get("from_document") if tenant.has_feature("sales_documents") else None
+    run = request.values.get("from_run") if tenant.has_feature("recurring_invoices") else None
+    from app.models.sales import RecurringInvoiceRun, SalesDocument
+
+    doc = tenant_query(SalesDocument).filter_by(id=source).first() if source and source.isdigit() else None
+    run = tenant_query(RecurringInvoiceRun).filter_by(id=run).first() if run and run.isdigit() else None
+    return doc, run
+
+
 @invoicing_bp.route("/")
 @roles_required(UserRole.CLIENT_ADMIN)
 def list_invoices():
@@ -68,12 +128,26 @@ def list_invoices():
 def new_invoice():
     tenant = current_user.tenant
     form = InvoiceHeaderForm()
-    form.gstin_id.choices = [(g.id, g.display_label) for g in tenant.gstins.filter_by(is_active=True)]
-    form.document_type.choices = _tenant_document_type_choices()
-    customers = tenant_query(Customer).filter_by(is_active=True).order_by(Customer.name).all()
-    form.customer_id.choices = [("new", "+ New customer")] + [(str(c.id), c.name) for c in customers]
-    branches = tenant_query(User).filter_by(role=UserRole.STAFF, is_active=True).order_by(User.name).all()
-    form.branch_user_id.choices = [("", "")] + [(str(b.id), b.name) for b in branches]
+    customers, branches = header_form_choices(form, tenant)
+    source_doc, source_run = _linked_source()
+    prefill_lines = None
+    if request.method == "GET" and (source_doc or source_run):
+        if source_doc:
+            form.gstin_id.data = source_doc.gstin_id
+            form.document_type.data = source_doc.invoice_document_type.value
+            form.customer_id.data = str(source_doc.customer_id)
+            form.place_of_supply_state_code.data = source_doc.place_of_supply_state_code
+            form.notes.data = source_doc.notes
+            prefill_lines = source_doc.lines
+        else:
+            rec = source_run.recurring
+            form.gstin_id.data = rec.gstin_id
+            form.document_type.data = rec.document_type.value
+            form.customer_id.data = str(rec.customer_id)
+            form.place_of_supply_state_code.data = rec.place_of_supply_state_code
+            form.notes.data = rec.notes
+            form.invoice_date.data = source_run.due_date
+            prefill_lines = rec.lines
 
     duplicate_from = None
     if request.method == "GET" and request.args.get("duplicate_from"):
@@ -91,40 +165,8 @@ def new_invoice():
     if form.validate_on_submit():
         try:
             branch_id = form.branch_user_id.data or None
-            if branch_id:
-                customer_id = None
-            else:
-                customer_id = form.customer_id.data
-                if not customer_id:
-                    raise InvoiceValidationError("Select a customer or a branch to bill.")
-                if customer_id == "new":
-                    if not form.new_customer_name.data:
-                        raise InvoiceValidationError("Enter the new customer's name.")
-                    customer = Customer(
-                        tenant_id=tenant.id,
-                        name=form.new_customer_name.data.strip(),
-                        gstin=form.new_customer_gstin.data,  # already normalized/validated by the form field
-                        address_line1=form.new_customer_address.data,
-                        state_code=form.new_customer_state_code.data or form.place_of_supply_state_code.data,
-                    )
-                    customer.state_name = STATE_NAME_BY_CODE.get(customer.state_code, "")
-                    db.session.add(customer)
-                    db.session.flush()
-                    customer_id = customer.id
-                else:
-                    customer_id = int(customer_id)
-
-            lines = parse_line_arrays(
-                request.form.getlist("line_description[]"),
-                request.form.getlist("line_hsn[]"),
-                request.form.getlist("line_qty[]"),
-                request.form.getlist("line_rate[]"),
-                request.form.getlist("line_discount[]"),
-                request.form.getlist("line_gst_rate[]"),
-                request.form.getlist("line_product_id[]"),
-                request.form.getlist("line_unit[]"),
-                request.form.getlist("line_incl[]"),
-            )
+            customer_id = None if branch_id else resolve_customer_id(form, tenant)
+            lines = posted_lines()
 
             invoice = create_invoice(
                 tenant,
@@ -146,10 +188,28 @@ def new_invoice():
                 tenant_id=tenant.id,
                 entity_type="invoice",
                 entity_id=invoice.id,
-                details={"invoice_number": invoice.invoice_number, "branch_user_id": invoice.branch_user_id},
+                details={"invoice_number": invoice.invoice_number, "branch_user_id": invoice.branch_user_id,
+                         **({"from_document": source_doc.number} if source_doc else {}),
+                         **({"from_recurring_run": source_run.id} if source_run else {})},
             )
+            if source_doc or source_run:
+                from app.sales import services as sales_services
+
+                try:
+                    if source_doc:
+                        sales_services.mark_converted(source_doc, invoice, current_user)
+                    else:
+                        sales_services.mark_run_issued(source_run, invoice, current_user)
+                except sales_services.SalesError as exc:
+                    raise InvoiceValidationError(exc.message)
             db.session.commit()
             flash(f"Invoice {invoice.invoice_number} created.", "success")
+            if invoice.customer_id:
+                from app.accounts.receivables import credit_warning
+
+                warning = credit_warning(tenant, invoice.customer)
+                if warning:
+                    flash(warning, "warning")
             return redirect(url_for("invoicing.view_invoice", invoice_id=invoice.id))
         except InvoiceValidationError as exc:
             db.session.rollback()
@@ -163,7 +223,10 @@ def new_invoice():
         products=products,
         customers=customers,
         branches=branches,
-        duplicate_from=duplicate_from
+        duplicate_from=duplicate_from,
+        prefill_lines=prefill_lines,
+        source_doc=source_doc,
+        source_run=source_run,
     )
 
 
@@ -208,6 +271,10 @@ def void_invoice_route(invoice_id):
         )
         db.session.commit()
         flash(f"Invoice {invoice.invoice_number} voided.", "success")
+        if request.form.get("reissue") and current_user.tenant.has_feature("sales_documents"):
+            # Void & re-issue: the corrected copy starts as a duplicate of
+            # the voided one, with a new number when it is saved.
+            return redirect(url_for("invoicing.new_invoice", duplicate_from=invoice.id))
     except InvoiceValidationError as exc:
         db.session.rollback()
         flash(exc.message, "error")

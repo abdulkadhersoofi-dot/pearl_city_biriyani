@@ -19,6 +19,10 @@ from app.models.purchase import (
 )
 from app.models.margin import MarginAllocation
 from app.models.expense import ExpenseCategory, Expense, RecurringExpense
+from app.models.accounts import (
+    CustomerReceipt, ReceiptAllocation, RefundVoucher, SupplierPayment, PaymentAllocation,
+)
+from app.models.sales import SalesDocument, SalesDocumentLine, RecurringInvoice, RecurringInvoiceRun
 from app.models.note import CreditDebitNote, NoteLine, NoteStatus
 from app.models.audit_log import AuditLog
 from app.models.stock import BranchStockAllocation

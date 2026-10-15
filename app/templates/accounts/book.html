@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}{{ book|title }} book - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>{{ 'Cash book' if book == 'cash' else 'Bank book' }}</h1>
+    <p class="text-muted mt-0">{{ data.start.strftime('%d %b %Y') }} - {{ data.end.strftime('%d %b %Y') }} · opening Rs. {{ '%.2f'|format(data.opening) }} · in Rs. {{ '%.2f'|format(data.total_in) }} · out Rs. {{ '%.2f'|format(data.total_out) }} · closing <strong>Rs. {{ '%.2f'|format(data.closing) }}</strong></p>
+  </div>
+</div>
+{% include "accounts/_nav.html" %}
+<form class="search-bar" method="get">
+  <label class="field" style="margin:0;"><span class="field-label">From</span><input type="date" name="start" value="{{ start.isoformat() }}" class="field-input"></label>
+  <label class="field" style="margin:0;"><span class="field-label">To</span><input type="date" name="end" value="{{ end.isoformat() }}" class="field-input"></label>
+  <button class="btn btn-secondary">Show</button>
+</form>
+{% if data.before_opening %}<p class="text-muted">Your books here start on {{ data.opening_date.strftime('%d %b %Y') }} - nothing before that is counted.</p>{% endif %}
+<div class="table-wrap card" style="margin-bottom:16px;">
+  <table>
+    <thead><tr><th>Date</th><th>Particulars</th><th>Document</th><th class="num">In</th><th class="num">Out</th><th class="num">Balance</th></tr></thead>
+    <tbody>
+      <tr><td>{{ data.start.strftime('%d %b %Y') }}</td><td><em>Opening balance</em></td><td></td><td></td><td></td><td class="num">{{ '%.2f'|format(data.opening) }}</td></tr>
+    {% for e in data.rows %}
+      <tr>
+        <td>{{ e.entry_date.strftime('%d %b %Y') }}</td>
+        <td>{{ e.particulars }}</td>
+        <td>{% if e.link %}<a href="{{ url_for(e.link[0], **e.link[1]) }}">{{ e.number }}</a>{% else %}{{ e.number }}{% endif %}</td>
+        <td class="num">{{ '%.2f'|format(e.money_in) if e.money_in else '' }}</td>
+        <td class="num">{{ '%.2f'|format(e.money_out) if e.money_out else '' }}</td>
+        <td class="num">{{ '%.2f'|format(e.balance) }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6" class="empty-state">No money moved {{ 'in cash' if book == 'cash' else 'through the bank' }} in this period.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+<form method="post" action="{{ url_for('accounts.books_opening') }}" class="card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="back" value="{{ book }}">
+  <h2 class="mt-0">Opening balances</h2>
+  <p class="text-muted mt-0"><small>The day you started keeping accounts here, with the cash in hand and bank balance on that day. Customer and supplier dues from before it go in as their opening balances; invoices and bills dated earlier are left out of what they owe.</small></p>
+  <div class="form-grid">
+    <label class="field"><span class="field-label">Books start on</span><input type="date" name="books_opening_date" value="{{ tenant.books_opening_date.isoformat() if tenant.books_opening_date else '' }}" class="field-input"></label>
+    <label class="field"><span class="field-label">Cash in hand (Rs.)</span><input type="text" inputmode="decimal" name="cash_opening_balance" value="{{ '%.2f'|format(tenant.cash_opening_balance or 0) }}" class="field-input"></label>
+    <label class="field"><span class="field-label">Bank balance (Rs.)</span><input type="text" inputmode="decimal" name="bank_opening_balance" value="{{ '%.2f'|format(tenant.bank_opening_balance or 0) }}" class="field-input"></label>
+  </div>
+  <button class="btn btn-secondary">Save opening balances</button>
+</form>
+{% endblock %}

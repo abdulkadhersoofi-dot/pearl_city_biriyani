@@ -46,6 +46,10 @@
   </div>
 </div>
 
+{% if data.advances is defined %}
+<p class="text-muted"><small>(a) includes tax on advances received for services less advances adjusted or refunded this month (GSTR-1 11A - 11B):
+  taxable Rs. {{ '%.2f'|format(data.advances.net.taxable_value) }}, tax Rs. {{ '%.2f'|format(data.advances.net.cgst + data.advances.net.sgst + data.advances.net.igst) }}.</small></p>
+{% endif %}
 <div class="totals-panel">
   <div class="totals-box" style="min-width:420px;">
     <div class="totals-row grand"><span>Gross output tax payable</span><span>Rs. {{ '%.2f'|format(data.gross_tax_payable) }}</span></div>

@@ -8,6 +8,20 @@ from app.extensions import db
 from app.models.customer import Customer
 from app.models.user import UserRole
 from app.utils.indian_states import STATE_NAME_BY_CODE
+
+
+def _customer_form(**kwargs) -> CustomerForm:
+    form = CustomerForm(**kwargs)
+    if not current_user.tenant.has_feature("receivables"):
+        for name in CustomerForm.ACCOUNT_FIELDS:
+            delattr(form, name)
+    return form
+
+
+def _save(form, customer):
+    form.populate_obj(customer)
+    if getattr(form, "opening_balance", None) is not None and customer.opening_balance is None:
+        customer.opening_balance = 0
 from app.utils.tenant_scope import assert_owns, tenant_query
 
 
@@ -25,10 +39,10 @@ def list_customers():
 @customers_bp.route("/new", methods=["GET", "POST"])
 @roles_required(UserRole.CLIENT_ADMIN)
 def new_customer():
-    form = CustomerForm()
+    form = _customer_form()
     if form.validate_on_submit():
         customer = Customer(tenant_id=current_user.tenant_id)
-        form.populate_obj(customer)
+        _save(form, customer)
         customer.state_name = STATE_NAME_BY_CODE.get(customer.state_code, "")
         db.session.add(customer)
         db.session.commit()
@@ -42,9 +56,9 @@ def new_customer():
 def edit_customer(customer_id):
     customer = tenant_query(Customer).filter_by(id=customer_id).first_or_404()
     assert_owns(customer)
-    form = CustomerForm(obj=customer)
+    form = _customer_form(obj=customer)
     if form.validate_on_submit():
-        form.populate_obj(customer)
+        _save(form, customer)
         customer.state_name = STATE_NAME_BY_CODE.get(customer.state_code, "")
         db.session.commit()
         flash(f"{customer.name} updated.", "success")

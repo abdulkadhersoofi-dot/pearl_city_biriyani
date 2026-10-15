@@ -331,6 +331,10 @@ def void_invoice(invoice: Invoice, voided_by, reason: str) -> None:
     invoice.voided_by_id = voided_by.id
     invoice.void_reason = reason.strip()
     invoice.voided_at = utcnow()
+    # Anything received against it goes back on the customer's account.
+    from app.accounts.services import release_allocations
+
+    release_allocations(invoice.tenant_id, invoice_id=invoice.id)
     # The goods it moved go back: out of the customer sale, or - for an
     # invoice billed to a branch - back out of the branch's stock, both in
     # the ledger and on the branch's daily counter for that day.

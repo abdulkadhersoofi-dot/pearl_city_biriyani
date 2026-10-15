@@ -42,6 +42,7 @@
       <td class="num">{{ '%.2f'|format(data.outward_nil_rated.sgst) }}</td>
       <td class="num">{{ '%.2f'|format(data.outward_nil_rated.igst) }}</td>
     </tr>
+    {% if data.advances is defined %}<tr><td colspan="5"><small>(a) includes tax on advances less advances adjusted / refunded (GSTR-1 11A - 11B): tax Rs. {{ '%.2f'|format(data.advances.net.cgst + data.advances.net.sgst + data.advances.net.igst) }}</small></td></tr>{% endif %}
     <tr class="grand"><td>Gross output tax payable</td><td class="num" colspan="4">Rs. {{ '%.2f'|format(data.gross_tax_payable) }}</td></tr>
   </table>
 

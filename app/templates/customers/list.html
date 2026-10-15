@@ -24,7 +24,7 @@
         <td>{{ c.gstin or '-' }}</td>
         <td>{{ c.state_name or '-' }}</td>
         <td>{{ c.phone or '-' }}</td>
-        <td><a href="{{ url_for('customers.edit_customer', customer_id=c.id) }}">Edit</a></td>
+        <td><a href="{{ url_for('customers.edit_customer', customer_id=c.id) }}">Edit</a>{% if has_feature('receivables') %} · <a href="{{ url_for('accounts.customer_ledger', customer_id=c.id) }}">Account</a>{% endif %}</td>
       </tr>
     {% else %}
       <tr><td colspan="5" class="empty-state">No customers yet. Add your first one.</td></tr>

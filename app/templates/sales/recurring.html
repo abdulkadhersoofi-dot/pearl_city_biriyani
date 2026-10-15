@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Recurring invoices - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Recurring invoices</h1>
+    <p class="text-muted mt-0">AMC, rent, catering contracts - each due date is drafted here for you to issue (or skip). Nothing is numbered until you issue it.</p>
+  </div>
+  <a href="{{ url_for('sales.new_recurring') }}" class="btn btn-primary">+ New recurring invoice</a>
+</div>
+{% with active_kind=None %}{% include "sales/_nav.html" %}{% endwith %}
+
+<h2>Waiting to be issued{% if new_runs %} <small class="text-muted">({{ new_runs }} new)</small>{% endif %}</h2>
+<div class="table-wrap card" style="margin-bottom:16px;">
+  <table>
+    <thead><tr><th>Due</th><th>Contract</th><th>Customer</th><th class="num">Approx. amount</th><th></th></tr></thead>
+    <tbody>
+    {% for run in pending %}
+      {% set rec = run.recurring %}
+      <tr>
+        <td>{{ run.due_date.strftime('%d %b %Y') }}{% if run.due_date < today %} <span class="tag tag-warn">due</span>{% endif %}</td>
+        <td>{{ rec.name }}</td>
+        <td>{{ rec.customer.name }}</td>
+        <td class="num">{% set ns = namespace(t=0) %}{% for l in rec.lines %}{% set ns.t = ns.t + (l.qty|float) * (l.rate|float) %}{% endfor %}{{ '%.2f'|format(ns.t) }}</td>
+        <td>
+          <div class="row" style="gap:6px; justify-content:flex-end;">
+            <form method="post" action="{{ url_for('sales.issue_run', run_id=run.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-primary btn-sm">Issue</button></form>
+            <a href="{{ url_for('invoicing.new_invoice', from_run=run.id) }}" class="btn btn-secondary btn-sm">Edit &amp; issue</a>
+            <form method="post" action="{{ url_for('sales.skip_run', run_id=run.id) }}" class="row" style="gap:4px;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="text" name="reason" placeholder="Why skip?" class="field-input" style="max-width:140px;" required>
+              <button class="btn btn-quiet btn-sm">Skip</button></form>
+          </div>
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="5" class="empty-state">Nothing due.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<h2>Contracts</h2>
+<div class="table-wrap card" style="margin-bottom:16px;">
+  <table>
+    <thead><tr><th>Name</th><th>Customer</th><th>Repeats</th><th>Next</th><th>Ends</th><th></th></tr></thead>
+    <tbody>
+    {% for rec in rows %}
+      <tr>
+        <td><a href="{{ url_for('sales.edit_recurring', recurring_id=rec.id) }}">{{ rec.name }}</a>{% if not rec.is_active %} <span class="tag">Paused</span>{% endif %}</td>
+        <td>{{ rec.customer.name }}</td>
+        <td>{{ frequencies[rec.frequency] }}</td>
+        <td>{{ rec.next_due_date.strftime('%d %b %Y') }}</td>
+        <td>{{ rec.end_date.strftime('%d %b %Y') if rec.end_date else '-' }}</td>
+        <td><form method="post" action="{{ url_for('sales.toggle_recurring', recurring_id=rec.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-quiet btn-sm">{{ 'Pause' if rec.is_active else 'Resume' }}</button></form></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6" class="empty-state">No recurring invoices yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if recent %}
+<h2>Recently issued / skipped</h2>
+<div class="table-wrap card">
+  <table><tbody>
+  {% for run in recent %}
+    <tr><td>{{ run.due_date.strftime('%d %b %Y') }}</td><td>{{ run.recurring.name }}</td>
+      <td>{% if run.invoice %}<a href="{{ url_for('invoicing.view_invoice', invoice_id=run.invoice_id) }}">{{ run.invoice.invoice_number }}</a>{% else %}Skipped - {{ run.skip_reason }}{% endif %}</td></tr>
+  {% endfor %}
+  </tbody></table>
+</div>
+{% endif %}
+{% endblock %}

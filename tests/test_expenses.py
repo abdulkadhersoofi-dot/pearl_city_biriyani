@@ -111,7 +111,7 @@ def test_posted_expense_is_numbered_and_drafts_never_take_numbers(db, tenant, cl
     a = es.create_expense(tenant, client_admin, _input(tenant))
     b = es.create_expense(tenant, client_admin, _input(tenant, "250", "Fuel", payment_mode=ExpensePaymentMode.UPI))
     assert draft.number is None and draft.status == ExpenseStatus.DRAFT
-    assert a.number.startswith("EXP/") and a.number != b.number
+    assert a.number.startswith("EV/") and a.number != b.number
     es.post_expense(draft, client_admin)
     assert draft.number.endswith("0003")
     with pytest.raises(es.ExpenseError, match="already posted"):

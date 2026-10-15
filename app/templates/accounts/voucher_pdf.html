@@ -1,0 +1,46 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8">{% include "accounts/_pdf_style.html" %}</head>
+<body>
+  {% set titles = {'receipt': 'RECEIPT', 'advance': 'RECEIPT VOUCHER (ADVANCE)', 'refund': 'REFUND VOUCHER', 'payment': 'PAYMENT VOUCHER'} %}
+  <div class="cols">
+    <div>
+      <h1>{{ firm_name }}</h1>
+      {% if voucher.gstin.gstin %}GSTIN: {{ voucher.gstin.gstin }}<br>{% endif %}
+      {{ voucher.gstin.registered_address or '' }}
+    </div>
+    <div style="text-align:right;">
+      <strong>{{ voucher.number }}</strong><br>
+      Date: {{ voucher.voucher_date.strftime('%d %b %Y') }}
+    </div>
+  </div>
+  <div class="doc-title">{{ titles[kind] }}</div>
+  {% if voucher.status.value == 'voided' %}<p class="void">VOID - {{ voucher.void_reason }}</p>{% endif %}
+  <table>
+    <tr><th style="width:30%;">{{ 'Paid to' if kind in ('refund', 'payment') else 'Received from' }}</th>
+      <td>{{ party.name }}{% if party.gstin %}<br>GSTIN: {{ party.gstin }}{% endif %}{% if party.address_line1 %}<br>{{ party.address_line1 }}{% endif %}{% if party.state_name %}<br>{{ party.state_name }}{% endif %}</td></tr>
+    <tr><th>Amount</th><td><strong>Rs. {{ '%.2f'|format(voucher.amount) }}</strong></td></tr>
+    <tr><th>Mode</th><td>{{ modes[voucher.mode] }}{% if voucher.reference %} · {{ voucher.reference }}{% endif %}
+      {% if voucher.cheque_no %}<br>Cheque no. {{ voucher.cheque_no }}{% if voucher.cheque_date %} dated {{ voucher.cheque_date.strftime('%d %b %Y') }}{% endif %}{% if voucher.bank_name %}, {{ voucher.bank_name }}{% endif %} (subject to realisation){% endif %}</td></tr>
+    {% if kind == 'refund' %}<tr><th>Against</th><td>Receipt voucher {{ voucher.receipt.number }} dated {{ voucher.receipt.voucher_date.strftime('%d %b %Y') }}</td></tr>
+    <tr><th>Reason</th><td>{{ voucher.reason }}</td></tr>{% endif %}
+    {% if kind in ('receipt', 'payment') and voucher.allocations %}
+    <tr><th>Against</th><td>{% for a in voucher.allocations %}
+      {% if kind == 'receipt' %}{{ a.invoice.invoice_number if a.invoice else (a.pos_bill.bill_number if a.pos_bill else 'Opening balance') }}{% else %}{{ (a.purchase_bill.number ~ ' (' ~ a.purchase_bill.supplier_invoice_no ~ ')') if a.purchase_bill else (a.expense.number if a.expense else 'Opening balance') }}{% endif %}: Rs. {{ '%.2f'|format(a.amount) }}{% if not loop.last %}<br>{% endif %}{% endfor %}</td></tr>
+    {% endif %}
+    {% if voucher.notes %}<tr><th>Notes</th><td>{{ voucher.notes }}</td></tr>{% endif %}
+  </table>
+  {% if kind in ('advance', 'refund') and voucher.total_tax %}
+  <h2>GST {{ 'on the advance' if kind == 'advance' else 'reversed on the refund' }}</h2>
+  <table>
+    <tr><th>Place of supply</th><th>Rate</th><th class="num">Taxable value</th><th class="num">CGST</th><th class="num">SGST</th><th class="num">IGST</th></tr>
+    {% set src = voucher if kind == 'advance' else voucher.receipt %}
+    <tr><td>{{ src.place_of_supply_state_code|state_name }}</td><td>{{ src.gst_rate|qty }}%</td><td class="num">{{ '%.2f'|format(voucher.taxable_value) }}</td>
+      <td class="num">{{ '%.2f'|format(voucher.cgst_amount) }}</td><td class="num">{{ '%.2f'|format(voucher.sgst_amount) }}</td><td class="num">{{ '%.2f'|format(voucher.igst_amount) }}</td></tr>
+  </table>
+  {% elif kind == 'advance' %}
+  <p class="sub">No GST is charged on this advance{% if not voucher.for_services %} (supply of goods - Notification 66/2017-CT){% endif %}.</p>
+  {% endif %}
+  <p class="sign">For {{ firm_name }}<br><br><br>Authorised signatory</p>
+</body>
+</html>

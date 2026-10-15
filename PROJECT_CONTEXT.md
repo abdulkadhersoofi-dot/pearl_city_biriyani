@@ -306,7 +306,19 @@ this list is just the index.
   (mixed sales refused - the user's decision), no ITC on margin
   purchases, GSTR-1 HSN margin row + 0% remainder row, margin register
   (Excel/PDF), editable declaration in Settings.
-  Phases 6-10 still to build, in order.
+- **Platform build Phase 6** (flags `receivables`, `payables`,
+  `sales_documents`, `recurring_invoices`, `cash_bank_book`):
+  `app/accounts/` (ledgers computed from documents, receipts RCT /
+  advance receipt vouchers RV / refund vouchers RFV / payment vouchers
+  PAY with allocations and cheque status, ageing, statement PDF,
+  WhatsApp reminder with signed statement link, credit-limit warning,
+  cash & bank book), `app/utils/advance_gst.py` (GST on advances,
+  GSTR-1 11A/11B and 3B net via `app/reports/advances.py`), `app/sales/`
+  (quotation QTN, proforma PI, sales order SO, delivery challan DC -
+  one-click or edit-then invoice; recurring invoices as numberless
+  draft runs, `flask recurring-invoices-generate`), void & re-issue.
+  Expense vouchers moved from prefix EXP to EV.
+  Phases 7-10 still to build, in order.
 
 ## 5. Chronological development history (this session)
 
@@ -582,10 +594,8 @@ Flask app — nothing in either can affect the website.
 Trust **README.md's own "Roadmap" section** over any stale task-
 tracker state (see the warning in §11) — as of this file:
 
-- **Remaining document types**: a Delivery Challan for own-location
-  stock transfers exists (Phase 3); an on-approval/job-work challan and
-  Receipt/Refund Vouchers still need their own flow (Tax Invoice, Bill
-  of Supply, Export/RCM variants already work).
+- **Document types**: all built (job-work / approval challans and
+  advance receipt / refund vouchers since Phase 6).
 - **Onboarding walkthrough polish**: still just a plain form, no
   guided first-run checklist.
 - **Admin console drill-down**: POS bills/notes don't have full

@@ -487,6 +487,7 @@
           <h2>Printed</h2>
           <p class="text-muted mt-0">Bill <strong x-text="completedBillNumber"></strong> sent to the printer.</p>
           <p class="change-due" x-show="completedChange !== null && completedChange > 0" x-text="'Give change: Rs. ' + (completedChange || 0).toFixed(2)"></p>
+          <p class="text-muted" x-show="creditWarning" x-text="creditWarning" style="color:#8a5a00; font-weight:600;"></p>
           <button type="button" class="btn btn-secondary btn-block" @click="printReceipt(DEFAULT_RECEIPT_FORMAT, false)">Reprint</button>
           <button type="button" class="btn btn-secondary btn-block" style="margin-top:10px;" @click="shareBill()">Share on WhatsApp</button>
           <button type="button" class="btn btn-primary btn-block" style="margin-top:10px;" @click="newSale()">New sale</button>
@@ -610,6 +611,7 @@ function posTerminal() {
     completedBillId: null,
     completedBillNumber: "",
     completedChange: null,
+    creditWarning: "",
     showShortcuts: false,
     scanMessage: "",
     scanBuffer: "",
@@ -991,6 +993,7 @@ function posTerminal() {
         this.completedBillId = data.bill_id;
         this.completedBillNumber = data.bill_number;
         this.completedChange = data.change_due;
+        this.creditWarning = data.credit_warning || "";
         if (data.stock_status) this.stock = data.stock_status;
         if (this.exchange && payments && payments.some(p => p.mode === "exchange")) this.exchange = null;
         this.printReceipt(DEFAULT_RECEIPT_FORMAT, true);
@@ -1059,6 +1062,7 @@ function posTerminal() {
       this.completedBillId = null;
       this.completedBillNumber = "";
       this.completedChange = null;
+      this.creditWarning = "";
       this.customer = null;
       this.billDisc = {kind: "percent", value: 0};
       this.$nextTick(() => { if (this.$refs.search) this.$refs.search.focus(); });

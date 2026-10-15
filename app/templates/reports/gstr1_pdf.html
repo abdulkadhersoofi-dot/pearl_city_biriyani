@@ -81,6 +81,7 @@
     {% else %}<tr><td colspan="9">None this period.</td></tr>{% endfor %}
   </table>
 
+  {% if data.advances is defined %}<h2>Advances (11A / 11B)</h2>{% include "reports/_advances.html" %}{% endif %}
   <h2>Documents issued</h2>
   <table>
     <tr><th>Type</th><th>Series</th><th>From</th><th>To</th><th>Issued</th><th>Cancelled</th></tr>

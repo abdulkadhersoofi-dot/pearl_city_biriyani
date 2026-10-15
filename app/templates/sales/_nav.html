@@ -1,0 +1,8 @@
+<nav class="subnav">
+  {% if has_feature('sales_documents') %}
+  {% for k in ('quotation', 'proforma', 'sales_order', 'delivery_challan') %}
+  <a href="{{ url_for('sales.documents', kind=k) }}" class="{{ 'active' if active_kind == k }}">{{ {'quotation': 'Quotations', 'proforma': 'Proforma invoices', 'sales_order': 'Sales orders', 'delivery_challan': 'Delivery challans'}[k] }}</a>
+  {% endfor %}
+  {% endif %}
+  {% if has_feature('recurring_invoices') %}<a href="{{ url_for('sales.recurring') }}" class="{{ 'active' if request.endpoint and 'recurring' in request.endpoint }}">Recurring invoices</a>{% endif %}
+</nav>

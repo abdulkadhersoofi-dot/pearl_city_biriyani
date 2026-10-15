@@ -111,6 +111,7 @@ a { color: var(--color-primary-dark); }
 .flash-success { background: var(--color-success-bg); color: var(--color-primary-dark); }
 .flash-error { background: var(--color-danger-bg); color: var(--color-danger); }
 .flash-info { background: var(--color-info-bg); color: #2b4a7a; }
+.flash-warning { background: #fff4d6; color: #8a5a00; }
 
 /* --- Account-status banners (outside .app-main, so they span full width
    and sit below the topbar on every page, not scoped to page content) --- */
@@ -471,7 +472,7 @@ tr:last-child td { border-bottom: none; }
 .tag { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 0.75rem; font-weight: 700; background: #f0f0f0; color: var(--color-text-muted); }
 .tag-low, .tag-dead, .tag-expired { background: var(--color-danger-bg); color: var(--color-danger); }
 .tag-fast { background: var(--color-success-bg); color: var(--color-primary-dark); }
-.tag-slow, .tag-soon { background: #fff4d6; color: #8a5a00; }
+.tag-slow, .tag-soon, .tag-warn { background: #fff4d6; color: #8a5a00; }
 td.num, th.num { text-align: right; white-space: nowrap; }
 .qty-neg { color: var(--color-danger); }
 .stock-lines td { vertical-align: top; }

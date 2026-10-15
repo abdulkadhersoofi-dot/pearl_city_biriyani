@@ -33,7 +33,7 @@ def test_presets_differ_by_business_type():
 
 def test_settings_only_offers_modules_that_are_built():
     # Phase 2 (POS for every business) built these four.
-    assert [f.key for f in AVAILABLE_FEATURES] == ["categories", "inventory", "purchases", "expenses", "variants", "batch_expiry", "serial_imei", "margin_scheme", "credit_sales", "multi_price_list", "favourites", "day_close"]
+    assert [f.key for f in AVAILABLE_FEATURES] == ["categories", "inventory", "purchases", "expenses", "variants", "batch_expiry", "serial_imei", "margin_scheme", "receivables", "payables", "sales_documents", "recurring_invoices", "cash_bank_book", "credit_sales", "multi_price_list", "favourites", "day_close"]
 
 
 def test_a_tenant_with_no_flags_has_every_feature_off(tenant):

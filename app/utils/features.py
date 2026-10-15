@@ -87,6 +87,41 @@ FEATURES = {
             "item cost.",
             available=True,
         ),
+        Feature(
+            "receivables",
+            "Customer accounts",
+            "What each customer owes: credit invoices and counter bills, receipts against them (full, part or "
+            "on account), cheques, opening balances, ageing, a credit-limit warning at billing, statements and "
+            "WhatsApp reminders. Includes advance receipt and refund vouchers with GST on advances for services.",
+            available=True,
+        ),
+        Feature(
+            "payables",
+            "Supplier accounts",
+            "What you owe each supplier: purchase bills and unpaid expenses, payment vouchers against them "
+            "(cash, bank, cheque), opening balances and ageing.",
+            available=True,
+        ),
+        Feature(
+            "sales_documents",
+            "Quotations, orders & challans",
+            "Quotations / estimates, proforma invoices, sales orders and delivery challans (job work, sale on "
+            "approval) - each turned into an invoice in one click.",
+            available=True,
+        ),
+        Feature(
+            "recurring_invoices",
+            "Recurring invoices",
+            "Monthly AMC, rent or catering contracts: the invoice is drafted on each due date for you to "
+            "issue (or skip) in one click.",
+            available=True,
+        ),
+        Feature(
+            "cash_bank_book",
+            "Cash & bank book",
+            "Day-by-day cash in hand and bank balance, built from counter sales, receipts, payments and expenses.",
+            available=True,
+        ),
         Feature("weighing", "Weighing scale items", "Price per kg, weight entry at billing."),
         Feature("restaurant_mode", "Restaurant tables & KOT", "Tables, kitchen order tickets, order types."),
         Feature("job_cards", "Job cards", "Repair and service jobs from receipt to delivery."),
@@ -129,17 +164,23 @@ AVAILABLE_FEATURES = [f for f in FEATURES.values() if f.available]
 # to these), never retroactively.
 BUSINESS_TYPE_PRESETS: dict[BusinessType, set[str]] = {
     BusinessType.RETAIL: {"inventory", "purchases", "expenses", "credit_sales", "categories", "favourites"},
-    BusinessType.WHOLESALE: {"inventory", "purchases", "expenses", "credit_sales", "multi_price_list", "eway_bill"},
+    BusinessType.WHOLESALE: {
+        "inventory", "purchases", "expenses", "credit_sales", "multi_price_list", "eway_bill", "receivables",
+        "payables", "sales_documents", "cash_bank_book",
+    },
     BusinessType.RESTAURANT: {"categories", "restaurant_mode", "expenses"},
     BusinessType.MOBILE_ELECTRONICS: {
         "inventory", "purchases", "expenses", "credit_sales", "serial_imei", "margin_scheme", "job_cards",
     },
     BusinessType.PHARMACY: {"inventory", "purchases", "expenses", "credit_sales", "batch_expiry", "favourites"},
     BusinessType.APPAREL: {"inventory", "purchases", "expenses", "variants", "categories", "loyalty"},
-    BusinessType.HARDWARE: {"inventory", "purchases", "expenses", "credit_sales", "multi_price_list", "categories"},
+    BusinessType.HARDWARE: {
+        "inventory", "purchases", "expenses", "credit_sales", "multi_price_list", "categories", "receivables",
+        "payables", "sales_documents",
+    },
     BusinessType.JEWELLERY: {"inventory", "purchases", "expenses", "credit_sales", "weighing"},
     BusinessType.BAKERY: {"inventory", "purchases", "expenses", "weighing", "batch_expiry", "categories", "favourites"},
-    BusinessType.SERVICES: {"expenses", "credit_sales", "job_cards"},
+    BusinessType.SERVICES: {"expenses", "credit_sales", "job_cards", "receivables", "sales_documents", "recurring_invoices"},
     BusinessType.OTHER: set(),
 }
 

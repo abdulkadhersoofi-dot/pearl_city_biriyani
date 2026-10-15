@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}{{ payment.number }} - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>{{ payment.number }}</h1>
+    <p class="text-muted mt-0">Payment voucher · <a href="{{ url_for('accounts.supplier_ledger', supplier_id=payment.supplier_id) }}">{{ payment.supplier.name }}</a> ·
+      <span class="status-badge {{ 'status-void' if payment.status.value == 'voided' else 'status-issued' }}">{{ payment.status.value|title }}</span>
+      {% if payment.cheque_status %}<span class="tag {{ {'pending': 'tag-warn', 'cleared': 'tag-fast', 'bounced': 'tag-low'}[payment.cheque_status.value] }}">Cheque {{ payment.cheque_status.value }}</span>{% endif %}</p>
+  </div>
+  <a href="{{ url_for('accounts.payment_pdf', payment_id=payment.id) }}" target="_blank" class="btn btn-secondary">Print</a>
+</div>
+{% include "accounts/_nav.html" %}
+<div class="card" style="margin-bottom:16px;">
+  <div class="form-grid">
+    <div><strong>Date</strong><p>{{ payment.voucher_date.strftime('%d %b %Y') }}</p></div>
+    <div><strong>Amount</strong><p>Rs. {{ '%.2f'|format(payment.amount) }}</p></div>
+    <div><strong>Paid by</strong><p>{{ modes[payment.mode] }}{% if payment.reference %}<br><small>{{ payment.reference }}</small>{% endif %}</p></div>
+    {% if payment.cheque_no %}<div><strong>Cheque</strong><p>No. {{ payment.cheque_no }}{% if payment.cheque_date %}, {{ payment.cheque_date.strftime('%d %b %Y') }}{% endif %}{% if payment.bank_name %}<br><small>{{ payment.bank_name }}</small>{% endif %}{% if payment.cleared_on %}<br><small>{{ payment.cheque_status.value|title }} on {{ payment.cleared_on.strftime('%d %b %Y') }}</small>{% endif %}</p></div>{% endif %}
+    <div><strong>Not yet set against a bill</strong><p>Rs. {{ '%.2f'|format(unused) }}</p></div>
+  </div>
+  {% if payment.notes %}<p><strong>Notes:</strong> {{ payment.notes }}</p>{% endif %}
+  {% if payment.void_reason %}<p><strong>Voided:</strong> {{ payment.void_reason }}</p>{% endif %}
+</div>
+{% if payment.status.value == 'posted' and payment.cheque_status and payment.cheque_status.value == 'pending' %}
+<form method="post" action="{{ url_for('accounts.payment_cheque', payment_id=payment.id) }}" class="card row" style="gap:10px; align-items:flex-end; margin-bottom:16px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label class="field" style="margin:0;"><span class="field-label">Cheque status on</span><input type="date" name="on" value="{{ today.isoformat() }}" class="field-input"></label>
+  <button name="status" value="cleared" class="btn btn-primary">Cleared</button>
+  <button name="status" value="bounced" class="btn btn-danger" onclick="return confirm('Mark the cheque bounced? The bills it paid become unpaid again.');">Bounced</button>
+</form>
+{% endif %}
+<h2>Set against</h2>
+<div class="table-wrap card" style="margin-bottom:16px;">
+  <table>
+    <tbody>
+    {% for a in payment.allocations %}
+      <tr>
+        <td>{% if a.purchase_bill %}<a href="{{ url_for('purchases.view_bill', bill_id=a.purchase_bill_id) }}">{{ a.purchase_bill.number }} ({{ a.purchase_bill.supplier_invoice_no }})</a>{% elif a.expense %}<a href="{{ url_for('expenses.view_expense', expense_id=a.expense_id) }}">{{ a.expense.number }}</a>{% else %}Opening balance{% endif %}</td>
+        <td class="num">{{ '%.2f'|format(a.amount) }}</td>
+        <td>{% if payment.status.value == 'posted' %}<form method="post" action="{{ url_for('accounts.remove_payment_allocation', payment_id=payment.id, allocation_id=a.id) }}" style="display:inline;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-quiet btn-sm" onclick="return confirm('Take this amount off the bill?');">Remove</button></form>{% endif %}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="3" class="empty-state">Not set against any bill - it's an advance to the supplier.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% if can_allocate and account.open_items %}
+<form method="post" action="{{ url_for('accounts.allocate_payment', payment_id=payment.id) }}" class="card" style="margin-bottom:16px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <h2 class="mt-0">Set the rest (Rs. {{ '%.2f'|format(unused) }}) against bills</h2>
+  <input type="hidden" id="voucher-amount" data-unused="{{ '%.2f'|format(unused) }}">
+  {% with items=account.open_items, inputs=True, form=None %}{% include "accounts/_open_items.html" %}{% endwith %}
+  {% include "accounts/_fill_oldest.html" %}
+  <button class="btn btn-primary">Set against bills</button>
+</form>
+{% endif %}
+{% if payment.status.value == 'posted' %}
+<form method="post" action="{{ url_for('accounts.void_payment', payment_id=payment.id) }}" class="card row void-box" style="gap:10px; align-items:flex-end;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label class="field" style="margin:0; flex:1;"><span class="field-label">Void this payment - reason</span><input type="text" name="reason" class="field-input" required></label>
+  <button class="btn btn-danger" onclick="return confirm('Void {{ payment.number }}?');">Void</button>
+</form>
+{% endif %}
+{% endblock %}

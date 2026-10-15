@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "macros.html" import field %}
-{% block title %}New invoice - {{ firm_name }}{% endblock %}
+{% block title %}{% block form_title %}New invoice{% endblock %} - {{ firm_name }}{% endblock %}
 
 {% block head %}
 <script>
@@ -13,7 +13,7 @@
   // default (Settings); a catalog item always brings its own setting.
   const DEFAULT_INCL = {{ current_user.tenant.default_price_includes_tax|tojson }};
   const PREFILL_LINES = [
-    {% for l in (duplicate_from.lines if duplicate_from else []) %}
+    {% for l in (prefill_lines or (duplicate_from.lines if duplicate_from else [])) %}
     {description: {{ l.description|tojson }}, hsn: {{ (l.hsn_or_sac_code or '')|tojson }}, qty: {{ l.qty }}, rate: {{ l.rate }}, discount: {{ l.discount_percent }}, gst_rate: {{ l.gst_rate }}, incl: {{ l.price_includes_tax|tojson }}, unit: {{ (l.unit or 'pcs')|tojson }}, product_id: {{ l.product_id or 'null' }}},
     {% endfor %}
   ];
@@ -21,10 +21,12 @@
 {% endblock %}
 
 {% block content %}
-<div class="page-header"><h1>New invoice</h1></div>
+<div class="page-header"><div><h1>{{ self.form_title() }}</h1>{% block form_subtitle %}{% if source_doc %}<p class="text-muted mt-0">From {{ source_doc.label|lower }} {{ source_doc.number }} - it is closed as invoiced once you save.</p>{% elif source_run %}<p class="text-muted mt-0">Recurring invoice "{{ source_run.recurring.name }}" due {{ source_run.due_date.strftime('%d %b %Y') }}.</p>{% endif %}{% endblock %}</div></div>
+{% block before_form %}{% endblock %}
 
 <form method="post" novalidate x-data="invoiceForm()" x-init="init()">
   {{ form.hidden_tag() }}
+  {% block hidden_extras %}{% if source_doc %}<input type="hidden" name="from_document" value="{{ source_doc.id }}">{% endif %}{% if source_run %}<input type="hidden" name="from_run" value="{{ source_run.id }}">{% endif %}{% endblock %}
 
   <div class="card" style="margin-bottom:20px;">
     <div class="form-grid">
@@ -42,10 +44,12 @@
         <p class="field-help">Automatic - set by the branch's type below.</p>
       </div>
       {{ field(form.invoice_date) }}
+      {% block header_extras %}{% endblock %}
     </div>
   </div>
 
   <div class="card" style="margin-bottom:20px;">
+    {% block bill_to_toggle %}
     <div class="field">
       <span class="field-label">Bill to</span>
       <div class="row">
@@ -53,6 +57,7 @@
         <label class="row" style="gap:6px;"><input type="radio" value="branch" x-model="billTo" @change="onBranchChange()"> Branch</label>
       </div>
     </div>
+    {% endblock %}
 
     <div class="form-grid">
       <div class="field" x-show="billTo === 'customer'">
@@ -147,8 +152,9 @@
   </div>
 
   {{ field(form.notes) }}
+  {% block footer_extras %}{% endblock %}
 
-  <button type="submit" class="btn btn-primary btn-lg btn-block">Save &amp; issue invoice</button>
+  <button type="submit" class="btn btn-primary btn-lg btn-block">{% block submit_label %}Save &amp; issue invoice{% endblock %}</button>
 </form>
 {% endblock %}
 

@@ -17,6 +17,12 @@ class Customer(db.Model, TenantScopedMixin, TimestampMixin):
     phone = db.Column(db.String(20))
     email = db.Column(db.String(255))
     is_active = db.Column(db.Boolean, nullable=False, default=True)
+    # Customer accounts (feature "receivables"): what they owed when the
+    # client started keeping accounts here, and how much credit to allow.
+    opening_balance = db.Column(db.Numeric(12, 2), nullable=False, default=0, server_default="0")
+    opening_balance_date = db.Column(db.Date)
+    credit_limit = db.Column(db.Numeric(12, 2))
+    credit_days = db.Column(db.Integer)
 
     def __repr__(self):
         return f"<Customer {self.id} {self.name}>"

@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Customers owe - {{ firm_name }}{% include "accounts/_opening_form.html" %}
+{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>What customers owe</h1>
+    <p class="text-muted mt-0">Outstanding bills by age (days since the bill) as on {{ as_of.strftime('%d %b %Y') }} · total <strong>Rs. {{ '%.2f'|format(totals.balance) }}</strong></p>
+  </div>
+  <div class="row">
+    <a href="{{ url_for('accounts.new_receipt') }}" class="btn btn-primary">+ Receipt</a>
+    <a href="{{ url_for('accounts.new_receipt', advance=1) }}" class="btn btn-secondary">+ Advance</a>
+  </div>
+</div>
+{% include "accounts/_nav.html" %}
+<form class="search-bar" method="get">
+  <label class="field" style="margin:0;"><span class="field-label">As on</span><input type="date" name="as_of" value="{{ as_of.isoformat() }}" class="field-input"></label>
+  <button class="btn btn-secondary">Show</button>
+</form>
+{% with party_label='Customer', party_key='customer', party_endpoint='accounts.customer_ledger', empty_text='No customer owes anything right now.' %}
+{% include "accounts/_ageing_table.html" %}
+{% endwith %}
+<p class="text-muted"><small>Invoices, counter bills sold on credit and opening balances, less receipts set against them. "On account" is money received but not yet set against a bill (including advances).</small></p>
+{% include "accounts/_opening_form.html" %}
+{% endblock %}

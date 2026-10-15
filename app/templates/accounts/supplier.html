@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}{{ supplier.name }} - account - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>{{ supplier.name }}</h1>
+    <p class="text-muted mt-0">You owe <strong>Rs. {{ '%.2f'|format(account.balance) }}</strong>{% if account.balance < 0 %} (paid in advance){% endif %}
+      {% if supplier.payment_terms_days %} · {{ supplier.payment_terms_days }} days' terms{% endif %}</p>
+  </div>
+  <a href="{{ url_for('accounts.new_payment', supplier_id=supplier.id) }}" class="btn btn-primary">+ Payment</a>
+</div>
+{% include "accounts/_nav.html" %}
+<div class="card" style="margin-bottom:16px;">
+  <div class="form-grid">
+    {% for name, _, _ in buckets %}<div><strong>{{ name }} days</strong><p>{{ '%.2f'|format(ageing[name]) }}</p></div>{% endfor %}
+    <div><strong>Paid ahead</strong><p>{{ '%.2f'|format(ageing.on_account) }}</p></div>
+    <div><strong>Overdue</strong><p>{{ '%.2f'|format(account.overdue(today)) }}</p></div>
+  </div>
+</div>
+<h2>Unpaid bills</h2>
+{% with items=account.open_items, inputs=False %}{% include "accounts/_open_items.html" %}{% endwith %}
+<h2>Ledger</h2>
+{% with entries=account.entries, debit_label='Debit (paid)', credit_label='Credit (billed)' %}{% include "accounts/_ledger.html" %}{% endwith %}
+{% endblock %}

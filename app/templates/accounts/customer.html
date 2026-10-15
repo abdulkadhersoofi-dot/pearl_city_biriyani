@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}{{ customer.name }} - account - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>{{ customer.name }}</h1>
+    <p class="text-muted mt-0">
+      Balance <strong>Rs. {{ '%.2f'|format(account.balance) }}</strong>{% if account.balance < 0 %} (in advance){% endif %}
+      {% if customer.credit_limit %} · credit limit Rs. {{ '%.2f'|format(customer.credit_limit) }}{% if account.balance > customer.credit_limit %} <span class="tag tag-warn">Over limit</span>{% endif %}{% endif %}
+      {% if customer.credit_days %} · {{ customer.credit_days }} days' credit{% endif %}
+      {% if customer.phone %} · {{ customer.phone }}{% endif %}
+    </p>
+  </div>
+  <div class="row">
+    <a href="{{ url_for('accounts.new_receipt', customer_id=customer.id) }}" class="btn btn-primary">+ Receipt</a>
+    <a href="{{ url_for('accounts.new_receipt', customer_id=customer.id, advance=1) }}" class="btn btn-secondary">+ Advance</a>
+    {% if account.balance > 0 %}<a href="{{ url_for('accounts.customer_reminder', customer_id=customer.id) }}" target="_blank" rel="noopener" class="btn btn-secondary">WhatsApp reminder</a>{% endif %}
+    <a href="{{ url_for('customers.edit_customer', customer_id=customer.id) }}" class="btn btn-quiet">Edit customer</a>
+  </div>
+</div>
+{% include "accounts/_nav.html" %}
+
+<div class="card" style="margin-bottom:16px;">
+  <div class="form-grid">
+    {% for name, _, _ in buckets %}<div><strong>{{ name }} days</strong><p>{{ '%.2f'|format(ageing[name]) }}</p></div>{% endfor %}
+    <div><strong>On account</strong><p>{{ '%.2f'|format(ageing.on_account) }}</p></div>
+    <div><strong>Overdue</strong><p>{{ '%.2f'|format(account.overdue(today)) }}</p></div>
+  </div>
+</div>
+
+<h2>Open bills</h2>
+{% with items=account.open_items, inputs=False %}{% include "accounts/_open_items.html" %}{% endwith %}
+
+<div class="row" style="justify-content:space-between; align-items:flex-end; margin-top:16px;">
+  <h2 class="mt-0">Ledger</h2>
+  <form method="get" action="{{ url_for('accounts.customer_statement', customer_id=customer.id) }}" target="_blank" class="row" style="gap:8px; align-items:flex-end;">
+    <label class="field" style="margin:0;"><span class="field-label">Statement from</span><input type="date" name="start" value="{{ statement_start.isoformat() }}" class="field-input"></label>
+    <label class="field" style="margin:0;"><span class="field-label">to</span><input type="date" name="end" value="{{ today.isoformat() }}" class="field-input"></label>
+    <button class="btn btn-secondary">Statement PDF</button>
+  </form>
+</div>
+{% with entries=account.entries, debit_label='Debit (owes)', credit_label='Credit (paid)' %}{% include "accounts/_ledger.html" %}{% endwith %}
+{% endblock %}

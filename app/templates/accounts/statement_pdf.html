@@ -1,0 +1,31 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8">{% include "accounts/_pdf_style.html" %}</head>
+<body>
+  {% set c = data.customer %}
+  <h1>{{ firm_name }} - Statement of account</h1>
+  <p class="sub">{{ c.name }}{% if c.gstin %} · GSTIN {{ c.gstin }}{% endif %} · {{ data.start.strftime('%d %b %Y') }} to {{ data.end.strftime('%d %b %Y') }}</p>
+  <table>
+    <tr><th>Date</th><th>Particulars</th><th>Document</th><th class="num">Debit</th><th class="num">Credit</th><th class="num">Balance</th></tr>
+    <tr><td>{{ data.start.strftime('%d %b %Y') }}</td><td>Balance brought forward</td><td></td><td></td><td></td><td class="num">{{ '%.2f'|format(data.opening) }}</td></tr>
+    {% for e in data.rows %}
+    <tr><td>{{ e.entry_date.strftime('%d %b %Y') }}</td><td>{{ e.description }}</td><td>{{ e.number }}</td>
+      <td class="num">{{ '%.2f'|format(e.debit) if e.debit else '' }}</td><td class="num">{{ '%.2f'|format(e.credit) if e.credit else '' }}</td><td class="num">{{ '%.2f'|format(e.balance) }}</td></tr>
+    {% endfor %}
+    <tr class="total"><td colspan="3">Closing balance {{ '(due from you)' if data.closing > 0 else ('(in your favour)' if data.closing < 0 else '') }}</td>
+      <td class="num">{{ '%.2f'|format(data.debits) }}</td><td class="num">{{ '%.2f'|format(data.credits) }}</td><td class="num">{{ '%.2f'|format(data.closing) }}</td></tr>
+  </table>
+  {% if data.account.open_items %}
+  <h2>Bills outstanding today</h2>
+  <table>
+    <tr><th>Date</th><th>Bill</th><th>Due</th><th class="num">Amount</th><th class="num">Outstanding</th></tr>
+    {% for i in data.account.open_items %}<tr><td>{{ i.doc_date.strftime('%d %b %Y') }}</td><td>{{ i.number }}</td><td>{{ i.due_date.strftime('%d %b %Y') }}</td><td class="num">{{ '%.2f'|format(i.amount) }}</td><td class="num">{{ '%.2f'|format(i.outstanding) }}</td></tr>{% endfor %}
+  </table>
+  <table>
+    <tr>{% for name, _, _ in buckets %}<th class="num">{{ name }} days</th>{% endfor %}<th class="num">On account</th><th class="num">Balance</th></tr>
+    <tr>{% for name, _, _ in buckets %}<td class="num">{{ '%.2f'|format(data.ageing[name]) }}</td>{% endfor %}<td class="num">{{ '%.2f'|format(data.ageing.on_account) }}</td><td class="num">{{ '%.2f'|format(data.ageing.balance) }}</td></tr>
+  </table>
+  {% endif %}
+  <p class="sub">Computer-generated statement. Please let us know of any difference.</p>
+</body>
+</html>

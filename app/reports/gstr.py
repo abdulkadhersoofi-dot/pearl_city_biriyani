@@ -361,7 +361,31 @@ def _collect_supply_lines(tenant: Tenant, gstin: Gstin, period: str) -> tuple[li
                 )
             )
 
+    # Phase 6 documents - only for clients with those modules on, so
+    # everyone else's document summary stays exactly as it was.
+    receipt_vouchers, refund_vouchers, sales_challans = [], [], []
+    if tenant.has_feature("receivables"):
+        from app.models.accounts import CustomerReceipt, RefundVoucher
+
+        receipt_vouchers = CustomerReceipt.query.filter(
+            CustomerReceipt.tenant_id == tenant.id, CustomerReceipt.gstin_id == gstin.id,
+            CustomerReceipt.is_advance.is_(True), CustomerReceipt.voucher_date >= start,
+            CustomerReceipt.voucher_date <= end).all()
+        refund_vouchers = RefundVoucher.query.filter(
+            RefundVoucher.tenant_id == tenant.id, RefundVoucher.gstin_id == gstin.id,
+            RefundVoucher.voucher_date >= start, RefundVoucher.voucher_date <= end).all()
+    if tenant.has_feature("sales_documents"):
+        from app.models.sales import SalesDocument, SalesDocumentKind
+
+        sales_challans = SalesDocument.query.filter(
+            SalesDocument.tenant_id == tenant.id, SalesDocument.gstin_id == gstin.id,
+            SalesDocument.kind == SalesDocumentKind.DELIVERY_CHALLAN, SalesDocument.doc_date >= start,
+            SalesDocument.doc_date <= end).all()
+
     raw = {
+        "receipt_vouchers": receipt_vouchers,
+        "refund_vouchers": refund_vouchers,
+        "sales_challans": sales_challans,
         "invoices": invoices,
         "voided_invoices": voided_invoices,
         "pos_bills": pos_bills,
@@ -419,6 +443,11 @@ def _document_summaries(tenant: Tenant, gstin: Gstin, raw: dict) -> list[DocSeri
     for note in raw["notes"]:
         prefix = note.note_number.rsplit("/", 1)[0] if note.note_number else ""
         record(DOCUMENT_TYPE_LABELS.get(note.document_type, note.document_type.value), prefix, note.note_number)
+    for doc_type, key in ((DocumentType.RECEIPT_VOUCHER, "receipt_vouchers"), (DocumentType.REFUND_VOUCHER, "refund_vouchers"),
+                          (DocumentType.DELIVERY_CHALLAN, "sales_challans")):
+        for doc in raw.get(key, []):
+            record(DOCUMENT_TYPE_LABELS[doc_type], doc.number.rsplit("/", 1)[0], doc.number,
+                   cancelled=doc.status.value in ("voided", "cancelled"))
 
     return sorted(summaries.values(), key=lambda s: (s.label, s.prefix))
 
@@ -550,7 +579,14 @@ def gstr1_data(tenant: Tenant, gstin: Gstin, period: str) -> dict:
         "hsn_summary": hsn_list,
         "document_summary": _document_summaries(tenant, gstin, raw),
         "totals": totals,
+        **({"advances": _advances(tenant, gstin, raw)} if tenant.has_feature("receivables") else {}),
     }
+
+
+def _advances(tenant, gstin, raw) -> dict:
+    from app.reports.advances import advances_data
+
+    return advances_data(tenant, gstin, raw["period_start"], raw["period_end"])
 
 
 # GSTR-3B's outward-supplies table (3.1) buckets by nature of supply, not
@@ -594,6 +630,14 @@ def gstr3b_data(tenant: Tenant, gstin: Gstin, period: str) -> dict:
         bucket["sgst"] += l.sign * l.sgst
         bucket["igst"] += l.sign * l.igst
 
+    advances = None
+    if tenant.has_feature("receivables"):
+        # Tax on advances received less advances adjusted / refunded
+        # (GSTR-1 11A - 11B) is part of 3.1(a).
+        advances = _advances(tenant, gstin, raw)
+        for key in ("taxable_value", "cgst", "sgst", "igst"):
+            buckets["taxable"][key] += advances["net"][key]
+
     gross_tax_payable = (
         buckets["taxable"]["cgst"]
         + buckets["taxable"]["sgst"]
@@ -614,6 +658,7 @@ def gstr3b_data(tenant: Tenant, gstin: Gstin, period: str) -> dict:
         # working paper (and its JSON) stays exactly as it was.
         **({"itc": itc_summary(tenant, gstin, period)}
            if tenant.has_feature("purchases") or tenant.has_feature("expenses") else {}),
+        **({"advances": advances} if advances is not None else {}),
     }
 
 

@@ -54,6 +54,7 @@ def _init_extensions(app: Flask) -> None:
 
 
 def _register_blueprints(app: Flask) -> None:
+    from app.accounts import accounts_bp
     from app.api import api_bp
     from app.auth import auth_bp
     from app.branches import branches_bp
@@ -68,6 +69,7 @@ def _register_blueprints(app: Flask) -> None:
     from app.products import products_bp
     from app.purchases import purchases_bp
     from app.reports import reports_bp
+    from app.sales import sales_bp
     from app.settings import settings_bp
     from app.tenants import tenants_bp
     from app.main import main_bp
@@ -89,6 +91,8 @@ def _register_blueprints(app: Flask) -> None:
     app.register_blueprint(inventory_bp)
     app.register_blueprint(purchases_bp)
     app.register_blueprint(expenses_bp)
+    app.register_blueprint(accounts_bp)
+    app.register_blueprint(sales_bp)
 
 
 def _register_error_handlers(app: Flask) -> None:
@@ -277,6 +281,23 @@ def _register_cli(app: Flask) -> None:
                 made += len(generate_due_drafts(tenant))
                 db.session.commit()
         click.echo(f"{made} draft expense(s) made.")
+
+    @app.cli.command("recurring-invoices-generate")
+    def recurring_invoices_generate():
+        """Drafts every recurring invoice (AMC, rent, catering) that has
+        fallen due, for each client with Recurring invoices on. Nothing is
+        numbered - the client issues or skips each draft. The Recurring
+        invoices screen does the same whenever it's opened; run this daily
+        from cron so drafts are waiting before anyone looks."""
+        from app.models.tenant import Tenant
+        from app.sales.services import generate_due_runs
+
+        made = 0
+        for tenant in Tenant.query.order_by(Tenant.id).all():
+            if tenant.has_feature("recurring_invoices"):
+                made += len(generate_due_runs(tenant))
+                db.session.commit()
+        click.echo(f"{made} recurring invoice draft(s) made.")
 
     @app.cli.command("bootstrap-super-admin")
     def bootstrap_super_admin():

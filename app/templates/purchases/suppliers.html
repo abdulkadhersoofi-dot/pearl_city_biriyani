@@ -22,7 +22,7 @@
         <td>{{ s.name }}</td><td>{{ s.gstin or 'Unregistered' }}</td><td>{{ s.state_name or '-' }}</td>
         <td>{{ s.contact_person or '' }}{% if s.phone %} {{ s.phone }}{% endif %}</td>
         <td class="num">{{ s.payment_terms_days if s.payment_terms_days is not none else '-' }}</td>
-        <td><a href="{{ url_for('purchases.edit_supplier', supplier_id=s.id) }}">Open</a> · <a href="{{ url_for('purchases.bills', supplier=s.id) }}">Bills</a></td>
+        <td><a href="{{ url_for('purchases.edit_supplier', supplier_id=s.id) }}">Open</a> · <a href="{{ url_for('purchases.bills', supplier=s.id) }}">Bills</a>{% if has_feature('payables') %} · <a href="{{ url_for('accounts.supplier_ledger', supplier_id=s.id) }}">Account</a>{% endif %}</td>
       </tr>
     {% else %}
       <tr><td colspan="6" class="empty-state">No suppliers yet. Add the people you buy from.</td></tr>

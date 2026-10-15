@@ -328,6 +328,9 @@ def void_purchase_bill(bill: PurchaseBill, user, reason: str) -> None:
         if line.product is not None and ledger.sells_from_stock(line.product):
             ledger.unreceive_cost(line.product, line.qty, line.unit_cost)
     ledger.reverse_source(bill.tenant_id, "purchase_bill", bill.id, user.id, f"{bill.number} voided")
+    from app.accounts.services import release_payment_allocations
+
+    release_payment_allocations(bill.tenant_id, purchase_bill_id=bill.id)
     for unit in ProductSerial.query.filter_by(purchase_bill_id=bill.id).all():
         unit.status = SerialStatus.RETURNED_TO_SUPPLIER
     bill.status = PurchaseStatus.VOIDED

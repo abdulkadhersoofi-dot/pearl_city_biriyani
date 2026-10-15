@@ -1,5 +1,5 @@
 from flask_wtf import FlaskForm
-from wtforms import DecimalField, IntegerField, SelectField, StringField
+from wtforms import DateField, DecimalField, IntegerField, SelectField, StringField
 from wtforms.validators import DataRequired, Length, NumberRange, Optional, Regexp
 
 from app.utils.gst import GSTIN_REGEX, normalize_gstin
@@ -22,6 +22,8 @@ class SupplierForm(FlaskForm):
     email = StringField("Email", validators=[Optional(), Length(max=255)])
     payment_terms_days = IntegerField("Credit days", validators=[Optional(), NumberRange(min=0, max=365)])
     opening_balance = DecimalField("Opening balance (owed to them)", places=2, default=0, validators=[Optional()])
+    # Supplier accounts only (feature "payables") - removed by the route otherwise.
+    opening_balance_date = DateField("Opening balance as on", validators=[Optional()])
 
     def validate(self, extra_validators=None):
         ok = super().validate(extra_validators)

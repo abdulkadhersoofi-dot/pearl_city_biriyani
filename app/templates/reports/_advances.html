@@ -1,0 +1,17 @@
+{# GSTR-1 tables 11A / 11B - only rendered when data.advances is present. #}
+{% set adv = data.advances %}
+{% for title, rows, totals in (('11A - Advances received (tax payable)', adv.received, adv.received_totals), ('11B - Advances adjusted against invoices / refunded', adv.adjusted, adv.adjusted_totals)) %}
+<h3 style="margin:10px 0 6px;">{{ title }}</h3>
+<table>
+  <thead><tr><th>Place of supply</th><th class="num">Rate</th><th class="num">Taxable value</th><th class="num">CGST</th><th class="num">SGST</th><th class="num">IGST</th></tr></thead>
+  <tbody>
+  {% for b in rows %}
+    <tr><td>{{ b.place_of_supply }} {{ b.place_of_supply|state_name }}</td><td class="num">{{ b.gst_rate|qty }}%</td><td class="num">{{ '%.2f'|format(b.taxable_value) }}</td>
+      <td class="num">{{ '%.2f'|format(b.cgst) }}</td><td class="num">{{ '%.2f'|format(b.sgst) }}</td><td class="num">{{ '%.2f'|format(b.igst) }}</td></tr>
+  {% else %}
+    <tr><td colspan="6" class="empty-state">None this period.</td></tr>
+  {% endfor %}
+  {% if rows %}<tr><td colspan="2"><strong>Total</strong></td><td class="num"><strong>{{ '%.2f'|format(totals.taxable_value) }}</strong></td><td class="num">{{ '%.2f'|format(totals.cgst) }}</td><td class="num">{{ '%.2f'|format(totals.sgst) }}</td><td class="num">{{ '%.2f'|format(totals.igst) }}</td></tr>{% endif %}
+  </tbody>
+</table>
+{% endfor %}

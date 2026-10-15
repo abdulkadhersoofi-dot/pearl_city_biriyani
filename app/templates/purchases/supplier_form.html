@@ -18,6 +18,7 @@
     {{ field(form.email) }}
     {{ field(form.payment_terms_days) }}
     {{ field(form.opening_balance, help="What you owed them when you started using ARFA.") }}
+    {% if form.opening_balance_date %}{{ field(form.opening_balance_date) }}{% endif %}
   </div>
   <button type="submit" class="btn btn-primary btn-lg">Save</button>
 </form>

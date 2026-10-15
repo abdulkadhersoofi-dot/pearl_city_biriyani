@@ -82,6 +82,15 @@ def build_gstr1_workbook(data: dict) -> BytesIO:
                     "Margin scheme - value other than margin (Rule 32(5))" if h.margin_remainder else ""])
     _autosize(hsn)
 
+    if "advances" in data:
+        adv = wb.create_sheet("Advances 11A-11B")
+        _write_header(adv, 1, ["Table", "Place of supply", "GST rate %", "Taxable value", "CGST", "SGST", "IGST"])
+        for table, rows in (("11A received", data["advances"]["received"]), ("11B adjusted / refunded", data["advances"]["adjusted"])):
+            for b in rows:
+                adv.append([table, b.place_of_supply, _money(b.gst_rate), _money(b.taxable_value), _money(b.cgst),
+                            _money(b.sgst), _money(b.igst)])
+        _autosize(adv)
+
     docs = wb.create_sheet("Documents issued")
     _write_header(docs, 1, ["Document type", "Series prefix", "From", "To", "Total issued", "Cancelled"])
     for s in data["document_summary"]:
@@ -111,6 +120,10 @@ def build_gstr3b_workbook(data: dict) -> BytesIO:
         ws.append([label, _money(b["taxable_value"]), _money(b["cgst"]), _money(b["sgst"]), _money(b["igst"])])
     ws.append([])
     ws.append(["Gross output tax payable (before ITC)", _money(data["gross_tax_payable"])])
+    if "advances" in data:
+        net = data["advances"]["net"]
+        ws.append(["3.1(a) includes tax on advances received less advances adjusted / refunded (GSTR-1 11A - 11B)",
+                   _money(net["taxable_value"]), _money(net["cgst"]), _money(net["sgst"]), _money(net["igst"])])
     ws.append([])
     itc = data.get("itc")
     if itc is not None:

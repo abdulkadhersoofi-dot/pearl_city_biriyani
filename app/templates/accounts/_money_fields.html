@@ -1,0 +1,25 @@
+{# Date, amount, mode and cheque details - shared by receipts and payments. #}
+<div class="form-grid" x-data='{ mode: {{ (form.get("mode") or "cash")|tojson }} }'>
+  <label class="field"><span class="field-label">Date</span>
+    <input type="date" name="voucher_date" value="{{ form.get('voucher_date') or today.isoformat() }}" class="field-input" required></label>
+  <label class="field"><span class="field-label">Amount (Rs.)</span>
+    <input type="text" inputmode="decimal" name="amount" id="voucher-amount" value="{{ form.get('amount', '') }}" class="field-input" required></label>
+  <label class="field"><span class="field-label">Paid by</span>
+    <select name="mode" class="field-input" x-model="mode">
+      {% for m, label in modes.items() %}<option value="{{ m.value }}" {{ 'selected' if (form.get('mode') or 'cash') == m.value }}>{{ label }}</option>{% endfor %}
+    </select></label>
+  <label class="field"><span class="field-label">Reference (UTR / UPI ref)</span>
+    <input type="text" name="reference" value="{{ form.get('reference', '') }}" class="field-input" maxlength="100"></label>
+  <label class="field" x-show="mode === 'cheque'"><span class="field-label">Cheque no.</span>
+    <input type="text" name="cheque_no" value="{{ form.get('cheque_no', '') }}" class="field-input" maxlength="30"></label>
+  <label class="field" x-show="mode === 'cheque'"><span class="field-label">Cheque date</span>
+    <input type="date" name="cheque_date" value="{{ form.get('cheque_date', '') }}" class="field-input"></label>
+  <label class="field" x-show="mode === 'cheque'"><span class="field-label">Bank</span>
+    <input type="text" name="bank_name" value="{{ form.get('bank_name', '') }}" class="field-input" maxlength="100"></label>
+  {% if gstins|length > 1 %}
+  <label class="field"><span class="field-label">Place of business</span>
+    <select name="gstin_id" class="field-input">{% for g in gstins %}<option value="{{ g.id }}" {{ 'selected' if form.get('gstin_id')|string == g.id|string }}>{{ g.display_label }}</option>{% endfor %}</select></label>
+  {% endif %}
+</div>
+<label class="field"><span class="field-label">Notes</span>
+  <input type="text" name="notes" value="{{ form.get('notes', '') }}" class="field-input"></label>

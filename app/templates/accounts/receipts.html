@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Receipts - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Receipts</h1>
+  <div class="row">
+    <a href="{{ url_for('accounts.new_receipt') }}" class="btn btn-primary">+ Receipt</a>
+    <a href="{{ url_for('accounts.new_receipt', advance=1) }}" class="btn btn-secondary">+ Advance</a>
+  </div>
+</div>
+{% include "accounts/_nav.html" %}
+<nav class="subnav">
+  <a href="{{ url_for('accounts.receipts') }}" class="{{ 'active' if not kind }}">All</a>
+  <a href="{{ url_for('accounts.receipts', kind='advance') }}" class="{{ 'active' if kind == 'advance' }}">Advances &amp; refunds</a>
+  <a href="{{ url_for('accounts.receipts', kind='pending_cheques') }}" class="{{ 'active' if kind == 'pending_cheques' }}">Cheques to clear</a>
+</nav>
+<div class="table-wrap card">
+  <table>
+    <thead><tr><th>Date</th><th>Voucher</th><th>Customer</th><th>Mode</th><th class="num">Amount</th><th>Status</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td>{{ r.voucher_date.strftime('%d %b %Y') }}</td>
+        <td><a href="{{ url_for('accounts.view_receipt', receipt_id=r.id) }}">{{ r.number }}</a>{% if r.is_advance %} <span class="tag">Advance</span>{% endif %}</td>
+        <td>{{ r.customer.name }}</td>
+        <td>{{ modes[r.mode] }}{% if r.cheque_no %} {{ r.cheque_no }}{% endif %}</td>
+        <td class="num">{{ '%.2f'|format(r.amount) }}</td>
+        <td>{{ r.status.value|title }}{% if r.cheque_status %} · cheque {{ r.cheque_status.value }}{% endif %}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6" class="empty-state">No receipts here yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% if refunds %}
+<h2>Refund vouchers</h2>
+<div class="table-wrap card">
+  <table>
+    <thead><tr><th>Date</th><th>Voucher</th><th>Customer</th><th class="num">Amount</th><th class="num">GST reversed</th><th>Status</th></tr></thead>
+    <tbody>
+    {% for r in refunds %}<tr><td>{{ r.voucher_date.strftime('%d %b %Y') }}</td><td><a href="{{ url_for('accounts.view_refund', refund_id=r.id) }}">{{ r.number }}</a></td><td>{{ r.customer.name }}</td><td class="num">{{ '%.2f'|format(r.amount) }}</td><td class="num">{{ '%.2f'|format(r.total_tax) }}</td><td>{{ r.status.value|title }}</td></tr>{% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endblock %}

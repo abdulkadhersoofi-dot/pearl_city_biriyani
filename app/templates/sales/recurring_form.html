@@ -1,0 +1,14 @@
+{% extends "invoicing/form.html" %}
+{% block form_title %}{{ 'Edit recurring invoice' if rec else 'New recurring invoice' }}{% endblock %}
+{% block form_subtitle %}<p class="text-muted mt-0">On each due date a draft waits under Recurring invoices - issue it in one click (it gets the next invoice number then), edit it first, or skip it.</p>{% endblock %}
+{% block bill_to_toggle %}{% endblock %}
+{% block header_extras %}
+  <label class="field"><span class="field-label">Name</span>
+    <input type="text" name="name" value="{{ request.form.get('name') or (rec.name if rec else '') }}" class="field-input" maxlength="120" required placeholder="AMC - Ravi Stores"></label>
+  <label class="field"><span class="field-label">Repeats</span>
+    {% set chosen = request.form.get('frequency') or (rec.frequency.value if rec else 'monthly') %}
+    <select name="frequency" class="field-input">{% for f, text in frequencies.items() %}<option value="{{ f.value }}" {{ 'selected' if chosen == f.value }}>{{ text }}</option>{% endfor %}</select></label>
+  <label class="field"><span class="field-label">Ends on (optional)</span>
+    <input type="date" name="end_date" value="{{ request.form.get('end_date') or (rec.end_date.isoformat() if rec and rec.end_date else '') }}" class="field-input"></label>
+{% endblock %}
+{% block submit_label %}Save recurring invoice{% endblock %}
