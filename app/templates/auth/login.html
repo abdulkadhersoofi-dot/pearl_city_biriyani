@@ -11,4 +11,10 @@
 <p class="text-muted" style="text-align:center; margin-top:16px;">
   Forgot your password? Ask your administrator to reset it for you.
 </p>
+<script>
+  // The POS screen kept for offline billing belongs to whoever was signed
+  // in - drop it on the sign-in page (bills still waiting to send stay
+  // queued on the device; they belong to that device's own login).
+  if (window.caches) { caches.delete("arfa-pos-v1").catch(function () {}); }
+</script>
 {% endblock %}

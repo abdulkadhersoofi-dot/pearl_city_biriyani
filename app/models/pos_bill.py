@@ -77,6 +77,7 @@ class POSBill(db.Model, TenantScopedMixin, TimestampMixin):
     __tablename__ = "pos_bills"
     __table_args__ = (
         db.UniqueConstraint("tenant_id", "bill_number", name="uq_pos_bill_tenant_number"),
+        db.UniqueConstraint("tenant_id", "checkout_uuid", name="uq_pos_bills_tenant_checkout_uuid"),
     )
 
     id = db.Column(db.Integer, primary_key=True)
@@ -144,6 +145,15 @@ class POSBill(db.Model, TenantScopedMixin, TimestampMixin):
     prescription = db.Column(db.JSON)
     # Wholesale: who made the sale.
     salesman_id = db.Column(db.Integer, db.ForeignKey("salesmen.id", name="fk_pos_bills_salesman"))
+    # Phase 10: the counter device whose own series numbered a bill made
+    # while offline (feature "offline_pos"), and the cashier who signed in
+    # with their PIN on a shared counter (feature "cashier_pin").
+    device_id = db.Column(db.Integer, db.ForeignKey("counter_devices.id", name="fk_pos_bills_device"))
+    cashier_id = db.Column(db.Integer, db.ForeignKey("cashiers.id", name="fk_pos_bills_cashier"))
+    # The counter's own id for one checkout: a retry after a lost reply
+    # returns the same bill instead of billing twice, and the same id on
+    # a bill queued offline shows it already reached the server.
+    checkout_uuid = db.Column(db.String(36))
 
     gstin = db.relationship("Gstin")
     customer = db.relationship("Customer")
@@ -153,6 +163,8 @@ class POSBill(db.Model, TenantScopedMixin, TimestampMixin):
     price_list = db.relationship("PriceList")
     table = db.relationship("DiningTable")
     salesman = db.relationship("Salesman")
+    device = db.relationship("CounterDevice")
+    cashier = db.relationship("Cashier")
     lines = db.relationship(
         "POSBillLine",
         backref="bill",

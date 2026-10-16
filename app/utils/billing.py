@@ -100,6 +100,44 @@ def next_due_after(anchor: date, cycle, on_date: date) -> date:
     return candidate
 
 
+def mark_period_paid(subject, today: date, for_period: date | None = None) -> str:
+    """"Mark this period paid" for a tenant or an Auditor office - the one
+    place the cycle moves forward on a payment (tenants.mark_billing_paid,
+    tenants.mark_auditor_billing_paid, and a subscription invoice marked
+    paid in app.subscriptions). Returns "advanced", "paid_today" or
+    "paid_ahead"; only "advanced" changed anything.
+
+    Idempotent for the period that's currently due, tracked against the
+    live calendar - clicking it 4 times in one sitting must mean "paid,
+    once", never "paid 4 periods ahead": (1) `last_paid_on == today`
+    catches "I already recorded a payment for this just now" directly,
+    which is the one case a plain date comparison can't - a subject
+    overdue by exactly one cycle length lands its new due date on today
+    after advancing once, so `next_billing_due > today` alone wouldn't
+    block a second same-day click; (2) `next_billing_due > today` catches
+    every other "already paid ahead" case.
+
+    `for_period` (a subscription invoice's period start) pays exactly that
+    period, even ahead of its due date: it moves the cycle on only while
+    that period is still the one due, so paying the same invoice twice -
+    or after the period was marked paid by hand - changes nothing.
+
+    Advances from whatever the due date already was (or from today, for a
+    subject that never had a cycle started) - never just "+1 period from
+    today", so the due date stays anchored to the original cycle."""
+    if for_period is not None:
+        if subject.next_billing_due is not None and subject.next_billing_due != for_period:
+            return "paid_ahead"
+    else:
+        if subject.last_paid_on == today:
+            return "paid_today"
+        if subject.next_billing_due and subject.next_billing_due > today:
+            return "paid_ahead"
+    subject.next_billing_due = advance_billing_cycle(subject, subject.next_billing_due or today)
+    subject.last_paid_on = today
+    return "advanced"
+
+
 @dataclass
 class TenantAccessStatus:
     blocked: bool

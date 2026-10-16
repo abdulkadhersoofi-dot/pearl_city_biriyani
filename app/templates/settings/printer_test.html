@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Printer test - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Printer test</h1>
+    <p class="text-muted mt-0">Print a sample receipt to check the paper size and that the text is sharp and fits.</p>
+  </div>
+</div>
+<div class="card stack" style="max-width:640px;" x-data="{format: '{{ tenant.default_receipt_format }}'}">
+  <div class="field">
+    <span class="field-label">Paper</span>
+    <div class="row">
+      <label class="row" style="gap:6px;"><input type="radio" value="2in" x-model="format"> 2 inch roll (58 mm)</label>
+      <label class="row" style="gap:6px;"><input type="radio" value="3in" x-model="format"> 3 inch roll (80 mm)</label>
+      <label class="row" style="gap:6px;"><input type="radio" value="a4" x-model="format"> A4</label>
+    </div>
+  </div>
+  <div class="row">
+    <button type="button" class="btn btn-primary" @click="
+      const url = '{{ url_for('settings.printer_test_pdf') }}?format=' + format;
+      if (window.AndroidPrint && window.AndroidPrint.openSettings) { window.AndroidPrint.openSettings(); }
+      else { const f = document.getElementById('test-print-frame'); f.onload = () => f.contentWindow.print(); f.src = url; }">Print the test receipt</button>
+    <a class="btn btn-quiet" :href="'{{ url_for('settings.printer_test_pdf') }}?format=' + format" target="_blank">Open it as a PDF</a>
+  </div>
+  <p class="text-muted">In the ARFA POS Android app, the button opens Printer settings - choose the Bluetooth or USB printer there and tap "Print a test page".</p>
+  <form method="post" class="row">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="format" :value="format">
+    <button type="submit" class="btn btn-secondary">It printed fine</button>
+  </form>
+  <p class="text-muted">The paper size bills print on by default is set under <a href="{{ url_for('settings.index') }}">Settings</a>.</p>
+</div>
+<iframe id="test-print-frame" style="display:none;"></iframe>
+{% endblock %}

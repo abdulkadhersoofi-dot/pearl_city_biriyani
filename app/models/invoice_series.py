@@ -95,6 +95,10 @@ class InvoiceSeries(db.Model, TenantScopedMixin, TimestampMixin):
     document_type = db.Column(db.Enum(DocumentType, name="document_type"), nullable=False)
     prefix = db.Column(db.String(20), nullable=False, default="INV")
     next_number = db.Column(db.Integer, nullable=False, default=1)
+    # A counter device's own series for bills made while offline (feature
+    # "offline_pos") - numbered on the device itself, so it never shares a
+    # series with the counter's normal online bills. Null = a normal series.
+    device_id = db.Column(db.Integer, db.ForeignKey("counter_devices.id", name="fk_invoice_series_device"))
 
     gstin = db.relationship("Gstin")
 

@@ -8,4 +8,55 @@
     <string name="ok">OK</string>
     <string name="exit_confirm">Press back again to exit</string>
     <string name="no_app_to_share">WhatsApp isn\'t installed on this device.</string>
+    <string name="bill_offline">Open billing without internet</string>
+    <string name="receipt_load_failed">Could not load the receipt. Check your connection.</string>
+    <string name="printer_failed">The printer didn\'t respond - check it\'s on and paired.</string>
+
+    <string name="settings_title">Printer &amp; app settings</string>
+    <string name="setting_printer">Receipt printer: %1$s</string>
+    <string name="setting_paper">Paper: %1$s - tap to change</string>
+    <string name="setting_drawer_on">Cash drawer: opens on cash sales (tap to turn off)</string>
+    <string name="setting_drawer_off">Cash drawer: stays shut (tap to open it on cash sales)</string>
+    <string name="setting_test">Print a test page</string>
+    <string name="setting_open_drawer">Open the cash drawer now</string>
+    <string name="setting_kiosk_on">Kiosk mode: on - tap to unlock</string>
+    <string name="setting_kiosk_off">Kiosk mode: off - keep this tablet on the POS</string>
+    <string name="setting_update">Check for an app update (this is %1$s)</string>
+    <string name="close">Close</string>
+    <string name="later">Later</string>
+
+    <string name="choose_printer">How is the printer connected?</string>
+    <string name="type_bluetooth">Bluetooth</string>
+    <string name="type_usb">USB cable</string>
+    <string name="type_none">No thermal printer - use Android\'s print dialog</string>
+    <string name="printer_bt">Bluetooth - %1$s</string>
+    <string name="printer_usb">USB - %1$s</string>
+    <string name="printer_none">Android print dialog (PDF)</string>
+    <string name="printer_saved">Receipts now print on %1$s.</string>
+    <string name="printer_choose_first">Choose the receipt printer first.</string>
+    <string name="choose_bt">Paired Bluetooth printers</string>
+    <string name="choose_usb">USB printers</string>
+    <string name="no_bluetooth">This device has no Bluetooth.</string>
+    <string name="no_paired_title">No paired printer</string>
+    <string name="no_paired_body">Pair the receipt printer in Android\'s Bluetooth settings first (its PIN is usually 0000 or 1234), then come back here.</string>
+    <string name="open_bluetooth_settings">Bluetooth settings</string>
+    <string name="bt_permission_needed">ARFA POS needs the Nearby devices permission to print over Bluetooth.</string>
+    <string name="no_usb">No USB printer found - plug it in (with an OTG cable on a phone) and try again.</string>
+    <string name="usb_ready">USB printer ready.</string>
+    <string name="usb_permission_needed">ARFA POS wasn\'t allowed to use the USB printer.</string>
+
+    <string name="kiosk_lock_title">Kiosk mode</string>
+    <string name="kiosk_lock_body">Keeps this tablet on the POS: no home screen, no other apps. Pick a code of 4 or more digits - it\'s needed to unlock again.</string>
+    <string name="kiosk_unlock_title">Unlock kiosk mode</string>
+    <string name="kiosk_unlock_body">Enter the kiosk code.</string>
+    <string name="kiosk_pin_hint">Kiosk code</string>
+    <string name="kiosk_pin_short">Use at least 4 digits.</string>
+    <string name="kiosk_wrong_pin">That code isn\'t right.</string>
+    <string name="kiosk_failed">Android didn\'t allow kiosk mode on this device.</string>
+
+    <string name="update_title">App update available</string>
+    <string name="update_body">Version %1$s is ready (this is %2$s). Download it, then open the file to install.</string>
+    <string name="update_download">Download</string>
+    <string name="update_none">ARFA POS is up to date (%1$s).</string>
+    <string name="update_failed">Couldn\'t check for updates - try again when online.</string>
 </resources>

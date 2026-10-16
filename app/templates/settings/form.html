@@ -73,8 +73,27 @@
       {% if feature.key == 'jewellery' and tenant.has_feature('jewellery') %}
       <a href="{{ url_for('jewellery.rates') }}" class="btn btn-secondary" style="margin-top:8px;">Today's rates</a>
       {% endif %}
+      {% if feature.key == 'cashier_pin' and tenant.has_feature('cashier_pin') %}
+      <a href="{{ url_for('branches.cashiers') }}" class="btn btn-secondary" style="margin-top:8px;">Cashiers &amp; PINs</a>
+      {% endif %}
+      {% if feature.key == 'offline_pos' and tenant.has_feature('offline_pos') %}
+      <a href="{{ url_for('pos.offline_bills') }}" class="btn btn-secondary" style="margin-top:8px;">Counter devices &amp; offline bills</a>
+      {% endif %}
+      {% if feature.key == 'daily_summary' and tenant.has_feature('daily_summary') %}
+      <a href="{{ url_for('reports.owner_summary') }}" class="btn btn-secondary" style="margin-top:8px;">Today's summary</a>
+      {% endif %}
     </div>
     {% endfor %}
+  </div>
+
+  <div class="card stack" style="margin-top:16px;">
+    <h2 style="margin:0; font-size:1.05rem;">Sign-in security</h2>
+    <p class="field-help" style="margin:0;">Two-step sign-in for your own login, and signing everyone out when a screen is left idle.</p>
+    <div class="row">
+      <a href="{{ url_for('auth.account_security') }}" class="btn btn-secondary">Two-step sign-in</a>
+      <a href="{{ url_for('settings.security') }}" class="btn btn-secondary">Idle sign-out</a>
+      <a href="{{ url_for('subscriptions.mine') }}" class="btn btn-quiet">{{ platform_name }} subscription invoices</a>
+    </div>
   </div>
 
   <div class="card stack" style="margin-top:16px;">

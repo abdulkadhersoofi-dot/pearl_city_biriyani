@@ -3,6 +3,15 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Bluetooth receipt printers: the old permissions up to Android 11,
+         "Nearby devices" (BLUETOOTH_CONNECT) from Android 12. Only paired
+         printers are used - the app never scans. -->
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+
+    <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
+    <uses-feature android:name="android.hardware.usb.host" android:required="false" />
 
     <application
         android:allowBackup="false"
@@ -16,6 +25,7 @@
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTask"
+            android:lockTaskMode="if_whitelisted"
             android:configChanges="orientation|screenSize|keyboardHidden"
             android:theme="@style/Theme.ArfaPos.Splash">
             <intent-filter>

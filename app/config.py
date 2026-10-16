@@ -56,6 +56,36 @@ class Config:
 
     LOGIN_RATE_LIMIT_ATTEMPTS = 8
     LOGIN_RATE_LIMIT_WINDOW_MINUTES = 15
+    # Phase 10 sign-in security (app.auth.security). Wrong passwords in a
+    # row before an account locks, and for how long; failed sign-ins one
+    # network (IP) may make per window across all accounts.
+    LOGIN_LOCKOUT_ATTEMPTS = 8
+    LOGIN_LOCKOUT_MINUTES = 15
+    LOGIN_IP_LIMIT = int(os.environ.get("LOGIN_IP_LIMIT", "40"))
+    # Two-step sign-in is compulsory for the Ultra Admin / Auditor
+    # hierarchy; they're signed out after this many idle minutes.
+    ADMIN_2FA_REQUIRED = os.environ.get("ADMIN_2FA_REQUIRED", "1") != "0"
+    ADMIN_IDLE_MINUTES = int(os.environ.get("ADMIN_IDLE_MINUTES", "30"))
+    # Behind a reverse proxy (Render, nginx), how many proxies to trust for
+    # the client's real IP (X-Forwarded-For) - 0 = use the socket address.
+    PROXY_FIX_X_FOR = int(os.environ.get("PROXY_FIX_X_FOR", "0"))
+
+    # Error monitoring - Sentry only when a DSN is set (app.monitoring).
+    SENTRY_DSN = os.environ.get("SENTRY_DSN")
+    SENTRY_ENVIRONMENT = os.environ.get("SENTRY_ENVIRONMENT", os.environ.get("FLASK_ENV", "production"))
+    SENTRY_TRACES_SAMPLE_RATE = float(os.environ.get("SENTRY_TRACES_SAMPLE_RATE", "0"))
+
+    # Email (daily owner summary) - only when SMTP_HOST is set.
+    SMTP_HOST = os.environ.get("SMTP_HOST")
+    SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
+    SMTP_USERNAME = os.environ.get("SMTP_USERNAME")
+    SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD")
+    SMTP_USE_TLS = os.environ.get("SMTP_USE_TLS", "1") != "0"
+    SMTP_FROM = os.environ.get("SMTP_FROM")
+
+    # In-app update check (Android) - the GitHub repository whose
+    # "android-latest" release carries the APK and version.json.
+    ANDROID_RELEASE_REPO = os.environ.get("ANDROID_RELEASE_REPO", "abdulkadhersoofi-dot/pearl_city_biriyani")
 
 
 class DevelopmentConfig(Config):
@@ -75,6 +105,11 @@ class TestingConfig(Config):
     )
     SESSION_TYPE = "filesystem"
     SESSION_COOKIE_SECURE = False
+    # Tests that exercise two-step sign-in switch it on themselves; the
+    # rest sign the admin in with a password, as before.
+    ADMIN_2FA_REQUIRED = False
+    SENTRY_DSN = None
+    SMTP_HOST = None
 
 
 class ProductionConfig(Config):

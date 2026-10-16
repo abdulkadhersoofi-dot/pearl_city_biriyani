@@ -134,12 +134,21 @@ def item_gross_profit(tenant, start: date, end: date, location_id: int | None = 
 
 # --- daily sales summary ------------------------------------------------------------
 
+def _cashier_name(key, users: dict, cashier_names: dict) -> str:
+    if isinstance(key, tuple):
+        return cashier_names.get(key[1], "-")
+    return users.get(key, "-")
+
+
 def daily_summary(tenant, start: date, end: date) -> dict:
     lo, hi = day_start(start), day_start(end + timedelta(days=1))
     bills = POSBill.query.filter(POSBill.tenant_id == tenant.id,
                                  POSBill.status.in_([POSBillStatus.COMPLETED, POSBillStatus.REFUNDED]),
                                  POSBill.completed_at >= lo, POSBill.completed_at < hi).order_by(POSBill.completed_at).all()
     users = {u.id: u.name for u in User.query.filter_by(tenant_id=tenant.id)}
+    from app.models.platform import Cashier
+
+    cashier_names = {c.id: c.name for c in Cashier.query.filter_by(tenant_id=tenant.id)}
 
     modes = defaultdict(lambda: {"sales": ZERO, "refunds": ZERO})
     hours = defaultdict(lambda: {"bills": 0, "total": ZERO})
@@ -153,7 +162,8 @@ def daily_summary(tenant, start: date, end: date) -> dict:
         hour = bill.completed_at.astimezone().hour
         hours[hour]["bills"] += 1
         hours[hour]["total"] += Decimal(bill.grand_total)
-        c = cashiers[bill.created_by_id]
+        # With cashier PINs, the person who tapped in - else the login.
+        c = cashiers[("cashier", bill.cashier_id) if bill.cashier_id else bill.created_by_id]
         c["bills"] += 1
         c["total"] += Decimal(bill.grand_total)
         c["discount"] += Decimal(bill.total_discount)
@@ -188,7 +198,7 @@ def daily_summary(tenant, start: date, end: date) -> dict:
         "invoice_count": len(invoices), "invoice_total": sum((Decimal(i.grand_total) for i in invoices), ZERO),
         "modes": mode_rows,
         "hours": [{"hour": h, **hours[h]} for h in sorted(hours)],
-        "cashiers": sorted(({"name": users.get(uid, "-"), **v} for uid, v in cashiers.items()),
+        "cashiers": sorted(({"name": _cashier_name(uid, users, cashier_names), **v} for uid, v in cashiers.items()),
                            key=lambda r: -r["total"]),
         "discounted": discounted, "discount_total": sum((Decimal(b.total_discount) for b in discounted), ZERO),
         "voids": voids, "returns": returns, "refunds": refunds, "users": users,

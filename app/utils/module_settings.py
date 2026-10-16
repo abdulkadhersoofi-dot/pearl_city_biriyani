@@ -41,6 +41,17 @@ DEFAULTS = {
         "point_value": "1",  # rupees one point is worth when spent
         "min_redeem": 50,  # points needed before any can be spent
     },
+    # Phase 10 - sign-in and counter settings a Client Admin picks.
+    "security": {
+        # Sign this client's logins out after this many idle minutes;
+        # 0 = never (how it always was).
+        "idle_minutes": 0,
+    },
+    "cashier": {
+        # Lock a counter with cashier PINs after this many idle minutes
+        # (0 = only when a cashier taps Lock / Switch).
+        "lock_minutes": 0,
+    },
 }
 
 

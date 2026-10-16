@@ -111,9 +111,32 @@ class User(db.Model, UserMixin, TimestampMixin):
     # (see app.models.tenant.Tenant.last_paid_on) - same reason.
     last_paid_on = db.Column(db.Date)
     manual_alarm_active = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
+    # The Auditor office's subscription fee per cycle, before GST
+    # (platform billing) - null / 0 = no subscription invoice is raised.
+    subscription_fee = db.Column(db.Numeric(10, 2))
+
+    # Sign-in security (Phase 10, app.auth.security). Two-step sign-in
+    # with an authenticator app (TOTP, RFC 6238): the secret is stored
+    # encrypted, `totp_last_step` stops one code being used twice, and
+    # `recovery_codes` holds the hashes of the one-time backup codes.
+    totp_secret = db.Column(db.Text)
+    totp_enabled_at = db.Column(db.DateTime(timezone=True))
+    totp_last_step = db.Column(db.BigInteger)
+    recovery_codes = db.Column(db.JSON)
+    # Wrong passwords in a row, and the time the account opens again
+    # after too many of them.
+    failed_login_count = db.Column(db.Integer, nullable=False, default=0, server_default="0")
+    locked_until = db.Column(db.DateTime(timezone=True))
+
+    @property
+    def has_two_factor(self) -> bool:
+        return self.totp_enabled_at is not None
 
     def set_password(self, raw_password: str) -> None:
         self.password_hash = _hasher.hash(raw_password)
+        # A new password (an admin's reset included) opens a locked account.
+        self.failed_login_count = 0
+        self.locked_until = None
 
     def check_password(self, raw_password: str) -> bool:
         try:

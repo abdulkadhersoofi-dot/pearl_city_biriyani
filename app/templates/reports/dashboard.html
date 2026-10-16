@@ -11,6 +11,7 @@
     <a href="{{ url_for('reports.profit_loss') }}" class="btn btn-secondary">Profit &amp; loss</a>
   </div>
 </div>
+{% include "_first_run.html" %}
 <div class="form-grid dash-tiles" style="margin-bottom:16px;">
   <div class="card"><span class="text-muted">Sales today</span><h2 class="mt-0">Rs. {{ '{:,.2f}'.format(d.sales_today) }}</h2><small class="text-muted">This month Rs. {{ '{:,.2f}'.format(d.sales_month) }}</small></div>
   <div class="card"><span class="text-muted">Money received today</span><h2 class="mt-0">Rs. {{ '{:,.2f}'.format(d.collections_today) }}</h2><small class="text-muted">This month Rs. {{ '{:,.2f}'.format(d.collections_month) }}</small></div>
@@ -56,4 +57,16 @@
   </div>
   {% endif %}
 </div>
+{% if summary %}
+<div class="card" style="margin-top:16px;">
+  <div class="page-header" style="margin-bottom:8px;">
+    <h2 class="mt-0">End of the day</h2>
+    <div class="row">
+      <a href="{{ summary_whatsapp }}" target="_blank" rel="noopener" class="btn btn-primary" onclick="openShare(this.href); return false;">Share on WhatsApp</a>
+      <a href="{{ url_for('reports.owner_summary') }}" class="btn btn-secondary">Full summary</a>
+    </div>
+  </div>
+  {% with data=summary %}{% include "reports/_owner_summary_body.html" %}{% endwith %}
+</div>
+{% endif %}
 {% endblock %}

@@ -21,4 +21,5 @@ openpyxl==3.1.5
 segno==1.6.1
 requests==2.33.1
 cryptography==41.0.7
+sentry-sdk[flask]==2.19.2
 python-barcode==0.15.1

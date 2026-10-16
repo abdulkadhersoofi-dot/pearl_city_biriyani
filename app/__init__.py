@@ -15,6 +15,13 @@ def create_app(config_object=None):
     app.config.from_object(config_object or get_config())
 
     _configure_logging(app)
+    from app.monitoring import init_monitoring
+
+    init_monitoring(app)
+    if app.config.get("PROXY_FIX_X_FOR"):
+        from werkzeug.middleware.proxy_fix import ProxyFix
+
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=app.config["PROXY_FIX_X_FOR"], x_proto=1)
     _init_extensions(app)
     _register_blueprints(app)
     _register_error_handlers(app)
@@ -67,6 +74,7 @@ def _register_blueprints(app: Flask) -> None:
     from app.jobs import jobs_bp
     from app.wholesale import wholesale_bp
     from app.loyalty import loyalty_bp
+    from app.subscriptions import subscriptions_bp
     from app.expenses import expenses_bp
     from app.inventory import inventory_bp
     from app.invoicing import invoicing_bp
@@ -107,6 +115,7 @@ def _register_blueprints(app: Flask) -> None:
     app.register_blueprint(jobs_bp)
     app.register_blueprint(wholesale_bp)
     app.register_blueprint(loyalty_bp)
+    app.register_blueprint(subscriptions_bp)
 
 
 def _register_error_handlers(app: Flask) -> None:
@@ -250,6 +259,16 @@ def _register_context_processors(app: Flask) -> None:
         return (CustomerGroup.query.filter_by(tenant_id=current_user.tenant_id, is_active=True)
                 .order_by(CustomerGroup.name).all())
 
+    def first_run_checklist():
+        from flask_login import current_user
+
+        if not current_user.is_authenticated or not current_user.is_client_admin or not current_user.tenant:
+            return None
+        from app.onboarding import checklist
+
+        return checklist(current_user.tenant)
+
+    app.jinja_env.globals["first_run_checklist"] = first_run_checklist
     app.jinja_env.globals["active_salesmen"] = active_salesmen
     app.jinja_env.globals["active_customer_groups"] = active_customer_groups
     from app.utils.gst_config import EWAY_BILL_CANCEL_HOURS, IRN_CANCEL_HOURS
@@ -285,6 +304,49 @@ def _register_context_processors(app: Flask) -> None:
 
 
 def _register_request_hooks(app: Flask) -> None:
+    @app.before_request
+    def enforce_session_security():
+        """Idle sign-out, and two-step sign-in for the accounts that must
+        have it (app.auth.security)."""
+        import time
+
+        from flask import flash, jsonify, redirect, request, session, url_for
+        from flask_login import current_user, logout_user
+
+        if request.endpoint in (None, "static", "main.healthz", "pos.service_worker"):
+            return None
+        if not current_user.is_authenticated:
+            return None
+        from app.auth import security
+
+        impersonating = bool(session.get("impersonator_id"))
+        limit = security.idle_limit_minutes(current_user, impersonating)
+        now = time.time()
+        last = session.get("last_active")
+        if limit and last and now - last > limit * 60:
+            from app.utils.audit import record_audit
+
+            record_audit(current_user, "signed_out_idle", tenant_id=current_user.tenant_id,
+                         details={"minutes": limit})
+            db.session.commit()
+            logout_user()
+            for key in ("impersonator_id", "cashier_id", "last_active"):
+                session.pop(key, None)
+            message = f"Signed out after {limit} minutes without activity - sign in again."
+            if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+                return jsonify({"error": message, "signed_out": True}), 401
+            flash(message, "info")
+            return redirect(url_for("auth.login"))
+        # Background polls (the counter's offline sync) don't count as
+        # someone using the screen.
+        if not request.headers.get("X-Background"):
+            session["last_active"] = now
+
+        if (not impersonating and security.two_factor_required(current_user) and not current_user.has_two_factor
+                and request.endpoint not in ("auth.two_factor_setup", "auth.logout")):
+            return redirect(url_for("auth.two_factor_setup"))
+        return None
+
     @app.before_request
     def enforce_tenant_access():
         from flask import flash, redirect, request, session, url_for
@@ -347,6 +409,59 @@ def _register_cli(app: Flask) -> None:
         db.session.add(user)
         db.session.commit()
         click.echo(f"Super Admin '{email}' created.")
+
+    @app.cli.command("owner-summary-send")
+    @click.option("--day", default=None, help="YYYY-MM-DD (default: today)")
+    def owner_summary_send(day):
+        """Emails each client with the Daily owner summary on its day's
+        summary (sales, payment modes, counters, top items, low and
+        oversold stock). Needs SMTP_HOST / SMTP_FROM; run each evening."""
+        from datetime import date as _date
+
+        from app.finance.owner_summary import email_ready, owner_summary, send_email
+        from app.models.tenant import Tenant
+
+        if not email_ready():
+            click.echo("Email isn't set up (SMTP_HOST / SMTP_FROM) - nothing sent.")
+            return
+        on = _date.fromisoformat(day) if day else _date.today()
+        sent = 0
+        for tenant in Tenant.query.filter_by(is_active=True).order_by(Tenant.id).all():
+            if tenant.has_feature("daily_summary") and send_email(tenant, owner_summary(tenant, on)):
+                sent += 1
+        click.echo(f"Day summary emailed for {sent} client(s).")
+
+    @app.cli.command("platform-invoices-generate")
+    def platform_invoices_generate():
+        """Raises the firm's subscription invoice for every client and
+        Auditor office whose renewal is within the billing profile's
+        "days before due" and isn't invoiced yet. Run daily from cron."""
+        from app.subscriptions.services import raise_due
+
+        made = raise_due(None)
+        db.session.commit()
+        click.echo(f"{len(made)} subscription invoice(s) raised.")
+
+    @app.cli.command("reset-2fa")
+    @click.argument("email")
+    def reset_2fa(email):
+        """Turns two-step sign-in off for one account (a lost phone with no
+        recovery codes left) and opens it if locked. An Ultra Admin /
+        Auditor sets it up again at their next sign-in."""
+        from app.auth.security import clear_failures, disable_two_factor
+        from app.models.user import User
+        from app.utils.audit import record_audit
+
+        user = User.query.filter_by(email=email.strip().lower()).first()
+        if user is None:
+            click.echo("No account with that email.")
+            return
+        disable_two_factor(user)
+        clear_failures(user)
+        record_audit(None, "two_factor_reset_from_cli", tenant_id=user.tenant_id, entity_type="user",
+                     entity_id=user.id)
+        db.session.commit()
+        click.echo(f"Two-step sign-in reset for {user.email}.")
 
     @app.cli.command("expenses-generate-drafts")
     def expenses_generate_drafts():

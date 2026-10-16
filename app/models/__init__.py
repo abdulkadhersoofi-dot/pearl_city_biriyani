@@ -29,6 +29,10 @@ from app.models.business import (
     CustomerGroup, DiningTable, JobCard, JobCardLine, KitchenTicket, LoyaltyEntry, MetalRate, OldGoldPurchase, PriceSlab,
     Salesman,
 )
+from app.models.platform import (
+    Cashier, CounterDevice, OfflineBill, OfflineBillStatus, PlatformInvoice, PlatformInvoiceStatus, PlatformProfile,
+    PlatformSeries,
+)
 from app.models.note import CreditDebitNote, NoteLine, NoteStatus
 from app.models.audit_log import AuditLog
 from app.models.stock import BranchStockAllocation

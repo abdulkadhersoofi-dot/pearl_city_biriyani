@@ -193,3 +193,12 @@ DRUG_SCHEDULES = {"H": "Schedule H", "H1": "Schedule H1", "X": "Schedule X"}
 # Which schedules need the patient's address on record too (the H1 / X
 # register).
 DRUG_SCHEDULES_REGISTER = {"H1", "X"}
+
+# The firm's own subscription invoices to its clients and Auditors
+# (Platform billing, Phase 10): the right to use the ARFA software,
+# SAC 997331 (licensing services for the right to use computer software
+# and databases), 18%. Source: Notification 11/2017-CT(Rate), item 17(iii)
+# heading 9973, effective 01.07.2017. Editable on the platform's billing
+# profile; these are only the starting values.
+PLATFORM_SERVICE_SAC = "997331"
+PLATFORM_SERVICE_GST_RATE = Decimal("18")

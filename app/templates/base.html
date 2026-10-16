@@ -36,6 +36,9 @@
         </a>
         <div class="user-menu">
           <span class="user-name">{{ current_user.name }}{% if current_user.is_admin_hierarchy %} ({{ current_user.role_label }}){% endif %}</span>
+          {% if current_user.is_admin_hierarchy or current_user.is_client_admin %}
+          <a href="{{ url_for('auth.account_security') }}" class="btn btn-quiet">Security</a>
+          {% endif %}
           <a href="{{ url_for('auth.logout') }}" class="btn btn-quiet">Sign out</a>
         </div>
       </div>
@@ -49,11 +52,13 @@
           <a href="{{ url_for('tenants.directory') }}" class="{{ 'active' if request.endpoint in ('tenants.directory', 'tenants.detail', 'tenants.onboard') }}">All clients</a>
           <a href="{{ url_for('tenants.filing_tracker') }}" class="{{ 'active' if request.endpoint == 'tenants.filing_tracker' }}">Filing</a>
           <a href="{{ url_for('tenants.gst_exports') }}">GST exports</a>
+          <a href="{{ url_for('subscriptions.index') }}" class="{{ 'active' if request.blueprint == 'subscriptions' }}">Subscriptions</a>
           <a href="{{ url_for('tenants.audit_log') }}">Audit log</a>
         {% elif current_user.is_auditor %}
           <a href="{{ url_for('tenants.directory') }}" class="{{ 'active' if request.endpoint in ('tenants.directory', 'tenants.detail', 'tenants.onboard') }}">Clients</a>
           <a href="{{ url_for('tenants.auditors_directory') }}" class="{{ 'active' if request.endpoint in ('tenants.auditors_directory', 'tenants.auditor_detail', 'tenants.new_auditor') }}">Sub-Auditors</a>
           <a href="{{ url_for('tenants.filing_tracker') }}" class="{{ 'active' if request.endpoint == 'tenants.filing_tracker' }}">Filing</a>
+          <a href="{{ url_for('subscriptions.mine') }}" class="{{ 'active' if request.blueprint == 'subscriptions' }}">Subscription</a>
         {% elif current_user.is_sub_auditor %}
           <a href="{{ url_for('tenants.directory') }}" class="{{ 'active' if request.blueprint == 'tenants' and request.endpoint != 'tenants.filing_tracker' }}">Clients</a>
           <a href="{{ url_for('tenants.filing_tracker') }}" class="{{ 'active' if request.endpoint == 'tenants.filing_tracker' }}">Filing</a>

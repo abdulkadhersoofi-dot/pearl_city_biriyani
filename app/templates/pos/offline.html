@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}Offline billing - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Counter devices &amp; offline bills</h1>
+    <p class="text-muted mt-0">Each counter device numbers the bills it makes while offline in its own series
+      (for example O1/2026-27/0001, then O2/... for the next device) - the number on the customer's bill is final. They reach the books when the device is back online.</p>
+  </div>
+</div>
+
+{% if attention %}
+<div class="card" style="margin-bottom:16px; border-left:4px solid var(--color-danger);">
+  <h2 style="margin-top:0;">Needs a look ({{ attention|length }})</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Bill</th><th>Device</th><th>Billed</th><th>Problem</th><th></th></tr></thead>
+      <tbody>
+      {% for r in attention %}
+      <tr>
+        <td><strong>{{ r.bill_number }}</strong></td>
+        <td>{{ r.device.name }} ({{ r.device.code }})</td>
+        <td>{{ r.billed_at|ist }}</td>
+        <td>
+          {% if r.status.value == 'failed' %}<span class="tag tag-low">Not booked</span> {{ r.error }}
+          {% else %}<span class="tag tag-warn">Total differed</span> The device showed Rs. {{ r.payload.total }}; booked at
+            {% if r.pos_bill %}Rs. {{ '%.2f'|format(r.pos_bill.grand_total) }}{% endif %} from the item prices.{% endif %}
+        </td>
+        <td>
+          {% if r.status.value == 'failed' %}
+          <form method="post" class="row" style="flex-wrap:wrap;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="record_id" value="{{ r.id }}">
+            <button name="action" value="retry" class="btn btn-secondary">Try again</button>
+            <input type="text" name="reason" placeholder="Reason to cancel" class="field-input" style="max-width:180px;">
+            <button name="action" value="void" class="btn btn-quiet"
+                    onclick="return confirm('Record {{ r.bill_number }} as a cancelled bill? Its number stays used.');">Cancel bill</button>
+          </form>
+          {% elif r.pos_bill %}
+          <a href="{{ url_for('pos.view_receipt', bill_id=r.pos_bill_id) }}">View bill</a>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<div class="card" style="margin-bottom:16px;">
+  <h2 style="margin-top:0;">Devices</h2>
+  {% if devices %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Series</th><th>Device</th><th>Login</th><th>Last seen</th><th>Last sent bills</th><th></th></tr></thead>
+      <tbody>
+      {% for d in devices %}
+      <tr>
+        <td><strong>{{ d.code }}</strong></td>
+        <td>{{ d.name }} <span class="text-muted">{{ 'Android app' if d.platform == 'android' else 'Browser' }}</span></td>
+        <td>{{ d.user.name }}</td>
+        <td>{{ d.last_seen_at|ist if d.last_seen_at else '-' }}</td>
+        <td>{{ d.last_synced_at|ist if d.last_synced_at else '-' }}</td>
+        <td>
+          <form method="post">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="device_id" value="{{ d.id }}">
+            {% if d.is_active %}
+            <button name="action" value="device_off" class="btn btn-quiet"
+                    onclick="return confirm('Switch {{ d.name }} off? Bills it still holds can\'t be sent until you switch it back on.');">Switch off</button>
+            {% else %}
+            <span class="tag">Off</span> <button name="action" value="device_on" class="btn btn-quiet">Switch on</button>
+            {% endif %}
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="text-muted">No device yet - a counter registers itself the first time the POS screen opens with offline billing on.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0;">Recent offline bills</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Bill</th><th>Billed</th><th>Sent</th><th>Status</th><th class="num">Amount</th></tr></thead>
+      <tbody>
+      {% for r in recent %}
+      <tr>
+        <td>{% if r.pos_bill_id %}<a href="{{ url_for('pos.view_receipt', bill_id=r.pos_bill_id) }}">{{ r.bill_number }}</a>{% else %}{{ r.bill_number }}{% endif %}</td>
+        <td>{{ r.billed_at|ist }}</td>
+        <td>{{ r.created_at|ist }}</td>
+        <td>{% if r.status.value == 'synced' %}<span class="tag tag-ok">On the books</span>{% elif r.status.value == 'voided' %}<span class="tag">Cancelled</span> {{ r.resolution_note }}{% else %}<span class="tag tag-low">Not booked</span>{% endif %}</td>
+        <td class="num">{% if r.pos_bill and r.status.value == 'synced' %}Rs. {{ '%.2f'|format(r.pos_bill.grand_total) }}{% else %}Rs. {{ r.payload.total }}{% endif %}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" class="empty-state">No offline bills yet.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

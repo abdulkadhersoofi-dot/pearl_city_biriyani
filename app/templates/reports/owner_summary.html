@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Day summary - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Day summary</h1>
+    <p class="text-muted mt-0">{{ data.day.strftime('%A %d %b %Y') }}</p>
+  </div>
+  <div class="row">
+    <form method="get" class="row">
+      <input type="date" name="day" value="{{ data.day.isoformat() }}" class="field-input" onchange="this.form.submit()">
+    </form>
+    <a href="{{ whatsapp }}" target="_blank" rel="noopener" class="btn btn-primary" onclick="openShare(this.href); return false;">Share on WhatsApp</a>
+    {% if email_ready %}
+    <form method="post" action="{{ url_for('reports.owner_summary_email', day=data.day.isoformat()) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn btn-secondary" title="{{ emails|join(', ') }}">Email it</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+{% include "reports/_owner_summary_body.html" %}
+<div class="card" style="margin-top:16px;">
+  <h2 style="margin-top:0;">The message</h2>
+  <pre class="summary-text">{{ text }}</pre>
+  {% if not email_ready %}<p class="text-muted">Email isn't set up on this server (SMTP_HOST / SMTP_FROM) - WhatsApp works without it.</p>{% endif %}
+</div>
+{% endblock %}

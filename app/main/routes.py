@@ -1,6 +1,6 @@
 from io import BytesIO
 
-from flask import abort, redirect, send_file, url_for
+from flask import abort, current_app, redirect, send_file, url_for
 from flask_login import current_user
 from sqlalchemy import text
 
@@ -11,10 +11,28 @@ from app.models.media import UploadedImage
 
 @main_bp.route("/healthz")
 def healthz():
-    # Unauthenticated, no template render - just enough to prove the app
-    # can reach its database. Used by the hosting platform's health check.
-    db.session.execute(text("SELECT 1"))
-    return {"status": "ok"}, 200
+    # Unauthenticated, no template render - proves the app can reach its
+    # database (and Redis, where sessions live). Used by the hosting
+    # platform's health check and any uptime monitor: 200 when all is
+    # well, 503 naming the part that isn't. Never says more than that.
+    checks = {}
+    try:
+        db.session.execute(text("SELECT 1"))
+        checks["database"] = "ok"
+    except Exception:
+        db.session.rollback()
+        checks["database"] = "error"
+    redis_client = current_app.config.get("SESSION_REDIS")
+    if redis_client is not None:
+        try:
+            redis_client.ping()
+            checks["redis"] = "ok"
+        except Exception:
+            checks["redis"] = "error"
+    healthy = all(v == "ok" for v in checks.values())
+    body = {"status": "ok" if healthy else "error", "checks": checks,
+            "version": current_app.jinja_env.globals.get("app_version")}
+    return body, 200 if healthy else 503
 
 
 @main_bp.route("/media/<int:image_id>")

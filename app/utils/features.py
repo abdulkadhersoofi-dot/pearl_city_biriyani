@@ -228,6 +228,29 @@ FEATURES = {
             "history and points in one place.",
             available=True,
         ),
+        Feature(
+            "offline_pos",
+            "Offline billing",
+            "The POS keeps billing when the internet drops: the screen and items are saved on the device, bills "
+            "are numbered in that device's own series (O1/2026-27/0001...) and sent to the server when the "
+            "connection is back. Plain cash / UPI / card bills only - credit, returns and discounts wait for "
+            "the connection.",
+            available=True,
+        ),
+        Feature(
+            "cashier_pin",
+            "Cashier PINs",
+            "Several cashiers share one branch counter: each switches in with their own PIN, every bill shows who "
+            "rang it up, and the counter can lock itself when left idle.",
+            available=True,
+        ),
+        Feature(
+            "daily_summary",
+            "Daily owner summary",
+            "The end-of-day picture - sales, payment modes, branches, top items, low and oversold stock - on the "
+            "dashboard, shareable on WhatsApp, and emailed each evening when email is set up.",
+            available=True,
+        ),
     ]
 }
 
@@ -262,6 +285,11 @@ BUSINESS_TYPE_PRESETS: dict[BusinessType, set[str]] = {
                             "business_reports"},
     BusinessType.OTHER: set(),
 }
+# Every new client with the dashboard also gets the owner's end-of-day
+# summary on it (Phase 10). Offline billing and cashier PINs stay opt-in.
+for _preset in BUSINESS_TYPE_PRESETS.values():
+    if "business_reports" in _preset:
+        _preset.add("daily_summary")
 
 # Whether shelf prices usually already include GST for this kind of
 # business (MRP-printed retail goods, menu prices) - the default for new

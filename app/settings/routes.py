@@ -72,6 +72,10 @@ def index():
             for feature in AVAILABLE_FEATURES:
                 tenant.set_feature(feature.key, getattr(form, feature_field_name(feature.key)).data)
             message = "Settings updated."
+        if not (tenant.first_run or {}).get("profile_saved"):
+            from app.onboarding import mark
+
+            mark(tenant, "profile_saved")
         if tenant.features != before:
             record_audit(
                 current_user,
@@ -135,3 +139,82 @@ def modules():
     return render_template("settings/modules.html", weighing=weighing, loyalty=module_settings(tenant, "loyalty"),
                            weight_prefixes=", ".join(k for k, v in weighing["prefixes"].items() if v == "weight"),
                            price_prefixes=", ".join(k for k, v in weighing["prefixes"].items() if v == "price"))
+
+
+IDLE_CHOICES = [0, 15, 30, 60, 120, 240, 480]
+LOCK_CHOICES = [0, 2, 5, 10, 15, 30]
+
+
+@settings_bp.route("/security", methods=["GET", "POST"])
+@roles_required(UserRole.CLIENT_ADMIN)
+def security():
+    """Idle sign-out for this client's logins, and the counter's auto-lock
+    with cashier PINs. Both off unless set here."""
+    from app.utils.module_settings import module_settings, save_module_settings
+
+    tenant = current_user.tenant
+    if request.method == "POST":
+        idle = request.form.get("idle_minutes", type=int) or 0
+        save_module_settings(tenant, "security", {"idle_minutes": idle if idle in IDLE_CHOICES else 0})
+        details = {"idle_minutes": idle if idle in IDLE_CHOICES else 0}
+        if tenant.has_feature("cashier_pin"):
+            lock = request.form.get("lock_minutes", type=int) or 0
+            save_module_settings(tenant, "cashier", {"lock_minutes": lock if lock in LOCK_CHOICES else 0})
+            details["lock_minutes"] = lock if lock in LOCK_CHOICES else 0
+        record_audit(current_user, "security_settings_saved", tenant_id=tenant.id, details=details)
+        db.session.commit()
+        flash("Saved.", "success")
+        return redirect(url_for("settings.security"))
+    return render_template("settings/security.html", idle=module_settings(tenant, "security")["idle_minutes"],
+                           lock=module_settings(tenant, "cashier")["lock_minutes"], idle_choices=IDLE_CHOICES,
+                           lock_choices=LOCK_CHOICES)
+
+
+# --- first-run checklist ---------------------------------------------------------------------
+
+@settings_bp.route("/first-run/dismiss", methods=["POST"])
+@roles_required(UserRole.CLIENT_ADMIN)
+def dismiss_first_run():
+    from app.onboarding import mark
+
+    tenant = current_user.tenant
+    mark(tenant, "dismissed")
+    record_audit(current_user, "first_run_dismissed", tenant_id=tenant.id)
+    db.session.commit()
+    return redirect(request.referrer or url_for("main.index"))
+
+
+@settings_bp.route("/printer-test", methods=["GET", "POST"])
+@roles_required(UserRole.CLIENT_ADMIN)
+def printer_test():
+    """A test receipt on the counter's paper size - the last first-run step."""
+    tenant = current_user.tenant
+    if request.method == "POST":
+        from app.onboarding import mark
+
+        mark(tenant, "printer_tested")
+        record_audit(current_user, "printer_tested", tenant_id=tenant.id,
+                     details={"format": request.form.get("format") or tenant.default_receipt_format})
+        db.session.commit()
+        flash("Printer checked.", "success")
+        return redirect(url_for("main.index"))
+    return render_template("settings/printer_test.html", tenant=tenant)
+
+
+@settings_bp.route("/printer-test.pdf")
+@roles_required(UserRole.CLIENT_ADMIN)
+def printer_test_pdf():
+    from io import BytesIO
+
+    from flask import send_file
+
+    from app.pos.receipt import THERMAL_WIDTHS_IN, _render_pdf
+
+    tenant = current_user.tenant
+    page_format = request.args.get("format") or tenant.default_receipt_format
+    if page_format not in THERMAL_WIDTHS_IN and page_format != "a4":
+        page_format = tenant.default_receipt_format
+    gstin = tenant.gstins.filter_by(is_active=True).first()
+    pdf = _render_pdf("settings/printer_test_print.html", tenant, {"gstin": gstin, "page_format": page_format}, 4,
+                      page_format)
+    return send_file(BytesIO(pdf), mimetype="application/pdf", as_attachment=False, download_name="printer-test.pdf")

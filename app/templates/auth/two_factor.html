@@ -1,0 +1,18 @@
+{% extends "auth_base.html" %}
+{% from "macros.html" import field %}
+{% block title %}Two-step sign-in - {{ firm_name }}{% endblock %}
+{% block content %}
+<p class="text-muted mt-0">Open your authenticator app and enter the 6-digit code for <strong>{{ user.email }}</strong>.</p>
+<form method="post" class="stack" novalidate>
+  {{ form.hidden_tag() }}
+  <div class="field {{ 'field-error' if form.code.errors }}">
+    {{ form.code.label(class="field-label") }}
+    {{ form.code(class="field-input code-input", inputmode="numeric", autocomplete="one-time-code", autofocus=true) }}
+  </div>
+  <button type="submit" class="btn btn-primary btn-block btn-lg">Verify</button>
+</form>
+<p class="text-muted" style="text-align:center; margin-top:16px;">
+  Lost your phone? Enter one of your recovery codes instead.
+  <br><a href="{{ url_for('auth.logout') }}">Cancel</a>
+</p>
+{% endblock %}

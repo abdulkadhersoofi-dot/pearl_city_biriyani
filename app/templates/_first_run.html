@@ -1,0 +1,27 @@
+{# The first-run checklist for a new Client Admin (app.onboarding) - closable. #}
+{% if current_user.is_authenticated and current_user.is_client_admin %}
+{% set fr = first_run_checklist() %}
+{% if fr %}
+<div class="card first-run" style="margin-bottom:16px;">
+  <div class="page-header" style="margin-bottom:8px;">
+    <div>
+      <h2 class="mt-0">Getting started - {{ fr.done }} of {{ fr.total }} done</h2>
+      <p class="text-muted mt-0">{{ 'All set - you can close this list.' if fr.complete else 'A few steps and you\'re billing.' }}</p>
+    </div>
+    <form method="post" action="{{ url_for('settings.dismiss_first_run') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn btn-quiet">{{ 'Close' if fr.complete else 'Hide this list' }}</button>
+    </form>
+  </div>
+  <ol class="first-run-steps">
+    {% for s in fr.steps %}
+    <li class="{{ 'is-done' if s.done }}">
+      <span class="tick">{{ '✓' if s.done else loop.index }}</span>
+      <div><strong>{{ s.label }}</strong><br><span class="text-muted">{{ s.help }}</span></div>
+      {% if not s.done and s.url %}<a href="{{ s.url }}" class="btn btn-secondary btn-sm">{{ s.action }}</a>{% endif %}
+    </li>
+    {% endfor %}
+  </ol>
+</div>
+{% endif %}
+{% endif %}

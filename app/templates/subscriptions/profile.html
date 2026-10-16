@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Billing profile - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>The firm's billing profile</h1>
+    <p class="text-muted mt-0">Printed on every subscription invoice. Leave GSTIN empty while the firm isn't registered - invoices then carry no GST.</p>
+  </div>
+  <a href="{{ url_for('subscriptions.index') }}" class="btn btn-quiet">Back</a>
+</div>
+{% for e in errors %}<p class="flash flash-error">{{ e }}</p>{% endfor %}
+<form method="post" class="card stack" style="max-width:760px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="form-grid">
+    <label class="field"><span class="field-label">Legal name</span><input name="legal_name" class="field-input" value="{{ request.form.get('legal_name', profile.legal_name or '') }}" required></label>
+    <label class="field"><span class="field-label">GSTIN</span><input name="gstin" class="field-input" maxlength="15" value="{{ request.form.get('gstin', profile.gstin or '') }}"></label>
+    <label class="field"><span class="field-label">State</span>
+      <select name="state_code" class="field-input">
+        <option value="">Pick a state</option>
+        {% set chosen = request.form.get('state_code', profile.state_code or '') %}
+        {% for code, name in states.items()|sort(attribute=1) %}<option value="{{ code }}" {{ 'selected' if code == chosen }}>{{ name }}</option>{% endfor %}
+      </select></label>
+    <label class="field"><span class="field-label">Email</span><input name="email" type="email" class="field-input" value="{{ request.form.get('email', profile.email or '') }}"></label>
+    <label class="field"><span class="field-label">Phone</span><input name="phone" class="field-input" value="{{ request.form.get('phone', profile.phone or '') }}"></label>
+    <label class="field"><span class="field-label">UPI ID for payment</span><input name="upi_vpa" class="field-input" placeholder="firm@bank" value="{{ request.form.get('upi_vpa', profile.upi_vpa or '') }}"></label>
+    <label class="field"><span class="field-label">UPI payee name</span><input name="upi_payee_name" class="field-input" value="{{ request.form.get('upi_payee_name', profile.upi_payee_name or '') }}"></label>
+    <label class="field"><span class="field-label">SAC</span><input name="sac_code" class="field-input" value="{{ request.form.get('sac_code', profile.sac_code or '') }}"></label>
+    <label class="field"><span class="field-label">GST rate (%)</span><input name="gst_rate" type="number" step="0.01" class="field-input" value="{{ request.form.get('gst_rate', profile.gst_rate) }}"></label>
+    <label class="field"><span class="field-label">Raise each invoice this many days before renewal</span><input name="days_before_due" type="number" min="0" max="31" class="field-input" value="{{ request.form.get('days_before_due', profile.days_before_due) }}"></label>
+    <label class="field"><span class="field-label">Invoice number prefix</span><input name="invoice_prefix" class="field-input" maxlength="4" value="{{ request.form.get('invoice_prefix', profile.invoice_prefix) }}"></label>
+  </div>
+  <label class="field"><span class="field-label">Address</span><textarea name="address" class="field-input" rows="3">{{ request.form.get('address', profile.address or '') }}</textarea></label>
+  <p class="field-help">SAC 997331 at 18% (licensing the right to use software) is the starting point - see gst_config.py for the source; change it here if your CA advises otherwise.</p>
+  <button type="submit" class="btn btn-primary">Save</button>
+</form>
+{% endblock %}

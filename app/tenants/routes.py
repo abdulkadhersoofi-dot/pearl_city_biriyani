@@ -33,8 +33,8 @@ from app.utils.auditor_scope import (
     visible_auditors,
 )
 from app.utils.billing import (
-    advance_billing_cycle,
     auditor_access_status,
+    mark_period_paid,
     next_due_after,
     tenant_access_status,
 )
@@ -235,6 +235,57 @@ def admin_invoice_pdf(tenant_id, invoice_id):
     )
 
 
+@tenants_bp.route("/clients/<int:tenant_id>/pos-bills/<int:bill_id>")
+@admin_or_auditor_required
+def admin_view_pos_bill(tenant_id, bill_id):
+    # Same read-only drill-down as an invoice (admin_view_invoice): scoped
+    # to a client this login may see, audit-logged.
+    tenant = Tenant.query.get_or_404(tenant_id)
+    assert_auditor_owns_tenant(current_user, tenant)
+    bill = POSBill.query.filter_by(id=bill_id, tenant_id=tenant_id).filter(POSBill.bill_number.isnot(None)).first_or_404()
+    record_audit(current_user, "view_client_pos_bill", tenant_id=tenant_id, entity_type="pos_bill", entity_id=bill.id)
+    db.session.commit()
+    return render_template("tenants/view_pos_bill.html", tenant=tenant, bill=bill)
+
+
+@tenants_bp.route("/clients/<int:tenant_id>/pos-bills/<int:bill_id>/pdf")
+@admin_or_auditor_required
+def admin_pos_bill_pdf(tenant_id, bill_id):
+    from app.pos.receipt import render_receipt_pdf
+
+    tenant = Tenant.query.get_or_404(tenant_id)
+    assert_auditor_owns_tenant(current_user, tenant)
+    bill = POSBill.query.filter_by(id=bill_id, tenant_id=tenant_id).filter(POSBill.bill_number.isnot(None)).first_or_404()
+    # A copy for the firm - never the client's original.
+    pdf_bytes = render_receipt_pdf(bill, "a4", copy_label="DUPLICATE COPY")
+    return send_file(BytesIO(pdf_bytes), mimetype="application/pdf", as_attachment=False,
+                     download_name=f"{bill.bill_number.replace('/', '-')}.pdf")
+
+
+@tenants_bp.route("/clients/<int:tenant_id>/notes/<int:note_id>")
+@admin_or_auditor_required
+def admin_view_note(tenant_id, note_id):
+    tenant = Tenant.query.get_or_404(tenant_id)
+    assert_auditor_owns_tenant(current_user, tenant)
+    note = CreditDebitNote.query.filter_by(id=note_id, tenant_id=tenant_id).first_or_404()
+    record_audit(current_user, "view_client_note", tenant_id=tenant_id, entity_type="credit_debit_note", entity_id=note.id)
+    db.session.commit()
+    return render_template("tenants/view_note.html", tenant=tenant, note=note,
+                           document_label=DOCUMENT_TYPE_LABELS[note.document_type])
+
+
+@tenants_bp.route("/clients/<int:tenant_id>/notes/<int:note_id>/pdf")
+@admin_or_auditor_required
+def admin_note_pdf(tenant_id, note_id):
+    from app.notes.pdf import render_note_pdf
+
+    tenant = Tenant.query.get_or_404(tenant_id)
+    assert_auditor_owns_tenant(current_user, tenant)
+    note = CreditDebitNote.query.filter_by(id=note_id, tenant_id=tenant_id).first_or_404()
+    return send_file(BytesIO(render_note_pdf(note)), mimetype="application/pdf", as_attachment=False,
+                     download_name=f"{note.note_number.replace('/', '-')}.pdf")
+
+
 @tenants_bp.route("/clients/<int:tenant_id>/billing/set-cycle", methods=["POST"])
 @roles_required(UserRole.SUPER_ADMIN)
 def set_billing_cycle(tenant_id):
@@ -405,37 +456,20 @@ def activate(tenant_id):
 @tenants_bp.route("/clients/<int:tenant_id>/billing/mark-paid", methods=["POST"])
 @roles_required(UserRole.SUPER_ADMIN)
 def mark_billing_paid(tenant_id):
+    # The button is never hidden or disabled; it's always safe to click -
+    # app.utils.billing.mark_period_paid says why.
     tenant = Tenant.query.get_or_404(tenant_id)
-    # Idempotent for the period that's currently due, tracked against
-    # the live calendar - clicking this 4 times in one sitting must mean
-    # "paid, once", never "paid 4 periods ahead". The button itself is
-    # never hidden or disabled; it's always safe to click, because of
-    # two checks: (1) `last_paid_on == today` catches "I already
-    # recorded a payment for this just now" directly, which is the one
-    # case a plain date comparison can't - a tenant overdue by exactly
-    # one cycle length lands its new due date on today after advancing
-    # once, so `next_billing_due > today` alone wouldn't block a second
-    # same-day click; (2) `next_billing_due > today` catches every other
-    # "already paid ahead" case, any day after the one it was paid on.
-    today = date.today()
-    if tenant.last_paid_on == today:
+    result = mark_period_paid(tenant, date.today())
+    if result == "paid_today":
         flash(f"{tenant.legal_name} was already marked paid today. Nothing more to do.", "info")
         return redirect(url_for("tenants.detail", tenant_id=tenant.id))
-    if tenant.next_billing_due and tenant.next_billing_due > today:
+    if result == "paid_ahead":
         flash(
             f"{tenant.legal_name} is already paid up - next renewal isn't due until "
             f"{tenant.next_billing_due.strftime('%d %b %Y')}. Nothing to do.",
             "info",
         )
         return redirect(url_for("tenants.detail", tenant_id=tenant.id))
-
-    # Advances from whatever it already was (or from today, for a tenant
-    # that never had a cycle started) - never just "+1 period from
-    # today", so the due date stays anchored to the client's original
-    # cycle instead of drifting. Steps by one month or one year
-    # depending on the client's own billing_cycle.
-    tenant.next_billing_due = advance_billing_cycle(tenant, tenant.next_billing_due or today)
-    tenant.last_paid_on = today
     record_audit(
         current_user, "client_billing_marked_paid", tenant_id=tenant.id, entity_type="tenant", entity_id=tenant.id,
         details={"next_billing_due": tenant.next_billing_due.isoformat()},
@@ -603,6 +637,41 @@ def reset_client_password(tenant_id, user_id):
     return render_template("tenants/reset_password.html", form=form, tenant_user=user, tenant_id=tenant_id)
 
 
+@tenants_bp.route("/clients/<int:tenant_id>/users/<int:user_id>/reset-two-factor", methods=["POST"])
+@admin_or_auditor_required
+def reset_client_two_factor(tenant_id, user_id):
+    # A Client Admin who lost the phone with their authenticator app (and
+    # their recovery codes): the firm switches two-step sign-in off; they
+    # turn it on again from Account security.
+    tenant = Tenant.query.get_or_404(tenant_id)
+    assert_auditor_owns_tenant(current_user, tenant)
+    user = User.query.filter_by(id=user_id, tenant_id=tenant_id).first_or_404()
+    from app.auth.security import clear_failures, disable_two_factor
+
+    disable_two_factor(user)
+    clear_failures(user)
+    record_audit(current_user, "two_factor_reset_by_firm", tenant_id=tenant_id, entity_type="user", entity_id=user.id)
+    db.session.commit()
+    flash(f"Two-step sign-in is off for {user.email} - they can turn it on again from Account security.", "success")
+    return redirect(url_for("tenants.detail", tenant_id=tenant_id))
+
+
+@tenants_bp.route("/auditors/<int:auditor_id>/reset-two-factor", methods=["POST"])
+@roles_required(UserRole.SUPER_ADMIN)
+def reset_auditor_two_factor(auditor_id):
+    # An Auditor / Sub-Auditor must have two-step sign-in, so this sends
+    # them through setting it up again at their next sign-in.
+    auditor = User.query.filter(User.id == auditor_id, User.role.in_([UserRole.AUDITOR, UserRole.SUB_AUDITOR])).first_or_404()
+    from app.auth.security import clear_failures, disable_two_factor
+
+    disable_two_factor(auditor)
+    clear_failures(auditor)
+    record_audit(current_user, "two_factor_reset_by_ultra_admin", entity_type="user", entity_id=auditor.id)
+    db.session.commit()
+    flash(f"{auditor.email} will set up two-step sign-in again at their next sign-in.", "success")
+    return redirect(url_for("tenants.auditor_detail", auditor_id=auditor.id))
+
+
 @tenants_bp.route("/auditors")
 @admin_or_auditor_required
 def auditors_directory():
@@ -763,21 +832,18 @@ def set_auditor_billing_cycle(auditor_id):
 @roles_required(UserRole.SUPER_ADMIN)
 def mark_auditor_billing_paid(auditor_id):
     auditor = User.query.filter(User.id == auditor_id, User.role.in_([UserRole.AUDITOR, UserRole.SUB_AUDITOR])).first_or_404()
-    # Same idempotency guards as tenants.mark_billing_paid - see there for why.
-    today = date.today()
-    if auditor.last_paid_on == today:
+    # Same idempotency guards as a client's - app.utils.billing.mark_period_paid.
+    result = mark_period_paid(auditor, date.today())
+    if result == "paid_today":
         flash(f"{auditor.name} was already marked paid today. Nothing more to do.", "info")
         return redirect(url_for("tenants.auditor_detail", auditor_id=auditor.id))
-    if auditor.next_billing_due and auditor.next_billing_due > today:
+    if result == "paid_ahead":
         flash(
             f"{auditor.name} is already paid up - next renewal isn't due until "
             f"{auditor.next_billing_due.strftime('%d %b %Y')}. Nothing to do.",
             "info",
         )
         return redirect(url_for("tenants.auditor_detail", auditor_id=auditor.id))
-
-    auditor.next_billing_due = advance_billing_cycle(auditor, auditor.next_billing_due or today)
-    auditor.last_paid_on = today
     record_audit(
         current_user, "auditor_billing_marked_paid", entity_type="user", entity_id=auditor.id,
         details={"next_billing_due": auditor.next_billing_due.isoformat()},

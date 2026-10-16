@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from flask import flash, redirect, render_template, request, url_for
+from flask import abort, flash, redirect, render_template, request, url_for
 from flask_login import current_user
 
 from app.auth.decorators import roles_required
@@ -12,6 +12,7 @@ from app.models.price_list import PriceList
 from app.models.user import BranchType, User, UserRole
 from app.pos.stock import branch_stock_status
 from app.utils.audit import record_audit
+from app.utils.features import feature_required
 from app.utils.tenant_scope import assert_owns, tenant_query
 
 
@@ -158,3 +159,45 @@ PERMISSION_FIELDS = (
     "can_view_reports",
     "can_manage_stock",
 )
+
+
+@branches_bp.route("/cashiers", methods=["GET", "POST"])
+@roles_required(UserRole.CLIENT_ADMIN)
+@feature_required("cashier_pin")
+def cashiers():
+    """Cashiers at each counter login (a branch, or the Client Admin's own
+    counter) and their PINs (feature "cashier_pin")."""
+    from app.models.platform import Cashier
+    from app.pos import cashiers as cashier_service
+
+    tenant = current_user.tenant
+    counters = cashier_service.counter_logins(tenant)
+    if request.method == "POST":
+        action = request.form.get("action")
+        try:
+            if action == "add":
+                counter = tenant_query(User).filter_by(id=request.form.get("counter_id", type=int)).first_or_404()
+                if counter not in counters:
+                    abort(404)
+                cashier = cashier_service.add_cashier(tenant, counter, request.form.get("name"), request.form.get("pin"))
+                message = f"{cashier.name} added at {counter.name} - they sign in at the counter with their PIN."
+            else:
+                cashier = tenant_query(Cashier).filter_by(id=request.form.get("cashier_id", type=int)).first_or_404()
+                if action == "pin":
+                    cashier_service.change_pin(cashier, request.form.get("pin"))
+                    message = f"New PIN saved for {cashier.name}."
+                elif action in ("deactivate", "activate"):
+                    cashier_service.set_active(cashier, action == "activate")
+                    message = f"{cashier.name} {'can sign in again' if action == 'activate' else 'can no longer sign in'}."
+                else:
+                    abort(400)
+        except cashier_service.CashierError as exc:
+            db.session.rollback()
+            flash(exc.message, "error")
+            return redirect(url_for("branches.cashiers"))
+        record_audit(current_user, f"cashier_{action}", tenant_id=tenant.id, entity_type="cashier", entity_id=cashier.id)
+        db.session.commit()
+        flash(message, "success")
+        return redirect(url_for("branches.cashiers"))
+    rows = [(c, cashier_service.cashiers_for(tenant, c, active_only=False)) for c in counters]
+    return render_template("branches/cashiers.html", rows=rows)

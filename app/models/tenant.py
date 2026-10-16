@@ -166,6 +166,13 @@ class Tenant(db.Model, TimestampMixin):
     # is, or silence a notice that's already ringing. Does not by itself
     # block access; pause (`is_active`) still does that.
     manual_alarm_active = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
+    # Subscription fee per billing cycle, before GST (platform billing,
+    # app.platform) - null / 0 = no subscription invoice is raised.
+    subscription_fee = db.Column(db.Numeric(10, 2))
+    # The first-run checklist (app.onboarding): {"dismissed": true} once
+    # the Client Admin closes it, and when the printer test was done.
+    # Clients that existed before it are marked dismissed by the migration.
+    first_run = db.Column(db.JSON, default=dict)
 
     gstins = db.relationship(
         "Gstin", backref="tenant", cascade="all, delete-orphan", lazy="dynamic"

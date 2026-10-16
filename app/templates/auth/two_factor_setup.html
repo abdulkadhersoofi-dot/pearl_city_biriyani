@@ -1,0 +1,29 @@
+{% extends "auth_base.html" %}
+{% block title %}Set up two-step sign-in - {{ firm_name }}{% endblock %}
+{% block content %}
+{% if required %}
+<p class="mt-0"><strong>Your account needs two-step sign-in.</strong> It can open every client you manage, so a
+  password alone isn't enough.</p>
+{% else %}
+<p class="mt-0"><strong>Turn on two-step sign-in.</strong> After your password you'll also enter a code from your phone.</p>
+{% endif %}
+<ol class="setup-steps">
+  <li>Install an authenticator app on your phone - Google Authenticator, Microsoft Authenticator or Authy.</li>
+  <li>In the app, add an account and scan this code:
+    <div class="qr-box"><img src="{{ qr }}" alt="QR code for your authenticator app" width="200" height="200"></div>
+    <p class="text-muted">Can't scan? Type this key instead: <code class="secret-key">{{ secret }}</code></p>
+  </li>
+  <li>Enter the 6-digit code the app shows:</li>
+</ol>
+<form method="post" class="stack" novalidate>
+  {{ form.hidden_tag() }}
+  <div class="field {{ 'field-error' if form.code.errors }}">
+    {{ form.code.label(class="field-label") }}
+    {{ form.code(class="field-input code-input", inputmode="numeric", autocomplete="one-time-code", autofocus=true) }}
+  </div>
+  <button type="submit" class="btn btn-primary btn-block btn-lg">Turn on</button>
+</form>
+<p class="text-muted" style="text-align:center; margin-top:16px;">
+  {% if pending %}<a href="{{ url_for('auth.logout') }}">Cancel</a>{% else %}<a href="{{ url_for('auth.account_security') }}">Back</a>{% endif %}
+</p>
+{% endblock %}

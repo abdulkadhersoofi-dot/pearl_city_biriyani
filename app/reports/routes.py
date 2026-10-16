@@ -274,7 +274,15 @@ def _pnl():
 def dashboard():
     from app.finance.dashboard import dashboard as dashboard_data
 
-    return render_template("reports/dashboard.html", d=dashboard_data(current_user.tenant))
+    tenant = current_user.tenant
+    summary = summary_link = None
+    if tenant.has_feature("daily_summary"):
+        from app.finance.owner_summary import owner_summary as build, summary_text, whatsapp_link
+
+        summary = build(tenant)
+        summary_link = whatsapp_link(summary_text(tenant, summary), current_user.phone)
+    return render_template("reports/dashboard.html", d=dashboard_data(tenant), summary=summary,
+                           summary_whatsapp=summary_link)
 
 
 @reports_bp.route("/profit-loss")
@@ -418,3 +426,51 @@ def filing_status():
         flash(f"{period} marked {'ready for filing' if ready else 'not ready yet'}.", "success")
         return redirect(url_for("reports.filing_status", period=period))
     return render_template("reports/filing.html", cards=filing_cards(tenant, period), period=period)
+
+
+# --- the owner's end-of-day summary (feature "daily_summary") ------------------------------
+
+def _summary_day():
+    try:
+        return date.fromisoformat(request.args.get("day") or "")
+    except ValueError:
+        return date.today()
+
+
+@reports_bp.route("/owner-summary")
+@roles_required(UserRole.CLIENT_ADMIN)
+@feature_required("daily_summary")
+def owner_summary():
+    from app.finance.owner_summary import email_ready, owner_emails, owner_summary as build, summary_text, whatsapp_link
+
+    tenant = current_user.tenant
+    day = _summary_day()
+    data = build(tenant, day)
+    text = summary_text(tenant, data)
+    return render_template("reports/owner_summary.html", data=data, text=text,
+                           whatsapp=whatsapp_link(text, current_user.phone), email_ready=email_ready(),
+                           emails=owner_emails(tenant))
+
+
+@reports_bp.route("/owner-summary/email", methods=["POST"])
+@roles_required(UserRole.CLIENT_ADMIN)
+@feature_required("daily_summary")
+def owner_summary_email():
+    from app.extensions import db
+    from app.finance.owner_summary import email_ready, owner_summary as build, send_email
+    from app.utils.audit import record_audit
+
+    tenant = current_user.tenant
+    day = _summary_day()
+    if not email_ready():
+        abort(404)
+    try:
+        sent = send_email(tenant, build(tenant, day))
+    except (OSError, Exception) as exc:  # smtplib raises a family of errors
+        flash(f"The email couldn't be sent: {exc}", "error")
+        return redirect(url_for("reports.owner_summary", day=day.isoformat()))
+    record_audit(current_user, "owner_summary_emailed", tenant_id=tenant.id,
+                 details={"day": day.isoformat(), "to": sent})
+    db.session.commit()
+    flash(f"Sent to {', '.join(sent)}." if sent else "No Client Admin email to send it to.", "success" if sent else "error")
+    return redirect(url_for("reports.owner_summary", day=day.isoformat()))

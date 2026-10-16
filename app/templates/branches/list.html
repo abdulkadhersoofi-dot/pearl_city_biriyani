@@ -3,7 +3,10 @@
 {% block content %}
 <div class="page-header">
   <h1>Branches</h1>
-  <a href="{{ url_for('branches.new_branch') }}" class="btn btn-primary">+ Add branch</a>
+  <div class="row">
+    {% if has_feature('cashier_pin') %}<a href="{{ url_for('branches.cashiers') }}" class="btn btn-secondary">Cashiers &amp; PINs</a>{% endif %}
+    <a href="{{ url_for('branches.new_branch') }}" class="btn btn-primary">+ Add branch</a>
+  </div>
 </div>
 
 <div class="table-wrap card">

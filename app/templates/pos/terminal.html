@@ -58,6 +58,7 @@
   // instead of hand-building the path in JS.
   const RECEIPT_PDF_URL_TEMPLATE = {{ url_for('pos.receipt_pdf', bill_id=0)|tojson }};
   const SHARE_URL_TEMPLATE = {{ url_for('pos.share_bill', bill_id=0)|tojson }};
+  const RECEIPT_JSON_URL_TEMPLATE = {{ url_for('pos.receipt_json', bill_id=0)|tojson }};
   const CSRF_TOKEN = {{ csrf_token()|tojson }};
   // Composition/unregistered clients never charge GST at the counter -
   // the cart preview must not add it either (app.pos.services._charge_gst).
@@ -82,7 +83,86 @@
 {% endblock %}
 
 {% block content %}
-<div x-data="posTerminal()" x-init="init()" @keydown.window="onKey($event)">
+{% if modules.cashier %}
+{# Cashier PINs (feature "cashier_pin"): the counter stays covered until a
+   cashier taps in; Lock / Switch hands it to the next one. #}
+<div x-data="cashierLock()" class="cashier-lock-root">
+  <div class="cashier-chip">
+    <span x-text="cashier ? 'Cashier: ' + cashier.name : 'Counter locked'"></span>
+    <button type="button" class="btn btn-quiet" @click="lockNow()">Lock / switch</button>
+  </div>
+  <div class="cashier-overlay" x-show="!cashier" x-cloak>
+    <div class="cashier-pad card">
+      <h2 class="mt-0">Enter your PIN</h2>
+      <p class="pin-dots" x-text="pin.replace(/./g, '\u25CF') || '\u00A0'"></p>
+      <p class="field-error-msg" x-show="error" x-text="error"></p>
+      <div class="pin-keys">
+        <template x-for="d in ['1','2','3','4','5','6','7','8','9']" :key="d">
+          <button type="button" class="btn btn-secondary pin-key" @click="press(d)" x-text="d"></button>
+        </template>
+        <button type="button" class="btn btn-quiet pin-key" @click="pin = ''">Clear</button>
+        <button type="button" class="btn btn-secondary pin-key" @click="press('0')">0</button>
+        <button type="button" class="btn btn-primary pin-key" :disabled="busy || pin.length < 4" @click="submit()">OK</button>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+  function cashierLock() {
+    const cfg = MODULES.cashier;
+    return {
+      cashier: cfg.current, pin: "", error: "", busy: false, idleAt: Date.now(),
+      init() {
+        window.ARFA_CASHIER = this.cashier;
+        window.addEventListener("keydown", (ev) => {
+          if (this.cashier) return;
+          if (/^\d$/.test(ev.key)) { this.press(ev.key); ev.stopPropagation(); }
+          else if (ev.key === "Enter" && this.pin.length >= 4) { this.submit(); ev.stopPropagation(); }
+          else if (ev.key === "Backspace") this.pin = this.pin.slice(0, -1);
+        }, true);
+        if (cfg.lock_minutes) {
+          ["pointerdown", "keydown"].forEach(e => window.addEventListener(e, () => { this.idleAt = Date.now(); }, true));
+          setInterval(() => {
+            // A PIN is checked by the server - offline, the counter stays with
+            // the cashier who is on it.
+            if (this.cashier && navigator.onLine && Date.now() - this.idleAt > cfg.lock_minutes * 60000) this.lockNow();
+          }, 15000);
+        }
+      },
+      press(d) { if (this.pin.length < 6) this.pin += d; this.error = ""; },
+      async submit() {
+        this.busy = true;
+        const body = new FormData();
+        body.append("csrf_token", CSRF_TOKEN);
+        body.append("pin", this.pin);
+        try {
+          const res = await fetch(cfg.unlock_url, {method: "POST", body, headers: {"X-Requested-With": "XMLHttpRequest"}});
+          const data = await res.json();
+          if (!res.ok) { this.error = data.error || "That PIN isn't right."; this.pin = ""; return; }
+          this.cashier = data.cashier;
+          window.ARFA_CASHIER = data.cashier;
+          this.pin = "";
+          this.idleAt = Date.now();
+        } catch (e) {
+          this.error = "Could not reach the server - check the connection.";
+        } finally {
+          this.busy = false;
+        }
+      },
+      async lockNow() {
+        const body = new FormData();
+        body.append("csrf_token", CSRF_TOKEN);
+        if (this.cashier) body.append("cashier_id", this.cashier.id);
+        this.cashier = null;
+        window.ARFA_CASHIER = null;
+        this.pin = "";
+        try { await fetch(cfg.lock_url, {method: "POST", body, headers: {"X-Requested-With": "XMLHttpRequest"}}); } catch (e) {}
+      }
+    };
+  }
+</script>
+{% endif %}
+<div x-data="posTerminal()" @keydown.window="onKey($event)">
   <div class="page-header">
     <h1>POS billing</h1>
     <div class="row">
@@ -99,9 +179,28 @@
       <a href="{{ url_for('pos.day_book') }}" class="btn btn-quiet">Day-book</a>
       <a href="{{ url_for('pos.z_report_view') }}" class="btn btn-quiet">Z-report</a>
       {% endif %}
+      <template x-if="inApp">
+        <span class="row">
+          <button type="button" class="btn btn-quiet" @click="window.AndroidPrint.openDrawer() || window.AndroidPrint.openSettings()">Open drawer</button>
+          <button type="button" class="btn btn-quiet" @click="window.AndroidPrint.openSettings()">Printer</button>
+        </span>
+      </template>
       <button type="button" class="btn btn-quiet shortcut-hint-btn" @click="showShortcuts = !showShortcuts" title="Keyboard shortcuts">?</button>
     </div>
   </div>
+  {% if modules.offline %}
+  <div class="offline-status" :class="offline.online ? (offline.pending || offline.problems.length ? 'is-waiting' : 'is-online') : 'is-offline'">
+    <span class="dot"></span>
+    <span x-text="offline.online ? 'Online' : 'Offline - bills are numbered on this device'"></span>
+    <span x-show="offline.pending" x-text="'\u00B7 ' + offline.pending + ' bill' + (offline.pending === 1 ? '' : 's') + ' waiting to send'"></span>
+    <span x-show="offline.device" x-text="'\u00B7 series ' + (offline.device ? offline.device.code : '')" class="text-muted"></span>
+    <button type="button" class="btn btn-quiet btn-sm" x-show="offline.pending" @click="ArfaOffline.flush()">Send now</button>
+    <span class="offline-problem" x-show="offline.pending && offline.lastError" x-text="offline.lastError"></span>
+    <template x-for="p in offline.problems" :key="p.uuid">
+      <span class="offline-problem" x-text="p.payload.number + ': ' + (p.error || 'not sent')"></span>
+    </template>
+  </div>
+  {% endif %}
 
   <div class="card shortcut-sheet" x-show="showShortcuts" x-cloak>
     <strong>Keyboard &amp; scanner</strong>
@@ -564,12 +663,13 @@
 
       <template x-if="checkoutStep === 'done'">
         <div>
-          <h2>Printed</h2>
-          <p class="text-muted mt-0">Bill <strong x-text="completedBillNumber"></strong> sent to the printer.</p>
+          <h2 x-text="offlineQueued ? 'Offline - bill queued' : 'Printed'"></h2>
+          <p class="offline-banner" x-show="offlineQueued">No connection: bill <strong x-text="completedBillNumber"></strong> is saved on this device and printed. It goes to the books by itself when the connection is back.</p>
+          <p class="text-muted mt-0" x-show="!offlineQueued">Bill <strong x-text="completedBillNumber"></strong> sent to the printer.</p>
           <p class="change-due" x-show="completedChange !== null && completedChange > 0" x-text="'Give change: Rs. ' + (completedChange || 0).toFixed(2)"></p>
           <p class="text-muted" x-show="creditWarning" x-text="creditWarning" style="color:#8a5a00; font-weight:600;"></p>
           <button type="button" class="btn btn-secondary btn-block" @click="printReceipt(DEFAULT_RECEIPT_FORMAT, false)">Reprint</button>
-          <button type="button" class="btn btn-secondary btn-block" style="margin-top:10px;" @click="shareBill()">Share on WhatsApp</button>
+          <button type="button" class="btn btn-secondary btn-block" style="margin-top:10px;" @click="shareBill()" x-show="!offlineQueued">Share on WhatsApp</button>
           <template x-if="completedKotPdf">
             <button type="button" class="btn btn-secondary btn-block" style="margin-top:10px;" @click="printUrl(completedKotPdf)">Print KOT</button>
           </template>
@@ -708,7 +808,38 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="{{ url_for('static', filename='js/escpos.js') }}"></script>
+{% if modules.offline %}<script src="{{ url_for('static', filename='js/pos_offline.js') }}"></script>{% endif %}
 <script>
+// One id per checkout - a retry after a lost reply returns the same bill.
+function newCheckoutId() {
+  if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+  return "c" + Date.now().toString(16) + Math.random().toString(16).slice(2, 14);
+}
+// The Android app with a Bluetooth / USB thermal printer set up prints
+// receipts straight to it (ESC/POS) - much faster than a PDF. Everywhere
+// else, and if that fails, the PDF path as before.
+function thermalPrinterReady() {
+  const b = window.AndroidPrint;
+  return !!(b && b.printRaw && b.hasPrinter && b.hasPrinter() && window.EscPos);
+}
+async function printEscPos(jsonUrl, fallback) {
+  try {
+    const res = await fetch(jsonUrl, {headers: {"X-Requested-With": "XMLHttpRequest"}});
+    if (!res.ok) throw new Error("receipt");
+    const doc = await res.json();
+    const b = window.AndroidPrint;
+    const cols = b.printerColumns ? b.printerColumns() : 48;
+    // The printer may still fail after the bytes are handed over (off,
+    // out of range) - the app then calls this.
+    window.arfaEscPosFailed = () => { if (b.printHtml) b.printHtml(EscPos.html(doc)); else fallback(); };
+    if (!b.printRaw(EscPos.toBase64(EscPos.encode(doc, cols)), !!doc.open_drawer)) {
+      if (b.printHtml) b.printHtml(EscPos.html(doc)); else fallback();
+    }
+  } catch (e) {
+    fallback();
+  }
+}
 function posTerminal() {
   return {
     search: "",
@@ -755,7 +886,21 @@ function posTerminal() {
     creditInput: {voucher: "", points: "", error: ""},
     rx: {doctor: "", doctor_reg_no: "", patient: "", patient_address: ""},
     completedKotPdf: "",
+    // Offline billing (Phase 10, feature "offline_pos").
+    offline: {online: true, pending: 0, problems: [], device: null, lastError: ""},
+    offlineQueued: false,
+    offlineDoc: null,
+    checkoutUuid: "",
+    // Inside the ARFA POS Android app (direct thermal printing, drawer).
+    inApp: !!(window.AndroidPrint && window.AndroidPrint.openSettings),
     init() {
+      if (MODULES.offline && window.ArfaOffline) {
+        ArfaOffline.onChange(st => { this.offline = st; });
+        ArfaOffline.init(Object.assign({csrf: CSRF_TOKEN}, MODULES.offline));
+      } else if ("serviceWorker" in navigator && navigator.serviceWorker.getRegistrations) {
+        // Offline billing switched off: drop the POS service worker if one is left.
+        navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => { if (/\/pos\/$/.test(r.scope)) r.unregister(); })).catch(() => {});
+      }
       if (MODULES.restaurant) this.orderType = PREFILL.order_type || MODULES.restaurant.order_type;
       if (PREFILL.salesman_id) this.salesmanId = PREFILL.salesman_id;
       if (MODULES.quote) {
@@ -844,7 +989,11 @@ function posTerminal() {
           l.unit = q.unit; l.incl = q.incl; l.jewellery = q.jewellery;
         });
         this.charges = data.charges;
-      } catch (e) { this.quoteError = "Could not reach the server for prices."; }
+      } catch (e) {
+        // Offline billing on: the counter carries on at the items' own prices.
+        this.quoteError = (MODULES.offline && !this.offline.online) || (MODULES.offline && !navigator.onLine)
+          ? "" : "Could not reach the server for prices.";
+      }
     },
     chargeAmount(c) { return GstCalc.line(c.qty, c.rate, 0, c.gst_rate, false, CHARGES_GST, true).total; },
     scheduledItems() {
@@ -1281,10 +1430,13 @@ function posTerminal() {
       return null;  // single mode, whole bill - the original 3-tap post
     },
     async confirmCheckout() {
-      this.submitting = true;
       this.checkoutError = "";
+      if (MODULES.offline && !navigator.onLine) return this.queueOffline();
+      this.submitting = true;
+      if (!this.checkoutUuid) this.checkoutUuid = newCheckoutId();
       const body = new FormData();
       body.append("csrf_token", CSRF_TOKEN);
+      body.append("checkout_uuid", this.checkoutUuid);
       const payments = this.paymentsForSubmit();
       if (payments) {
         payments.forEach(p => {
@@ -1299,12 +1451,14 @@ function posTerminal() {
       if (this.cashTendered !== "" && this.cashTendered !== null) body.append("cash_tendered", this.cashTendered);
       if (this.scheduledItems().length) Object.entries(this.rx).forEach(([k, v]) => body.append("rx_" + k, v));
       this.cartFormData(body);
+      let reached = false;
       try {
         const res = await fetch(this.checkoutUrl, {
           method: "POST",
           headers: {"X-Requested-With": "XMLHttpRequest"},
           body,
         });
+        reached = true;
         const data = await res.json();
         if (!res.ok) {
           this.checkoutError = data.error || "Checkout failed.";
@@ -1320,7 +1474,44 @@ function posTerminal() {
         if (this.customer && data.points !== undefined) this.customer.points = data.points;
         this.printReceipt(DEFAULT_RECEIPT_FORMAT, true);
       } catch (e) {
+        if (!reached && MODULES.offline) { this.submitting = false; return this.queueOffline(); }
         this.checkoutError = "Could not reach the server - check your connection and try again.";
+      } finally {
+        this.submitting = false;
+      }
+    },
+    // No connection: bill it on this device, in its own series, and send it
+    // when the connection is back (pos_offline.js).
+    async queueOffline() {
+      const mode = this.checkoutStep === "split" ? "split" : this.paymentMode;
+      const reason = ArfaOffline.blocker(this.cart, {
+        billDiscount: Number(this.billDisc.value) > 0,
+        credits: this.credits.length > 0 || mode === "exchange",
+        restaurant: !!(MODULES.restaurant && (MODULES.restaurant.table || this.charges.length)),
+        mode: mode,
+      });
+      if (reason) { this.checkoutError = "No connection - and this bill can't wait for it: " + reason; return; }
+      this.submitting = true;
+      const cashier = window.ARFA_CASHIER || null;
+      const label = (this.paymentModes.find(m => m.value === mode) || {}).label || mode;
+      try {
+        const done = await ArfaOffline.queueBill(this.cart, {
+          mode: mode, mode_label: label, cash_tendered: mode === "cash" ? this.cashTendered : "",
+          customer: this.customer ? {name: this.customer.name, phone: this.customer.phone || ""} : null,
+          cashier_id: cashier ? cashier.id : null, cashier_name: cashier ? cashier.name : "",
+          // The id of the online attempt that got no reply (if one was
+          // made): the server then sees it if that attempt did go through.
+          uuid: this.checkoutUuid || null,
+        });
+        this.completedBillId = null;
+        this.completedBillNumber = done.number;
+        this.completedChange = (mode === "cash" && this.cashTendered !== "") ? GstCalc.round2(Number(this.cashTendered) - done.total) : null;
+        this.offlineQueued = true;
+        this.offlineDoc = done.doc;
+        ArfaOffline.printDoc(done.doc);
+        this.checkoutStep = "done";
+      } catch (e) {
+        this.checkoutError = "Could not save the bill on this device: " + (e && e.message ? e.message : e);
       } finally {
         this.submitting = false;
       }
@@ -1349,13 +1540,25 @@ function posTerminal() {
     // server hands out the original once; every later print is marked
     // DUPLICATE COPY.
     printReceipt(format, original) {
+      if (this.offlineQueued && this.offlineDoc) {
+        ArfaOffline.printDoc(Object.assign({}, this.offlineDoc, {copy_label: "DUPLICATE COPY", open_drawer: false}));
+        return;
+      }
       if (!this.completedBillId) return;
-      this.printUrl(this.receiptUrl(this.completedBillId, format, original));
+      if (thermalPrinterReady()) {
+        printEscPos(RECEIPT_JSON_URL_TEMPLATE.replace("/0/", "/" + this.completedBillId + "/") + (original ? "?original=1" : ""),
+                    () => this.printUrl(this.receiptUrl(this.completedBillId, format, original)));
+      } else {
+        this.printUrl(this.receiptUrl(this.completedBillId, format, original));
+      }
       this.checkoutStep = "done";
     },
     reprintLast() {
       const id = this.completedBillId || LAST_BILL_ID;
-      if (id) this.printUrl(this.receiptUrl(id, DEFAULT_RECEIPT_FORMAT, false));
+      if (!id) return;
+      const pdf = () => this.printUrl(this.receiptUrl(id, DEFAULT_RECEIPT_FORMAT, false));
+      if (thermalPrinterReady()) printEscPos(RECEIPT_JSON_URL_TEMPLATE.replace("/0/", "/" + id + "/"), pdf);
+      else pdf();
     },
     async shareBill() {
       if (!this.completedBillId) return;
@@ -1377,6 +1580,9 @@ function posTerminal() {
       this.$refs.holdForm.submit();
     },
     newSale() {
+      this.checkoutUuid = "";
+      this.offlineQueued = false;
+      this.offlineDoc = null;
       if (MODULES.restaurant && MODULES.restaurant.table) { window.location = MODULES.restaurant.tables_url; return; }
       this.charges = [];
       this.credits = [];

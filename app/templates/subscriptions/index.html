@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Subscription invoices - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Subscription invoices{% if subject %} - {{ subject.legal_name if subject.legal_name is defined else subject.name }}{% endif %}</h1>
+    <p class="text-muted mt-0">The firm's own GST invoices to its clients and Auditor offices, raised from each one's billing cycle.
+      {% if unpaid %}Unpaid: <strong>Rs. {{ '%.2f'|format(unpaid) }}</strong>{% endif %}</p>
+  </div>
+  <div class="row">
+    <a href="{{ url_for('subscriptions.profile') }}" class="btn btn-secondary">Billing profile</a>
+    {% if subject %}<a href="{{ url_for('subscriptions.index') }}" class="btn btn-quiet">All invoices</a>{% endif %}
+  </div>
+</div>
+
+{% if not profile %}
+<div class="card" style="margin-bottom:16px; border-left:4px solid var(--color-danger);">
+  <p style="margin:0;">Fill in the firm's <a href="{{ url_for('subscriptions.profile') }}">billing profile</a> (name, state, GSTIN, UPI ID) before raising any invoice.</p>
+</div>
+{% endif %}
+
+{% if due %}
+<div class="card" style="margin-bottom:16px;">
+  <h2 style="margin-top:0;">Due to invoice ({{ due|length }})</h2>
+  <p class="text-muted">Renewals within {{ profile.days_before_due }} days that have no invoice yet. <code>flask platform-invoices-generate</code> raises these daily from cron.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Subscriber</th><th>Cycle</th><th>Renewal</th><th class="num">Fee</th></tr></thead>
+      <tbody>
+      {% for s in due %}
+      <tr>
+        <td>{{ s.legal_name if s.legal_name is defined else s.name ~ ' (' ~ s.role_label ~ ')' }}</td>
+        <td>{{ s.billing_cycle.value|title }}</td>
+        <td>{{ s.next_billing_due.strftime('%d %b %Y') }}</td>
+        <td class="num">Rs. {{ '%.2f'|format(s.subscription_fee) }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <form method="post" action="{{ url_for('subscriptions.raise_due') }}" style="margin-top:12px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button class="btn btn-primary">Raise {{ due|length }} invoice{{ 's' if due|length != 1 }}</button>
+  </form>
+</div>
+{% endif %}
+
+<div class="subnav" style="margin-bottom:12px;">
+  {% for value, label in [(none, 'All'), ('issued', 'Unpaid'), ('paid', 'Paid'), ('void', 'Voided')] %}
+  <a href="{{ url_for('subscriptions.index', status=value, kind=request.args.get('kind'), subject_id=request.args.get('subject_id')) }}" class="{{ 'active' if status == value }}">{{ label }}</a>
+  {% endfor %}
+</div>
+<div class="table-wrap card">
+  <table>
+    <thead><tr><th>Invoice</th><th>Date</th><th>Subscriber</th><th>Period</th><th>Status</th><th class="num">Total</th></tr></thead>
+    <tbody>
+    {% for i in invoices %}
+      <tr>
+        <td><a href="{{ url_for('subscriptions.view', invoice_id=i.id) }}">{{ i.number }}</a></td>
+        <td>{{ i.invoice_date.strftime('%d %b %Y') }}</td>
+        <td>{{ i.subscriber_name }}{% if i.auditor_id %} <span class="text-muted">(Auditor office)</span>{% endif %}</td>
+        <td>{{ i.period_start.strftime('%d %b %Y') }} - {{ i.period_end.strftime('%d %b %Y') }}</td>
+        <td>{% if i.status.value == 'paid' %}<span class="tag tag-ok">Paid</span>{% elif i.status.value == 'void' %}<span class="tag">Voided</span>{% else %}<span class="tag tag-warn">Unpaid</span>{% endif %}</td>
+        <td class="num">Rs. {{ '%.2f'|format(i.grand_total) }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6" class="empty-state">No subscription invoices yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

@@ -473,6 +473,7 @@ tr:last-child td { border-bottom: none; }
 .tag-low, .tag-dead, .tag-expired { background: var(--color-danger-bg); color: var(--color-danger); }
 .tag-fast { background: var(--color-success-bg); color: var(--color-primary-dark); }
 .tag-slow, .tag-soon, .tag-warn { background: #fff4d6; color: #8a5a00; }
+.tag-ok { background: var(--color-success-bg); color: var(--color-primary-dark); }
 td.num, th.num { text-align: right; white-space: nowrap; }
 .qty-neg { color: var(--color-danger); }
 .stock-lines td { vertical-align: top; }
@@ -501,3 +502,38 @@ td.num, th.num { text-align: right; white-space: nowrap; }
 .cart-line-note.kitchen { color: #a85a12; }
 .charge-row { display: flex; justify-content: space-between; color: var(--color-text-muted); font-size: 0.92rem; padding: 2px 0; }
 .weight-quick { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+
+/* --- Phase 10: two-step sign-in, cashier PIN pad, offline counter ---------------------- */
+.code-input { font-size: 1.6rem; letter-spacing: 0.3em; text-align: center; font-variant-numeric: tabular-nums; }
+.setup-steps { padding-left: 20px; }
+.setup-steps li { margin-bottom: 12px; }
+.qr-box { display: flex; justify-content: center; padding: 12px 0; }
+.qr-box img { background: #fff; border-radius: 8px; }
+.secret-key { word-break: break-all; font-size: 0.95rem; }
+.recovery-codes { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 16px 0; }
+.recovery-codes code { display: block; text-align: center; padding: 8px; background: var(--color-bg, #f6f7f6); border-radius: 6px; font-size: 1rem; }
+.cashier-chip { display: flex; align-items: center; justify-content: flex-end; gap: 8px; font-weight: 600; margin-bottom: 8px; }
+.cashier-overlay { position: fixed; inset: 0; background: rgba(20, 30, 25, 0.82); z-index: 200; display: flex; align-items: center; justify-content: center; padding: 16px; }
+.cashier-pad { width: 100%; max-width: 340px; text-align: center; }
+.pin-dots { font-size: 1.8rem; letter-spacing: 0.4em; min-height: 2.4rem; margin: 8px 0; }
+.pin-keys { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.pin-key { min-height: 60px; font-size: 1.4rem; }
+.offline-status { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 8px 12px; border-radius: 8px; margin-bottom: 10px; font-weight: 600; background: var(--color-success-bg); }
+.offline-status .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--color-primary); }
+.offline-status.is-offline { background: #fff4d6; color: #8a5a00; }
+.offline-status.is-offline .dot { background: #d18b00; }
+.offline-status.is-waiting .dot { background: #d18b00; }
+.offline-problem { flex-basis: 100%; color: var(--color-danger); font-weight: 500; }
+.offline-banner { background: #fff4d6; color: #6b4600; border-radius: 8px; padding: 10px 12px; font-weight: 600; }
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 12px; }
+.stat-grid .stat { display: flex; flex-direction: column; gap: 2px; }
+.stat-grid .stat strong { font-size: 1.4rem; }
+.summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+.summary-grid table { width: 100%; }
+.summary-text { white-space: pre-wrap; font-family: inherit; background: var(--color-bg, #f6f7f6); padding: 12px; border-radius: 8px; margin: 0; }
+.first-run-steps { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+.first-run-steps li { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-top: 1px solid var(--color-border, #e5e7e5); }
+.first-run-steps li > div { flex: 1; min-width: 0; }
+.first-run-steps .tick { width: 30px; height: 30px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; background: #eef0ee; flex-shrink: 0; }
+.first-run-steps li.is-done .tick { background: var(--color-primary); color: #fff; }
+.first-run-steps li.is-done strong { text-decoration: line-through; color: var(--color-text-muted); }

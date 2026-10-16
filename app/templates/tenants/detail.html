@@ -81,6 +81,7 @@
         <button type="submit" class="btn btn-quiet" title="Recomputes the renewal date from the live calendar - use this if the cycle ever looks wrong.">Resync to live calendar</button>
       </form>
     </div>
+    {% with kind='tenant', subject=tenant %}{% include "subscriptions/_fee.html" %}{% endwith %}
     <div>
       <p class="text-muted" style="margin:0 0 4px;">Manual reminder</p>
       <p style="margin:0;"><strong>{{ 'On' if tenant.manual_alarm_active else 'Off' }}</strong></p>
@@ -187,6 +188,13 @@
           </form>
           {% endif %}
           <a href="{{ url_for('tenants.reset_client_password', tenant_id=tenant.id, user_id=u.id) }}" class="btn btn-quiet">Reset password</a>
+          {% if u.has_two_factor %}
+          <form method="post" action="{{ url_for('tenants.reset_client_two_factor', tenant_id=tenant.id, user_id=u.id) }}"
+                onsubmit="return confirm('Turn off two-step sign-in for {{ u.name }}? Only do this if they lost their phone.');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-quiet">Reset two-step sign-in</button>
+          </form>
+          {% endif %}
           {% if u.is_active %}
           <form method="post" action="{{ url_for('tenants.deactivate_user', tenant_id=tenant.id, user_id=u.id) }}"
                 onsubmit="return confirm('Deactivate {{ u.name }}? They will no longer be able to sign in.');">
@@ -236,17 +244,18 @@
 </div>
 
 <div class="card" style="margin-bottom:20px;">
-  <h2 style="margin-top:0;">Recent POS bills (read-only)</h2>
+  <h2 style="margin-top:0;">Recent POS bills (read-only - open one for its lines)</h2>
   <table>
     <thead><tr><th>Bill</th><th>Date</th><th>Payment</th><th>Status</th><th>Total</th></tr></thead>
     <tbody>
     {% for b in pos_bills %}
       <tr>
-        <td>{{ b.bill_number }}</td>
+        <td><a href="{{ url_for('tenants.admin_view_pos_bill', tenant_id=tenant.id, bill_id=b.id) }}">{{ b.bill_number }}</a></td>
         <td>{{ b.completed_at.strftime('%d %b %Y %H:%M') if b.completed_at else '-' }}</td>
         <td>{{ b.payment_mode.value|upper if b.payment_mode else '-' }}</td>
         <td>
           {% if b.status.value == 'completed' %}<span class="status-badge status-issued">Completed</span>
+          {% elif b.status.value == 'voided' %}<span class="status-badge status-void">Voided</span>
           {% else %}<span class="status-badge status-void">Refunded</span>{% endif %}
         </td>
         <td>Rs. {{ '%.2f'|format(b.grand_total) }}</td>
@@ -259,13 +268,13 @@
 </div>
 
 <div class="card">
-  <h2 style="margin-top:0;">Recent notes (read-only)</h2>
+  <h2 style="margin-top:0;">Recent notes (read-only - open one for its lines)</h2>
   <table>
     <thead><tr><th>Number</th><th>Date</th><th>Type</th><th>Against</th><th>Status</th><th>Total</th></tr></thead>
     <tbody>
     {% for n in notes %}
       <tr>
-        <td>{{ n.note_number }}</td>
+        <td><a href="{{ url_for('tenants.admin_view_note', tenant_id=tenant.id, note_id=n.id) }}">{{ n.note_number }}</a></td>
         <td>{{ n.note_date.strftime('%d %b %Y') }}</td>
         <td>{{ 'Credit' if n.document_type.value == 'credit_note' else 'Debit' }}</td>
         <td>{{ n.original_invoice.invoice_number if n.original_invoice else '-' }}</td>

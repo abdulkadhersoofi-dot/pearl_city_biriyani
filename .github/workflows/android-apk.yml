@@ -43,6 +43,10 @@ jobs:
 
       - name: Build debug APK
         working-directory: android
+        # Every published build gets a higher versionCode (the run number),
+        # which the app's update check compares against.
+        env:
+          ANDROID_VERSION_CODE: ${{ github.run_number }}
         run: |
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon --stacktrace
@@ -52,6 +56,9 @@ jobs:
         run: |
           mkdir -p dist
           cp app/build/outputs/apk/debug/app-debug.apk dist/ARFA-POS-debug.apk
+          # What the app's update check reads (android/app/.../UpdateChecker.kt).
+          printf '{"versionCode": %s, "versionName": "1.%s", "commit": "%s", "apk": "https://github.com/%s/releases/download/android-latest/ARFA-POS-debug.apk"}\n' \
+            "${{ github.run_number }}" "${{ github.run_number }}" "${{ github.sha }}" "${{ github.repository }}" > dist/version.json
 
       # Always available from this run's "Summary" page, even for a
       # push that isn't on the branch the release step publishes from.
@@ -81,4 +88,6 @@ jobs:
             Points at: see android/README.md for the server URL this build
             talks to and how to change it.
           prerelease: true
-          files: android/dist/ARFA-POS-debug.apk
+          files: |
+            android/dist/ARFA-POS-debug.apk
+            android/dist/version.json

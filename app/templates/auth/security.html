@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% from "macros.html" import field %}
+{% block title %}Account security - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Account security</h1>
+    <p class="text-muted mt-0">{{ current_user.email }}</p>
+  </div>
+</div>
+
+<div class="card" style="max-width:640px;">
+  <h2 style="margin-top:0;">Two-step sign-in</h2>
+  {% if current_user.has_two_factor %}
+    <p><span class="tag tag-ok">On</span> since {{ current_user.totp_enabled_at|ist('%d %b %Y') }} -
+      {{ codes_left }} recovery code{{ 's' if codes_left != 1 }} left.</p>
+    <p class="text-muted">To change anything below, confirm with your password and a code from your app.</p>
+    <form method="post" class="stack" novalidate>
+      {{ form.hidden_tag() }}
+      {{ field(form.password) }}
+      {{ field(form.code) }}
+      <div class="row">
+        <button type="submit" name="action" value="codes" class="btn btn-secondary">New recovery codes</button>
+        {% if not required %}
+        <button type="submit" name="action" value="disable" class="btn btn-danger">Turn off</button>
+        {% endif %}
+      </div>
+      {% if required %}<p class="text-muted">This account can't turn two-step sign-in off - it can open other clients' data.</p>{% endif %}
+    </form>
+  {% else %}
+    <p><span class="tag">Off</span> Signing in needs only your password.</p>
+    <p>With two-step sign-in, signing in also needs a code from an authenticator app on your phone - a stolen
+      password alone can't open your business's books.</p>
+    <a href="{{ url_for('auth.two_factor_setup') }}" class="btn btn-primary">Turn on two-step sign-in</a>
+  {% endif %}
+</div>
+{% endblock %}

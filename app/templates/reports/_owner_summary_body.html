@@ -1,0 +1,43 @@
+{# The owner's day summary (app.finance.owner_summary) - on its own page and on the dashboard. #}
+<div class="stat-grid">
+  <div class="card stat"><span class="text-muted">Sales</span><strong>Rs. {{ '{:,.2f}'.format(data.net_sales) }}</strong></div>
+  <div class="card stat"><span class="text-muted">Counter bills</span><strong>{{ data.bill_count }}</strong><span class="text-muted">Rs. {{ '{:,.2f}'.format(data.bill_total) }}</span></div>
+  {% if data.invoice_count %}<div class="card stat"><span class="text-muted">Invoices</span><strong>{{ data.invoice_count }}</strong><span class="text-muted">Rs. {{ '{:,.2f}'.format(data.invoice_total) }}</span></div>{% endif %}
+  {% if data.voids or data.returns %}<div class="card stat"><span class="text-muted">Voids / returns</span><strong>{{ data.voids }} / {{ data.returns }}</strong></div>{% endif %}
+</div>
+<div class="summary-grid">
+  <div class="card">
+    <h3 class="mt-0">Paid by</h3>
+    <table>
+      {% for m in data.modes %}<tr><td>{{ m.label }}</td><td class="num">Rs. {{ '{:,.2f}'.format(m.net) }}</td></tr>
+      {% else %}<tr><td class="text-muted">No payments yet.</td></tr>{% endfor %}
+    </table>
+  </div>
+  <div class="card">
+    <h3 class="mt-0">Counters</h3>
+    <table>
+      {% for c in data.counters %}<tr><td>{{ c.name }}</td><td class="num">{{ c.bills }} bill{{ 's' if c.bills != 1 }}</td><td class="num">Rs. {{ '{:,.2f}'.format(c.total) }}</td></tr>
+      {% else %}<tr><td class="text-muted">No counter bills.</td></tr>{% endfor %}
+    </table>
+  </div>
+  <div class="card">
+    <h3 class="mt-0">Top items</h3>
+    <table>
+      {% for r in data.top_items %}<tr><td>{{ r.name }}</td><td class="num">{{ r.qty|qty }}</td><td class="num">Rs. {{ '{:,.2f}'.format(r.sales) }}</td></tr>
+      {% else %}<tr><td class="text-muted">Nothing sold yet.</td></tr>{% endfor %}
+    </table>
+  </div>
+  {% if data.low_stock or data.oversold %}
+  <div class="card">
+    <h3 class="mt-0">Stock to look at</h3>
+    <table>
+      {% for r in data.oversold %}<tr><td>{{ r.name }} <span class="text-muted">{{ r.location }}</span></td><td class="num qty-neg">{{ r.qty|qty }} {{ r.unit }}</td><td><span class="tag tag-low">Below zero</span></td></tr>{% endfor %}
+      {% for r in data.low_stock %}<tr><td>{{ r.product.name }}</td><td class="num">{{ r.qty|qty }} {{ r.product.unit }}</td><td><span class="tag tag-warn">Low</span></td></tr>{% endfor %}
+    </table>
+  </div>
+  {% endif %}
+</div>
+{% if data.offline_problems %}
+<p class="flash flash-error" style="margin-top:12px;">{{ data.offline_problems }} offline bill{{ 's' if data.offline_problems != 1 }} couldn't be booked -
+  <a href="{{ url_for('pos.offline_bills') }}">look at them</a>.</p>
+{% endif %}

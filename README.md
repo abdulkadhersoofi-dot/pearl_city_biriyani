@@ -124,7 +124,9 @@ app/
 │                     # modules (feature flags)
 ├── pos/             # POS module: terminal, hold/resume, refunds, Z-report;
 │                     # returns.py (sales returns), sessions.py (day
-│                     # open/close), share.py (UPI QR, share links)
+│                     # open/close), share.py (UPI QR, share links),
+│                     # offline.py (device series + sync), cashiers.py,
+│                     # receipt_doc.py (receipt as data for ESC/POS)
 ├── notes/           # Credit/Debit notes, created from an existing invoice
 ├── reports/         # gstr.py (aggregation), export.py (Excel/PDF/JSON) -
 │                     # GSTR-1/3B working papers, see Roadmap for scope
@@ -138,6 +140,9 @@ app/
 ├── jobs/            # job cards, warranty lookup (Phase 9)
 ├── wholesale/       # customer groups, quantity slabs, salesmen (Phase 9)
 ├── loyalty/         # points ledger and history (Phase 9)
+├── subscriptions/   # the firm's own subscription invoices (Phase 10)
+├── onboarding.py    # first-run checklist (Phase 10)
+├── monitoring.py    # Sentry, only with SENTRY_DSN (Phase 10)
 ├── api/              # small JSON endpoints (product lookup today; POS
 │                     # cart/checkout from Phase 2) - kept separate so a
 │                     # future SPA frontend can reuse them
@@ -199,6 +204,26 @@ subdomain onto your own domain, it's a dashboard step, no code change:
 web service → **Settings → Custom Domains** → add your domain, then add
 the CNAME/A record it gives you at your DNS provider. Render issues the
 TLS certificate automatically.
+
+### Phase 10 settings and scheduled jobs
+
+Optional environment variables (nothing breaks without them):
+
+| Variable | What it does |
+|---|---|
+| `SENTRY_DSN` (+ `SENTRY_ENVIRONMENT`, `SENTRY_TRACES_SAMPLE_RATE`) | error reports to Sentry; off when unset |
+| `SMTP_HOST`, `SMTP_PORT` (587), `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM`, `SMTP_USE_TLS` (1) | the owner's day summary by email; WhatsApp sharing works without |
+| `PROXY_FIX_X_FOR` | set to `1` behind Render / nginx so lockout and limits see the real client IP |
+| `ADMIN_2FA_REQUIRED` (1), `ADMIN_IDLE_MINUTES` (30), `LOGIN_IP_LIMIT` (40) | sign-in security for the firm's own logins |
+| `ANDROID_RELEASE_REPO` | where the app's update check looks (the APK's `RELEASE_REPO` must match) |
+
+The first time the Ultra Admin signs in after this phase, the app asks
+them to set up two-step sign-in (an authenticator app) - have the phone
+ready. Lost phone: a recovery code, or `flask reset-2fa EMAIL`.
+
+Daily cron (alongside the expense / recurring-invoice ones):
+`flask platform-invoices-generate` (subscription invoices due within the
+billing profile's days) and, in the evening, `flask owner-summary-send`.
 
 ### Database backups
 
@@ -1600,6 +1625,143 @@ Five new flags, all off by default; with them off nothing changes (routes
   another client's metal rate never prices an item
   (`tests/test_phase9_modules.py`).
 
+### Platform build - Phase 10 (platform, Android, security, polish)
+
+- **Offline billing (`offline_pos`, opt-in) - each device numbers its own
+  series.** The owner's choice at the [ASK]: every counter device (a
+  browser, or the Android app) registers once and gets a code `O1`,
+  `O2`... and its own `InvoiceSeries` (`device_id` set - the counter's
+  normal POS series filters `device_id IS NULL`, so it is untouched).
+  Offline, the device numbers each bill itself, `O1/2026-27/0001`
+  (within GST's 16 characters, the FY by the Indian calendar on the
+  device), so the number on the customer's paper is final - nothing is
+  renumbered later. Bills wait in IndexedDB and go to `/pos/offline/sync`
+  oldest first when the connection is back (on the `online` event, every
+  20 s while any wait, or "Send now"); each is booked exactly once by its
+  uuid, under the same row lock as every number (`numbering.claim_number`
+  moves the series past it, never back). What the device sent is kept in
+  `OfflineBill` whatever happens: a bill the server can't book (item
+  deleted, clock in the future, ...) stays there, number accounted for,
+  for the Client Admin to **retry** or **cancel with a reason** (a VOIDED
+  POS bill with that number, zero value - the series has no gap). The
+  device's total is compared with the server's; a difference is booked
+  at the server's figure and flagged. Only plain bills go offline:
+  catalog items at the device's price, one payment by cash / UPI / card,
+  no discounts, credit, returns, points, serial / margin / jewellery /
+  Schedule H items (`offline.blocked_products`) - the counter says why it
+  must wait. Stock goes out even past zero (the goods have left).
+- **A lost reply is never billed twice.** Every online checkout sends a
+  `checkout_uuid` (unique per client); sending it again returns the same
+  bill. If the reply was lost and the cashier billed it offline, the
+  offline copy carries the same uuid, so the server flags it ("reached
+  the server online as POS/...") instead of booking a second sale.
+- **Service worker** (`static/js/pos_sw.js`, served at `/pos/sw.js` with
+  scope `/pos/`, registered only with the flag on): the POS screen,
+  `/static/` and item photos are fetched from the network as usual and a
+  copy kept; with no network the copy is used. Any other `/pos/` page
+  offline gets a plain "You're offline - only billing works" page. The
+  sign-in page drops the cached POS screen (another login may use the
+  browser); queued bills stay with the login that made them. Device
+  registration takes the client's row lock (two counters at once can't
+  both get O1) and a cross-tab lock in the browser.
+- **Receipts as data, ESC/POS in the page.** `app/pos/receipt_doc.py`
+  turns a bill into the same content as the PDF receipt, as JSON
+  (`/pos/bills/<id>/receipt.json`, same original / DUPLICATE rule); an
+  offline bill builds the identical shape on the device.
+  `static/js/escpos.js` lays it out for a 58 mm (32 col) or 80 mm (48 col)
+  roll in plain ASCII ESC/POS (init, centred bold header, two-column
+  pairs, feed and cut) - one formatter for online and offline bills,
+  tested with Node.
+- **Android app** (`android/`): direct printing to a **Bluetooth (SPP)
+  or USB (bulk OUT)** thermal printer - the app only moves the bytes the
+  page made; the PDF -> Android print dialog stays as the fallback (no
+  printer chosen, or the printer fails - the page is told and prints the
+  HTML receipt instead). **Cash drawer** kick (`ESC p 0 25 250`) after a
+  cash sale's original print, and an "Open drawer" button. **Kiosk mode**
+  (Android lock task; a dedicated / device-owner tablet locks straight
+  away, any other asks to pin the screen) with a code to unlock.
+  **Update check** against the `android-latest` release's `version.json`
+  (the CI build's run number is the versionCode). Signed in before, the
+  app opens straight on the POS so the cached screen works offline, and
+  its offline screen offers "Open billing without internet". Settings
+  live on the device (`PrinterSettings`): printer, paper width, drawer,
+  kiosk.
+- **Two-step sign-in (TOTP, RFC 6238)** - `app/auth/security.py`, no
+  library, no service called. Compulsory for the Ultra Admin and the
+  Auditor hierarchy (they can open every client they manage; already
+  signed-in admins are sent to set it up), optional for a Client Admin
+  (Account security), not offered to branch counters (they get cashier
+  PINs). Nothing is signed in until the second step passes. The secret
+  is stored encrypted (Fernet from SECRET_KEY); a used step can't be
+  replayed; eight one-time recovery codes (hashes stored); five wrong
+  codes send you back to the password and count as a wrong password.
+  The firm resets a lost phone from the client / Auditor page;
+  `flask reset-2fa EMAIL` for the Ultra Admin's own. Tests run with
+  `ADMIN_2FA_REQUIRED = False` except the 2FA tests.
+- **Lockout and limits.** `LOGIN_LOCKOUT_ATTEMPTS` (8) wrong passwords
+  in a row lock the account for `LOGIN_LOCKOUT_MINUTES` (15), audit-logged;
+  any new password (an admin's reset included) opens it. One network
+  (IP) gets `LOGIN_IP_LIMIT` failed sign-ins per window across all
+  accounts. `PROXY_FIX_X_FOR` trusts the proxy's X-Forwarded-For (set it
+  to 1 on Render) so that is the real client IP.
+- **Idle sign-out.** The admin hierarchy after `ADMIN_IDLE_MINUTES` (30);
+  a client's own logins only if its Client Admin picks a limit under
+  Settings -> Idle sign-out (off by default - unchanged behaviour). Pages
+  asked for in the background (`X-Background`, the offline sync) don't
+  count as activity; an XHR gets a 401 JSON instead of a redirect.
+- **Cashier PINs (`cashier_pin`, opt-in).** Cashiers belong to a counter
+  login (a branch, or the Client Admin's own counter); each has a 4-6
+  digit PIN, unique at that counter, stored as an HMAC keyed by
+  SECRET_KEY (a PIN picks its cashier). With any cashier set up, the POS
+  is covered by a PIN pad until someone taps in; checkout refuses
+  without a cashier; the bill, receipt and daily summary carry the
+  cashier. Lock / switch, auto-lock after the Client Admin's idle
+  minutes, five wrong PINs = a minute's wait. Offline, the cashier on the
+  counter stays (a PIN needs the server).
+- **Monitoring.** Sentry only when `SENTRY_DSN` is set (`app/monitoring.py`;
+  user id and role only, no email or form data; tracing off unless
+  `SENTRY_TRACES_SAMPLE_RATE`). `/healthz` checks the database and Redis
+  and answers 503 naming the part that's down.
+- **First-run checklist** (`app/onboarding.py`) for a new Client Admin -
+  business profile (Settings saved once), GSTIN / location, first item,
+  first customer, first bill, printer test (a sample receipt on the
+  chosen roll) - each ticking itself from the client's data, closable.
+  Clients that existed before were marked dismissed by the migration.
+- **Platform billing** (`app/subscriptions/`): the firm's own GST
+  invoices to clients and Auditor offices from the existing billing
+  cycle - a subscription fee per subject (Ultra Admin), a billing profile
+  (name, GSTIN, state, UPI ID, SAC 997331 / 18% from gst_config, days
+  before renewal, prefix). Raised by `flask platform-invoices-generate`
+  (daily) or by hand, numbered `SUB/2026-27/0001` under the row-locked
+  allocator (`allocate_number` now takes any series table), taxed through
+  `app.utils.gst` (CGST+SGST in the firm's state, IGST outside, none
+  while the firm has no GSTIN), UPI link and QR. **Marking paid** moves
+  the subscriber's cycle through the same idempotent `mark_period_paid`
+  the "Mark this period paid" buttons now use (moved out of the routes):
+  an invoice pays exactly its period, even before the due date, and only
+  while that period is still the one due - paying twice, or after the
+  button, changes nothing. Voided with a reason, never deleted, every
+  step audit-logged. A Client Admin (Settings) or Auditor sees only their
+  own invoices.
+- **Admin drill-downs** for POS bills and credit / debit notes, like the
+  invoice one: read-only, scoped by `assert_auditor_owns_tenant`, PDF
+  (the firm gets a DUPLICATE COPY of a receipt), audit-logged.
+- **Daily owner summary (`daily_summary`; on in new clients' presets
+  with the dashboard, off for existing ones)** - `app/finance/owner_summary.py`
+  on top of the daily summary and gross profit: sales, payment modes,
+  counters, top items, low stock and stock **below zero** by location,
+  offline bills waiting; on the dashboard, its own page, a WhatsApp
+  click-to-chat message, and email over SMTP when `SMTP_HOST` /
+  `SMTP_FROM` are set (`flask owner-summary-send` each evening).
+- Fixed on the way: Alpine 3 calls a component's `init()` itself, so the
+  POS screen's `x-init="init()"` ran it twice (watchers and the offline
+  start-up doubled) - removed there and on the new PIN pad.
+- Tenant isolation: counter devices, offline bills, cashiers and the
+  subscription invoices a client sees are per client - another client's
+  device (even with its token), bill, cashier or invoice id gives 403 /
+  404 (`tests/test_phase10_offline.py`, `test_phase10_security.py`,
+  `test_phase10_platform.py`).
+
 ## Roadmap
 
 - **Platform build (ARFA general-purpose POS), phase by phase.**
@@ -1637,9 +1799,28 @@ Five new flags, all off by default; with them off nothing changes (routes
     work, old gold after GST), job cards, wholesale (groups, slabs,
     salesmen), loyalty.
 
-  Next: 10 platform polish (Android ESC/POS and offline queue, web
-  offline, 2FA, monitoring, first-run checklist, platform billing,
-  admin drill-downs, daily owner summary).
+  - Phase 10: offline billing (per-device series, service worker,
+    retry queue), Android ESC/POS printing / drawer / kiosk / update
+    check, two-step sign-in, lockout, idle sign-out, cashier PINs,
+    Sentry + /healthz, first-run checklist, platform subscription
+    invoices, POS bill / note drill-downs, daily owner summary.
+
+  Phase 10 limits:
+  - The Android app compiles only in GitHub Actions (this sandbox can't
+    reach Google's Maven); the Bluetooth / USB printing code has not been
+    run on a real printer here - try "Print a test page" first.
+  - Offline: plain bills only (see Design notes); a PIN can't be checked
+    offline, so the cashier on the counter stays; a device whose storage
+    is wiped while bills wait loses those bills (their numbers then show
+    as gaps until cancelled on the Offline bills page).
+  - A day closed (day open/close) before its offline bills arrive: they
+    are booked to the counter's open day, if any.
+  - The update check reads a public release; with a private repository
+    the app can't see it (download the APK from Actions instead).
+  - Email needs an SMTP server (`SMTP_HOST`, `SMTP_FROM`, optional
+    `SMTP_USERNAME` / `SMTP_PASSWORD`); WhatsApp sharing needs nothing.
+  - The invoice form, note form and Live dashboard still call Alpine's
+    `init()` twice (harmless there, not changed in this phase).
 
   Phase 9 limits:
   - KOTs print through the browser's print dialog like receipts - pick

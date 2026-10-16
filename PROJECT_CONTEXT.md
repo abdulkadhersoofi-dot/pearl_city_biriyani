@@ -362,7 +362,28 @@ this list is just the index.
   series JOB, parts from stock, invoice hand-off), `app/wholesale/`
   (groups, slabs, salesmen, report), `app/loyalty/` (LoyaltyEntry ledger,
   PaymentMode.LOYALTY). Settings in `Tenant.module_settings`
-  (`app/utils/module_settings.py`). Phase 10 still to build.
+  (`app/utils/module_settings.py`).
+- **Platform build Phase 10** (flags `offline_pos`, `cashier_pin` opt-in;
+  `daily_summary` in new clients' dashboard presets): offline billing
+  with a per-device series (owner's [ASK] answer) - `CounterDevice`
+  (code O1..O99, its own `InvoiceSeries.device_id`), `OfflineBill` (what
+  each device sent, SYNCED / FAILED / VOIDED), `app/pos/offline.py` +
+  `app/pos/counter.py` routes, `static/js/pos_offline.js` (IndexedDB
+  queue, device numbering) + `pos_sw.js` (service worker at /pos/sw.js);
+  `POSBill.checkout_uuid` makes checkout idempotent. Receipts as data
+  (`app/pos/receipt_doc.py`) + `static/js/escpos.js`; Android app gained
+  Bluetooth/USB ESC/POS, drawer kick, kiosk (lock task), update check
+  (`android/app/src/main/java/com/arfa/pos/`). `app/auth/security.py`:
+  TOTP 2FA (compulsory for the admin hierarchy, `ADMIN_2FA_REQUIRED`),
+  lockout, IP limit, idle sign-out, cashier PIN digests; `Cashier`
+  model + `app/pos/cashiers.py`. `app/monitoring.py` (Sentry on DSN),
+  richer /healthz. `app/onboarding.py` (`Tenant.first_run`, migration
+  dismissed it for existing clients). `app/subscriptions/`
+  (`PlatformProfile`, `PlatformSeries`, `PlatformInvoice`; fee on
+  Tenant/User; `app.utils.billing.mark_period_paid` is now the one
+  mark-paid path). Admin drill-downs for POS bills and notes.
+  `app/finance/owner_summary.py` (dashboard, WhatsApp, SMTP email).
+  CLI: `platform-invoices-generate`, `owner-summary-send`, `reset-2fa`.
 
 ## 5. Chronological development history (this session)
 

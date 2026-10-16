@@ -61,6 +61,19 @@
             android:text="@string/retry"
             android:textColor="@color/white" />
 
+        <!-- Signed in before: the POS screen saved on this device still
+             opens, and bills made now are queued with this device's own
+             numbers (offline billing, set up on the website). -->
+        <Button
+            android:id="@+id/offlineButton"
+            style="?android:attr/borderlessButtonStyle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="@string/bill_offline"
+            android:textColor="@color/arfa_primary"
+            android:visibility="gone" />
+
     </LinearLayout>
 
 </FrameLayout>

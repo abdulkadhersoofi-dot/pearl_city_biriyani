@@ -48,6 +48,8 @@
     {% if bill.customer_snapshot and bill.customer_snapshot.gstin %}<tr><td>Cust. GSTIN</td><td class="right">{{ bill.customer_snapshot.gstin }}</td></tr>{% endif %}
     {% if bill.order_type %}<tr><td>Order</td><td class="right">{{ order_type_label(bill.order_type) }}{% if bill.table %} - Table {{ bill.table.name }}{% endif %}</td></tr>{% endif %}
     {% if bill.salesman %}<tr><td>Salesman</td><td class="right">{{ bill.salesman.name }}</td></tr>{% endif %}
+    {% if bill.cashier %}<tr><td>Cashier</td><td class="right">{{ bill.cashier.name }}</td></tr>{% endif %}
+    {% if bill.device %}<tr><td>Counter</td><td class="right">{{ bill.device.code }} (billed offline)</td></tr>{% endif %}
     {% if bill.prescription %}
     <tr><td>Doctor</td><td class="right">{{ bill.prescription.doctor }}{% if bill.prescription.doctor_reg_no %} ({{ bill.prescription.doctor_reg_no }}){% endif %}</td></tr>
     <tr><td>Patient</td><td class="right">{{ bill.prescription.patient }}</td></tr>

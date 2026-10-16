@@ -54,11 +54,14 @@ def get_or_create_series(
 ) -> InvoiceSeries:
     financial_year = financial_year or current_financial_year()
     special = _einvoice_prefix(tenant_id, document_type)
+    # A counter device's own offline series (device_id set) is never a
+    # normal series - see device_series below.
     query = InvoiceSeries.query.filter_by(
         tenant_id=tenant_id,
         gstin_id=gstin_id,
         document_type=document_type,
         financial_year=financial_year,
+        device_id=None,
     )
     series = (query.filter_by(prefix=special) if special else query).first()
     if series is None:
@@ -75,18 +78,52 @@ def get_or_create_series(
     return series
 
 
-def allocate_number(series: InvoiceSeries) -> str:
+def _lock(series):
+    # Any series table with prefix / financial_year / next_number - a
+    # client's InvoiceSeries or the firm's own PlatformSeries.
+    return type(series).query.filter_by(id=series.id).with_for_update().one()
+
+
+def format_number(prefix: str, financial_year: str, number: int) -> str:
+    return f"{prefix}/{financial_year}/{number:04d}"
+
+
+def allocate_number(series) -> str:
     """Locks the series row, reserves the next number, and returns the
     formatted invoice number. Caller must be inside a transaction; the
     row lock (SELECT ... FOR UPDATE) prevents two concurrent checkouts
     from getting the same number.
     """
-    locked = (
-        InvoiceSeries.query.filter_by(id=series.id)
-        .with_for_update()
-        .one()
-    )
+    locked = _lock(series)
     number = locked.next_number
     locked.next_number = number + 1
     db.session.add(locked)
-    return f"{locked.prefix}/{locked.financial_year}/{number:04d}"
+    return format_number(locked.prefix, locked.financial_year, number)
+
+
+def device_series(tenant_id: int, gstin_id: int, device, document_type: DocumentType,
+                  financial_year: str) -> InvoiceSeries:
+    """A counter device's own series (feature "offline_pos"): prefix = the
+    device's code (O1, O2...), so its numbers never collide with the
+    counter's normal series or another device's."""
+    series = InvoiceSeries.query.filter_by(tenant_id=tenant_id, gstin_id=gstin_id, document_type=document_type,
+                                           financial_year=financial_year, device_id=device.id).first()
+    if series is None:
+        series = InvoiceSeries(tenant_id=tenant_id, gstin_id=gstin_id, document_type=document_type,
+                               financial_year=financial_year, prefix=device.code, next_number=1,
+                               device_id=device.id)
+        db.session.add(series)
+        db.session.flush()
+    return series
+
+
+def claim_number(series: InvoiceSeries, number: int) -> str:
+    """A number the device already gave out offline (it numbers its own
+    series itself). Under the same row lock as allocate_number; the series
+    moves past it, so the device's next number is never handed out twice."""
+    locked = _lock(series)
+    if number < 1:
+        raise ValueError("A bill number starts at 1.")
+    locked.next_number = max(locked.next_number, number + 1)
+    db.session.add(locked)
+    return format_number(locked.prefix, locked.financial_year, number)

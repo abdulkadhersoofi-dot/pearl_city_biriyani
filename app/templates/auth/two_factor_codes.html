@@ -1,0 +1,11 @@
+{% extends "auth_base.html" %}
+{% block title %}Recovery codes - {{ firm_name }}{% endblock %}
+{% block content %}
+<p class="mt-0"><strong>Two-step sign-in is on.</strong> Keep these recovery codes somewhere safe - each one signs you
+  in once if you lose your phone. They won't be shown again.</p>
+<ul class="recovery-codes">
+  {% for code in codes %}<li><code>{{ code }}</code></li>{% endfor %}
+</ul>
+<button type="button" class="btn btn-secondary btn-block" onclick="window.print()">Print the codes</button>
+<a href="{{ url_for('main.index') }}" class="btn btn-primary btn-block btn-lg" style="margin-top:12px;">I've saved them - continue</a>
+{% endblock %}

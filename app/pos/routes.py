@@ -16,7 +16,7 @@ from app.models.pos_return import POSReturn, POSReturnStatus
 from app.models.price_list import PriceList
 from app.models.product import Product
 from app.models.tenant import RegistrationType, Tenant
-from app.pos import pos_bp
+from app.pos import cashiers, pos_bp
 from app.pos.catalog import build_category_tree, favourite_products
 from app.pos.receipt import DEFAULT_PAGE_FORMAT, render_receipt_pdf, render_return_pdf
 from app.pos.returns import create_return, return_modes_for, returnable_lines, void_return
@@ -197,6 +197,10 @@ def terminal():
     if resume_bill:
         held_bills = [hb for hb in held_bills if hb.id != resume_bill.id]
     modules = _module_context(tenant)
+    if "offline" in modules:
+        from app.pos.offline import blocked_products
+
+        modules["offline"]["blocked_ids"] = blocked_products(tenant, products)
     if modules.get("restaurant") and modules["restaurant"]["table"] and modules["restaurant"]["running_id"]:
         # A table's order stays on the table until it is billed - shown, not removed.
         running = tenant_query(POSBill).filter_by(id=modules["restaurant"]["running_id"]).first()
@@ -309,6 +313,29 @@ def _module_context(tenant) -> dict:
         out["weighing"] = {"scan_url": url_for("pos.scale_scan")}
     if out["quote"]:
         out["quote_url"] = url_for("pos.quote")
+    if tenant.has_feature("offline_pos"):
+        from flask_wtf.csrf import generate_csrf
+
+        from app.pos.offline import OFFLINE_MODES
+
+        gstin = tenant.gstins.filter_by(is_active=True).first()
+        offered = [m for m in enabled_payment_modes(tenant) if m in OFFLINE_MODES]
+        out["offline"] = {
+            "tenant_id": tenant.id, "user_id": current_user.id,
+            "register_url": url_for("pos.offline_register"), "state_url": url_for("pos.offline_state"),
+            "sync_url": url_for("pos.offline_sync"), "sw_url": url_for("pos.service_worker"),
+            "sw_scope": url_for("pos.terminal"), "csrf": generate_csrf(),
+            "receipt": {"name": tenant.display_name, "gstin": (gstin.gstin or "") if gstin else ""},
+            "charges_gst": tenant.registration_type == RegistrationType.REGULAR,
+            "modes": [m.value for m in offered], "blocked_ids": [],
+        }
+    if cashiers.uses_pins(tenant, current_user):
+        cashier = cashiers.current_cashier(tenant, current_user)
+        out["cashier"] = {
+            "current": {"id": cashier.id, "name": cashier.name} if cashier else None,
+            "unlock_url": url_for("pos.cashier_unlock"), "lock_url": url_for("pos.cashier_lock"),
+            "lock_minutes": cashiers.lock_minutes(tenant),
+        }
     return out
 
 
@@ -472,12 +499,30 @@ def checkout_route():
     # plain form POST (no JS) still gets the old redirect-based flow.
     wants_json = request.headers.get("X-Requested-With") == "XMLHttpRequest"
     tenant = current_user.tenant
+    checkout_uuid = (request.form.get("checkout_uuid") or "").strip().lower()
+    if not re.fullmatch(r"[0-9a-f-]{8,36}", checkout_uuid):
+        checkout_uuid = None
+    if checkout_uuid:
+        # The same checkout sent again (its reply was lost): the bill it
+        # already made, never a second one.
+        done = tenant_query(POSBill).filter_by(checkout_uuid=checkout_uuid).first()
+        if done is not None and wants_json:
+            return jsonify({"bill_id": done.id, "bill_number": done.bill_number, "grand_total": float(done.grand_total),
+                            "change_due": float(done.change_due) if done.change_due is not None else None,
+                            "share_url": url_for("pos.share_bill", bill_id=done.id), "repeat": True})
     try:
         cart = _cart_from_request()
         payment = _payments_from_request()
         cash_tendered = _money(request.form.get("cash_tendered"), "Cash received")
         session = require_open_session(tenant, current_user)
+        try:
+            cashier = cashiers.for_checkout(tenant, current_user)
+        except cashiers.CashierError as exc:
+            raise POSValidationError(exc.message)
         bill = checkout(tenant, current_user, cart, payment, cash_tendered=cash_tendered, cash_session=session)
+        if cashier is not None:
+            bill.cashier_id = cashier.id
+        bill.checkout_uuid = checkout_uuid
         record_audit(
             current_user,
             "pos_bill_completed",
@@ -489,6 +534,7 @@ def checkout_route():
                 "amount": str(bill.grand_total),
                 "payments": {p.mode.value: str(p.amount) for p in bill.payments},
                 **({"discount": str(bill.total_discount)} if bill.total_discount else {}),
+                **({"cashier": cashier.name} if cashier is not None else {}),
             },
         )
         db.session.commit()

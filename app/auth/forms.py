@@ -26,3 +26,12 @@ class ChangePasswordForm(FlaskForm):
         "Confirm new password",
         validators=[DataRequired(), EqualTo("new_password", message="Passwords must match")],
     )
+
+
+class TwoFactorCodeForm(FlaskForm):
+    code = StringField("Code", validators=[DataRequired(), Length(min=6, max=14)])
+
+
+class TwoFactorDisableForm(FlaskForm):
+    password = PasswordField("Your password", validators=[DataRequired()])
+    code = StringField("Code from your authenticator app", validators=[DataRequired(), Length(min=6, max=8)])

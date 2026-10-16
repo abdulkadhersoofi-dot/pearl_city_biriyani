@@ -1,0 +1,57 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @page { size: A4; margin: 16mm; }
+  body { font-family: "DejaVu Sans", Arial, sans-serif; font-size: 10pt; color: #111; }
+  h1 { font-size: 16pt; margin: 0 0 4px; }
+  table { width: 100%; border-collapse: collapse; }
+  .grid td { vertical-align: top; width: 50%; padding: 6px 0; }
+  .items th, .items td { border: 1px solid #999; padding: 6px; text-align: left; }
+  .items th { background: #eee; }
+  .num { text-align: right; }
+  .totals { width: 45%; margin-left: auto; margin-top: 10px; }
+  .totals td { padding: 3px 0; }
+  .grand td { font-weight: 700; font-size: 12pt; border-top: 1px solid #111; }
+  .muted { color: #555; }
+  .stamp { margin-top: 10px; font-weight: 700; }
+</style>
+</head>
+<body>
+  <h1>Tax Invoice</h1>
+  <div class="muted">{{ invoice.number }} &middot; {{ invoice.invoice_date.strftime('%d %b %Y') }}</div>
+  <table class="grid" style="margin-top:12px;">
+    <tr>
+      <td><strong>{{ invoice.seller.name }}</strong><br>
+        {% if invoice.seller.address %}{{ invoice.seller.address|replace('\n', '<br>')|safe }}<br>{% endif %}
+        {% if invoice.seller.gstin %}GSTIN: {{ invoice.seller.gstin }}<br>{% endif %}
+        State: {{ invoice.seller.state_code|state_name }} ({{ invoice.seller.state_code }})<br>
+        {% if invoice.seller.email %}{{ invoice.seller.email }}{% endif %} {% if invoice.seller.phone %}&middot; {{ invoice.seller.phone }}{% endif %}</td>
+      <td><strong>Billed to</strong><br>{{ invoice.bill_to.name }}<br>
+        {% if invoice.bill_to.address %}{{ invoice.bill_to.address }}<br>{% endif %}
+        {% if invoice.bill_to.gstin %}GSTIN: {{ invoice.bill_to.gstin }}<br>{% endif %}
+        Place of supply: {{ invoice.place_of_supply|state_name }} ({{ invoice.place_of_supply }})</td>
+    </tr>
+  </table>
+  <table class="items" style="margin-top:12px;">
+    <thead><tr><th>Description</th><th>SAC</th><th class="num">Taxable value</th><th class="num">GST %</th></tr></thead>
+    <tbody><tr><td>{{ invoice.description }}</td><td>{{ invoice.sac_code }}</td><td class="num">{{ '%.2f'|format(invoice.taxable_value) }}</td><td class="num">{{ invoice.gst_rate|qty }}</td></tr></tbody>
+  </table>
+  <table class="totals">
+    <tr><td>Taxable value</td><td class="num">{{ '%.2f'|format(invoice.taxable_value) }}</td></tr>
+    {% if invoice.cgst %}<tr><td>CGST</td><td class="num">{{ '%.2f'|format(invoice.cgst) }}</td></tr>{% endif %}
+    {% if invoice.sgst %}<tr><td>SGST</td><td class="num">{{ '%.2f'|format(invoice.sgst) }}</td></tr>{% endif %}
+    {% if invoice.igst %}<tr><td>IGST</td><td class="num">{{ '%.2f'|format(invoice.igst) }}</td></tr>{% endif %}
+    <tr><td>Round off</td><td class="num">{{ '%.2f'|format(invoice.round_off) }}</td></tr>
+    <tr class="grand"><td>Total (Rs.)</td><td class="num">{{ '%.2f'|format(invoice.grand_total) }}</td></tr>
+  </table>
+  {% if not invoice.seller.gstin %}<p class="muted">Supplier not registered under GST - no tax charged.</p>{% endif %}
+  {% if invoice.status.value == 'paid' %}<p class="stamp">PAID{% if invoice.paid_at %} on {{ invoice.paid_at|ist('%d %b %Y') }}{% endif %}</p>{% endif %}
+  {% if invoice.status.value == 'void' %}<p class="stamp">CANCELLED - {{ invoice.void_reason }}</p>{% endif %}
+  {% if upi_qr %}
+  <div style="margin-top:16px;"><strong>Pay by UPI</strong> - scan with any UPI app:<br>
+    <img src="{{ upi_qr }}" alt="UPI QR" style="width:1.6in; height:1.6in;"></div>
+  {% endif %}
+</body>
+</html>

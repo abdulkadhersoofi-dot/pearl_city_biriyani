@@ -1,0 +1,26 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @page { size: {{ page_size }}; margin: {{ '0.12in' if is_thermal else '16mm' }}; }
+  body { font-family: "Courier New", monospace; font-size: {{ '12pt' if is_narrow else ('15pt' if is_thermal else '11pt') }}; margin: 0; color: #000; }
+  .c { text-align: center; } .b { font-weight: 700; }
+  .rule { border-top: 1px dashed #000; margin: 8px 0; }
+  table { width: 100%; border-collapse: collapse; } td { padding: 3px 0; } .r { text-align: right; }
+</style>
+</head>
+<body>
+  <div class="c b">{{ firm_name }}</div>
+  {% if gstin and gstin.gstin %}<div class="c">GSTIN: {{ gstin.gstin }}</div>{% endif %}
+  <div class="rule"></div>
+  <div class="c b">PRINTER TEST</div>
+  <table>
+    <tr><td>Sample item</td><td class="r">100.00</td></tr>
+    <tr><td>A much longer item name that has to wrap</td><td class="r">1,250.50</td></tr>
+    <tr class="b"><td>TOTAL</td><td class="r">1,350.50</td></tr>
+  </table>
+  <div class="rule"></div>
+  <div class="c">If every line fits and is sharp, bills will print fine.</div>
+</body>
+</html>
