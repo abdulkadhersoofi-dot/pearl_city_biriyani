@@ -1,0 +1,13 @@
+{# The bell's list (main.needs_you), swapped into base.html after load. #}
+{% if items %}
+<ul class="needs-list" data-alerts="{{ items|length }}">
+  {% for item in items %}
+  <li><a href="{{ item.url }}" class="needs-item tone-{{ item.tone }}">
+    <span class="needs-icon">{{ icon(item.icon) }}</span>
+    <span><strong>{{ item.label }}</strong><small>{{ item.detail }}</small></span>
+  </a></li>
+  {% endfor %}
+</ul>
+{% else %}
+<p class="pop-empty">{{ icon('circle-check') }} Nothing needs you right now.</p>
+{% endif %}

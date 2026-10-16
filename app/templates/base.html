@@ -4,8 +4,28 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5">
   <title>{% block title %}{{ firm_name }}{% endblock %}</title>
+  <link rel="preload" href="{{ url_for('static', filename='fonts/figtree.woff2') }}" as="font" type="font/woff2" crossorigin>
+  <link rel="icon" href="{{ url_for('static', filename='img/arfa-logo.jpg') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
   {% if brand_tenant %}<style>{{ tenant_theme_css(brand_tenant) }}</style>{% endif %}
+  {% set menu = menu_groups(current_user) %}
+  {# The counter needs its width, so the side menu starts folded to icons
+     there (remembered separately from every other page). #}
+  {% set rail_key = 'arfa.rail.pos' if request.blueprint == 'pos' else 'arfa.rail' %}
+  {% if menu %}
+  <script>
+    // Before first paint, so a folded menu never flashes open. Until
+    // someone chooses, it starts folded at the counter and on screens
+    // narrower than a laptop.
+    (function () {
+      var key = {{ rail_key|tojson }}, folded;
+      try { folded = localStorage.getItem(key); } catch (e) { folded = null; }
+      if (folded === "1" || (folded === null && (key === "arfa.rail.pos" || window.innerWidth < 1280))) {
+        document.documentElement.classList.add("is-rail");
+      }
+    })();
+  </script>
+  {% endif %}
   {# Vendored locally, not loaded from a CDN: this app is self-hosted and
      must keep working on a client's LAN/offline network, or if a public
      CDN is ever blocked/down. #}
@@ -19,92 +39,193 @@
       if (window.AndroidPrint) { window.location.href = url; } else { window.open(url, "_blank", "noopener"); }
     }
   </script>
+  <script defer src="{{ url_for('static', filename='js/shell.js') }}"></script>
   <script defer src="{{ url_for('static', filename='js/vendor/alpine.min.js') }}"></script>
   {% block head %}{% endblock %}
 </head>
-<body>
-  <div class="app-shell">
-    <header class="topbar">
-      <div class="topbar-row">
+{% set new_actions = new_menu(current_user) %}
+{% set tabs = bottom_tabs(current_user) %}
+<body class="{{ 'has-menu' if menu else 'no-menu' }}{{ ' has-tabs' if tabs }}{{ ' is-counter' if request.blueprint == 'pos' }}" x-data="shell" data-rail-key="{{ rail_key }}"
+      @keydown.window="onKey($event)">
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div class="shell">
+    {% if menu %}
+    <aside class="sidenav" id="sidenav" aria-label="Main menu" :class="{ 'is-open': drawer }">
+      <div class="sidenav-head">
+        <a class="brand" href="{{ url_for('main.index') }}" title="{{ firm_name }}">
+          {% if brand_logo_url %}
+            <img src="{{ brand_logo_url }}" alt="" class="brand-logo">
+          {% elif current_user.is_admin_hierarchy %}
+            <img src="{{ url_for('static', filename='img/arfa-logo.jpg') }}" alt="" class="brand-logo">
+          {% else %}
+            <span class="brand-mark" aria-hidden="true">{{ firm_name[:1] }}</span>
+          {% endif %}
+          <span class="brand-name">{{ firm_name }}</span>
+        </a>
+        <button type="button" class="icon-btn rail-toggle" @click="toggleRail()" :aria-label="railLabel()" title="Fold or open the menu">
+          {{ icon('panel-left-close', 'when-wide') }}{{ icon('panel-left-open', 'when-rail') }}
+        </button>
+        <button type="button" class="icon-btn drawer-close" @click="drawer = false" aria-label="Close menu">{{ icon('x') }}</button>
+      </div>
+      <nav class="sidenav-scroll" aria-label="Screens">
+        {% for group in menu %}
+        <div class="nav-group">
+          <p class="nav-group-label">{{ group.label }}</p>
+          {% for link in group.links %}
+          <a href="{{ link.url }}" class="nav-link{{ ' active' if link.active }}" title="{{ link.label }}"{% if link.active %} aria-current="page"{% endif %}>
+            {{ icon(link.icon) }}<span class="nav-label">{{ link.label }}</span>
+          </a>
+          {% endfor %}
+        </div>
+        {% endfor %}
+      </nav>
+    </aside>
+    <div class="scrim" x-show="drawer" x-transition.opacity @click="drawer = false" x-cloak></div>
+    {% endif %}
+
+    <div class="shell-main">
+      <header class="topbar">
+        {% if menu %}
+        <button type="button" class="icon-btn menu-btn" @click="drawer = true" aria-label="Open menu" aria-controls="sidenav">{{ icon('menu') }}</button>
+        <a class="brand brand-compact" href="{{ url_for('main.index') }}">
+          {% if brand_logo_url %}<img src="{{ brand_logo_url }}" alt="" class="brand-logo">{% endif %}
+          <span class="brand-name">{{ firm_name }}</span>
+        </a>
+        <button type="button" class="search-trigger" @click="openPalette()" aria-label="Search screens and actions">
+          {{ icon('search') }}<span class="search-text">Search screens and actions</span><kbd>Ctrl K</kbd>
+        </button>
+        {% else %}
         <a class="brand" href="{{ url_for('main.index') }}">
           {% if brand_logo_url %}
             <img src="{{ brand_logo_url }}" alt="{{ firm_name }}" class="brand-logo">
           {% elif not current_user.is_authenticated or current_user.is_super_admin %}
             <img src="{{ url_for('static', filename='img/arfa-logo.jpg') }}" alt="ARFA" class="brand-logo">
           {% endif %}
-          <span>{{ firm_name }}</span>
+          <span class="brand-name">{{ firm_name }}</span>
         </a>
-        <div class="user-menu">
-          <span class="user-name">{{ current_user.name }}{% if current_user.is_admin_hierarchy %} ({{ current_user.role_label }}){% endif %}</span>
-          {% if current_user.is_admin_hierarchy or current_user.is_client_admin %}
-          <a href="{{ url_for('auth.account_security') }}" class="btn btn-quiet">Security</a>
-          {% endif %}
-          <a href="{{ url_for('auth.logout') }}" class="btn btn-quiet">Sign out</a>
-        </div>
-      </div>
-      {# A branch (Staff) login only ever has POS, so there's nothing to
-         pick between - no nav row at all for that case, rather than a
-         single-link row with nowhere else to go. #}
-      {% if current_user.is_admin_hierarchy or current_user.is_client_admin %}
-      <nav class="main-nav">
-        {% if current_user.is_super_admin %}
-          <a href="{{ url_for('tenants.auditors_directory') }}" class="{{ 'active' if request.endpoint in ('tenants.auditors_directory', 'tenants.auditor_detail', 'tenants.new_auditor') }}">Auditors</a>
-          <a href="{{ url_for('tenants.directory') }}" class="{{ 'active' if request.endpoint in ('tenants.directory', 'tenants.detail', 'tenants.onboard') }}">All clients</a>
-          <a href="{{ url_for('tenants.filing_tracker') }}" class="{{ 'active' if request.endpoint == 'tenants.filing_tracker' }}">Filing</a>
-          <a href="{{ url_for('tenants.gst_exports') }}">GST exports</a>
-          <a href="{{ url_for('subscriptions.index') }}" class="{{ 'active' if request.blueprint == 'subscriptions' }}">Subscriptions</a>
-          <a href="{{ url_for('tenants.audit_log') }}">Audit log</a>
-        {% elif current_user.is_auditor %}
-          <a href="{{ url_for('tenants.directory') }}" class="{{ 'active' if request.endpoint in ('tenants.directory', 'tenants.detail', 'tenants.onboard') }}">Clients</a>
-          <a href="{{ url_for('tenants.auditors_directory') }}" class="{{ 'active' if request.endpoint in ('tenants.auditors_directory', 'tenants.auditor_detail', 'tenants.new_auditor') }}">Sub-Auditors</a>
-          <a href="{{ url_for('tenants.filing_tracker') }}" class="{{ 'active' if request.endpoint == 'tenants.filing_tracker' }}">Filing</a>
-          <a href="{{ url_for('subscriptions.mine') }}" class="{{ 'active' if request.blueprint == 'subscriptions' }}">Subscription</a>
-        {% elif current_user.is_sub_auditor %}
-          <a href="{{ url_for('tenants.directory') }}" class="{{ 'active' if request.blueprint == 'tenants' and request.endpoint != 'tenants.filing_tracker' }}">Clients</a>
-          <a href="{{ url_for('tenants.filing_tracker') }}" class="{{ 'active' if request.endpoint == 'tenants.filing_tracker' }}">Filing</a>
-        {% else %}
-          {% if has_feature('business_reports') %}<a href="{{ url_for('reports.dashboard') }}" class="{{ 'active' if request.endpoint == 'reports.dashboard' }}">Home</a>{% endif %}
-          <a href="{{ url_for('invoicing.list_invoices') }}" class="{{ 'active' if request.blueprint == 'invoicing' }}">Invoices</a>
-          <a href="{{ url_for('notes.list_notes') }}" class="{{ 'active' if request.blueprint == 'notes' }}">Notes</a>
-          {% if has_feature('sales_documents') %}<a href="{{ url_for('sales.documents') }}" class="{{ 'active' if request.blueprint == 'sales' }}">Quotes &amp; orders</a>
-          {% elif has_feature('recurring_invoices') %}<a href="{{ url_for('sales.recurring') }}" class="{{ 'active' if request.blueprint == 'sales' }}">Recurring</a>{% endif %}
-          {% if has_feature('restaurant_mode') %}<a href="{{ url_for('restaurant.tables') }}" class="{{ 'active' if request.blueprint == 'restaurant' }}">Tables</a>{% endif %}
-          <a href="{{ url_for('pos.terminal') }}" class="{{ 'active' if request.blueprint == 'pos' }}">POS</a>
-          {% if has_feature('job_cards') %}<a href="{{ url_for('jobs.index') }}" class="{{ 'active' if request.blueprint == 'jobs' }}">Jobs</a>{% endif %}
-          {% if has_feature('jewellery') %}<a href="{{ url_for('jewellery.rates') }}" class="{{ 'active' if request.blueprint == 'jewellery' }}">Rates</a>{% endif %}
-          <a href="{{ url_for('customers.list_customers') }}" class="{{ 'active' if request.blueprint == 'customers' }}">Customers</a>
-          <a href="{{ url_for('products.list_products') }}" class="{{ 'active' if request.blueprint == 'products' }}">Items</a>
-          {% if has_feature('inventory') %}<a href="{{ url_for('inventory.index') }}" class="{{ 'active' if request.blueprint == 'inventory' }}">Stock</a>{% endif %}
-          {% if has_feature('purchases') %}<a href="{{ url_for('purchases.bills') }}" class="{{ 'active' if request.blueprint == 'purchases' }}">Purchases</a>{% endif %}
-          {% if has_feature('expenses') %}<a href="{{ url_for('expenses.index') }}" class="{{ 'active' if request.blueprint == 'expenses' }}">Expenses</a>{% endif %}
-          {% if has_feature('receivables') %}<a href="{{ url_for('accounts.receivables_index') }}" class="{{ 'active' if request.blueprint == 'accounts' }}">Accounts</a>
-          {% elif has_feature('payables') %}<a href="{{ url_for('accounts.payables_index') }}" class="{{ 'active' if request.blueprint == 'accounts' }}">Accounts</a>
-          {% elif has_feature('cash_bank_book') %}<a href="{{ url_for('accounts.book', book='cash') }}" class="{{ 'active' if request.blueprint == 'accounts' }}">Accounts</a>{% endif %}
-          <a href="{{ url_for('branches.list_branches') }}" class="{{ 'active' if request.blueprint == 'branches' }}">Branches</a>
-          {% if has_feature('einvoice') %}<a href="{{ url_for('einvoice.index') }}" class="{{ 'active' if request.blueprint == 'einvoice' }}">e-Invoice</a>
-          {% elif has_feature('eway_bill') %}<a href="{{ url_for('einvoice.eway_bills') }}" class="{{ 'active' if request.blueprint == 'einvoice' }}">e-Way bills</a>{% endif %}
-          <a href="{{ url_for('reports.index') }}" class="{{ 'active' if request.blueprint == 'reports' }}">Reports</a>
-          <a href="{{ url_for('live.dashboard') }}" class="{{ 'active' if request.blueprint == 'live' }}">Live</a>
-          <a href="{{ url_for('settings.index') }}" class="{{ 'active' if request.blueprint == 'settings' }}">Settings</a>
         {% endif %}
-      </nav>
+
+        <div class="topbar-actions">
+          {% if new_actions %}
+          <div class="pop-wrap new-wrap" x-data="{ open: false }" @keydown.escape="open = false" @click.outside="open = false">
+            <button type="button" class="btn btn-primary btn-new" @click="open = !open" :aria-expanded="open" aria-haspopup="menu">
+              {{ icon('plus') }}<span>New</span>
+            </button>
+            <div class="pop pop-right" role="menu" x-show="open" x-cloak
+                 x-transition:enter="pop-enter" x-transition:enter-start="pop-from" x-transition:leave="pop-leave" x-transition:leave-end="pop-from">
+              {% for action in new_actions %}
+              <a href="{{ action.url }}" class="pop-item" role="menuitem">{{ icon(action.icon) }}<span>{{ action.label }}</span></a>
+              {% endfor %}
+            </div>
+          </div>
+          {% endif %}
+
+          {% if current_user.is_authenticated and current_user.is_client_admin %}
+          <div class="pop-wrap" x-data="{ open: false }" @keydown.escape="open = false" @click.outside="open = false">
+            <button type="button" class="icon-btn bell-btn" @click="open = !open" :aria-expanded="open" aria-label="Things that need you">
+              {{ icon('bell') }}<span class="bell-dot" id="bell-dot" hidden></span>
+            </button>
+            <div class="pop pop-right pop-wide" x-show="open" x-cloak
+                 x-transition:enter="pop-enter" x-transition:enter-start="pop-from" x-transition:leave="pop-leave" x-transition:leave-end="pop-from">
+              <p class="pop-title">Needs you</p>
+              <div id="needs-you" hx-get="{{ url_for('main.needs_you') }}" hx-trigger="load delay:300ms" hx-swap="innerHTML"
+                   hx-on::after-swap="document.getElementById('bell-dot').hidden = !this.querySelector('[data-alerts]')">
+                <p class="pop-empty">Checking...</p>
+              </div>
+            </div>
+          </div>
+          {% endif %}
+
+          {% if current_user.is_authenticated %}
+            {% if menu %}
+            <div class="pop-wrap" x-data="{ open: false }" @keydown.escape="open = false" @click.outside="open = false">
+              <button type="button" class="avatar-btn" @click="open = !open" :aria-expanded="open" aria-haspopup="menu" aria-label="Your account">
+                <span class="avatar" aria-hidden="true">{{ (current_user.name or '?')[:1]|upper }}</span>
+              </button>
+              <div class="pop pop-right" role="menu" x-show="open" x-cloak
+                   x-transition:enter="pop-enter" x-transition:enter-start="pop-from" x-transition:leave="pop-leave" x-transition:leave-end="pop-from">
+                <div class="pop-who">
+                  <strong>{{ current_user.name }}</strong>
+                  <span>{{ current_user.role_label }}{% if brand_tenant %} &middot; {{ brand_tenant.display_name }}{% endif %}</span>
+                </div>
+                <a href="{{ url_for('auth.account_security') }}" class="pop-item" role="menuitem">{{ icon('shield-check') }}<span>Security</span></a>
+                <a href="{{ url_for('auth.change_password') }}" class="pop-item" role="menuitem">{{ icon('key-round') }}<span>Change password</span></a>
+                <a href="{{ url_for('auth.logout') }}" class="pop-item" role="menuitem">{{ icon('log-out') }}<span>Sign out</span></a>
+              </div>
+            </div>
+            {% else %}
+            <span class="user-name">{{ current_user.name }}</span>
+            <a href="{{ url_for('auth.logout') }}" class="btn btn-quiet btn-sm">Sign out</a>
+            {% endif %}
+          {% endif %}
+        </div>
+      </header>
+
+      {% if impersonator_name %}
+      <div class="notice-bar notice-impersonating">
+        Acting as <strong>{{ current_user.name }}</strong> ({{ brand_tenant.display_name if brand_tenant else '' }}) - signed in as {{ impersonator_name }}.
+        <a href="{{ url_for('auth.stop_impersonating') }}" class="btn btn-quiet btn-sm">Return to admin console</a>
+      </div>
+      {% elif billing_notice %}
+      <div class="notice-bar notice-billing">{{ billing_notice }}</div>
       {% endif %}
-    </header>
 
-    {% if impersonator_name %}
-    <div class="notice-bar notice-impersonating">
-      Acting as <strong>{{ current_user.name }}</strong> ({{ brand_tenant.display_name if brand_tenant else '' }}) - signed in as {{ impersonator_name }}.
-      <a href="{{ url_for('auth.stop_impersonating') }}" class="btn btn-quiet btn-sm">Return to admin console</a>
+      <main id="main" class="app-main" tabindex="-1">
+        {% block content %}{% endblock %}
+      </main>
     </div>
-    {% elif billing_notice %}
-    <div class="notice-bar notice-billing">{{ billing_notice }}</div>
-    {% endif %}
-
-    <main class="app-main">
-      {% include "_flashes.html" %}
-      {% block content %}{% endblock %}
-    </main>
   </div>
+
+  {% if tabs %}
+  <nav class="bottom-tabs" aria-label="Quick menu">
+    {% for tab in tabs[:2] %}
+    <a href="{{ tab.url }}" class="tab{{ ' active' if tab.active }}">{{ icon(tab.icon) }}<span>{{ tab.label }}</span></a>
+    {% endfor %}
+    <button type="button" class="tab tab-new" @click="newSheet = true" aria-label="New">{{ icon('plus') }}</button>
+    <a href="{{ tabs[2].url }}" class="tab{{ ' active' if tabs[2].active }}">{{ icon(tabs[2].icon) }}<span>{{ tabs[2].label }}</span></a>
+    <button type="button" class="tab" @click="drawer = true">{{ icon('layout-grid') }}<span>More</span></button>
+  </nav>
+  <div class="sheet-scrim" x-show="newSheet" x-transition.opacity @click="newSheet = false" x-cloak></div>
+  <div class="sheet" x-show="newSheet" x-cloak role="dialog" aria-label="New"
+       x-transition:enter="sheet-enter" x-transition:enter-start="sheet-from" x-transition:leave="sheet-leave" x-transition:leave-end="sheet-from">
+    <p class="pop-title">New</p>
+    <div class="sheet-grid">
+      {% for action in new_actions %}
+      <a href="{{ action.url }}" class="sheet-item">{{ icon(action.icon) }}<span>{{ action.label }}</span></a>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if menu %}
+  <script type="application/json" id="palette-data">{{ palette_entries(current_user)|tojson }}</script>
+  <div class="palette-scrim" x-show="palette" x-transition.opacity @click="palette = false" x-cloak></div>
+  <div class="palette" x-show="palette" x-cloak role="dialog" aria-modal="true" aria-label="Search"
+       x-transition:enter="pop-enter" x-transition:enter-start="palette-from" x-transition:leave="pop-leave" x-transition:leave-end="palette-from">
+    <div class="palette-input">
+      {{ icon('search') }}
+      <input type="text" x-ref="paletteInput" x-model="query" @input="pick = 0" @keydown="paletteKey($event)"
+             placeholder="Type a screen or an action - e.g. stock, gstr, new invoice" aria-label="Search screens and actions"
+             autocomplete="off" spellcheck="false">
+      <kbd>Esc</kbd>
+    </div>
+    <ul class="palette-list" x-ref="paletteList" role="listbox">
+      <template x-for="(item, i) in results()" :key="item.url + item.label">
+        <li role="option" :aria-selected="i === pick">
+          <a :href="item.url" class="palette-item" :class="{ 'is-picked': i === pick }" @mousemove="pick = i">
+            <svg class="icon" aria-hidden="true"><use :href="iconHref(item.icon)"></use></svg>
+            <span class="palette-label" x-text="item.label"></span>
+            <span class="palette-group" x-text="item.group"></span>
+          </a>
+        </li>
+      </template>
+      <li class="palette-none" x-show="results().length === 0">Nothing matches "<span x-text="query"></span>".</li>
+    </ul>
+  </div>
+  {% endif %}
+
+  {% include "_toasts.html" %}
+  <span hidden id="icon-sprite" data-href="{{ url_for('static', filename='img/icons.svg') }}"></span>
   {% block scripts %}{% endblock %}
 </body>
 </html>

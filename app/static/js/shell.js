@@ -1,0 +1,144 @@
+// The app frame (base.html): the side menu and its folded "rail", the
+// phone drawer and New sheet, the search palette (Ctrl K) and toasts.
+// Plain JS on top of the vendored Alpine; nothing loaded from outside.
+document.addEventListener("alpine:init", function () {
+  function readJSON(id) {
+    var el = document.getElementById(id);
+    if (!el) return [];
+    try { return JSON.parse(el.textContent); } catch (e) { return []; }
+  }
+
+  function store(key, value) {
+    try { localStorage.setItem(key, value); } catch (e) { /* private window - just not remembered */ }
+  }
+
+  window.Alpine.data("shell", function () {
+    return {
+      drawer: false,
+      newSheet: false,
+      palette: false,
+      query: "",
+      pick: 0,
+      entries: [],
+
+      init: function () {
+        this.entries = readJSON("palette-data");
+      },
+
+      // --- side menu ---------------------------------------------------------
+      toggleRail: function () {
+        var root = document.documentElement;
+        var folded = !root.classList.contains("is-rail");
+        root.classList.toggle("is-rail", folded);
+        store(this.$root.dataset.railKey, folded ? "1" : "0");
+      },
+      railLabel: function () {
+        return document.documentElement.classList.contains("is-rail") ? "Open the menu" : "Fold the menu to icons";
+      },
+
+      // --- search palette ----------------------------------------------------
+      openPalette: function () {
+        if (!this.entries.length) return;
+        this.query = "";
+        this.pick = 0;
+        this.palette = true;
+        this.drawer = false;
+        var self = this;
+        this.$nextTick(function () { if (self.$refs.paletteInput) self.$refs.paletteInput.focus(); });
+      },
+      results: function () {
+        var words = this.query.toLowerCase().split(/\s+/).filter(Boolean);
+        if (!words.length) {
+          return this.entries.filter(function (e) { return e.group !== "Account"; }).slice(0, 9);
+        }
+        var scored = [];
+        this.entries.forEach(function (e) {
+          var label = e.label.toLowerCase();
+          var hay = label + " " + e.group.toLowerCase() + " " + (e.keywords || "").toLowerCase();
+          if (!words.every(function (w) { return hay.indexOf(w) !== -1; })) return;
+          var score = 0;
+          if (label.indexOf(words[0]) === 0) score += 3;
+          if (label.indexOf(words.join(" ")) !== -1) score += 2;
+          if (words.every(function (w) { return label.indexOf(w) !== -1; })) score += 1;
+          scored.push({ e: e, score: score });
+        });
+        // Best match first; between equals the shorter name, then the
+        // menu's own screens (listed first).
+        scored.forEach(function (s, i) { s.i = i; });
+        scored.sort(function (a, b) { return b.score - a.score || a.e.label.length - b.e.label.length || a.i - b.i; });
+        return scored.slice(0, 12).map(function (s) { return s.e; });
+      },
+      paletteKey: function (ev) {
+        var count = this.results().length;
+        if (ev.key === "ArrowDown") { ev.preventDefault(); this.pick = count ? (this.pick + 1) % count : 0; this.scrollPick(); }
+        else if (ev.key === "ArrowUp") { ev.preventDefault(); this.pick = count ? (this.pick - 1 + count) % count : 0; this.scrollPick(); }
+        else if (ev.key === "Enter") {
+          ev.preventDefault();
+          var hit = this.results()[this.pick];
+          if (hit) window.location.href = hit.url;
+        }
+      },
+      scrollPick: function () {
+        var self = this;
+        this.$nextTick(function () {
+          var el = self.$refs.paletteList && self.$refs.paletteList.querySelector(".is-picked");
+          if (el) el.scrollIntoView({ block: "nearest" });
+        });
+      },
+      iconHref: function (name) {
+        var sprite = document.getElementById("icon-sprite");
+        return (sprite ? sprite.dataset.href : "") + "#i-" + name;
+      },
+
+      // --- keyboard ----------------------------------------------------------
+      onKey: function (ev) {
+        if ((ev.ctrlKey || ev.metaKey) && (ev.key === "k" || ev.key === "K")) {
+          if (!this.entries.length) return;
+          ev.preventDefault();
+          if (this.palette) { this.palette = false; } else { this.openPalette(); }
+          return;
+        }
+        if (ev.key === "Escape") {
+          if (this.palette) { this.palette = false; ev.stopPropagation(); }
+          else if (this.newSheet) { this.newSheet = false; }
+          else if (this.drawer) { this.drawer = false; }
+        }
+      }
+    };
+  });
+
+  // A toast leaves on its own after a few seconds, unless it reports a
+  // problem - those stay until closed, so nobody misses one.
+  window.Alpine.data("toast", function (category) {
+    return {
+      shown: true,
+      init: function () {
+        var self = this;
+        if (category !== "error" && category !== "warning") {
+          setTimeout(function () { self.shown = false; }, 5000);
+        }
+      }
+    };
+  });
+});
+
+// Figures marked data-count-up="1234.50" count up once when the page
+// opens (skipped for anyone who has asked for less motion).
+document.addEventListener("DOMContentLoaded", function () {
+  var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  document.querySelectorAll("[data-count-up]").forEach(function (el) {
+    var target = parseFloat(el.dataset.countUp);
+    if (reduce || !isFinite(target)) return;
+    var finalText = el.textContent;
+    var decimals = (el.dataset.countUp.split(".")[1] || "").length;
+    var start = null;
+    function frame(ts) {
+      if (start === null) start = ts;
+      var t = Math.min(1, (ts - start) / 700);
+      var eased = 1 - Math.pow(1 - t, 3);
+      el.textContent = (target * eased).toLocaleString("en-IN", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+      if (t < 1) requestAnimationFrame(frame); else el.textContent = finalText;
+    }
+    requestAnimationFrame(frame);
+  });
+});

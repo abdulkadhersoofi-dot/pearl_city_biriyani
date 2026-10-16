@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5">
   <title>{% block title %}{{ firm_name }}{% endblock %}</title>
+  <link rel="icon" href="{{ url_for('static', filename='img/arfa-logo.jpg') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
   {% if login_tenant %}<style>{{ tenant_theme_css(login_tenant) }}</style>{% endif %}
 </head>

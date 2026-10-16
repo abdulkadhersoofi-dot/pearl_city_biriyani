@@ -71,3 +71,16 @@ def index():
             return redirect(url_for("reports.dashboard"))
         return redirect(url_for("invoicing.list_invoices"))
     return redirect(url_for("pos.terminal"))
+
+
+@main_bp.route("/needs-you")
+def needs_you():
+    """The bell's list (loaded after the page, so working out low stock or
+    expiring batches never slows a page down). Client Admins only."""
+    from flask import render_template
+
+    from app.navigation import needs_you as needs_you_items
+
+    if not (current_user.is_authenticated and current_user.is_client_admin and current_user.tenant):
+        abort(404)
+    return render_template("_needs_you.html", items=needs_you_items(current_user.tenant))

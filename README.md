@@ -1762,6 +1762,65 @@ Five new flags, all off by default; with them off nothing changes (routes
   404 (`tests/test_phase10_offline.py`, `test_phase10_security.py`,
   `test_phase10_platform.py`).
 
+### Interface redesign - stage 1 (the frame, menus and look)
+
+The plan (six stages) grouped every screen around the jobs people do,
+moved the menus out of one long top row, and set one look for the whole
+app. Stage 1 is the frame every page sits in; the pages themselves keep
+their content and are reworked in later stages.
+
+- **Grouped side menu** (`app/navigation.py`, `base.html`): Home, Sell,
+  Stock & buying, People & money, Reports & GST, Business. Each entry
+  names the flag that guards its screen, exactly as the route does, so a
+  module that's off never shows anywhere; a group with nothing left is
+  dropped. The menu folds to an icon "rail" (remembered per browser; the
+  counter and screens narrower than a laptop start folded) and slides in
+  from the left on tablets and phones. The firm's console (Ultra Admin,
+  Auditors, Sub-Auditors) gets the same frame with its own groups.
+- **Branch (Staff) logins keep the simple layout** - no menu, search,
+  New or bell; the counter app on Android looks the same apart from the
+  fonts and toasts.
+- **Search (Ctrl K)** jumps to any screen or action this login may open:
+  every menu screen, every "New" action, and screens one level down (tabs
+  and report cards, e.g. GSTR-2B matching, Reorder list, Drug register).
+  The list is built on the server per request, so switched-off modules
+  never reach it.
+- **One green New button** for everything created day to day (counter
+  bill, tax invoice, note, quotation, job card, item, customer, purchase
+  bill, expense, receipt, payment, stock adjustment / transfer), each
+  only with its module on.
+- **The bell** (`/needs-you`, loaded after the page so it never slows
+  one down): offline bills that couldn't be saved, items at or below
+  minimum stock, batches expired / expiring in 30 days, recurring
+  invoices ready to issue - only for modules that are on, only the
+  signed-in client's own rows (tested with a second client's stock).
+- **Toasts** replace the coloured bars: the same flashed messages slide
+  in at the corner; successes leave after 5 seconds, errors and warnings
+  stay until closed. Sign-in pages keep their inline messages.
+- **Phones**: a bottom bar (Home, Sell, New, Reports, More) for Client
+  Admins, with New opening a sheet of actions and More opening the menu.
+- **Look**: Figtree for text, Bricolage Grotesque for headings, JetBrains
+  Mono for codes - stored in `app/static/fonts` (OFL licences beside
+  them), never loaded from the internet. Icons are Lucide (ISC licence)
+  in one sprite, `app/static/img/icons.svg`, used through the `icon()`
+  template helper. Colours keep the `--color-*` names a client's theme
+  overrides, so a client's own button colour, background and font still
+  apply; the "Default" font choice is now Figtree, and a client who chose
+  another font gets it for headings too.
+- **Motion**: page content rises into place (cards a beat apart), menus
+  grow from their button, toasts slide in, the active menu entry draws
+  its marker, the bell's dot pulses when something needs you, buttons
+  lift on hover and press in on tap, and `data-count-up` figures count up
+  once. Everything is 0.1 - 0.7 s, nothing loops for decoration, and all
+  of it switches off for anyone whose device asks for reduced motion.
+- **Unchanged**: every URL, permission, feature flag, form field, report
+  figure and printed document. The offline counter's service worker
+  already caches everything under `/static/`, so the new fonts, icons
+  and `shell.js` work offline with no change.
+- Tests: `tests/test_redesign_shell.py` (menu groups and flags, search
+  and New lists, active entry, branch layout, console groups, toasts,
+  vendored assets, bell scoping and flags, theme fonts).
+
 ## Roadmap
 
 - **Platform build (ARFA general-purpose POS), phase by phase.**
@@ -1804,6 +1863,34 @@ Five new flags, all off by default; with them off nothing changes (routes
     check, two-step sign-in, lockout, idle sign-out, cashier PINs,
     Sentry + /healthz, first-run checklist, platform subscription
     invoices, POS bill / note drill-downs, daily owner summary.
+
+- **Interface redesign** (plan approved with the recommendations: side
+  menu, dark mode following the device, full POS re-layout keeping the
+  shortcuts, the three bundled fonts), in six stages:
+  - Stage 1 (done): design tokens, bundled fonts and icons, grouped side
+    menu with rail and phone drawer, search (Ctrl K), New menu, bell,
+    account menu, phone bottom bar, toasts, motion with reduced-motion
+    respected.
+  - Stage 2: Settings in sections (Business, Appearance, Modules,
+    Counter, Documents & printing, Sign-in & security, Subscription),
+    module switches grouped by purpose with "Set up" links, per-section
+    save.
+  - Stage 3: list / record / form page patterns on every template, one
+    primary action per page with the rest under More, the inline styles
+    replaced by shared components, empty states, phone-friendly tables.
+  - Stage 4: Home dashboard and the Reports hub (grouped, searchable).
+  - Stage 5: the counter - full screen, category chips, larger tiles,
+    held bills in a drawer, Counter menu, one-tap payment buttons, paid
+    animation; restaurant tables, KOT and the PIN pad to match.
+  - Stage 6: firm console, sign-in pages, dark mode, accessibility pass.
+
+  Stage 1 limits:
+  - Pages inside the frame keep their current layout (and their inline
+    styles) until stage 3; Credit & debit notes keep their own menu entry
+    rather than a tab inside Invoices until then.
+  - The bell counts what the modules already know (offline bills, low
+    stock, expiry, recurring drafts); overdue customer balances stay on
+    the dashboard.
 
   Phase 10 limits:
   - The Android app compiles only in GitHub Actions (this sandbox can't

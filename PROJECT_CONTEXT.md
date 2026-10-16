@@ -384,6 +384,22 @@ this list is just the index.
   mark-paid path). Admin drill-downs for POS bills and notes.
   `app/finance/owner_summary.py` (dashboard, WhatsApp, SMTP email).
   CLI: `platform-invoices-generate`, `owner-summary-send`, `reset-2fa`.
+- **Interface redesign, stage 1 of 6** (plan approved by the owner with
+  all four recommendations: side menu, dark mode following the device,
+  full POS re-layout keeping the shortcuts, the three bundled fonts).
+  `app/navigation.py` is the one place menus are defined: grouped side
+  menu, New menu, search palette entries (Ctrl K), phone bottom bar and
+  the bell (`needs_you`, served at `/needs-you`). Every entry carries the
+  same feature flag as its route. `base.html` is the new frame (side
+  menu + rail + phone drawer, top bar with search / New / bell / account
+  menu, toasts via `_toasts.html`); `static/js/shell.js` holds its
+  Alpine components; branch (Staff) logins keep the simple top bar.
+  Fonts in `static/fonts` (Figtree, Bricolage Grotesque, JetBrains Mono,
+  OFL), icons in `static/img/icons.svg` (Lucide, ISC) via the `icon()`
+  template global. CSS tokens keep the `--color-*` names tenant themes
+  override. Stages 2-6 (Settings sections, page patterns, Home/Reports,
+  the counter, console/sign-in/dark mode/accessibility) are in README's
+  Roadmap.
 
 ## 5. Chronological development history (this session)
 

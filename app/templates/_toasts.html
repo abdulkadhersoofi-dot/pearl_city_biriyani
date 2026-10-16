@@ -1,0 +1,16 @@
+{# Flashed messages as toasts in the corner (base.html). Successes leave
+   on their own after a few seconds; errors and warnings stay until closed.
+   The words are the same messages the bars used to show. #}
+{% with messages = get_flashed_messages(with_categories=true) %}
+<div class="toast-stack" aria-live="polite">
+  {% for category, message in messages %}
+  <div class="toast toast-{{ category }}" x-data='toast({{ category|tojson }})' x-show="shown"
+       x-transition:enter="toast-enter" x-transition:enter-start="toast-from" x-transition:leave="toast-leave" x-transition:leave-end="toast-from"
+       role="{{ 'alert' if category in ('error', 'warning') else 'status' }}">
+    {{ icon({'success': 'circle-check', 'error': 'circle-x', 'warning': 'triangle-alert'}.get(category, 'info')) }}
+    <span class="toast-text">{{ message }}</span>
+    <button type="button" class="toast-close" @click="shown = false" aria-label="Close">{{ icon('x') }}</button>
+  </div>
+  {% endfor %}
+</div>
+{% endwith %}

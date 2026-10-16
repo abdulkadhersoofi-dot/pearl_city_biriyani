@@ -192,6 +192,16 @@ def _register_context_processors(app: Flask) -> None:
     from app.utils.theme import tenant_theme_css
 
     app.jinja_env.globals["tenant_theme_css"] = tenant_theme_css
+    from app import navigation
+
+    # The grouped side menu, the "New" menu, the search palette and the
+    # phone's bottom bar (app/navigation.py), plus the icon sprite.
+    app.jinja_env.globals["menu_groups"] = navigation.menu_groups
+    app.jinja_env.globals["new_menu"] = navigation.new_menu
+    app.jinja_env.globals["palette_entries"] = navigation.palette_entries
+    app.jinja_env.globals["bottom_tabs"] = navigation.bottom_tabs
+    app.jinja_env.globals["has_menu"] = navigation.has_menu
+    app.jinja_env.globals["icon"] = navigation.icon
     # {% if has_feature('categories') %} / {% if can('refund') %} - the
     # template-side counterparts of feature_required/permission_required,
     # so a switched-off module's links and fields never render.

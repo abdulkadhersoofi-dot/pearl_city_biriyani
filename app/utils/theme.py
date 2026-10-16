@@ -13,14 +13,16 @@ import re
 HEX_COLOR_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
 
 FONT_FAMILY_CHOICES = [
-    ("system", "Default (system sans-serif)"),
+    ("system", "Default (Figtree)"),
     ("serif", "Serif"),
     ("rounded", "Rounded sans-serif"),
     ("mono", "Monospace"),
 ]
 
 FONT_FAMILY_STACKS = {
-    "system": '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
+    # The app's own typeface (stored in the app, static/fonts), falling
+    # back to the device's system font.
+    "system": '"Figtree", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
     "serif": 'Georgia, "Times New Roman", Times, serif',
     "rounded": 'Verdana, "Trebuchet MS", Tahoma, sans-serif',
     "mono": '"Courier New", Courier, monospace',
@@ -63,4 +65,8 @@ def tenant_theme_css(tenant) -> str:
         f":root {{ --color-primary: {primary}; --color-primary-dark: {primary}; "
         f"--color-bg: {background}; --color-page-text: {text}; }}"
         f" body {{ font-family: {font_stack}; }}"
+        # Headings follow a client's own font choice too; only the default
+        # pairs Figtree with the display face.
+        + ("" if tenant.font_family in (None, "", DEFAULT_FONT_FAMILY) or tenant.font_family not in FONT_FAMILY_STACKS
+           else f" :root {{ --font-display: {font_stack}; }}")
     )
