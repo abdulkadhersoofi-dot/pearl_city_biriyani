@@ -104,10 +104,13 @@ class CustomerReceipt(db.Model, TenantScopedMixin, TimestampMixin, _ChequeMixin)
     cgst_amount = db.Column(db.Numeric(12, 2), nullable=False, default=0, server_default="0")
     sgst_amount = db.Column(db.Numeric(12, 2), nullable=False, default=0, server_default="0")
     igst_amount = db.Column(db.Numeric(12, 2), nullable=False, default=0, server_default="0")
+    # Wholesale: the salesman who collected it.
+    salesman_id = db.Column(db.Integer, db.ForeignKey("salesmen.id", name="fk_customer_receipts_salesman"))
 
     customer = db.relationship("Customer")
     gstin = db.relationship("Gstin")
     created_by = db.relationship("User", foreign_keys=[created_by_id])
+    salesman = db.relationship("Salesman")
     allocations = db.relationship("ReceiptAllocation", backref="receipt", cascade="all, delete-orphan",
                                   order_by="ReceiptAllocation.id")
     refunds = db.relationship("RefundVoucher", backref="receipt", order_by="RefundVoucher.id")

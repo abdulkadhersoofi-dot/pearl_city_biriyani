@@ -32,6 +32,7 @@ from app.utils.numbering import allocate_number, get_or_create_series
 from app.utils.permissions import max_discount_percent, user_can
 from app.inventory import hooks as inventory_hooks
 from app.inventory import ledger as inventory_ledger
+from app.pos import business
 
 _MAX_DESCRIPTION_LENGTH = 255
 _MAX_HSN_LENGTH = 8
@@ -67,6 +68,16 @@ class CartLineInput:
     discount_flat: Decimal = Decimal("0")
     # Serial numbers / IMEIs picked for this line (feature "serial_imei").
     serials: list = field(default_factory=list)
+    # Business-type modules (app.pos.business): a kitchen note; sold by the
+    # pack (alt unit) and how many base units that is; a jewellery piece
+    # weighed again at the counter and its price breakdown; a packing /
+    # service charge line (no item).
+    note: str = ""
+    alt: bool = False
+    unit_factor: Decimal = Decimal("1")
+    net_weight: Decimal | None = None
+    jewellery: dict | None = None
+    charge_kind: str | None = None
 
 
 @dataclass
@@ -76,6 +87,13 @@ class CartInput:
     bill_discount_kind: str | None = None
     bill_discount_value: Decimal = Decimal("0")
     price_list_id: int | None = None
+    # Business-type modules: restaurant order type / table / service charge
+    # ticked, pharmacy prescription, wholesale salesman.
+    order_type: str | None = None
+    table_id: int | None = None
+    service_charge: bool = False
+    prescription: dict | None = None
+    salesman_id: int | None = None
 
 
 @dataclass
@@ -118,7 +136,7 @@ def _at(seq, i, default=""):
 
 def parse_cart_lines(
     descriptions, hsns, qtys, rates, gst_rates, product_ids, units, incls=(), discounts=(),
-    discount_kinds=(), discount_values=(), serials=(),
+    discount_kinds=(), discount_values=(), serials=(), notes=(), alts=(), net_weights=(),
 ) -> list[CartLineInput]:
     lines = []
     for i, description in enumerate(descriptions):
@@ -153,6 +171,9 @@ def parse_cart_lines(
                 discount_kind=kind,
                 discount_value=value,
                 serials=[x.strip() for x in (_at(serials, i) or "").split(",") if x.strip()],
+                note=(_at(notes, i) or "").strip()[:140],
+                alt=posted_flag(alts, i),
+                net_weight=_to_decimal(_at(net_weights, i), "net weight") if _at(net_weights, i) else None,
             )
         )
     if not lines:
@@ -178,10 +199,16 @@ def _charge_gst(tenant: Tenant) -> bool:
     return tenant.registration_type == RegistrationType.REGULAR
 
 
-def resolve_price_list(tenant: Tenant, user, requested_id: int | None) -> PriceList | None:
+def resolve_price_list(tenant: Tenant, user, requested_id: int | None, order_type: str | None = None) -> PriceList | None:
     """Which price list this sale bills from. Lists only exist for a client
     with "multi_price_list" on; a counter uses its assigned list, and only
-    a login that may change prices can switch to another one."""
+    a login that may change prices can switch to another one. A restaurant
+    order type (Swiggy, Zomato...) bills from the list set for it."""
+    from app.restaurant.services import price_list_for
+
+    mapped = price_list_for(tenant, order_type)
+    if mapped:
+        return PriceList.query.filter_by(id=mapped, tenant_id=tenant.id, is_active=True).first()
     if not tenant.has_feature("multi_price_list"):
         return None
     default_id = getattr(user, "price_list_id", None) if getattr(user, "is_staff", False) else None
@@ -206,7 +233,7 @@ def counter_price(product: Product, price_list: PriceList | None, list_prices: d
     return product.sale_price
 
 
-def apply_counter_rules(tenant: Tenant, user, lines_or_cart) -> PriceList | None:
+def apply_counter_rules(tenant: Tenant, user, lines_or_cart, suggest: bool = False) -> PriceList | None:
     """The server's word on every cart line, whatever the terminal sent.
 
     A catalog item's tax treatment always comes from the item master (a
@@ -219,8 +246,9 @@ def apply_counter_rules(tenant: Tenant, user, lines_or_cart) -> PriceList | None
     """
     cart = lines_or_cart if isinstance(lines_or_cart, CartInput) else CartInput(lines=lines_or_cart)
     lines = cart.lines
-    price_list = resolve_price_list(tenant, user, cart.price_list_id)
+    price_list = resolve_price_list(tenant, user, cart.price_list_id, cart.order_type)
     list_prices = price_list.price_map() if price_list else None
+    customer = _customer(tenant, cart.customer_id) if cart.customer_id else None
 
     product_ids = {line.product_id for line in lines if line.product_id}
     products = {}
@@ -229,7 +257,9 @@ def apply_counter_rules(tenant: Tenant, user, lines_or_cart) -> PriceList | None
             p.id: p
             for p in Product.query.filter(Product.id.in_(product_ids), Product.tenant_id == tenant.id).all()
         }
-    may_edit_price = user_can(user, "edit_price")
+    # suggest=True: the counter's price for every line (app.pos.routes.quote),
+    # whatever this login may type in - the screen keeps a typed price itself.
+    may_edit_price = user_can(user, "edit_price") and not suggest
     discount_cap = max_discount_percent(user)
     charge_gst = _charge_gst(tenant)
 
@@ -239,8 +269,10 @@ def apply_counter_rules(tenant: Tenant, user, lines_or_cart) -> PriceList | None
             if product is None:
                 raise POSValidationError("An item in the cart isn't in your catalog - remove it and add it again.")
             line.price_includes_tax = product.price_includes_tax
-            if not may_edit_price:
-                line.rate = counter_price(product, price_list, list_prices)
+            try:
+                business.line_rules(tenant, product, line, customer, price_list, list_prices, may_edit_price)
+            except business.RuleError as exc:
+                raise POSValidationError(exc.message)
         line.qty = line.qty.quantize(QTY_PLACES)
         if line.qty <= 0:
             raise POSValidationError(f"Quantity for {line.description} must be more than 0.")
@@ -370,6 +402,10 @@ def _persist_lines(bill: POSBill, computed_lines: list[dict], charge_gst: bool) 
                 margin_purchase_value=item.get("margin_purchase_value", Decimal("0")),
                 margin_value=item.get("margin_value", Decimal("0")),
                 sort_order=order,
+                note=line_in.note or None,
+                unit_factor=line_in.unit_factor or Decimal("1"),
+                jewellery=line_in.jewellery,
+                charge_kind=line_in.charge_kind,
             )
         )
 
@@ -421,12 +457,26 @@ def hold_cart(tenant: Tenant, created_by, cart: CartInput, label: str | None) ->
         bill_discount_kind=cart.bill_discount_kind,
         bill_discount_value=cart.bill_discount_value if cart.bill_discount_kind else Decimal("0"),
         price_list_id=price_list.id if price_list else None,
+        order_type=cart.order_type,
+        table_id=cart.table_id,
+        salesman_id=_salesman_id(tenant, cart.salesman_id),
         **totals,
     )
     db.session.add(bill)
     db.session.flush()
     _persist_lines(bill, computed_lines, _charge_gst(tenant))
     return bill
+
+
+def _salesman_id(tenant: Tenant, salesman_id: int | None) -> int | None:
+    if not salesman_id or not tenant.has_feature("wholesale"):
+        return None
+    from app.models.business import Salesman
+
+    salesman = Salesman.query.filter_by(id=salesman_id, tenant_id=tenant.id, is_active=True).first()
+    if salesman is None:
+        raise POSValidationError("Pick a valid salesman.")
+    return salesman.id
 
 
 def discard_held_bill(bill: POSBill) -> None:
@@ -448,6 +498,8 @@ def enabled_payment_modes(tenant: Tenant) -> list[PaymentMode]:
             continue
         if mode == PaymentMode.CREDIT and not tenant.has_feature("credit_sales"):
             continue
+        if mode in (PaymentMode.OLD_GOLD, PaymentMode.LOYALTY):
+            continue  # offered by their modules, not picked in Settings
         if mode not in modes:
             modes.append(mode)
     return modes or [PaymentMode.CASH]
@@ -458,7 +510,7 @@ def _settle_payments(
 ) -> list[tuple[PaymentInput, Decimal, POSReturn | None]]:
     if not payments:
         raise POSValidationError("Select a payment mode.")
-    allowed = enabled_payment_modes(tenant)
+    allowed = enabled_payment_modes(tenant) + business.extra_modes(tenant)
     settled = []
     for p in payments:
         if p.mode == PaymentMode.MIXED or (p.mode != PaymentMode.EXCHANGE and p.mode not in allowed):
@@ -486,7 +538,15 @@ def _settle_payments(
                     f"Only Rs. {exchange_return.exchange_balance:.2f} of credit is left on {exchange_return.return_number}."
                 )
             reference = exchange_return.return_number
-        settled.append((PaymentInput(p.mode, amount, reference, p.return_number), amount, exchange_return))
+        voucher = None
+        if p.mode in (PaymentMode.OLD_GOLD, PaymentMode.LOYALTY):
+            try:
+                voucher = business.check_payment(tenant, p.mode, amount, reference, customer)
+            except business.RuleError as exc:
+                raise POSValidationError(exc.message)
+            if voucher is not None:
+                reference = voucher.number
+        settled.append((PaymentInput(p.mode, amount, reference, p.return_number), amount, exchange_return or voucher))
     paid = sum((amount for _, amount, _ in settled), Decimal("0"))
     if paid != grand_total:
         raise POSValidationError(f"Payments add up to Rs. {paid:.2f} but the bill is Rs. {grand_total:.2f}.")
@@ -519,11 +579,24 @@ def checkout(
         is_margin = margin_services.sale_kind(tenant, [l.product_id for l in cart.lines])
     except margin_services.MarginError as exc:
         raise POSValidationError(exc.message)
+    try:
+        prescription = business.prescription(tenant, cart)
+    except business.RuleError as exc:
+        raise POSValidationError(exc.message)
+    salesman_id = _salesman_id(tenant, cart.salesman_id)
     if is_margin:
         computed_lines = _compute_margin_lines(tenant, cart.lines)
         totals = compute_margin_totals(computed_lines)
     else:
         computed_lines = _compute_lines(tenant, cart.lines)
+        # Restaurant packing / service charge lines - worked out here,
+        # whatever the terminal showed.
+        from app.restaurant.services import charge_lines
+
+        charges = charge_lines(tenant, cart, computed_lines, charge_gst)
+        if charges:
+            cart.lines.extend(charges)
+            computed_lines += _compute_lines(tenant, charges)
         totals = compute_invoice_totals(computed_lines)
 
     payments = [PaymentInput(payment)] if isinstance(payment, PaymentMode) else list(payment)
@@ -546,7 +619,8 @@ def checkout(
     try:
         inventory_hooks.check_sale(
             tenant, location.id,
-            [inventory_hooks.SaleLine(l.product_id, l.qty, None, l.serials) for l in cart.lines if l.product_id],
+            [inventory_hooks.SaleLine(l.product_id, business.stock_qty(l), None, l.serials)
+             for l in cart.lines if l.product_id],
         )
     except inventory_ledger.StockError as exc:
         raise POSValidationError(exc.message)
@@ -575,12 +649,18 @@ def checkout(
         cash_tendered=cash_tendered,
         change_due=change_due,
         is_margin_scheme=is_margin,
+        order_type=cart.order_type,
+        table_id=cart.table_id,
+        prescription=prescription,
+        salesman_id=salesman_id,
         **totals,
     )
     db.session.add(bill)
     db.session.flush()
     _persist_lines(bill, computed_lines, charge_gst)
-    for p, amount, exchange_return in settled:
+    used_vouchers = []
+    for p, amount, credit in settled:
+        exchange_return = credit if isinstance(credit, POSReturn) else None
         bill.payments.append(
             POSPayment(
                 tenant_id=tenant.id,
@@ -592,6 +672,8 @@ def checkout(
         )
         if exchange_return is not None:
             exchange_return.exchange_used = (exchange_return.exchange_used or 0) + amount
+        elif credit is not None:
+            used_vouchers.append((credit, amount))
     db.session.flush()
     saved_lines = POSBillLine.query.filter_by(bill_id=bill.id).order_by(POSBillLine.sort_order).all()
     if is_margin:
@@ -600,10 +682,11 @@ def checkout(
                                    saved.product_id, item)
     inventory_hooks.post_sale(
         tenant, location.id,
-        [inventory_hooks.SaleLine(saved.product_id, saved.qty, saved.id, line_in.serials)
+        [inventory_hooks.SaleLine(saved.product_id, business.stock_qty(saved), saved.id, line_in.serials)
          for saved, line_in in zip(saved_lines, cart.lines) if saved.product_id],
         "pos_bill", bill.id, created_by.id, pos_bill=bill,
     )
+    bill.module_extras = business.after_checkout(tenant, created_by, bill, cart, used_vouchers)
     return bill
 
 
@@ -625,6 +708,10 @@ def refund_bill(
     # As on the branch's daily counter, a refunded bill counts as not sold:
     # its goods go back into stock.
     inventory_hooks.undo_sale(bill.tenant_id, "pos_bill", bill.id, refunded_by.id, f"{bill.bill_number} refunded")
+    if bill.customer_id:
+        from app.loyalty.points import reverse_bill
+
+        reverse_bill(bill.tenant_id, bill, refunded_by.id, f"{bill.bill_number} refunded")
     if bill.is_margin_scheme:
         from app.margin.services import release
 
@@ -665,6 +752,7 @@ def void_bill(bill: POSBill, voided_by, reason: str, today: date | None = None) 
         if payment.mode == PaymentMode.EXCHANGE and payment.pos_return is not None:
             payment.pos_return.exchange_used = (payment.pos_return.exchange_used or 0) - payment.amount
     inventory_hooks.undo_sale(bill.tenant_id, "pos_bill", bill.id, voided_by.id, f"{bill.bill_number} voided")
+    business.on_void(bill, voided_by, f"{bill.bill_number} voided")
     if bill.is_margin_scheme:
         from app.margin.services import release
 

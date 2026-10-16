@@ -1,0 +1,33 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @page { size: {{ page_size }}; margin: 0.12in; }
+  body { font-family: "Courier New", monospace; font-size: {{ '13pt' if is_narrow else '16pt' }}; line-height: 1.3; color: #000; margin: 0; }
+  .center { text-align: center; }
+  .big { font-size: {{ '17pt' if is_narrow else '21pt' }}; font-weight: 700; }
+  .rule { border-top: 1px dashed #000; margin: 6px 0; }
+  table { width: 100%; border-collapse: collapse; }
+  td { padding: 3px 0; vertical-align: top; }
+  .qty { width: 2.6em; font-weight: 700; }
+  .cancel td { text-decoration: line-through; }
+  .note { font-size: {{ '11pt' if is_narrow else '13pt' }}; font-style: italic; }
+</style>
+</head>
+<body>
+  <div class="center big">KOT #{{ kot.kot_no }}</div>
+  <div class="center">{{ order_label }}{% if kot.table %} &middot; Table {{ kot.table.name }}{% endif %}{% if kot.order_ref %} &middot; {{ kot.order_ref }}{% endif %}</div>
+  <div class="center">{{ kot.created_at|ist('%d %b %H:%M') }} &middot; {{ kot.created_by.name if kot.created_by else '' }}</div>
+  <div class="rule"></div>
+  <table>
+    {% for item in lines %}
+    <tr class="{{ 'cancel' if item.cancel else '' }}">
+      <td class="qty">{{ item.qty }}</td>
+      <td>{{ 'CANCEL ' if item.cancel }}{{ item.name }}{% if item.note %}<div class="note">* {{ item.note }}</div>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  <div class="rule"></div>
+</body>
+</html>

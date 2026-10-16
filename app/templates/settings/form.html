@@ -61,6 +61,18 @@
       {% if feature.key == 'multi_price_list' and tenant.has_feature('multi_price_list') %}
       <a href="{{ url_for('products.price_lists') }}" class="btn btn-secondary" style="margin-top:8px;">Manage price lists</a>
       {% endif %}
+      {% if feature.key == 'restaurant_mode' and tenant.has_feature('restaurant_mode') %}
+      <a href="{{ url_for('restaurant.setup') }}" class="btn btn-secondary" style="margin-top:8px;">Tables, order types &amp; charges</a>
+      {% endif %}
+      {% if feature.key in ('weighing', 'loyalty') and tenant.has_feature(feature.key) %}
+      <a href="{{ url_for('settings.modules') }}" class="btn btn-secondary" style="margin-top:8px;">{{ 'Scale label format' if feature.key == 'weighing' else 'Points rules' }}</a>
+      {% endif %}
+      {% if feature.key == 'wholesale' and tenant.has_feature('wholesale') %}
+      <a href="{{ url_for('wholesale.index') }}" class="btn btn-secondary" style="margin-top:8px;">Customer groups &amp; salesmen</a>
+      {% endif %}
+      {% if feature.key == 'jewellery' and tenant.has_feature('jewellery') %}
+      <a href="{{ url_for('jewellery.rates') }}" class="btn btn-secondary" style="margin-top:8px;">Today's rates</a>
+      {% endif %}
     </div>
     {% endfor %}
   </div>

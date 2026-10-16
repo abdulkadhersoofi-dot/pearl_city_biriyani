@@ -91,6 +91,10 @@ class Tenant(db.Model, TimestampMixin):
     # labels and which are built yet lives in app.utils.features. A key
     # that's absent means off. Read through has_feature(), never directly.
     features = db.Column(db.JSON, nullable=False, default=dict, server_default="{}")
+    # Settings of the business-type modules (Phase 9), one dict per module:
+    # {"restaurant": {...}, "weighing": {...}, "loyalty": {...}}. Read
+    # through app.utils.module_settings, which fills in the defaults.
+    module_settings = db.Column(db.JSON, nullable=False, default=dict, server_default="{}")
     # Default for "price already includes GST" on a new item and on an
     # ad-hoc invoice line (Product.price_includes_tax decides for catalog
     # items). Off = prices are entered before tax, as before this existed.

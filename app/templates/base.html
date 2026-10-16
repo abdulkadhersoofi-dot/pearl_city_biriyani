@@ -63,7 +63,10 @@
           <a href="{{ url_for('notes.list_notes') }}" class="{{ 'active' if request.blueprint == 'notes' }}">Notes</a>
           {% if has_feature('sales_documents') %}<a href="{{ url_for('sales.documents') }}" class="{{ 'active' if request.blueprint == 'sales' }}">Quotes &amp; orders</a>
           {% elif has_feature('recurring_invoices') %}<a href="{{ url_for('sales.recurring') }}" class="{{ 'active' if request.blueprint == 'sales' }}">Recurring</a>{% endif %}
+          {% if has_feature('restaurant_mode') %}<a href="{{ url_for('restaurant.tables') }}" class="{{ 'active' if request.blueprint == 'restaurant' }}">Tables</a>{% endif %}
           <a href="{{ url_for('pos.terminal') }}" class="{{ 'active' if request.blueprint == 'pos' }}">POS</a>
+          {% if has_feature('job_cards') %}<a href="{{ url_for('jobs.index') }}" class="{{ 'active' if request.blueprint == 'jobs' }}">Jobs</a>{% endif %}
+          {% if has_feature('jewellery') %}<a href="{{ url_for('jewellery.rates') }}" class="{{ 'active' if request.blueprint == 'jewellery' }}">Rates</a>{% endif %}
           <a href="{{ url_for('customers.list_customers') }}" class="{{ 'active' if request.blueprint == 'customers' }}">Customers</a>
           <a href="{{ url_for('products.list_products') }}" class="{{ 'active' if request.blueprint == 'products' }}">Items</a>
           {% if has_feature('inventory') %}<a href="{{ url_for('inventory.index') }}" class="{{ 'active' if request.blueprint == 'inventory' }}">Stock</a>{% endif %}

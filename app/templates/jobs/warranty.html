@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Warranty check - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header"><div><h1>Warranty check</h1><p class="text-muted mt-0">Scan or type the IMEI / serial number.</p></div></div>
+<form method="get" class="row" style="gap:8px; margin-bottom:16px;">
+  <input type="text" name="q" value="{{ q }}" placeholder="IMEI / serial" class="field-input" style="margin:0; flex:1;" autofocus>
+  <button class="btn btn-primary">Check</button>
+</form>
+{% if q %}
+<div class="card" style="margin-bottom:16px;">
+  {% if unit %}
+  <h2 class="mt-0">{{ unit.product.name }}</h2>
+  <p><strong>{{ unit.serial_no }}</strong> &middot; {{ unit.status.value|replace('_', ' ')|title }}</p>
+  {% if bill %}<p>Sold {{ bill.completed_at|ist('%d %b %Y') }} on bill {{ bill.bill_number }}{% if bill.customer_snapshot %} to {{ bill.customer_snapshot.name }}{% if bill.customer_snapshot.phone %} ({{ bill.customer_snapshot.phone }}){% endif %}{% endif %}.</p>{% endif %}
+  {% if unit.warranty_end %}
+    {% if unit.warranty_end >= today %}<p><span class="tag tag-fast">In warranty</span> until {{ unit.warranty_end.strftime('%d %b %Y') }}</p>
+    {% else %}<p><span class="tag tag-warn">Out of warranty</span> - ended {{ unit.warranty_end.strftime('%d %b %Y') }}</p>{% endif %}
+  {% else %}<p class="text-muted">No warranty on record.</p>{% endif %}
+  {% if job_cards_on %}<a class="btn btn-secondary" href="{{ url_for('jobs.new', item=unit.product.name, serial_no=unit.serial_no, customer_id=(bill.customer_id if bill else '')) }}">Open a repair job card</a>{% endif %}
+  {% else %}
+  <p class="mt-0">No unit with that IMEI / serial was bought or sold here.</p>
+  {% if job_cards_on %}<a class="btn btn-secondary" href="{{ url_for('jobs.new', serial_no=q) }}">Open a repair job card anyway</a>{% endif %}
+  {% endif %}
+</div>
+{% if jobs %}<div class="card"><h2 class="mt-0">Repairs on this unit</h2><ul>{% for j in jobs %}<li><a href="{{ url_for('jobs.view', job_id=j.id) if job_cards_on else '#' }}">{{ j.number }}</a> - {{ j.received_on.strftime('%d %b %Y') }} - {{ j.complaint[:60] }}</li>{% endfor %}</ul></div>{% endif %}
+{% endif %}
+{% endblock %}

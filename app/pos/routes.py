@@ -74,6 +74,9 @@ def _cart_from_request() -> CartInput:
         request.form.getlist("line_discount_kind[]"),
         request.form.getlist("line_discount_value[]"),
         serials=request.form.getlist("line_serials[]"),
+        notes=request.form.getlist("line_note[]"),
+        alts=request.form.getlist("line_alt[]"),
+        net_weights=request.form.getlist("line_net_weight[]"),
     )
     kind, value = parse_bill_discount(request.form.get("bill_discount_kind"), request.form.get("bill_discount_value"))
     return CartInput(
@@ -82,7 +85,32 @@ def _cart_from_request() -> CartInput:
         bill_discount_kind=kind,
         bill_discount_value=value,
         price_list_id=_int_or_none(request.form.get("price_list_id")),
+        **_module_fields(),
     )
+
+
+def _module_fields() -> dict:
+    """The business-type modules' parts of a posted cart - only read with
+    the module on, so a client without it can't smuggle them in."""
+    tenant = current_user.tenant
+    out = {}
+    if tenant.has_feature("restaurant_mode"):
+        from app.models.business import DiningTable
+        from app.utils.module_settings import ORDER_TYPES
+
+        order_type = request.form.get("order_type") or None
+        if order_type and order_type not in ORDER_TYPES:
+            raise POSValidationError("Pick an order type.")
+        table_id = _int_or_none(request.form.get("table_id"))
+        if table_id and tenant_query(DiningTable).filter_by(id=table_id).first() is None:
+            raise POSValidationError("That table isn't one of yours.")
+        out.update(order_type=order_type, table_id=table_id, service_charge=bool(request.form.get("service_charge")))
+    if tenant.has_feature("pharmacy"):
+        rx = {k: request.form.get(f"rx_{k}", "") for k in ("doctor", "doctor_reg_no", "patient", "patient_address")}
+        out["prescription"] = rx if any(rx.values()) else None
+    if tenant.has_feature("wholesale"):
+        out["salesman_id"] = _int_or_none(request.form.get("salesman_id"))
+    return out
 
 
 def _money(value, label):
@@ -151,6 +179,7 @@ def terminal():
     held_bills = (
         tenant_query(POSBill)
         .filter_by(status=POSBillStatus.HELD)
+        .filter(POSBill.table_id.is_(None))  # a table's running order lives on the Tables screen
         .order_by(POSBill.created_at.desc())
         .all()
     )
@@ -167,6 +196,11 @@ def terminal():
     prefill = _prefill_from_held(resume_bill) if resume_bill else None
     if resume_bill:
         held_bills = [hb for hb in held_bills if hb.id != resume_bill.id]
+    modules = _module_context(tenant)
+    if modules.get("restaurant") and modules["restaurant"]["table"] and modules["restaurant"]["running_id"]:
+        # A table's order stays on the table until it is billed - shown, not removed.
+        running = tenant_query(POSBill).filter_by(id=modules["restaurant"]["running_id"]).first()
+        prefill = _prefill_from_held(running) if running else prefill
 
     stock_status = branch_stock_status(current_user.tenant_id, current_user.id) if current_user.is_staff else []
 
@@ -211,10 +245,124 @@ def terminal():
         exchange=exchange,
         last_bill=last_bill,
         serial_stock=_serial_stock(tenant, products),
+        modules=modules,
+        today=date.today(),
     )
     if resume_bill is not None:
         _remove_held(resume_bill)
     return html
+
+
+def _module_context(tenant) -> dict:
+    """What the counter screen needs from the business-type modules - only
+    what's switched on."""
+    out = {"quote": False}
+    if tenant.has_feature("restaurant_mode"):
+        from app.models.business import DiningTable
+        from app.restaurant import services as rs
+        from app.utils.module_settings import ORDER_TYPES
+
+        settings = rs.settings(tenant)
+        types = rs.order_types(tenant)
+        table = None
+        table_id = _int_or_none(request.args.get("table"))
+        if table_id:
+            table = tenant_query(DiningTable).filter_by(id=table_id, is_active=True).first_or_404()
+        wanted = request.args.get("order_type")
+        values = [t["value"] for t in types]
+        if table:
+            order_type = "dine_in"
+        elif wanted in values:
+            order_type = wanted
+        else:
+            order_type = "takeaway" if "takeaway" in values else (values[0] if values else "dine_in")
+        running = rs.running_order(tenant.id, table.id) if table else None
+        out["restaurant"] = {
+            "order_types": types, "order_type": order_type, "labels": ORDER_TYPES,
+            "table": {"id": table.id, "name": table.name} if table else None,
+            "running_id": running.id if running else None,
+            "service_pct": float(settings["service_charge_percent"] or 0),
+            "kot_url": url_for("restaurant.send_kot", table_id=table.id) if table else None,
+            "tables_url": url_for("restaurant.tables"),
+        }
+        out["quote"] = True
+    if tenant.has_feature("pharmacy"):
+        out["pharmacy"] = True
+    if tenant.has_feature("jewellery"):
+        out["jewellery"] = {"lookup_url": url_for("jewellery.old_gold_lookup")}
+        out["quote"] = True
+    if tenant.has_feature("loyalty"):
+        from app.loyalty.points import settings as loyalty_settings
+
+        ls = loyalty_settings(tenant)
+        out["loyalty"] = {"point_value": float(ls["point_value"]), "min_redeem": ls["min_redeem"]}
+    if tenant.has_feature("wholesale"):
+        from app.models.business import Salesman
+
+        out["salesmen"] = [{"id": s.id, "name": s.name}
+                           for s in tenant_query(Salesman).filter_by(is_active=True).order_by(Salesman.name)]
+        out["quote"] = True
+    if tenant.has_feature("pharmacy") or tenant.has_feature("wholesale"):
+        out["packs"] = True
+        out["quote"] = True
+    if tenant.has_feature("weighing"):
+        out["weighing"] = {"scan_url": url_for("pos.scale_scan")}
+    if out["quote"]:
+        out["quote_url"] = url_for("pos.quote")
+    return out
+
+
+@pos_bp.route("/quote", methods=["POST"])
+@tenant_user_required
+def quote():
+    """The server's prices for the cart as it stands - what checkout will
+    charge (item master, price lists, slabs, packs, today's metal rate,
+    restaurant charges). The counter shows these instead of guessing."""
+    from app.pos.services import _charge_gst, _compute_lines, apply_counter_rules
+    from app.restaurant.services import charge_lines
+
+    tenant = current_user.tenant
+    try:
+        cart = _cart_from_request()
+        apply_counter_rules(tenant, current_user, cart, suggest=True)
+        computed = _compute_lines(tenant, cart.lines)
+        charges = charge_lines(tenant, cart, computed, _charge_gst(tenant))
+    except POSValidationError as exc:
+        db.session.rollback()
+        return jsonify({"error": exc.message}), 400
+    db.session.rollback()  # nothing to keep - a quote changes nothing
+    return jsonify({
+        "lines": [{"rate": float(l.rate), "unit": l.unit, "incl": l.price_includes_tax, "jewellery": l.jewellery}
+                  for l in cart.lines],
+        "charges": [{"description": c.description, "qty": float(c.qty), "rate": float(c.rate),
+                     "gst_rate": float(c.gst_rate)} for c in charges],
+    })
+
+
+@pos_bp.route("/scale-scan")
+@tenant_user_required
+@feature_required("weighing")
+def scale_scan():
+    """What a weighing-scale label means: the item and its weight (or the
+    weight its printed price buys)."""
+    from app.utils.module_settings import module_settings
+    from app.utils.scale_barcode import parse
+
+    tenant = current_user.tenant
+    s = module_settings(tenant, "weighing")
+    label = parse(request.args.get("code", ""), s["prefixes"], s["code_digits"])
+    if label is None:
+        return jsonify({"error": "Not a scale label."}), 404
+    product = tenant_query(Product).filter_by(plu_code=label.plu, is_active=True).first()
+    if product is None:
+        return jsonify({"error": f"No item has scale code {label.plu}."}), 404
+    if label.kind == "weight":
+        qty = label.value
+    else:
+        if not product.sale_price:
+            return jsonify({"error": f"{product.name} has no price to work the weight out from."}), 400
+        qty = (label.value / product.sale_price).quantize(Decimal("0.001"))
+    return jsonify({"product_id": product.id, "qty": float(qty), "kind": label.kind, "value": float(label.value)})
 
 
 def _serial_stock(tenant, products) -> dict[int, list[str]]:
@@ -253,8 +401,12 @@ def _prefill_from_held(bill: POSBill) -> dict:
                 "loose": bool(line.product.sells_loose) if line.product else False,
                 "disc_kind": line.line_discount_kind or "",
                 "disc_value": float(line.line_discount_value or 0),
+                "note": line.note or "",
+                "alt": bool(line.unit_factor and line.unit_factor != 1),
+                "serial": bool(line.product and line.product.track_serial),
+                "serials": "",
             }
-            for line in bill.lines
+            for line in bill.lines if not line.charge_kind
         ],
         "customer": (
             {"id": customer.id, "name": customer.name, "phone": customer.phone or "", "gstin": customer.gstin or ""}
@@ -263,6 +415,8 @@ def _prefill_from_held(bill: POSBill) -> dict:
         "bill_disc_kind": bill.bill_discount_kind or "",
         "bill_disc_value": float(bill.bill_discount_value or 0),
         "price_list_id": bill.price_list_id,
+        "order_type": bill.order_type or "",
+        "salesman_id": bill.salesman_id,
     }
 
 
@@ -346,6 +500,13 @@ def checkout_route():
                 "change_due": float(bill.change_due) if bill.change_due is not None else None,
                 "share_url": url_for("pos.share_bill", bill_id=bill.id),
             }
+            extras = getattr(bill, "module_extras", None) or {}
+            if extras.get("kot_id"):
+                response["kot_pdf"] = url_for("restaurant.kot_pdf", kot_id=extras["kot_id"])
+            if bill.customer_id and tenant.has_feature("loyalty"):
+                from app.loyalty.points import balance
+
+                response["points"] = balance(tenant.id, bill.customer_id)
             if bill.credit_amount and bill.customer_id:
                 from app.accounts.receivables import credit_warning
 
@@ -468,6 +629,15 @@ def upi_qr():
 # --- customers at the counter ------------------------------------------------
 
 def _customer_json(c: Customer) -> dict:
+    data = _customer_json_base(c)
+    if current_user.tenant.has_feature("loyalty"):
+        from app.loyalty.points import balance
+
+        data["points"] = balance(current_user.tenant_id, c.id)
+    return data
+
+
+def _customer_json_base(c: Customer) -> dict:
     return {"id": c.id, "name": c.name, "phone": c.phone or "", "gstin": c.gstin or ""}
 
 

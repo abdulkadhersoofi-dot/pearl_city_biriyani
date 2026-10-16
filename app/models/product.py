@@ -74,6 +74,25 @@ class Product(db.Model, TenantScopedMixin, TimestampMixin):
     # Second-hand goods sold under the margin scheme (Rule 32(5), module
     # "margin_scheme"): GST on the margin only, no ITC on buying them.
     is_margin_scheme = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
+    # --- business-type modules (Phase 9), each only used with its flag on ---
+    # Weighing: the item code a weighing scale prints in its barcode label.
+    plu_code = db.Column(db.String(6))
+    # Pharmacy: H / H1 / X (gst_config.DRUG_SCHEDULES) and the salt
+    # composition substitutes are matched on ("Paracetamol 500mg").
+    drug_schedule = db.Column(db.String(3))
+    composition = db.Column(db.String(255))
+    # Jewellery: priced at billing from today's metal rate - net weight x
+    # rate + making charges + stones (app.utils.jewellery).
+    metal = db.Column(db.String(10))
+    purity = db.Column(db.String(6))
+    gross_weight = db.Column(db.Numeric(10, 3))
+    net_weight = db.Column(db.Numeric(10, 3))
+    making_charge_kind = db.Column(db.String(8))  # per_gram / percent / flat
+    making_charge_value = db.Column(db.Numeric(12, 2))
+    stone_value = db.Column(db.Numeric(12, 2))
+    # Restaurant: "sold out today" - the date it ran out; any other day it
+    # is on sale again by itself.
+    sold_out_on = db.Column(db.Date)
     is_active = db.Column(db.Boolean, nullable=False, default=True)
     # Optional even when the tenant has the "categories" feature on - an
     # item with neither just shows under "Uncategorized" in the POS
@@ -93,6 +112,10 @@ class Product(db.Model, TenantScopedMixin, TimestampMixin):
         from app.utils.gst_config import LOOSE_QTY_UQC
 
         return (self.unit or "").upper() in LOOSE_QTY_UQC
+
+    @property
+    def is_jewellery(self) -> bool:
+        return bool(self.metal and self.purity and self.net_weight)
 
     def __repr__(self):
         return f"<Product {self.id} {self.name}>"

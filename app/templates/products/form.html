@@ -67,13 +67,42 @@
       {% endif %}
       {% if has_feature('serial_imei') %}
       {{ checkbox(form.track_serial, help="Mobiles, electronics: each unit's serial / IMEI is entered on purchase and picked at sale.") }}
-      {{ field(form.warranty_months, help="From the purchase date - shown against each serial number.") }}
+      {{ field(form.warranty_months, help=("From the day it is sold - the customer's warranty." if has_feature('electronics') else "From the purchase date - shown against each serial number.")) }}
+      {% endif %}
+      {% if has_feature('weighing') %}
+      <div class="form-grid">
+        {{ field(form.plu_code, help="The code this item has on your weighing scale - its printed labels are then scanned straight into the bill.") }}
+      </div>
+      {% endif %}
+      {% if has_feature('pharmacy') %}
+      <div class="form-grid">
+        {{ field(form.drug_schedule, help="Schedule H / H1 / X drugs are sold only with the doctor's and patient's details.") }}
+        {{ field(form.composition, help="e.g. Paracetamol 500mg - items with the same composition are offered as substitutes.") }}
+      </div>
       {% endif %}
     </div>
   </details>
+  {% if has_feature('jewellery') %}
+  <details class="card" style="margin-bottom:16px;" {{ 'open' if form.metal.data else '' }}>
+    <summary><strong>Jewellery</strong> - priced from today's metal rate</summary>
+    <p class="field-help">Price = net weight x today's rate for the purity + making charges + stones; GST {{ jewellery_gst_rate }}% on the whole. The sale price above isn't used for these.</p>
+    <div class="form-grid">
+      {{ field(form.metal) }}
+      {{ field(form.purity) }}
+      {{ field(form.gross_weight) }}
+      {{ field(form.net_weight, help="Gross weight less stones.") }}
+      {{ field(form.making_charge_kind) }}
+      {{ field(form.making_charge_value, help="Rupees per gram, a %, or a flat amount - as picked.") }}
+      {{ field(form.stone_value) }}
+    </div>
+  </details>
+  {% endif %}
 
   <button type="submit" class="btn btn-primary btn-lg">Save</button>
 </form>
+{% if product and has_feature('wholesale') %}
+<p style="margin-top:12px;"><a href="{{ url_for('wholesale.slabs', product_id=product.id) }}" class="btn btn-secondary">Quantity prices (slabs)</a></p>
+{% endif %}
 {% if product and has_feature('variants') and not product.parent_id %}
 <p style="margin-top:12px;"><a href="{{ url_for('products.variants', product_id=product.id) }}" class="btn btn-secondary">Sizes / colours (variants){% if product.has_variants %} - {{ product.variants|length }}{% endif %}</a></p>
 {% endif %}

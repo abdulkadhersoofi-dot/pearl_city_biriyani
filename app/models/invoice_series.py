@@ -35,6 +35,10 @@ class DocumentType(str, enum.Enum):
     QUOTATION = "quotation"
     PROFORMA_INVOICE = "proforma_invoice"
     SALES_ORDER = "sales_order"
+    # Business-type modules (Phase 9): repair job cards and the voucher for
+    # old gold bought from a customer.
+    JOB_CARD = "job_card"
+    OLD_GOLD_PURCHASE = "old_gold_purchase"
 
 
 # Document types a tenant may issue, gated by their GST registration type.
@@ -65,6 +69,8 @@ DOCUMENT_TYPE_LABELS = {
     DocumentType.QUOTATION: "Quotation",
     DocumentType.PROFORMA_INVOICE: "Proforma Invoice",
     DocumentType.SALES_ORDER: "Sales Order",
+    DocumentType.JOB_CARD: "Job Card",
+    DocumentType.OLD_GOLD_PURCHASE: "Old Gold Purchase Voucher",
 }
 
 

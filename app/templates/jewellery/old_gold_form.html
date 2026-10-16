@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Buy old gold - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header"><div><h1>Buy old gold</h1>
+  <p class="text-muted mt-0">A numbered purchase voucher - its value is then used as "Old gold" when billing the new jewellery. No GST on buying old gold from a customer.</p></div></div>
+<form method="post" class="card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="form-grid">
+    <label class="field"><span class="field-label">Seller's name</span><input type="text" name="seller_name" value="{{ form.get('seller_name', '') }}" class="field-input" required></label>
+    <label class="field"><span class="field-label">Phone</span><input type="tel" name="seller_phone" value="{{ form.get('seller_phone', '') }}" class="field-input"></label>
+    <label class="field"><span class="field-label">Existing customer (optional)</span><select name="customer_id" class="field-input"><option value="">-</option>{% for c in customers %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select></label>
+    <label class="field"><span class="field-label">Address</span><input type="text" name="seller_address" value="{{ form.get('seller_address', '') }}" class="field-input"></label>
+    <label class="field"><span class="field-label">ID proof</span><input type="text" name="id_proof" value="{{ form.get('id_proof', '') }}" placeholder="Aadhaar XXXX 1234" class="field-input"></label>
+    <label class="field"><span class="field-label">What it is</span><input type="text" name="description" value="{{ form.get('description', '') }}" placeholder="Old chain, broken bangle" class="field-input"></label>
+    <label class="field"><span class="field-label">Metal &amp; purity</span>
+      <select name="metal_purity" class="field-input" onchange="var v=this.value.split('|'); this.form.metal.value=v[0]; this.form.purity.value=v[1];">
+        {% for r in board %}<option value="{{ r.metal }}|{{ r.purity }}" {{ 'selected' if r.metal == 'gold' and r.purity == '22K' }}>{{ r.metal|title }} {{ r.purity }}{% if r.rate %} - Rs. {{ '%.2f'|format(r.rate) }}/g today{% endif %}</option>{% endfor %}
+      </select>
+      <input type="hidden" name="metal" value="gold"><input type="hidden" name="purity" value="22K"></label>
+    <label class="field"><span class="field-label">Gross weight (g)</span><input type="number" step="0.001" min="0" name="gross_weight" value="{{ form.get('gross_weight', '') }}" class="field-input" required></label>
+    <label class="field"><span class="field-label">Net weight (g)</span><input type="number" step="0.001" min="0" name="net_weight" value="{{ form.get('net_weight', '') }}" class="field-input" required>
+      <p class="field-help">After stones, wax and melting loss.</p></label>
+    <label class="field"><span class="field-label">Rate per gram (Rs.)</span><input type="number" step="0.01" min="0" name="rate_per_gram" value="{{ form.get('rate_per_gram', '') }}" class="field-input">
+      <p class="field-help">Blank = today's rate for the purity.</p></label>
+  </div>
+  <button class="btn btn-primary">Make voucher</button>
+</form>
+{% endblock %}

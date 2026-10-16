@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Old gold - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header"><div><h1>Old gold vouchers</h1>
+  <p class="text-muted mt-0">Old gold bought from customers. Its value pays for new jewellery as "Old gold" at the counter - after GST.</p></div>
+  <div class="row"><a href="{{ url_for('jewellery.rates') }}" class="btn btn-quiet">Rates</a><a href="{{ url_for('jewellery.old_gold_new') }}" class="btn btn-primary">Buy old gold</a></div></div>
+<div class="table-wrap card"><table>
+  <thead><tr><th>Voucher</th><th>Date</th><th>Seller</th><th>Metal</th><th class="num">Net wt</th><th class="num">Value</th><th class="num">Left</th><th>Status</th></tr></thead>
+  <tbody>
+  {% for v in vouchers %}
+  <tr><td><a href="{{ url_for('jewellery.old_gold_view', voucher_id=v.id) }}">{{ v.number }}</a></td><td>{{ v.purchase_date.strftime('%d %b %Y') }}</td><td>{{ v.seller_name }}</td>
+    <td>{{ v.purity }} {{ v.metal }}</td><td class="num">{{ v.net_weight }} g</td><td class="num">{{ '%.2f'|format(v.value) }}</td><td class="num">{{ '%.2f'|format(v.balance) }}</td><td>{{ v.status.value|title }}</td></tr>
+  {% else %}<tr><td colspan="8" class="empty-state">No vouchers yet.</td></tr>{% endfor %}
+  </tbody></table></div>
+{% endblock %}

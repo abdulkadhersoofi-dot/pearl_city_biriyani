@@ -25,6 +25,10 @@ class PaymentMode(str, enum.Enum):
     # Paid with the value of goods returned on a POS sales return (an
     # exchange) - never picked at the counter directly.
     EXCHANGE = "exchange"
+    # Jewellery: the value of old gold bought on an OldGoldPurchase voucher.
+    OLD_GOLD = "old_gold"
+    # Loyalty points spent (module "loyalty").
+    LOYALTY = "loyalty"
     # POSBill.payment_mode only, when a bill was paid more than one way -
     # the actual split is in POSPayment rows. Never a POSPayment's mode.
     MIXED = "mixed"
@@ -39,6 +43,8 @@ PAYMENT_MODE_LABELS = {
     PaymentMode.CHEQUE: "Cheque",
     PaymentMode.BANK_TRANSFER: "Bank transfer",
     PaymentMode.EXCHANGE: "Exchange credit",
+    PaymentMode.OLD_GOLD: "Old gold",
+    PaymentMode.LOYALTY: "Loyalty points",
     PaymentMode.MIXED: "Split",
 }
 
@@ -128,6 +134,16 @@ class POSBill(db.Model, TenantScopedMixin, TimestampMixin):
     # When the original was printed. Every later print - a reprint, the
     # day-book's copy - is marked DUPLICATE COPY (app.pos.receipt).
     original_printed_at = db.Column(db.DateTime(timezone=True))
+    # Restaurant (restaurant_mode): dine_in / takeaway / delivery / swiggy /
+    # zomato, and the table of a dine-in order (a HELD bill with a table is
+    # that table's running order).
+    order_type = db.Column(db.String(20))
+    table_id = db.Column(db.Integer, db.ForeignKey("dining_tables.id", name="fk_pos_bills_table"))
+    # Pharmacy: Schedule H / H1 / X sale - {"doctor", "doctor_reg_no",
+    # "patient", "patient_address"}.
+    prescription = db.Column(db.JSON)
+    # Wholesale: who made the sale.
+    salesman_id = db.Column(db.Integer, db.ForeignKey("salesmen.id", name="fk_pos_bills_salesman"))
 
     gstin = db.relationship("Gstin")
     customer = db.relationship("Customer")
@@ -135,6 +151,8 @@ class POSBill(db.Model, TenantScopedMixin, TimestampMixin):
     refunded_by = db.relationship("User", foreign_keys=[refunded_by_id])
     voided_by = db.relationship("User", foreign_keys=[voided_by_id])
     price_list = db.relationship("PriceList")
+    table = db.relationship("DiningTable")
+    salesman = db.relationship("Salesman")
     lines = db.relationship(
         "POSBillLine",
         backref="bill",
@@ -213,6 +231,14 @@ class POSBillLine(db.Model, TimestampMixin):
     margin_purchase_value = db.Column(db.Numeric(12, 2), nullable=False, default=0, server_default="0")
     margin_value = db.Column(db.Numeric(12, 2), nullable=False, default=0, server_default="0")
     sort_order = db.Column(db.Integer, nullable=False, default=0)
+    # Phase 9. A kitchen note ("less spicy"); how many of the item's own
+    # unit one of `unit` is (a strip of 10 tablets: 10) - stock moves in
+    # qty x unit_factor; a jewellery line's price breakdown; and whether the
+    # line is a charge (packing / service charge), not an item.
+    note = db.Column(db.String(140))
+    unit_factor = db.Column(db.Numeric(12, 3), nullable=False, default=1, server_default="1")
+    jewellery = db.Column(db.JSON)
+    charge_kind = db.Column(db.String(10))
 
     product = db.relationship("Product")
 

@@ -71,6 +71,22 @@ class ProductForm(FlaskForm):
     track_batch = BooleanField("Track batches and expiry dates")
     track_serial = BooleanField("Track each unit by serial number / IMEI")
     warranty_months = IntegerField("Warranty (months)", validators=[Optional(), NumberRange(min=0, max=240)])
+    # Business-type modules (Phase 9) - each only on the page with its module on.
+    plu_code = StringField("Scale item code (PLU)", validators=[Optional(), Length(max=6)], filters=[_strip_or_none])
+    drug_schedule = SelectField("Drug schedule", choices=[("", "Not scheduled")] + list(gst_config.DRUG_SCHEDULES.items()),
+                                validators=[Optional()], filters=[_strip_or_none])
+    composition = StringField("Composition (salt)", validators=[Optional(), Length(max=255)], filters=[_strip_or_none])
+    metal = SelectField("Metal", choices=[("", "Not jewellery")] + [(m, m.title()) for m in gst_config.METAL_PURITIES],
+                        validators=[Optional()], filters=[_strip_or_none])
+    purity = SelectField("Purity", choices=[("", "-")] + sorted({(p, p) for g in gst_config.METAL_PURITIES.values() for p in g}),
+                         validators=[Optional()], filters=[_strip_or_none])
+    gross_weight = DecimalField("Gross weight (g)", places=3, validators=[Optional(), NumberRange(min=0)])
+    net_weight = DecimalField("Net weight (g)", places=3, validators=[Optional(), NumberRange(min=0)])
+    making_charge_kind = SelectField("Making charges", choices=[("", "None"), ("per_gram", "Per gram"),
+                                                                ("percent", "% of metal value"), ("flat", "Flat amount")],
+                                     validators=[Optional()], filters=[_strip_or_none])
+    making_charge_value = DecimalField("Making charge", places=2, validators=[Optional(), NumberRange(min=0)])
+    stone_value = DecimalField("Stone value (Rs.)", places=2, validators=[Optional(), NumberRange(min=0)])
 
     image = FileField(
         "Item image (optional)",
@@ -113,9 +129,30 @@ class ProductForm(FlaskForm):
         if self.alt_unit.data and self.alt_unit.data == self.unit.data:
             self.alt_unit.errors.append("The pack unit must be different from the item's own unit.")
             ok = False
+        if self.metal.data:
+            if self.purity.data not in gst_config.METAL_PURITIES.get(self.metal.data, {}):
+                self.purity.errors.append(f"Pick a {self.metal.data} purity: "
+                                          f"{', '.join(gst_config.METAL_PURITIES[self.metal.data])}.")
+                ok = False
+            if not self.net_weight.data:
+                self.net_weight.errors.append("The net weight is what the price is worked out from.")
+                ok = False
+            elif self.gross_weight.data and self.net_weight.data > self.gross_weight.data:
+                self.net_weight.errors.append("Net weight can't be more than the gross weight.")
+                ok = False
+        if self.plu_code.data and not self.plu_code.data.isdigit():
+            self.plu_code.errors.append("The scale's item code is digits only.")
+            ok = False
         if self.tenant is not None:
             from app.models.product import Product
 
+            if self.plu_code.data:
+                clash = Product.query.filter(Product.tenant_id == self.tenant.id,
+                                             Product.plu_code == (self.plu_code.data.lstrip("0") or "0"),
+                                             Product.id != (self.product_id or 0)).first()
+                if clash:
+                    self.plu_code.errors.append(f"Already used by {clash.name}.")
+                    ok = False
             for field_ in (self.sku, self.barcode):
                 if not field_.data:
                     continue

@@ -151,3 +151,45 @@ EWAY_BILL_CANCEL_HOURS = 24
 # The e-way bill system refuses a distance above this (EWB system
 # validation, NIC e-way bill API v1.03 - max 4000 km).
 EWAY_BILL_MAX_DISTANCE_KM = 4000
+
+# --- Business-type modules (Phase 9) ---------------------------------------------
+# Restaurants: a packing / parcel charge or a service charge billed with the
+# food is part of the same restaurant service and taxed at its rate - 5%
+# (no ITC) for a restaurant not in a specified premises. Source:
+# Notification 11/2017-CT(Rate) item 7(ii), as amended by Notification
+# 46/2017-CT(Rate), effective 15.11.2017. A client whose rate differs
+# changes it in Restaurant settings; this is only the default.
+RESTAURANT_SERVICE_GST_RATE = Decimal("5")
+RESTAURANT_SERVICE_SAC = "996331"
+# A service charge can't be added to the bill by default or compulsorily -
+# only if the customer agrees. Source: CCPA guidelines dated 04.07.2022
+# (upheld by the Delhi High Court, 28.03.2025). So it is off on every bill
+# until the cashier ticks it.
+SERVICE_CHARGE_DEFAULT_ON = False
+
+# Jewellery: articles of gold / silver jewellery (HSN 7113), the metal,
+# making charges and stones on a jewellery sale all at 3%. Source:
+# Notification 1/2017-CT(Rate), Schedule V, effective 01.07.2017.
+JEWELLERY_GST_RATE = Decimal("3")
+# Making charges billed alone, on the customer's own gold (job work in
+# relation to jewellery), are a service at 5%. Source: Notification
+# 11/2017-CT(Rate) item 26 (job work in relation to diamonds, jewellery),
+# as amended by Notification 20/2019-CT(Rate), effective 01.10.2019.
+JEWELLERY_JOB_WORK_GST_RATE = Decimal("5")
+JEWELLERY_JOB_WORK_SAC = "9988"
+# Metal purity: what fraction of pure metal each grade holds (24K = 999,
+# 22K = 916 per BIS hallmarking, IS 1417 / IS 2112).
+METAL_PURITIES = {
+    "gold": {"24K": Decimal("0.999"), "22K": Decimal("0.916"), "18K": Decimal("0.750"), "14K": Decimal("0.585")},
+    "silver": {"999": Decimal("0.999"), "925": Decimal("0.925")},
+    "platinum": {"950": Decimal("0.950")},
+}
+
+# Pharmacy: drugs that may only be sold on a prescription and whose sale
+# is recorded with the prescriber and patient. Source: Drugs and Cosmetics
+# Rules 1945, Rule 65(9) and Schedule H / H1 (the H1 register from
+# 01.03.2014, Notification G.S.R. 588(E) of 30.08.2013) and Schedule X.
+DRUG_SCHEDULES = {"H": "Schedule H", "H1": "Schedule H1", "X": "Schedule X"}
+# Which schedules need the patient's address on record too (the H1 / X
+# register).
+DRUG_SCHEDULES_REGISTER = {"H1", "X"}

@@ -7,6 +7,7 @@
   const GSTIN_STATE = { {% for g in current_user.tenant.gstins %}{{ g.id }}: "{{ g.state_code }}",{% endfor %} };
   const CUSTOMER_STATE = { {% for c in customers %}"{{ c.id }}": "{{ c.state_code or '' }}",{% endfor %} };
   const BRANCH_TYPE = { {% for b in branches %}"{{ b.id }}": "{{ b.branch_type.value }}",{% endfor %} };
+  const WHOLESALE_PRICE_URL = {{ (url_for('wholesale.price') if has_feature('wholesale') else '')|tojson }};
   const PRODUCTS_BY_NAME = { {% for p in products %}{{ p.name|tojson }}: {hsn: {{ (p.hsn_or_sac_code or '')|tojson }}, rate: {{ p.sale_price }}, incl: {{ p.price_includes_tax|tojson }}, gst_rate: {{ p.gst_rate }}, unit: {{ p.unit|tojson }}, id: {{ p.id }}},{% endfor %} };
   const NO_GST_DOC_TYPES = ["bill_of_supply", "delivery_challan"];
   // New ad-hoc lines start from the client's own "prices include GST"
@@ -74,6 +75,13 @@
         {{ form.place_of_supply_state_code.label(class="field-label") }}
         {{ form.place_of_supply_state_code(class="field-input", **{"x-model": "placeOfSupply", "@change": "recalc()"}) }}
       </div>
+      {% if has_feature('wholesale') %}
+      <div class="field">
+        <label class="field-label" for="salesman_id">Salesman</label>
+        <select name="salesman_id" id="salesman_id" class="field-input"><option value="">-</option>
+          {% for s in active_salesmen() %}<option value="{{ s.id }}" {{ 'selected' if request.form.get('salesman_id') == s.id|string }}>{{ s.name }}</option>{% endfor %}</select>
+      </div>
+      {% endif %}
     </div>
     <template x-if="billTo === 'customer' && customerId === 'new'">
       <div class="form-grid" style="margin-top:12px;">
@@ -110,7 +118,7 @@
                        @change="applyProduct(line)" name="line_description[]" placeholder="Item name">
               </td>
               <td><input type="text" x-model="line.hsn" name="line_hsn[]" maxlength="8"></td>
-              <td><input type="number" step="0.001" min="0" x-model.number="line.qty" @input="recalc()" name="line_qty[]"></td>
+              <td><input type="number" step="0.001" min="0" x-model.number="line.qty" @input="recalc()" @change="suggestPrice(line)" name="line_qty[]"></td>
               <td><input type="number" step="0.01" min="0" x-model.number="line.rate" @input="recalc()" name="line_rate[]"></td>
               <td><input type="number" step="0.01" min="0" x-model.number="line.discount" @input="recalc()" name="line_discount[]"></td>
               <td><input type="number" step="0.01" min="0" x-model.number="line.gst_rate" @input="recalc()" name="line_gst_rate[]"></td>
@@ -175,6 +183,7 @@ function invoiceForm() {
     onCustomerChange() {
       const state = CUSTOMER_STATE[this.customerId];
       if (state) this.placeOfSupply = state;
+      if (WHOLESALE_PRICE_URL) this.lines.forEach(l => this.suggestPrice(l));
       this.recalc();
     },
     // A branch has no state of its own on file - default to the GSTIN
@@ -205,8 +214,18 @@ function invoiceForm() {
       const p = PRODUCTS_BY_NAME[line.description];
       if (p) {
         line.hsn = p.hsn; line.rate = p.rate; line.gst_rate = p.gst_rate; line.incl = p.incl; line.unit = p.unit; line.product_id = p.id;
+        this.suggestPrice(line);
       }
       this.recalc();
+    },
+    // Wholesale: the customer's group price / quantity slab, from the server.
+    async suggestPrice(line) {
+      if (!WHOLESALE_PRICE_URL || !line.product_id) return;
+      const cid = /^\d+$/.test(String(this.customerId)) ? this.customerId : "";
+      try {
+        const res = await fetch(WHOLESALE_PRICE_URL + "?product_id=" + line.product_id + "&qty=" + (line.qty || 1) + "&customer_id=" + cid);
+        if (res.ok) { line.rate = (await res.json()).rate; this.recalc(); }
+      } catch (e) { /* keep the typed price */ }
     },
     computeLine(line) {
       return GstCalc.line(line.qty, line.rate, line.discount, line.gst_rate, line.incl, this.chargesGst(), !!this.isIntraState());

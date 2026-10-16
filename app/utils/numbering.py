@@ -29,6 +29,8 @@ DEFAULT_PREFIXES = {
     DocumentType.QUOTATION: "QTN",
     DocumentType.PROFORMA_INVOICE: "PI",
     DocumentType.SALES_ORDER: "SO",
+    DocumentType.JOB_CARD: "JOB",
+    DocumentType.OLD_GOLD_PURCHASE: "OG",
 }
 
 # The IRP accepts a document number of at most 16 characters, and

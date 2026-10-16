@@ -20,6 +20,12 @@ def _customer_form(**kwargs) -> CustomerForm:
 
 def _save(form, customer):
     form.populate_obj(customer)
+    if current_user.tenant.has_feature("wholesale"):
+        from app.models.business import CustomerGroup
+
+        group_id = request.form.get("customer_group_id", type=int)
+        group = tenant_query(CustomerGroup).filter_by(id=group_id).first() if group_id else None
+        customer.customer_group_id = group.id if group else None
     if getattr(form, "opening_balance", None) is not None and customer.opening_balance is None:
         customer.opening_balance = 0
 from app.utils.tenant_scope import assert_owns, tenant_query

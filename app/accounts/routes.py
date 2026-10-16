@@ -247,6 +247,13 @@ def new_receipt():
                 data.gst_rate = services.money(request.form.get("gst_rate") or "0", "GST rate")
                 data.place_of_supply_state_code = request.form.get("place_of_supply_state_code") or None
             receipt = services.create_receipt(tenant, current_user, data)
+            if tenant.has_feature("wholesale") and request.form.get("salesman_id"):
+                from app.models.business import Salesman
+
+                salesman = tenant_query(Salesman).filter_by(id=_int(request.form.get("salesman_id")) or 0).first()
+                if salesman is None:
+                    raise AccountsError("Pick a valid salesman.")
+                receipt.salesman_id = salesman.id
             _audit("receipt_created", "customer_receipt", receipt, amount=str(receipt.amount),
                    customer_id=receipt.customer_id, advance=receipt.is_advance,
                    allocated=str(services.receipt_used(receipt)))

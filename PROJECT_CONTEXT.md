@@ -345,7 +345,24 @@ this list is just the index.
   bulk JSON, generate by IRN or standalone, Part B, cancel). Tables
   `einvoice_credentials`, `gov_api_calls`, `eway_bills`; Gstin got city
   and PIN. With `einvoice` on, LUT exports use an `EXL` series (16-char
-  IRP limit). Phases 9-10 still to build, in order.
+  IRP limit).
+- **Platform build Phase 9** (flags `restaurant_mode`, `weighing`,
+  `pharmacy`, `electronics`, `jewellery`, `job_cards`, `wholesale`,
+  `loyalty`; the migration switched the four that presets already
+  carried off for existing clients): `app/pos/business.py` is the one
+  place the counter calls into the modules, `/pos/quote` prices the cart
+  server-side for the screen. `app/restaurant/` (tables = HELD bills with
+  table_id, delta KOTs, move/merge/cancel, order-type price lists,
+  packing/service charge lines at 5%, sold-out-today), `app/utils/
+  scale_barcode.py`, `app/pharmacy/` (schedules + register, substitutes;
+  strips via POSBillLine.unit_factor), electronics warranty from the sale
+  (`/jobs/warranty`), `app/utils/jewellery.py` + `app/jewellery/` (metal
+  rates, 3% jewellery, 5% SAC 9988 job work, OldGoldPurchase vouchers
+  series OG paid as PaymentMode.OLD_GOLD after GST), `app/jobs/` (JobCard
+  series JOB, parts from stock, invoice hand-off), `app/wholesale/`
+  (groups, slabs, salesmen, report), `app/loyalty/` (LoyaltyEntry ledger,
+  PaymentMode.LOYALTY). Settings in `Tenant.module_settings`
+  (`app/utils/module_settings.py`). Phase 10 still to build.
 
 ## 5. Chronological development history (this session)
 

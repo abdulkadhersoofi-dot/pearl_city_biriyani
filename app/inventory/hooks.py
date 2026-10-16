@@ -151,7 +151,8 @@ def post_return(tenant_id: int, location_id: int, ret, user_id: int | None) -> N
         if not ledger.sells_from_stock(product):
             continue
         sold = [m for m in _sale_movements(tenant_id, ret.bill_id, rl.bill_line_id) if m.qty < 0]
-        remaining = Decimal(rl.qty)
+        # A line sold by the pack (strip of 10) moved 10 x qty in stock.
+        remaining = Decimal(rl.qty) * Decimal(rl.bill_line.unit_factor or 1)
         for m in sold:
             if remaining <= 0:
                 break

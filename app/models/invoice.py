@@ -85,6 +85,8 @@ class Invoice(db.Model, TenantScopedMixin, TimestampMixin):
     # a cancelled IRN keeps its number with these set.
     irn_cancelled_at = db.Column(db.DateTime(timezone=True))
     irn_cancel_reason = db.Column(db.Text)
+    # Wholesale: the salesman who made the sale.
+    salesman_id = db.Column(db.Integer, db.ForeignKey("salesmen.id", name="fk_invoices_salesman"))
 
     gstin = db.relationship("Gstin")
     series = db.relationship("InvoiceSeries")
@@ -92,6 +94,7 @@ class Invoice(db.Model, TenantScopedMixin, TimestampMixin):
     branch_user = db.relationship("User", foreign_keys=[branch_user_id])
     created_by = db.relationship("User", foreign_keys=[created_by_id])
     voided_by = db.relationship("User", foreign_keys=[voided_by_id])
+    salesman = db.relationship("Salesman")
     lines = db.relationship(
         "InvoiceLine",
         backref="invoice",

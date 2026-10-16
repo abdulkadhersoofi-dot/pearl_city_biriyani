@@ -16,6 +16,12 @@
     {{ field(form.phone) }}
   </div>
   {{ field(form.email) }}
+  {% if has_feature('wholesale') %}
+  <label class="field"><span class="field-label">Customer group</span>
+    <select name="customer_group_id" class="field-input"><option value="">No group (normal prices)</option>
+      {% for g in active_customer_groups() %}<option value="{{ g.id }}" {{ 'selected' if customer and customer.customer_group_id == g.id }}>{{ g.name }}{% if g.price_list %} - {{ g.price_list.name }} prices{% endif %}</option>{% endfor %}
+    </select></label>
+  {% endif %}
   {% if form.credit_limit %}
   <h2>Account</h2>
   <div class="form-grid">
@@ -28,6 +34,7 @@
   {% endif %}
   <button type="submit" class="btn btn-primary btn-lg">Save</button>
 </form>
+{% if customer and has_feature('loyalty') %}<p style="margin-top:12px;"><a href="{{ url_for('loyalty.customer', customer_id=customer.id) }}" class="btn btn-secondary">Purchase history &amp; points</a></p>{% endif %}
 {% if customer %}
 <form method="post" action="{{ url_for('customers.deactivate_customer', customer_id=customer.id) }}"
       style="margin-top:12px;"

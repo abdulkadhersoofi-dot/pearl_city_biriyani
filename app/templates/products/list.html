@@ -34,7 +34,7 @@
         <td>{{ p.hsn_or_sac_code }}</td>
         <td>{{ p.gst_rate }}%</td>
         <td>{{ p.unit }}</td>
-        <td>Rs. {{ '%.2f'|format(p.sale_price) }}{% if p.price_includes_tax %} <span class="text-muted">incl. GST</span>{% endif %}</td>
+        <td>{% if p.is_jewellery and has_feature('jewellery') %}By weight <span class="text-muted">{{ p.purity }} &middot; {{ p.net_weight }} g</span>{% else %}Rs. {{ '%.2f'|format(p.sale_price) }}{% if p.price_includes_tax %} <span class="text-muted">incl. GST</span>{% endif %}{% endif %}</td>
         <td><a href="{{ url_for('products.edit_product', product_id=p.id) }}">Edit</a></td>
       </tr>
     {% else %}

@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Tables - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Tables</h1>
+    <p class="text-muted mt-0">Tap a table to take or add to its order. Takeaway, delivery and app orders are billed straight from the counter.</p>
+  </div>
+  <div class="row">
+    {% for ot in order_types if ot.value != 'dine_in' %}
+    <a href="{{ url_for('pos.terminal', order_type=ot.value) }}" class="btn btn-secondary">{{ ot.label }}</a>
+    {% endfor %}
+    <a href="{{ url_for('restaurant.menu') }}" class="btn btn-quiet">Sold out today</a>
+    {% if current_user.is_client_admin %}<a href="{{ url_for('restaurant.setup') }}" class="btn btn-quiet">Setup</a>{% endif %}
+  </div>
+</div>
+{% if not tiles %}
+<div class="card"><p class="empty-state">No tables yet.{% if current_user.is_client_admin %} <a href="{{ url_for('restaurant.setup') }}">Add your tables</a>.{% endif %}</p></div>
+{% endif %}
+<div class="table-grid">
+  {% for t in tiles %}
+  {% set o = t.order %}
+  <div class="table-tile {{ 'busy' if o else 'free' }}">
+    <a href="{{ url_for('pos.terminal', table=t.table.id) }}" class="table-tile-main">
+      <span class="table-name">{{ t.table.name }}</span>
+      {% if t.table.section %}<span class="table-section">{{ t.table.section }}</span>{% endif %}
+      {% if o %}
+        <span class="table-amount">Rs. {{ '%.2f'|format(o.grand_total) }}</span>
+        <span class="table-meta">{{ o.lines|length }} item{{ 's' if o.lines|length != 1 }} &middot; since {{ o.created_at|ist('%H:%M') }}{% if t.kots %} &middot; {{ t.kots }} KOT{{ 's' if t.kots != 1 }}{% endif %}</span>
+      {% else %}
+        <span class="table-meta">Free</span>
+      {% endif %}
+    </a>
+    {% if o %}
+    <details class="table-actions">
+      <summary>More</summary>
+      <form method="post" action="{{ url_for('restaurant.move', table_id=t.table.id) }}" class="row" style="gap:6px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <select name="to_table_id" class="field-input" style="margin:0;">
+          {% for other in free %}<option value="{{ other.id }}">Move to {{ other.name }}</option>{% endfor %}
+          {% for other in busy if other.id != t.table.id %}<option value="{{ other.id }}">Merge into {{ other.name }}</option>{% endfor %}
+        </select>
+        <button class="btn btn-quiet btn-sm" name="action" value="move">Move</button>
+        <button class="btn btn-quiet btn-sm" name="action" value="merge">Merge</button>
+      </form>
+      <form method="post" action="{{ url_for('restaurant.cancel', table_id=t.table.id) }}" class="row" style="gap:6px; margin-top:6px;"
+            onsubmit="return confirm('Cancel the whole order on table {{ t.table.name }}?');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="text" name="reason" placeholder="Reason" required class="field-input" style="margin:0; flex:1;">
+        <button class="btn btn-danger btn-sm">Cancel order</button>
+      </form>
+    </details>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

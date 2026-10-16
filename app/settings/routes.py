@@ -95,3 +95,43 @@ def _render(form, tenant):
         "settings/form.html", form=form, tenant=tenant, features=AVAILABLE_FEATURES, feature_field_name=feature_field_name,
         default_margin_declaration=DEFAULT_DECLARATION
     )
+
+
+@settings_bp.route("/modules", methods=["GET", "POST"])
+@roles_required(UserRole.CLIENT_ADMIN)
+def modules():
+    """Settings of the weighing-scale and loyalty modules (restaurant has its
+    own setup page). 404 when neither is on."""
+    from flask import abort
+
+    from app.utils.module_settings import dec, module_settings, save_module_settings
+
+    tenant = current_user.tenant
+    if not (tenant.has_feature("weighing") or tenant.has_feature("loyalty")):
+        abort(404)
+    if request.method == "POST":
+        f = request.form
+        if f.get("module") == "weighing" and tenant.has_feature("weighing"):
+            prefixes = {}
+            for kind in ("weight", "price"):
+                for p in (f.get(f"{kind}_prefixes") or "").replace(" ", "").split(","):
+                    if len(p) == 2 and p.isdigit() and p[0] == "2":
+                        prefixes[p] = kind
+            digits = f.get("code_digits", type=int) or 5
+            values = {"prefixes": prefixes or {"21": "weight"}, "code_digits": min(max(digits, 4), 6)}
+            save_module_settings(tenant, "weighing", values)
+        elif f.get("module") == "loyalty" and tenant.has_feature("loyalty"):
+            values = {"points_per_100": str(max(dec(f.get("points_per_100")), dec(0))),
+                      "point_value": str(max(dec(f.get("point_value"), "1"), dec("0.01"))),
+                      "min_redeem": max(f.get("min_redeem", type=int) or 0, 0)}
+            save_module_settings(tenant, "loyalty", values)
+        else:
+            abort(404)
+        record_audit(current_user, "module_settings_saved", tenant_id=tenant.id, details={"module": f.get("module"), **values})
+        db.session.commit()
+        flash("Saved.", "success")
+        return redirect(url_for("settings.modules"))
+    weighing = module_settings(tenant, "weighing")
+    return render_template("settings/modules.html", weighing=weighing, loyalty=module_settings(tenant, "loyalty"),
+                           weight_prefixes=", ".join(k for k, v in weighing["prefixes"].items() if v == "weight"),
+                           price_prefixes=", ".join(k for k, v in weighing["prefixes"].items() if v == "price"))

@@ -46,13 +46,19 @@
     <tr><td>Date</td><td class="right">{{ bill.completed_at.strftime('%d %b %Y %H:%M') if bill.completed_at else '' }}</td></tr>
     {% if bill.customer_snapshot %}<tr><td>Customer</td><td class="right">{{ bill.customer_snapshot.name }}</td></tr>{% endif %}
     {% if bill.customer_snapshot and bill.customer_snapshot.gstin %}<tr><td>Cust. GSTIN</td><td class="right">{{ bill.customer_snapshot.gstin }}</td></tr>{% endif %}
+    {% if bill.order_type %}<tr><td>Order</td><td class="right">{{ order_type_label(bill.order_type) }}{% if bill.table %} - Table {{ bill.table.name }}{% endif %}</td></tr>{% endif %}
+    {% if bill.salesman %}<tr><td>Salesman</td><td class="right">{{ bill.salesman.name }}</td></tr>{% endif %}
+    {% if bill.prescription %}
+    <tr><td>Doctor</td><td class="right">{{ bill.prescription.doctor }}{% if bill.prescription.doctor_reg_no %} ({{ bill.prescription.doctor_reg_no }}){% endif %}</td></tr>
+    <tr><td>Patient</td><td class="right">{{ bill.prescription.patient }}</td></tr>
+    {% endif %}
   </table>
   <div class="rule"></div>
 
   <table>
     {% for l in bill.lines %}
     <tr>
-      <td class="line-desc" colspan="2">{{ l.description }}{% set sn = l.serial_numbers %}{% if sn %}<br><small>S/N: {{ sn|join(', ') }}</small>{% endif %}</td>
+      <td class="line-desc" colspan="2">{{ l.description }}{% set sn = l.serial_numbers %}{% if sn %}<br><small>S/N: {{ sn|join(', ') }}</small>{% endif %}{% if l.note %}<br><small>* {{ l.note }}</small>{% endif %}{% if l.jewellery %}{% set j = l.jewellery %}<br><small>{{ j.purity }} {{ j.metal }}, net {{ j.net_weight }} g @ {{ j.rate }}/g = {{ j.metal_value }}{% if j.making|float %}; making {{ j.making }}{% endif %}{% if j.stones|float %}; stones {{ j.stones }}{% endif %}</small>{% endif %}</td>
     </tr>
     <tr>
       <td>{{ l.qty }} {{ l.unit }} x {{ '%.2f'|format(l.rate) }}</td>

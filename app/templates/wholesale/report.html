@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Sales by salesman - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header"><div><h1>Sales by salesman</h1></div>
+  <form method="get" class="row" style="gap:8px; align-items:flex-end;">
+    <label class="field" style="margin:0;"><span class="field-label">From</span><input type="date" name="start" value="{{ start.isoformat() }}" class="field-input"></label>
+    <label class="field" style="margin:0;"><span class="field-label">To</span><input type="date" name="end" value="{{ end.isoformat() }}" class="field-input"></label>
+    <button class="btn btn-secondary">Show</button>
+    <a href="{{ url_for('wholesale.salesmen_report', start=start.isoformat(), end=end.isoformat(), format='xlsx') }}" class="btn btn-quiet">Excel</a>
+  </form></div>
+<div class="table-wrap card"><table>
+  <thead><tr><th>Salesman</th><th class="num">Invoices</th><th class="num">Counter bills</th><th class="num">Sales excl. GST</th><th class="num">Sales incl. GST</th><th class="num">Collected</th></tr></thead>
+  <tbody>
+  {% for r in rows %}<tr><td>{{ r.salesman.name if r.salesman else '-' }}</td><td class="num">{{ r.invoices }}</td><td class="num">{{ r.bills }}</td>
+    <td class="num">{{ '%.2f'|format(r.taxable) }}</td><td class="num">{{ '%.2f'|format(r.total) }}</td><td class="num">{{ '%.2f'|format(r.collected) }} <small class="text-muted">({{ r.receipts }})</small></td></tr>
+  {% else %}<tr><td colspan="6" class="empty-state">No sales or collections with a salesman in this period.</td></tr>{% endfor %}
+  </tbody></table></div>
+{% endblock %}

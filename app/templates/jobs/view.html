@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}{{ job.number }} - {{ firm_name }}{% endblock %}
+{% block content %}
+{% set closed = job.status.value in ('delivered', 'cancelled') or job.invoice_id %}
+<div class="page-header">
+  <div><h1>{{ job.number }}</h1>
+    <p class="text-muted mt-0">{{ job.item }} &middot; <span class="tag {{ 'tag-fast' if job.status.value in ('ready', 'delivered') else ('tag-warn' if job.status.value == 'cancelled' else '') }}">{{ labels[job.status] }}</span></p></div>
+  <div class="row">
+    {% if share %}<a href="{{ share }}" target="_blank" class="btn btn-primary">WhatsApp: ready for pickup</a>{% endif %}
+    <a href="{{ url_for('jobs.index') }}" class="btn btn-quiet">All jobs</a>
+  </div>
+</div>
+<div class="card" style="margin-bottom:16px;"><div class="form-grid">
+  <div><strong>Customer</strong><p>{{ job.customer.name }}{% if job.customer.phone %}<br>{{ job.customer.phone }}{% endif %}</p></div>
+  <div><strong>Received</strong><p>{{ job.received_on.strftime('%d %b %Y') }}{% if job.promised_on %}<br>Promised {{ job.promised_on.strftime('%d %b') }}{% endif %}{% if job.technician %}<br>{{ job.technician }}{% endif %}</p></div>
+  <div><strong>Item</strong><p>{{ job.item }}{% if job.serial_no %}<br>{{ job.serial_no }}{% endif %}{% if job.accessories %}<br>With: {{ job.accessories }}{% endif %}</p></div>
+  <div><strong>Complaint</strong><p>{{ job.complaint }}</p>{% if job.estimate %}<p class="text-muted">Estimate Rs. {{ '%.2f'|format(job.estimate) }}</p>{% endif %}</div>
+</div></div>
+
+{% if job.status.value not in ('delivered', 'cancelled') %}
+<form method="post" class="card" style="margin-bottom:16px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="status">
+  <div class="row" style="gap:8px; flex-wrap:wrap; align-items:center;">
+    <strong>Status:</strong>
+    {% for s in flow %}<button class="btn btn-sm {{ 'btn-primary' if s == job.status else 'btn-quiet' }}" name="status" value="{{ s.value }}">{{ labels[s] }}</button>{% endfor %}
+  </div>
+  <label class="field" style="margin-top:10px;"><span class="field-label">Work notes</span><textarea name="work_notes" rows="2" class="field-input">{{ job.work_notes or '' }}</textarea></label>
+</form>
+{% elif job.work_notes %}<div class="card" style="margin-bottom:16px;"><strong>Work notes</strong><p>{{ job.work_notes }}</p></div>{% endif %}
+
+<div class="card" style="margin-bottom:16px;">
+  <h2 class="mt-0">Parts &amp; labour</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Item</th><th>HSN/SAC</th><th class="num">Qty</th><th class="num">Rate</th><th>GST</th><th></th></tr></thead>
+    <tbody>
+    {% for l in job.lines %}
+    <tr><td>{{ l.description }}{% if not l.product_id %} <small class="text-muted">labour</small>{% endif %}</td><td>{{ l.hsn_or_sac_code }}</td><td class="num">{{ l.qty|qty }} {{ l.unit }}</td>
+      <td class="num">{{ '%.2f'|format(l.rate) }}{% if l.price_includes_tax %} <small class="text-muted">incl.</small>{% endif %}</td><td>{{ l.gst_rate|qty }}%</td>
+      <td>{% if not closed %}<form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="remove"><input type="hidden" name="line_id" value="{{ l.id }}"><button class="btn btn-quiet btn-sm">Remove</button></form>{% endif %}</td></tr>
+    {% else %}<tr><td colspan="6" class="empty-state">Nothing added yet.</td></tr>{% endfor %}
+    </tbody></table></div>
+  {% if not closed %}
+  <form method="post" class="row" style="gap:8px; margin-top:12px; flex-wrap:wrap; align-items:flex-end;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="part">
+    <label class="field" style="margin:0; flex:2; min-width:200px;"><span class="field-label">Part (from stock)</span>
+      <select name="product_id" class="field-input" style="margin:0;">{% for p in parts %}<option value="{{ p.id }}">{{ p.name }} - Rs. {{ '%.2f'|format(p.sale_price) }}</option>{% endfor %}</select></label>
+    <label class="field" style="margin:0; width:90px;"><span class="field-label">Qty</span><input type="number" name="qty" value="1" min="0.001" step="0.001" class="field-input" style="margin:0;"></label>
+    <button class="btn btn-secondary">Add part</button>
+  </form>
+  <form method="post" class="row" style="gap:8px; margin-top:12px; flex-wrap:wrap; align-items:flex-end;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="labour">
+    <label class="field" style="margin:0; flex:2; min-width:180px;"><span class="field-label">Labour</span><input type="text" name="description" placeholder="Display replacement labour" class="field-input" style="margin:0;"></label>
+    <label class="field" style="margin:0; width:120px;"><span class="field-label">Amount (before GST)</span><input type="number" name="amount" min="0" step="0.01" class="field-input" style="margin:0;"></label>
+    <label class="field" style="margin:0; width:110px;"><span class="field-label">SAC</span><input type="text" name="sac" value="998719" class="field-input" style="margin:0;"></label>
+    <label class="field" style="margin:0; width:100px;"><span class="field-label">GST</span><select name="gst_rate" class="field-input" style="margin:0;">{% for r in gst_rates %}<option value="{{ r }}" {{ 'selected' if r|float == 18 }}>{{ r|qty }}%</option>{% endfor %}</select></label>
+    <button class="btn btn-secondary">Add labour</button>
+  </form>
+  {% endif %}
+</div>
+
+{% if job.invoice %}
+<div class="card" style="margin-bottom:16px;"><p class="mt-0">Invoiced on <a href="{{ url_for('invoicing.view_invoice', invoice_id=job.invoice.id) if current_user.is_client_admin else '#' }}">{{ job.invoice.invoice_number }}</a> - Rs. {{ '%.2f'|format(job.invoice.grand_total) }}.</p>
+  {% if job.status.value != 'delivered' %}<form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="status"><button class="btn btn-primary" name="status" value="delivered">Hand over - Delivered</button></form>{% endif %}</div>
+{% elif job.status.value not in ('delivered', 'cancelled') %}
+<div class="card" style="margin-bottom:16px;">
+  {% if current_user.is_client_admin %}
+  <form method="post" class="row" style="gap:10px;"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="invoice">
+    <button class="btn btn-primary" {{ 'disabled' if not job.lines }}>Make the invoice</button></form>
+  {% else %}<p class="text-muted mt-0">The owner's login makes the invoice.</p>{% endif %}
+  <form method="post" class="row" style="gap:10px; margin-top:10px;" onsubmit="return confirm('Cancel job {{ job.number }}?');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="cancel">
+    <input type="text" name="reason" placeholder="Reason to cancel" required class="field-input" style="margin:0; flex:1;">
+    <button class="btn btn-danger">Cancel job</button>
+  </form>
+</div>
+{% elif job.status.value == 'cancelled' %}
+<div class="card"><p class="mt-0"><strong>Cancelled</strong></p><p class="text-muted">{{ job.cancel_reason }}</p></div>
+{% endif %}
+{% endblock %}

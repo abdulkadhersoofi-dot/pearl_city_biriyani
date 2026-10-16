@@ -2,11 +2,10 @@
 client sees, so a kirana store, a pharmacy and a restaurant can share one
 app without each wading through the others' screens.
 
-A flag only does anything once its module is built (`available=True`);
-flags for later phases are registered here already so business-type
-presets set them from day one, and they light up for those clients the
-moment the module ships - but Settings only offers switches that do
-something today.
+A flag only does anything once its module is built (`available=True`).
+Every module is built now; when the last ones shipped (Phase 9) a
+migration switched them off for clients that already existed, so nobody
+saw a module appear that they hadn't turned on.
 """
 
 from dataclasses import dataclass
@@ -130,9 +129,58 @@ FEATURES = {
             "hour and cashier.",
             available=True,
         ),
-        Feature("weighing", "Weighing scale items", "Price per kg, weight entry at billing."),
-        Feature("restaurant_mode", "Restaurant tables & KOT", "Tables, kitchen order tickets, order types."),
-        Feature("job_cards", "Job cards", "Repair and service jobs from receipt to delivery."),
+        Feature(
+            "weighing",
+            "Weighing scale items",
+            "Price-per-kg items with quick weight buttons, and the barcode labels a weighing scale prints (the "
+            "weight or price is inside the barcode) scanned straight into the bill.",
+            available=True,
+        ),
+        Feature(
+            "restaurant_mode",
+            "Restaurant tables & KOT",
+            "Dine-in tables (running orders, move, merge), takeaway / delivery / Swiggy / Zomato each with its own "
+            "prices, kitchen order tickets, item notes (\"less spicy\"), packing and service charges and a "
+            "\"sold out today\" switch.",
+            available=True,
+        ),
+        Feature(
+            "job_cards",
+            "Job cards",
+            "Repair and service jobs: item received, complaint, estimate, Received -> In progress -> Ready -> "
+            "Delivered, parts from stock and labour, one-click invoice and a WhatsApp \"ready for pickup\" message.",
+            available=True,
+        ),
+        Feature(
+            "pharmacy",
+            "Pharmacy",
+            "Batch and expiry on every medicine, Schedule H / H1 / X drugs sold only with the doctor's and "
+            "patient's details (with the H1 register), substitutes with the same composition, and selling by the "
+            "strip or the tablet.",
+            available=True,
+        ),
+        Feature(
+            "electronics",
+            "Mobiles & electronics",
+            "IMEI / serial picked for every unit sold, customer warranty counted from the sale date, and a "
+            "warranty check by IMEI that opens a repair job card.",
+            available=True,
+        ),
+        Feature(
+            "jewellery",
+            "Jewellery",
+            "Today's gold / silver rates, prices worked out from net weight, purity, making charges and stones "
+            "(3% GST), making charges on the customer's own gold as job work (5%), and old gold taken in "
+            "exchange on a purchase voucher, deducted from the bill after GST.",
+            available=True,
+        ),
+        Feature(
+            "wholesale",
+            "Wholesale pricing & salesmen",
+            "Customer groups with their own price list, quantity-slab prices, and sales and collections by "
+            "salesman.",
+            available=True,
+        ),
         Feature(
             "credit_sales",
             "Credit sales",
@@ -173,7 +221,13 @@ FEATURES = {
             "through your GSP or NIC, or as JSON for bulk upload on the portal. Vehicle updates and cancellation.",
             available=True,
         ),
-        Feature("loyalty", "Loyalty points", "Points on purchases, redeemable at billing."),
+        Feature(
+            "loyalty",
+            "Loyalty points",
+            "Customers earn points on every counter bill and spend them at the counter; each customer's purchase "
+            "history and points in one place.",
+            available=True,
+        ),
     ]
 }
 
@@ -186,19 +240,21 @@ BUSINESS_TYPE_PRESETS: dict[BusinessType, set[str]] = {
     BusinessType.RETAIL: {"business_reports", "inventory", "purchases", "expenses", "credit_sales", "categories", "favourites"},
     BusinessType.WHOLESALE: {
         "inventory", "purchases", "expenses", "credit_sales", "multi_price_list", "eway_bill", "receivables",
-        "payables", "sales_documents", "cash_bank_book", "business_reports",
+        "payables", "sales_documents", "cash_bank_book", "business_reports", "wholesale",
     },
     BusinessType.RESTAURANT: {"business_reports", "categories", "restaurant_mode", "expenses"},
     BusinessType.MOBILE_ELECTRONICS: {
         "business_reports", "inventory", "purchases", "expenses", "credit_sales", "serial_imei", "margin_scheme", "job_cards",
+        "electronics",
     },
-    BusinessType.PHARMACY: {"business_reports", "inventory", "purchases", "expenses", "credit_sales", "batch_expiry", "favourites"},
+    BusinessType.PHARMACY: {"business_reports", "inventory", "purchases", "expenses", "credit_sales", "batch_expiry", "favourites",
+                            "pharmacy"},
     BusinessType.APPAREL: {"business_reports", "inventory", "purchases", "expenses", "variants", "categories", "loyalty"},
     BusinessType.HARDWARE: {
         "inventory", "purchases", "expenses", "credit_sales", "multi_price_list", "categories", "receivables",
         "payables", "sales_documents", "business_reports",
     },
-    BusinessType.JEWELLERY: {"business_reports", "inventory", "purchases", "expenses", "credit_sales", "weighing"},
+    BusinessType.JEWELLERY: {"business_reports", "inventory", "purchases", "expenses", "credit_sales", "jewellery"},
     BusinessType.BAKERY: {
         "business_reports", "inventory", "purchases", "expenses", "weighing", "batch_expiry", "categories", "favourites",
     },

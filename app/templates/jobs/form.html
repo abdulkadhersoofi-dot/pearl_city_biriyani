@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}New job - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header"><div><h1>New job card</h1></div><a href="{{ url_for('jobs.index') }}" class="btn btn-quiet">All jobs</a></div>
+<form method="post" class="card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="form-grid">
+    <label class="field"><span class="field-label">Customer</span>
+      <select name="customer_id" class="field-input"><option value="">New customer (type below)</option>
+        {% for c in customers %}<option value="{{ c.id }}" {{ 'selected' if form.get('customer_id')|string == c.id|string }}>{{ c.name }}{% if c.phone %} - {{ c.phone }}{% endif %}</option>{% endfor %}</select></label>
+    <label class="field"><span class="field-label">New customer's name</span><input type="text" name="customer_name" value="{{ form.get('customer_name', '') }}" class="field-input"></label>
+    <label class="field"><span class="field-label">Phone</span><input type="tel" name="customer_phone" value="{{ form.get('customer_phone', '') }}" class="field-input"></label>
+    <label class="field"><span class="field-label">Item received</span><input type="text" name="item" value="{{ form.get('item', '') }}" placeholder="Samsung A35, black" class="field-input" required></label>
+    <label class="field"><span class="field-label">IMEI / serial</span><input type="text" name="serial_no" value="{{ form.get('serial_no', '') }}" class="field-input"></label>
+    <label class="field"><span class="field-label">Accessories with it</span><input type="text" name="accessories" value="{{ form.get('accessories', '') }}" placeholder="Charger, back cover" class="field-input"></label>
+    <label class="field"><span class="field-label">Estimate (Rs.)</span><input type="number" step="0.01" min="0" name="estimate" value="{{ form.get('estimate', '') }}" class="field-input"></label>
+    <label class="field"><span class="field-label">Promised by</span><input type="date" name="promised_on" value="{{ form.get('promised_on', '') }}" class="field-input"></label>
+    <label class="field"><span class="field-label">Technician</span><input type="text" name="technician" value="{{ form.get('technician', '') }}" class="field-input"></label>
+  </div>
+  <label class="field"><span class="field-label">Complaint</span><textarea name="complaint" rows="3" class="field-input" required>{{ form.get('complaint', '') }}</textarea></label>
+  <button class="btn btn-primary">Open job</button>
+</form>
+{% endblock %}

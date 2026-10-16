@@ -48,6 +48,10 @@
     {% with items=account.open_items, inputs=True %}{% include "accounts/_open_items.html" %}{% endwith %}
     {% if account.open_items %}{% include "accounts/_fill_oldest.html" %}{% endif %}
   {% endif %}
+  {% if has_feature('wholesale') and active_salesmen() %}
+  <label class="field" style="max-width:320px;"><span class="field-label">Collected by (salesman)</span>
+    <select name="salesman_id" class="field-input"><option value="">-</option>{% for s in active_salesmen() %}<option value="{{ s.id }}" {{ 'selected' if form.get('salesman_id') == s.id|string }}>{{ s.name }}</option>{% endfor %}</select></label>
+  {% endif %}
   <button class="btn btn-primary">Save {{ 'advance receipt voucher' if is_advance else 'receipt' }}</button>
 </form>
 {% endif %}

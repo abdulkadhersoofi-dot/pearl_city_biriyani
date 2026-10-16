@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Module settings - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header"><div><h1>Module settings</h1></div><a href="{{ url_for('settings.index') }}" class="btn btn-quiet">Back to Settings</a></div>
+{% if has_feature('weighing') %}
+<form method="post" class="card" style="margin-bottom:16px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="module" value="weighing">
+  <h2 class="mt-0">Weighing scale labels</h2>
+  <p class="field-help mt-0">A scale label's barcode starts with a 2-digit prefix (20-29), then the item's scale code, then the weight or price. Set them the way your scale is set up.</p>
+  <div class="form-grid">
+    <label class="field"><span class="field-label">Prefixes with the weight</span><input type="text" name="weight_prefixes" value="{{ weight_prefixes }}" class="field-input" placeholder="21"></label>
+    <label class="field"><span class="field-label">Prefixes with the price</span><input type="text" name="price_prefixes" value="{{ price_prefixes }}" class="field-input" placeholder="22"></label>
+    <label class="field"><span class="field-label">Digits in the item code</span><input type="number" min="4" max="6" name="code_digits" value="{{ weighing.code_digits }}" class="field-input"></label>
+  </div>
+  <button class="btn btn-primary">Save</button>
+</form>
+{% endif %}
+{% if has_feature('loyalty') %}
+<form method="post" class="card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="module" value="loyalty">
+  <h2 class="mt-0">Loyalty points</h2>
+  <div class="form-grid">
+    <label class="field"><span class="field-label">Points earned per Rs. 100</span><input type="number" step="0.01" min="0" name="points_per_100" value="{{ loyalty.points_per_100 }}" class="field-input"></label>
+    <label class="field"><span class="field-label">One point is worth (Rs.)</span><input type="number" step="0.01" min="0.01" name="point_value" value="{{ loyalty.point_value }}" class="field-input"></label>
+    <label class="field"><span class="field-label">Points needed before any can be spent</span><input type="number" min="0" name="min_redeem" value="{{ loyalty.min_redeem }}" class="field-input"></label>
+  </div>
+  <p class="field-help">Points are earned on counter bills with a customer on them, on what was paid (not on points, old gold or exchange credit). Spending them is a way to pay - GST stays on the bill's full value.</p>
+  <button class="btn btn-primary">Save</button>
+</form>
+{% endif %}
+{% endblock %}

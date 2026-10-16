@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Wholesale - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header"><div><h1>Wholesale</h1>
+  <p class="text-muted mt-0">Customer groups buy at their own price list; quantity slabs are set on each item (Items -> the item -> Quantity prices).</p></div>
+  <a href="{{ url_for('wholesale.salesmen_report') }}" class="btn btn-secondary">Sales by salesman</a></div>
+<div class="card" style="margin-bottom:16px;">
+  <h2 class="mt-0">Customer groups</h2>
+  <form method="post" class="row" style="gap:8px; flex-wrap:wrap; align-items:flex-end;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="group">
+    <label class="field" style="margin:0;"><span class="field-label">Group</span><input type="text" name="name" placeholder="Retailers" class="field-input" style="margin:0;"></label>
+    <label class="field" style="margin:0;"><span class="field-label">Buys at</span><select name="price_list_id" class="field-input" style="margin:0;"><option value="">Normal prices</option>{% for pl in price_lists %}<option value="{{ pl.id }}">{{ pl.name }}</option>{% endfor %}</select></label>
+    <button class="btn btn-primary">Save group</button>
+  </form>
+  {% if not price_lists %}<p class="field-help">Make price lists first - switch on "Price lists" in Settings.</p>{% endif %}
+  <table style="margin-top:10px;"><thead><tr><th>Group</th><th>Price list</th><th>Customers</th><th></th></tr></thead><tbody>
+  {% for g in groups %}<tr><td>{{ g.name }}{% if not g.is_active %} <small class="text-muted">(off)</small>{% endif %}</td><td>{{ g.price_list.name if g.price_list else 'Normal prices' }}</td><td>{{ members.get(g.id, 0) }}</td>
+    <td><form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="toggle_group"><input type="hidden" name="id" value="{{ g.id }}"><button class="btn btn-quiet btn-sm">{{ 'Switch off' if g.is_active else 'Switch on' }}</button></form></td></tr>
+  {% else %}<tr><td colspan="4" class="empty-state">No groups yet. Put a customer in a group from the customer's page.</td></tr>{% endfor %}
+  </tbody></table>
+</div>
+<div class="card">
+  <h2 class="mt-0">Salesmen</h2>
+  <form method="post" class="row" style="gap:8px; flex-wrap:wrap; align-items:flex-end;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="salesman">
+    <label class="field" style="margin:0;"><span class="field-label">Name</span><input type="text" name="name" class="field-input" style="margin:0;"></label>
+    <label class="field" style="margin:0;"><span class="field-label">Phone</span><input type="tel" name="phone" class="field-input" style="margin:0;"></label>
+    <button class="btn btn-primary">Add salesman</button>
+  </form>
+  <div class="row" style="gap:8px; flex-wrap:wrap; margin-top:10px;">
+  {% for s in salesmen %}
+    <form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="toggle_salesman"><input type="hidden" name="id" value="{{ s.id }}">
+      <button class="btn btn-sm {{ 'btn-secondary' if s.is_active else 'btn-quiet' }}" title="Tap to switch on / off">{{ s.name }}{% if not s.is_active %} (off){% endif %}</button></form>
+  {% endfor %}
+  </div>
+</div>
+{% endblock %}

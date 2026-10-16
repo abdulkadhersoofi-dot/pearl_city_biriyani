@@ -11,5 +11,5 @@
    a PRODUCTS-shaped array for Alpine (the POS terminal's flat grid and
    its category/sub-category groupings). #}
 {% macro product_js(p) -%}
-{id: {{ p.id }}, name: {{ p.name|tojson }}, hsn: {{ (p.hsn_or_sac_code or '')|tojson }}, rate: {{ p.sale_price }}, incl: {{ p.price_includes_tax|tojson }}, gst_rate: {{ p.gst_rate }}, unit: {{ p.unit|tojson }}, image: {{ (url_for('main.media', image_id=p.image_id) if p.image_id else '')|tojson }}, sku: {{ (p.sku or '')|tojson }}, barcode: {{ (p.barcode or '')|tojson }}, loose: {{ p.sells_loose|tojson }}}
+{id: {{ p.id }}, name: {{ p.name|tojson }}, hsn: {{ (p.hsn_or_sac_code or '')|tojson }}, rate: {{ p.sale_price }}, incl: {{ p.price_includes_tax|tojson }}, gst_rate: {{ p.gst_rate }}, unit: {{ p.unit|tojson }}, image: {{ (url_for('main.media', image_id=p.image_id) if p.image_id else '')|tojson }}, sku: {{ (p.sku or '')|tojson }}, barcode: {{ (p.barcode or '')|tojson }}, loose: {{ p.sells_loose|tojson }}, alt_unit: {{ (p.alt_unit or '')|tojson }}, alt_factor: {{ (p.alt_unit_factor or 0)|float }}, sold_out: {{ (p.sold_out_on is not none and p.sold_out_on == today)|tojson }}, schedule: {{ (p.drug_schedule or '')|tojson }}, jewel: {{ p.is_jewellery|tojson }}}
 {%- endmacro %}

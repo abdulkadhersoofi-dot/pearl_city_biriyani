@@ -18,6 +18,7 @@ from app.models.invoice_series import DocumentType
 from app.models.mixins import utcnow
 from app.models.pos_bill import PaymentMode, POSBill, POSBillLine, POSBillStatus
 from app.models.pos_return import POSReturn, POSReturnLine, POSReturnStatus
+from app.models.tenant import Tenant
 from app.pos.services import POSValidationError, enabled_payment_modes
 from app.utils.financial_year import financial_year_for
 from app.utils.gst import compute_invoice_totals, return_line_amounts
@@ -177,6 +178,11 @@ def create_return(
 
         for line, qty, _ in computed:
             return_units(bill.tenant_id, "pos_bill", bill.id, line.id, qty)
+    tenant = db.session.get(Tenant, bill.tenant_id)
+    if bill.customer_id and tenant.has_feature("loyalty"):
+        from app.loyalty.points import reverse_return
+
+        reverse_return(tenant, ret, created_by.id)
     return ret
 
 
@@ -216,6 +222,13 @@ def void_return(ret: POSReturn, voided_by, reason: str, today: date | None = Non
     from app.inventory import ledger as inventory_ledger
 
     inventory_ledger.reverse_source(ret.tenant_id, "pos_return", ret.id, voided_by.id, f"{ret.return_number} voided")
+    from app.models.business import LoyaltyEntry
+
+    taken = LoyaltyEntry.query.filter_by(tenant_id=ret.tenant_id, source_type="pos_return", source_id=ret.id).all()
+    if taken:
+        db.session.add(LoyaltyEntry(tenant_id=ret.tenant_id, customer_id=taken[0].customer_id,
+                                    points=-sum(t.points for t in taken), kind="reverse", source_type="pos_return",
+                                    source_id=ret.id, created_by_id=voided_by.id, note=f"{ret.return_number} voided"))
     if ret.bill.is_margin_scheme:
         from app.margin.services import return_units
 

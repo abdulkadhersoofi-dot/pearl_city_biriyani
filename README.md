@@ -132,6 +132,12 @@ app/
 │                     # (when they apply), schema.py (INV-01 JSON),
 │                     # providers/ (NIC sandbox/direct, GSP), vault.py
 │                     # (encrypted logins), services.py, eway.py, errors.py
+├── restaurant/      # tables, KOT, order types, sold-out (Phase 9)
+├── pharmacy/        # substitutes, Schedule H1 / X register (Phase 9)
+├── jewellery/       # metal rates, old gold vouchers (Phase 9)
+├── jobs/            # job cards, warranty lookup (Phase 9)
+├── wholesale/       # customer groups, quantity slabs, salesmen (Phase 9)
+├── loyalty/         # points ledger and history (Phase 9)
 ├── api/              # small JSON endpoints (product lookup today; POS
 │                     # cart/checkout from Phase 2) - kept separate so a
 │                     # future SPA frontend can reuse them
@@ -1493,6 +1499,107 @@ Five new flags, all off by default; with them off nothing changes (routes
   guessing another client's ids gives 404 and changes nothing
   (`tests/test_phase8_einvoice.py`).
 
+### Platform build - Phase 9 (business-type modules)
+
+- **Eight modules, each behind its own flag** (`restaurant_mode`,
+  `weighing`, `pharmacy`, `electronics`, `jewellery`, `job_cards`,
+  `wholesale`, `loyalty`), on by default only in the matching business
+  type's preset for **new** clients. Some clients onboarded since Phase 1
+  already had `restaurant_mode` / `weighing` / `job_cards` / `loyalty` in
+  their saved flags from a preset, where they did nothing; the migration
+  switches those off for every existing client, so no module appears that
+  a client didn't turn on. Flag off: every route 404s, nothing reaches
+  the counter (`MODULES` is `{"quote": false}`) and a bill is exactly as
+  before. Admin-only pages are 403 for staff.
+- **One hook module for the counter, `app/pos/business.py`**, called
+  from `app/pos/services.py` (sold-out check, pack units, wholesale /
+  jewellery prices, prescription, old gold / points payments, warranty,
+  KOT after checkout, release on void). **`/pos/quote`** prices the cart
+  exactly as checkout will - item master, price lists, order type,
+  slabs, packs, today's metal rate, restaurant charges - so the screen
+  never guesses; a price the cashier typed is kept.
+- **Restaurant** (`app/restaurant/`): tables (sections, on/off) and a
+  Tables screen (free / running with amount, time and KOT count); a
+  dine-in order is a HELD counter bill carrying `table_id`. **Send KOT**
+  saves the order and prints a kitchen ticket with only what changed
+  since the last one - a lower quantity prints as a struck-through
+  CANCEL line - numbered per day (not a tax series). Move, merge, cancel
+  (with a reason). Billing the table marks its tickets billed and frees
+  it. Takeaway / delivery / Swiggy / Zomato bill straight from the counter,
+  each from the price list set for it, and print one KOT. Item notes
+  ("less spicy") go on the KOT and the receipt. **Packing charge** (per
+  order or per item, on chosen order types) and **service charge** (a %
+  of the food, dine-in, only when the cashier ticks it - CCPA guidelines
+  04.07.2022, `gst_config.SERVICE_CHARGE_DEFAULT_ON`) are lines taxed at
+  the restaurant rate (`RESTAURANT_SERVICE_GST_RATE`, 5%, Notification
+  11/2017-CT(R) item 7(ii)). **Sold out today** per item, back on sale the
+  next day by itself.
+- **Weighing** (`app/utils/scale_barcode.py`): scale labels (EAN-13 in the
+  20-29 range: prefix + item code + weight in grams or price in paise +
+  check digit) scanned at the counter fill the item and weight; prefixes
+  and code length are settings; items carry their scale code (PLU).
+  Quick 250 g / 500 g / 1 kg / 2 kg buttons on the weight keypad.
+- **Pharmacy**: every medicine batch-tracked, expiry required on purchase;
+  **Schedule H / H1 / X** (`gst_config.DRUG_SCHEDULES`, Drugs and
+  Cosmetics Rules) can't be billed without the doctor's and patient's
+  names, plus the doctor's registration number and the patient's address
+  for H1 / X; stored on the bill, printed on the receipt, and listed in
+  the **scheduled drug register** (with batch; Excel). **Substitutes**
+  with the same composition (normalised), cheapest in stock first.
+  **Sell by the strip** (the item's pack unit): price x pack size, stock
+  moves in tablets (`POSBillLine.unit_factor`) - also on void and return.
+- **Electronics**: IMEI picked for every unit (as before), the customer's
+  warranty counted from the sale date, and a **warranty check** by IMEI
+  (sold when, to whom, in / out of warranty, past repairs) that opens a
+  repair job card.
+- **Jewellery** (`app/utils/jewellery.py` - the one pricing module, unit
+  tested): today's rate per metal and purity (set daily; a purity not set
+  is derived from the purest grade set via `gst_config.METAL_PURITIES`);
+  a piece's price = net weight x rate + making (per gram / % of metal /
+  flat) + stones, before GST; **3% GST** on the whole
+  (`JEWELLERY_GST_RATE`, Notification 1/2017-CT(R) Sch. V); the breakdown
+  prints under the line. **Making charges on the customer's own gold** are
+  job work: a service item at **5%, SAC 9988** (`JEWELLERY_JOB_WORK_*`,
+  Notification 11/2017-CT(R) item 26 as amended) - the firm's decision.
+  **Old gold** bought from a customer is a numbered purchase voucher
+  (series OG, never deleted, voided with a reason only while unused) and
+  its value pays for the new bill as the "Old gold" payment - **after
+  GST**, which stays on the new jewellery's full value (the firm's
+  decision). A voided bill puts the value back on the voucher.
+- **Job cards** (`app/jobs/`): numbered (series JOB); customer (or a new
+  one), item, IMEI, accessories, complaint, estimate, promised date,
+  technician; Received -> In progress -> Ready -> Delivered (delivery
+  needs the invoice when there are charges), or cancelled with a reason.
+  Parts come out of stock as they're added and go back when removed or
+  cancelled; **Make the invoice** hands them to the invoice (the job's
+  entries are reversed, the invoice takes them - counted once) with the
+  labour lines (SAC). **WhatsApp "ready for pickup"** link (wa.me, no paid
+  SMS).
+- **Wholesale** (`app/wholesale/pricing.py`): customer groups each buy at
+  a price list; quantity slabs per item (the biggest slab reached, only
+  if cheaper - a slab never raises a price); the counter and the invoice
+  form use the same rule (the invoice form asks the server and fills the
+  rate, which stays editable); salesmen on counter bills, invoices and
+  receipts, and **sales & collections by salesman** (Excel). Credit
+  limits are the existing customer-account warning.
+- **Loyalty** (`app/loyalty/points.py`): points earned on counter bills
+  with a customer, on what was paid (not on points, exchange credit or
+  old gold); spent as a payment (`PaymentMode.LOYALTY`) - GST stays on the
+  full bill; a minimum balance before spending; void / refund / return
+  take back what they should. Customer page: purchases (bills and
+  invoices) and the points ledger.
+- **Receipts and screens**: order type / table, salesman, prescription,
+  notes and jewellery breakdown print on the receipt; Tables, Jobs and
+  Rates in the menu with their modules; module settings under Settings
+  (restaurant setup, scale label format, points rules, groups &
+  salesmen, today's rates).
+- Tenant isolation: tables, KOTs, metal rates, old gold vouchers, job
+  cards (and lines), customer groups, slabs, salesmen and loyalty entries
+  are per client - guessing ids gives 404, another client's table /
+  voucher / salesman / customer points can't be used at a counter, and
+  another client's metal rate never prices an item
+  (`tests/test_phase9_modules.py`).
+
 ## Roadmap
 
 - **Platform build (ARFA general-purpose POS), phase by phase.**
@@ -1524,8 +1631,27 @@ Five new flags, all off by default; with them off nothing changes (routes
     upload path, NIC / GSP providers with encrypted logins, IRN + QR,
     cancel within 24 h) and e-way bills (invoices, challans, transfers;
     JSON, API by IRN or standalone, vehicle update, cancel, validity).
+  - Phase 9: restaurant (tables, KOT, order types, charges, sold out),
+    weighing-scale labels, pharmacy (schedules, register, substitutes,
+    strips), electronics warranty, jewellery (metal rates, 3% / 5% job
+    work, old gold after GST), job cards, wholesale (groups, slabs,
+    salesmen), loyalty.
 
-  Next, in order: 9 business-type modules, 10 platform polish.
+  Next: 10 platform polish (Android ESC/POS and offline queue, web
+  offline, 2FA, monitoring, first-run checklist, platform billing,
+  admin drill-downs, daily owner summary).
+
+  Phase 9 limits:
+  - KOTs print through the browser's print dialog like receipts - pick
+    the kitchen printer there; direct printing to a kitchen printer
+    comes with Phase 10's ESC/POS.
+  - Prescriptions, pack units, old gold, points and jewellery pricing are
+    at the counter (POS); invoices take the price you type (the wholesale
+    price is suggested).
+  - Service and packing charges use one GST rate (the restaurant setting).
+  - Old gold bought isn't added to stock as bullion; the voucher register
+    is the record.
+  - A table's running order can't be split into separate bills.
 
   Phase 8 limits:
   - The NIC and GSP adapters follow the published protocol but have only

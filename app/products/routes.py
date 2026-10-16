@@ -51,7 +51,12 @@ def _allow_legacy_unit(form: ProductForm, unit: str | None) -> None:
 # module off they aren't on the page, so the stored value must be kept,
 # not reset to the unticked default.
 _MODULE_FIELDS = {"batch_expiry": ("track_batch",), "serial_imei": ("track_serial", "warranty_months"),
-                  "margin_scheme": ("is_margin_scheme",)}
+                  "margin_scheme": ("is_margin_scheme",), "weighing": ("plu_code",),
+                  "pharmacy": ("drug_schedule", "composition"),
+                  "jewellery": ("metal", "purity", "gross_weight", "net_weight", "making_charge_kind",
+                                "making_charge_value", "stone_value")}
+_NEW_ITEM_DEFAULTS = {f: None for fields in _MODULE_FIELDS.values() for f in fields} | {
+    "track_batch": False, "track_serial": False, "is_margin_scheme": False}
 
 
 def _snapshot_module_fields(product: Product) -> dict:
@@ -68,6 +73,16 @@ def _restore_switched_off(product: Product, before: dict) -> None:
     # top (it's inside the margin), so it's always a tax-inclusive price.
     if product.is_margin_scheme:
         product.price_includes_tax = True
+    # Pharmacy: every medicine is sold by batch and expiry.
+    if tenant.has_feature("pharmacy") and not product.is_service:
+        product.track_batch = True
+    if product.plu_code:
+        product.plu_code = product.plu_code.lstrip("0") or "0"
+    # Jewellery is priced before tax from the day's metal rate.
+    if product.metal:
+        product.price_includes_tax = False
+    else:
+        product.purity = None
 
 
 def _normalize_optional_fields(product: Product) -> None:
@@ -118,8 +133,7 @@ def new_product():
     if form.validate_on_submit():
         product = Product(tenant_id=current_user.tenant_id)
         form.populate_obj(product)
-        _restore_switched_off(product, {"track_batch": False, "track_serial": False, "warranty_months": None,
-                                        "is_margin_scheme": False})
+        _restore_switched_off(product, dict(_NEW_ITEM_DEFAULTS))
         if not tenant.has_feature("favourites"):
             product.is_favourite = False
         _normalize_optional_fields(product)

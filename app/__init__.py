@@ -61,6 +61,12 @@ def _register_blueprints(app: Flask) -> None:
     from app.bulk import bulk_bp
     from app.customers import customers_bp
     from app.einvoice import einvoice_bp
+    from app.restaurant import restaurant_bp
+    from app.pharmacy import pharmacy_bp
+    from app.jewellery import jewellery_bp
+    from app.jobs import jobs_bp
+    from app.wholesale import wholesale_bp
+    from app.loyalty import loyalty_bp
     from app.expenses import expenses_bp
     from app.inventory import inventory_bp
     from app.invoicing import invoicing_bp
@@ -95,6 +101,12 @@ def _register_blueprints(app: Flask) -> None:
     app.register_blueprint(accounts_bp)
     app.register_blueprint(sales_bp)
     app.register_blueprint(einvoice_bp)
+    app.register_blueprint(restaurant_bp)
+    app.register_blueprint(pharmacy_bp)
+    app.register_blueprint(jewellery_bp)
+    app.register_blueprint(jobs_bp)
+    app.register_blueprint(wholesale_bp)
+    app.register_blueprint(loyalty_bp)
 
 
 def _register_error_handlers(app: Flask) -> None:
@@ -208,6 +220,38 @@ def _register_context_processors(app: Flask) -> None:
         return qr_svg_data_uri(data, scale=scale)
 
     app.jinja_env.globals["irn_qr"] = irn_qr
+
+    def order_type_label(value):
+        from app.utils.module_settings import ORDER_TYPES
+
+        return ORDER_TYPES.get(value, value or "")
+
+    app.jinja_env.globals["order_type_label"] = order_type_label
+    from app.utils.gst_config import JEWELLERY_GST_RATE
+
+    app.jinja_env.globals["jewellery_gst_rate"] = f"{JEWELLERY_GST_RATE.normalize():f}"
+
+    def active_salesmen():
+        from flask_login import current_user
+
+        from app.models.business import Salesman
+
+        if not current_user.is_authenticated or not current_user.tenant_id:
+            return []
+        return Salesman.query.filter_by(tenant_id=current_user.tenant_id, is_active=True).order_by(Salesman.name).all()
+
+    def active_customer_groups():
+        from flask_login import current_user
+
+        from app.models.business import CustomerGroup
+
+        if not current_user.is_authenticated or not current_user.tenant_id:
+            return []
+        return (CustomerGroup.query.filter_by(tenant_id=current_user.tenant_id, is_active=True)
+                .order_by(CustomerGroup.name).all())
+
+    app.jinja_env.globals["active_salesmen"] = active_salesmen
+    app.jinja_env.globals["active_customer_groups"] = active_customer_groups
     from app.utils.gst_config import EWAY_BILL_CANCEL_HOURS, IRN_CANCEL_HOURS
 
     app.jinja_env.globals["irn_cancel_hours"] = IRN_CANCEL_HOURS

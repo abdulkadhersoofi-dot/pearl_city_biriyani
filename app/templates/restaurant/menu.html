@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Sold out today - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div><h1>Sold out today</h1>
+    <p class="text-muted mt-0">An item marked sold out can't be billed or ordered today; tomorrow it is on sale again by itself.</p></div>
+  <form method="get" class="row" style="gap:8px;"><input type="text" name="q" value="{{ q }}" placeholder="Find an item" class="field-input" style="margin:0;"><button class="btn btn-secondary">Find</button></form>
+</div>
+<div class="table-wrap card">
+  <table>
+    <thead><tr><th>Item</th><th>Today</th><th></th></tr></thead>
+    <tbody>
+    {% for p in items %}
+    {% set out = p.sold_out_on == today %}
+    <tr>
+      <td>{{ p.name }}</td>
+      <td>{% if out %}<span class="tag tag-warn">Sold out</span>{% else %}<span class="tag tag-fast">On sale</span>{% endif %}</td>
+      <td>
+        <form method="post" action="{{ url_for('restaurant.menu', q=q) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="product_id" value="{{ p.id }}">
+          {% if out %}<button class="btn btn-secondary btn-sm" name="available" value="1">Back on sale</button>
+          {% else %}<button class="btn btn-quiet btn-sm">Mark sold out</button>{% endif %}
+        </form>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="3" class="empty-state">No items.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

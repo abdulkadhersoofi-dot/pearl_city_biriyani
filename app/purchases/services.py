@@ -189,6 +189,8 @@ def _validate_lines(tenant, lines, products) -> None:
             raise PurchaseError(f"{product.name} has variants - buy the size/colour, not the design.")
         if batches_on and product.track_batch and not line.batch_no:
             raise PurchaseError(f"{product.name} tracks batches - enter the batch number.")
+        if batches_on and product.track_batch and tenant.has_feature("pharmacy") and not line.expiry_date:
+            raise PurchaseError(f"{product.name}: a medicine's expiry date is needed with its batch.")
         if serials_on and product.track_serial:
             if Decimal(len(line.serials)) != line.qty:
                 raise PurchaseError(f"{product.name}: enter one serial/IMEI per unit ({len(line.serials)} for {line.qty}).")

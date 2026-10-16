@@ -1,0 +1,32 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+  @page { size: {{ page_size }}; margin: {{ '0.12in' if is_thermal else '16mm' }}; }
+  body { font-family: "Courier New", monospace; font-size: {{ '12pt' if is_narrow else ('14pt' if is_thermal else '11pt') }}; color: #000; margin: 0; }
+  .center { text-align: center; } .bold { font-weight: 700; } .right { text-align: right; }
+  .rule { border-top: 1px dashed #000; margin: 8px 0; }
+  table { width: 100%; border-collapse: collapse; } td { padding: 2px 0; vertical-align: top; }
+</style></head>
+<body>
+  <div class="center bold">{{ firm_name }}</div>
+  {% if v.gstin and v.gstin.gstin %}<div class="center">GSTIN: {{ v.gstin.gstin }}</div>{% endif %}
+  <div class="rule"></div>
+  <div class="center bold">OLD GOLD PURCHASE VOUCHER</div>
+  <div class="center">{{ v.number }} &middot; {{ v.purchase_date.strftime('%d %b %Y') }}</div>
+  <div class="rule"></div>
+  <table>
+    <tr><td>Seller</td><td class="right">{{ v.seller_name }}</td></tr>
+    {% if v.seller_phone %}<tr><td>Phone</td><td class="right">{{ v.seller_phone }}</td></tr>{% endif %}
+    {% if v.id_proof %}<tr><td>ID</td><td class="right">{{ v.id_proof }}</td></tr>{% endif %}
+    <tr><td>Item</td><td class="right">{{ v.description }}</td></tr>
+    <tr><td>Metal</td><td class="right">{{ v.purity }} {{ v.metal }}</td></tr>
+    <tr><td>Gross / net</td><td class="right">{{ v.gross_weight }} / {{ v.net_weight }} g</td></tr>
+    <tr><td>Rate</td><td class="right">{{ '%.2f'|format(v.rate_per_gram) }} /g</td></tr>
+    <tr class="bold"><td>VALUE</td><td class="right">{{ '%.2f'|format(v.value) }}</td></tr>
+  </table>
+  <div class="rule"></div>
+  <div>Bought from the above person; no GST charged. Value adjusted against new purchase.</div>
+  {% if v.status.value == 'void' %}<div class="center bold">VOID</div>{% endif %}
+  <div class="rule"></div>
+  <div>Seller's signature:</div><br><br>
+</body></html>

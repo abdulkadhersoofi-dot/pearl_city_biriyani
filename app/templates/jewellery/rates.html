@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Today's rates - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header"><div><h1>Today's rates - {{ today.strftime('%d %b %Y') }}</h1>
+  <p class="text-muted mt-0">Set each morning. Jewellery is priced from these; a purity left blank is worked out from the purest grade set (e.g. 22K from 24K x 916/999).</p></div>
+  <a href="{{ url_for('jewellery.old_gold_list') }}" class="btn btn-secondary">Old gold vouchers</a></div>
+<form method="post" class="card" style="margin-bottom:16px;">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <table>
+    <thead><tr><th>Metal</th><th>Purity</th><th class="num">Rate today (Rs./g)</th><th>Set new rate</th></tr></thead>
+    <tbody>
+    {% for r in board %}
+    <tr><td>{{ r.metal|title }}</td><td>{{ r.purity }}</td>
+      <td class="num">{% if r.rate %}{{ '%.2f'|format(r.rate) }}{% if not r.row %} <small class="text-muted">(worked out)</small>{% endif %}{% else %}<span class="text-muted">not set</span>{% endif %}</td>
+      <td>{% if current_user.is_client_admin %}<input type="number" step="0.01" min="0" name="rate_{{ r.metal }}_{{ r.purity }}" class="field-input" style="margin:0; max-width:160px;">{% endif %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% if current_user.is_client_admin %}<button class="btn btn-primary" style="margin-top:10px;">Save today's rates</button>{% endif %}
+</form>
+<div class="card">
+  <h2 class="mt-0">Making charges on the customer's own gold</h2>
+  <p class="text-muted mt-0">When the customer brings the gold and pays only for making, it is job work - a service at {{ job_rate|qty }}% (SAC {{ job_sac }}) on the making charges alone, not 3% jewellery.</p>
+  {% if job_item %}<p>Bill it with <strong>{{ job_item.name }}</strong> at the agreed amount.</p>
+  {% elif current_user.is_client_admin %}
+  <form method="post" action="{{ url_for('jewellery.job_work_item') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-secondary">Add the job-work making charge item</button></form>
+  {% endif %}
+</div>
+{% endblock %}

@@ -129,3 +129,26 @@ def test_pos_shows_which_version_is_running(client, db, tenant, client_admin, me
     html = client.get("/pos/").data.decode()
     assert re.search(r"ARFA POS &middot; version \S+", html)
     assert "pos-js-error" in html  # the on-screen error banner is wired in
+
+
+def test_every_business_module_switched_on(client, db, tenant, client_admin, staff, menu, tmp_path):
+    """Phase 9: restaurant table, pharmacy, jewellery, weighing, wholesale,
+    loyalty - the counter's script must still parse for admin and branch."""
+    from app.models.business import DiningTable, Salesman
+
+    for flag in ("restaurant_mode", "pharmacy", "jewellery", "weighing", "wholesale", "loyalty", "electronics",
+                 "job_cards", "multi_price_list", "inventory", "batch_expiry", "serial_imei"):
+        tenant.set_feature(flag, True)
+    table = DiningTable(tenant_id=tenant.id, name='T"1')
+    db.session.add_all([table, Salesman(tenant_id=tenant.id, name="Ravi's son")])
+    menu[0].drug_schedule = "H1"
+    menu[1].alt_unit, menu[1].alt_unit_factor = "BAG", Decimal("25")
+    db.session.commit()
+    for user, password in ((client_admin, "ClientSecret123"), (staff, "CashierSecret123")):
+        client.get("/auth/logout")
+        _login(client, user.email, password)
+        for url in ("/pos/", f"/pos/?table={table.id}", "/pos/?order_type=swiggy"):
+            _assert_scripts_parse(client.get(url).data.decode(), tmp_path)
+    client.get("/auth/logout")
+    _login(client, client_admin.email, "ClientSecret123")
+    _assert_scripts_parse(client.get("/invoices/new").data.decode(), tmp_path)

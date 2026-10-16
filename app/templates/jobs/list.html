@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Job cards - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div><h1>Job cards</h1>
+    <p class="text-muted mt-0">{% for s, n in counts.items() %}{{ labels[s] }}: <strong>{{ n }}</strong>{{ ' · ' if not loop.last }}{% endfor %}</p></div>
+  <div class="row">
+    {% if has_feature('electronics') %}<a href="{{ url_for('jobs.warranty') }}" class="btn btn-quiet">Warranty check</a>{% endif %}
+    <a href="{{ url_for('jobs.new') }}" class="btn btn-primary">New job</a>
+  </div>
+</div>
+<form method="get" class="row" style="gap:8px; margin-bottom:12px; flex-wrap:wrap;">
+  <select name="status" class="field-input" style="margin:0; max-width:200px;">
+    <option value="open" {{ 'selected' if status == 'open' }}>Open</option>
+    {% for s, label in labels.items() %}<option value="{{ s.value }}" {{ 'selected' if status == s.value }}>{{ label }}</option>{% endfor %}
+    <option value="all" {{ 'selected' if status == 'all' }}>All</option>
+  </select>
+  <input type="text" name="q" value="{{ q }}" placeholder="Job no., customer, phone, item, IMEI" class="field-input" style="margin:0; flex:1; min-width:200px;">
+  <button class="btn btn-secondary">Find</button>
+</form>
+<div class="table-wrap card"><table>
+  <thead><tr><th>Job</th><th>Received</th><th>Customer</th><th>Item</th><th>Status</th><th class="num">Estimate</th></tr></thead>
+  <tbody>
+  {% for j in jobs %}
+  <tr><td><a href="{{ url_for('jobs.view', job_id=j.id) }}">{{ j.number }}</a></td><td>{{ j.received_on.strftime('%d %b') }}</td>
+    <td>{{ j.customer.name }}{% if j.customer.phone %}<br><small class="text-muted">{{ j.customer.phone }}</small>{% endif %}</td>
+    <td>{{ j.item }}{% if j.serial_no %}<br><small class="text-muted">{{ j.serial_no }}</small>{% endif %}</td>
+    <td><span class="tag {{ 'tag-fast' if j.status.value in ('ready', 'delivered') else ('tag-warn' if j.status.value == 'cancelled' else '') }}">{{ labels[j.status] }}</span></td>
+    <td class="num">{{ ('%.2f'|format(j.estimate)) if j.estimate else '-' }}</td></tr>
+  {% else %}<tr><td colspan="6" class="empty-state">No jobs here.</td></tr>{% endfor %}
+  </tbody></table></div>
+{% endblock %}

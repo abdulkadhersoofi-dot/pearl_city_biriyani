@@ -4,6 +4,15 @@
 <div class="page-header">
   <h1>Reports &amp; GST exports</h1>
 </div>
+{% if has_feature('pharmacy') or has_feature('wholesale') or has_feature('loyalty') or has_feature('jewellery') or has_feature('electronics') %}
+<div class="row" style="gap:8px; flex-wrap:wrap; margin-bottom:16px;">
+  {% if has_feature('pharmacy') %}<a href="{{ url_for('pharmacy.register') }}" class="btn btn-secondary">Scheduled drug register</a>{% endif %}
+  {% if has_feature('wholesale') %}<a href="{{ url_for('wholesale.salesmen_report') }}" class="btn btn-secondary">Sales by salesman</a>{% endif %}
+  {% if has_feature('loyalty') %}<a href="{{ url_for('loyalty.index') }}" class="btn btn-secondary">Loyalty points</a>{% endif %}
+  {% if has_feature('jewellery') %}<a href="{{ url_for('jewellery.old_gold_list') }}" class="btn btn-secondary">Old gold vouchers</a>{% endif %}
+  {% if has_feature('electronics') %}<a href="{{ url_for('jobs.warranty') }}" class="btn btn-secondary">Warranty check</a>{% endif %}
+</div>
+{% endif %}
 
 {% if has_feature('business_reports') %}
 <div class="form-grid" style="margin-bottom:20px;">

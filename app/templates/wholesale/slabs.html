@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Quantity prices - {{ product.name }}{% endblock %}
+{% block content %}
+<div class="page-header"><div><h1>Quantity prices - {{ product.name }}</h1>
+  <p class="text-muted mt-0">Normal price Rs. {{ '%.2f'|format(product.sale_price) }} per {{ product.unit }}{{ ' (incl. GST)' if product.price_includes_tax }}. Buying at least this many, each costs this much - the biggest quantity reached wins, and only if it is cheaper than the customer's price.</p></div>
+  <a href="{{ url_for('products.edit_product', product_id=product.id) }}" class="btn btn-quiet">Back to the item</a></div>
+<div class="card">
+  <table><thead><tr><th class="num">From quantity</th><th class="num">Price each</th><th></th></tr></thead><tbody>
+  {% for s in slabs %}<tr><td class="num">{{ s.min_qty|qty }} {{ product.unit }}</td><td class="num">{{ '%.2f'|format(s.price) }}</td>
+    <td><form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="remove"><input type="hidden" name="slab_id" value="{{ s.id }}"><button class="btn btn-quiet btn-sm">Remove</button></form></td></tr>
+  {% else %}<tr><td colspan="3" class="empty-state">No quantity prices yet.</td></tr>{% endfor %}
+  </tbody></table>
+  <form method="post" class="row" style="gap:8px; margin-top:12px; align-items:flex-end;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="field" style="margin:0;"><span class="field-label">From quantity</span><input type="number" step="0.001" min="1" name="min_qty" class="field-input" style="margin:0;" required></label>
+    <label class="field" style="margin:0;"><span class="field-label">Price each</span><input type="number" step="0.01" min="0" name="price" class="field-input" style="margin:0;" required></label>
+    <button class="btn btn-primary">Add</button>
+  </form>
+</div>
+{% endblock %}

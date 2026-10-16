@@ -23,6 +23,10 @@ class Customer(db.Model, TenantScopedMixin, TimestampMixin):
     opening_balance_date = db.Column(db.Date)
     credit_limit = db.Column(db.Numeric(12, 2))
     credit_days = db.Column(db.Integer)
+    # Wholesale: the group whose price list this customer buys at.
+    customer_group_id = db.Column(db.Integer, db.ForeignKey("customer_groups.id", name="fk_customers_group"))
+
+    customer_group = db.relationship("CustomerGroup")
 
     def __repr__(self):
         return f"<Customer {self.id} {self.name}>"

@@ -182,6 +182,14 @@ def new_invoice():
                     lines=lines,
                 ),
             )
+            if tenant.has_feature("wholesale") and request.form.get("salesman_id"):
+                from app.models.business import Salesman
+
+                salesman = tenant_query(Salesman).filter_by(id=request.form.get("salesman_id", type=int) or 0,
+                                                            is_active=True).first()
+                if salesman is None:
+                    raise InvoiceValidationError("Pick a valid salesman.")
+                invoice.salesman_id = salesman.id
             record_audit(
                 current_user,
                 "invoice_created",
