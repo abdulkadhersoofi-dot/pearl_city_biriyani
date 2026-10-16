@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Government API log - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header"><div><h1>Call log</h1>
+  <p class="text-muted mt-0">Every call to the IRP and the e-way bill system - kept for audit, never edited.</p></div></div>
+{% include "einvoice/_tabs.html" %}
+<div class="table-wrap card">
+  <table>
+    <thead><tr><th>When</th><th>Action</th><th>Document</th><th>Result</th><th>Ref</th></tr></thead>
+    <tbody>
+    {% for c in calls %}
+      <tr><td>{{ c.created_at|ist }}</td><td>{{ c.action.replace('_', ' ') }}<br><small class="text-muted">{{ c.provider }}</small></td>
+        <td>{{ (c.document_type or '-')|replace('_', ' ') }}{% if c.document_id %} #{{ c.document_id }}{% endif %}</td>
+        <td>{% if c.success %}<span class="tag tag-fast">OK</span>{% else %}<span class="tag tag-warn">Failed</span><br>{{ c.plain_message }}<br><small class="text-muted">{{ c.error_code or '' }} {{ c.error_message }}</small>{% endif %}</td>
+        <td><small class="text-muted">{{ c.request_id[:8] }}</small>{% if c.duration_ms is not none %}<br><small class="text-muted">{{ c.duration_ms }} ms</small>{% endif %}</td></tr>
+    {% else %}
+      <tr><td colspan="5" class="empty-state">No calls yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

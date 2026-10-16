@@ -60,6 +60,7 @@ def _register_blueprints(app: Flask) -> None:
     from app.branches import branches_bp
     from app.bulk import bulk_bp
     from app.customers import customers_bp
+    from app.einvoice import einvoice_bp
     from app.expenses import expenses_bp
     from app.inventory import inventory_bp
     from app.invoicing import invoicing_bp
@@ -93,6 +94,7 @@ def _register_blueprints(app: Flask) -> None:
     app.register_blueprint(expenses_bp)
     app.register_blueprint(accounts_bp)
     app.register_blueprint(sales_bp)
+    app.register_blueprint(einvoice_bp)
 
 
 def _register_error_handlers(app: Flask) -> None:
@@ -187,6 +189,39 @@ def _register_context_processors(app: Flask) -> None:
     from app.utils.gst_config import B2CL_INVOICE_VALUE_THRESHOLD
 
     app.jinja_env.globals["b2cl_threshold"] = B2CL_INVOICE_VALUE_THRESHOLD
+
+    # e-Invoice / e-way bill panels on document pages (None when the flag
+    # is off) and the IRN QR (the signed QR string, drawn at view time).
+    from app.einvoice.routes import eway_panel, irn_panel
+
+    app.jinja_env.globals["irn_panel"] = irn_panel
+    app.jinja_env.globals["eway_panel"] = eway_panel
+
+    def irn_qr(doc, scale=3):
+        data = getattr(doc, "qr_code_data", None)
+        if not data:
+            return None
+        if data.startswith("data:image"):
+            return data
+        from app.pos.share import qr_svg_data_uri
+
+        return qr_svg_data_uri(data, scale=scale)
+
+    app.jinja_env.globals["irn_qr"] = irn_qr
+    from app.utils.gst_config import EWAY_BILL_CANCEL_HOURS, IRN_CANCEL_HOURS
+
+    app.jinja_env.globals["irn_cancel_hours"] = IRN_CANCEL_HOURS
+    app.jinja_env.globals["ewb_cancel_hours"] = EWAY_BILL_CANCEL_HOURS
+
+    @app.template_filter("ist")
+    def ist_filter(value, fmt="%d %b %Y %H:%M"):
+        """A stored (UTC) timestamp in Indian time - how the IRP and the
+        e-way bill system show it."""
+        if not value:
+            return ""
+        from app.einvoice.providers.common import IST
+
+        return value.astimezone(IST).strftime(fmt)
 
     @app.template_filter("qty")
     def qty_filter(value):

@@ -57,6 +57,15 @@ class CreditDebitNote(db.Model, TenantScopedMixin, TimestampMixin):
     voided_by_id = db.Column(db.Integer, db.ForeignKey("users.id"))
     void_reason = db.Column(db.Text)
 
+    # e-Invoice (Phase 8): a credit / debit note on a B2B or export invoice
+    # gets its own IRN, exactly like an invoice.
+    irn = db.Column(db.String(64))
+    irn_ack_number = db.Column(db.String(32))
+    irn_ack_date = db.Column(db.DateTime(timezone=True))
+    qr_code_data = db.Column(db.Text)
+    irn_cancelled_at = db.Column(db.DateTime(timezone=True))
+    irn_cancel_reason = db.Column(db.Text)
+
     gstin = db.relationship("Gstin")
     series = db.relationship("InvoiceSeries")
     customer = db.relationship("Customer")

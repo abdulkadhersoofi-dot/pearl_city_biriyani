@@ -23,6 +23,9 @@ def _normalize_database_url(url: str) -> str:
 
 class Config:
     SECRET_KEY = os.environ.get("SECRET_KEY", "dev-only-insecure-key")
+    # Encrypts saved e-invoice / e-way bill logins (app.einvoice.vault);
+    # unset = derived from SECRET_KEY.
+    EINVOICE_SECRET_KEY = os.environ.get("EINVOICE_SECRET_KEY")
 
     SQLALCHEMY_DATABASE_URI = _normalize_database_url(
         os.environ.get(

@@ -1,0 +1,22 @@
+{# Included by invoice, delivery challan and stock transfer pages: source = the document. #}
+{% set ep = eway_panel(source) %}
+{% if ep %}
+<div class="card" style="margin-top:20px; margin-bottom:16px;">
+  <div class="row" style="justify-content:space-between; align-items:center;">
+    <h2 style="margin:0;">e-Way bill</h2>
+    {% if ep.offer %}<a href="{{ ep.new_url }}" class="btn btn-primary">Make e-way bill</a>{% endif %}
+  </div>
+  {% if ep.offer and not ep.bills %}<p class="text-muted" style="margin-bottom:0;">Goods worth Rs. {{ '%.2f'|format(ep.value) }} - above the e-way bill limit, so one is needed before they move.</p>{% endif %}
+  {% if ep.bills %}
+  <div class="table-wrap" style="margin-top:10px;"><table>
+    <thead><tr><th>EWB No</th><th>Status</th><th>Vehicle</th><th>Valid until</th></tr></thead>
+    <tbody>
+    {% for b in ep.bills %}
+      <tr><td><a href="{{ url_for('einvoice.eway_view', ewb_id=b.id) }}">{{ b.ewb_no or 'Draft' }}</a></td>
+        <td>{{ b.status.value|title }}</td><td>{{ b.vehicle_no or '-' }}</td><td>{{ b.valid_upto|ist or '-' }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% endif %}
+</div>
+{% endif %}

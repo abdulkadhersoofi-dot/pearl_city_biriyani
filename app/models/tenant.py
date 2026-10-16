@@ -215,6 +215,9 @@ class Gstin(db.Model, TimestampMixin):
     state_code = db.Column(db.String(2), nullable=False)
     state_name = db.Column(db.String(64), nullable=False)
     registered_address = db.Column(db.Text)
+    # e-Invoice / e-way bill need the seller's place and PIN code.
+    city = db.Column(db.String(100))
+    pincode = db.Column(db.String(6))
     is_primary = db.Column(db.Boolean, nullable=False, default=False)
     is_active = db.Column(db.Boolean, nullable=False, default=True)
 

@@ -12,6 +12,7 @@ from app.models.user import BranchType, User, UserRole
 from app.inventory import hooks as inventory_hooks
 from app.inventory import ledger as inventory_ledger
 from app.pos.stock import allocate_stock
+from app.utils import gst_config
 from app.utils.financial_year import financial_year_for
 from app.utils.form_arrays import posted_flag
 from app.utils.gst import allowed_document_types, compute_invoice_totals, compute_line
@@ -327,6 +328,9 @@ def void_invoice(invoice: Invoice, voided_by, reason: str) -> None:
         raise InvoiceValidationError("Invoice is already void.")
     if not reason or not reason.strip():
         raise InvoiceValidationError("A reason is required to void an invoice.")
+    if invoice.irn and not invoice.irn_cancelled_at:
+        raise InvoiceValidationError(f"This invoice has an IRN on the IRP - cancel the IRN first (allowed within {gst_config.IRN_CANCEL_HOURS} "
+                                     "hours of generating it), or issue a credit note against it.")
     invoice.status = InvoiceStatus.VOID
     invoice.voided_by_id = voided_by.id
     invoice.void_reason = reason.strip()

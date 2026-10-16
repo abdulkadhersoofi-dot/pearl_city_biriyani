@@ -33,6 +33,7 @@
     </tbody>
   </table>
 </div>
+{% with source=transfer %}{% include "einvoice/_eway_panel.html" %}{% endwith %}
 {% if transfer.status.value == 'completed' %}
 <form method="post" action="{{ url_for('inventory.void_transfer', transfer_id=transfer.id) }}" class="card row void-box" style="gap:10px; align-items:flex-end;">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

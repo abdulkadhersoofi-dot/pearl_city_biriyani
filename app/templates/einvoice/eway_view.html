@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+{% block title %}e-Way bill {{ ewb.ewb_no or ewb.document_number }} - {{ firm_name }}{% endblock %}
+{% block content %}
+{% set f, t = ewb.from_party, ewb.to_party %}
+<div class="page-header">
+  <div>
+    <h1>e-Way bill {{ ewb.ewb_no or '' }}{% if not ewb.ewb_no %}<span class="text-muted">{{ 'new' if not ewb.id else 'draft' }}</span>{% endif %}</h1>
+    <p class="text-muted mt-0">{{ doc_types[ewb.doc_type] }} <a href="{{ source_link }}">{{ ewb.document_number }}</a> of {{ ewb.document_date.strftime('%d %b %Y') }}
+      &middot; Rs. {{ '%.2f'|format(value) }}{% if ewb.id %} &middot; <span class="status-badge status-{{ {'draft': 'draft', 'generated': 'issued', 'cancelled': 'void'}[ewb.status.value] }}">{{ ewb.status.value|title }}</span>{% endif %}</p>
+  </div>
+</div>
+{% if not threshold_needed %}<p class="flash flash-warning">This consignment is within the e-way bill limit, so one isn't required - you can still make one.</p>{% endif %}
+
+{% if editing %}
+<form method="post" action="{{ url_for('einvoice.eway_view', ewb_id=ewb.id) if ewb.id else request.path }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="card" style="margin-bottom:16px;">
+    <h2 class="mt-0">Part A - the goods</h2>
+    <div class="form-grid">
+      <label class="field"><span class="field-label">Sub-supply type</span>
+        <select name="sub_supply_type" class="field-input">{% for code, label in sub_supply.items() %}<option value="{{ code }}" {{ 'selected' if code == ewb.sub_supply_type }}>{{ label }}</option>{% endfor %}</select></label>
+      <label class="field"><span class="field-label">Description <small class="text-muted">(for 'Others')</small></span><input type="text" name="sub_supply_desc" value="{{ ewb.sub_supply_desc or '' }}" maxlength="20" class="field-input"></label>
+    </div>
+    <h3>Dispatch from</h3>
+    <div class="form-grid">
+      <label class="field"><span class="field-label">Address</span><input type="text" name="from_addr1" value="{{ f.addr1 }}" class="field-input" maxlength="120"></label>
+      <label class="field"><span class="field-label">Place</span><input type="text" name="from_place" value="{{ f.place }}" class="field-input" maxlength="50"></label>
+      <label class="field"><span class="field-label">PIN code</span><input type="text" name="from_pincode" value="{{ f.pincode }}" class="field-input" inputmode="numeric" maxlength="6"></label>
+    </div>
+    <h3>Ship to</h3>
+    <div class="form-grid">
+      <label class="field"><span class="field-label">Name</span><input type="text" name="to_name" value="{{ t.name }}" class="field-input" maxlength="100"></label>
+      <label class="field"><span class="field-label">GSTIN <small class="text-muted">(URP if unregistered)</small></span><input type="text" name="to_gstin" value="{{ t.gstin }}" class="field-input" maxlength="15"></label>
+      <label class="field"><span class="field-label">Address</span><input type="text" name="to_addr1" value="{{ t.addr1 }}" class="field-input" maxlength="120"></label>
+      <label class="field"><span class="field-label">Address line 2</span><input type="text" name="to_addr2" value="{{ t.addr2 }}" class="field-input" maxlength="120"></label>
+      <label class="field"><span class="field-label">Place</span><input type="text" name="to_place" value="{{ t.place }}" class="field-input" maxlength="50"></label>
+      <label class="field"><span class="field-label">PIN code</span><input type="text" name="to_pincode" value="{{ t.pincode }}" class="field-input" inputmode="numeric" maxlength="6"></label>
+      <label class="field"><span class="field-label">State</span>
+        <select name="to_state_code" class="field-input"><option value="">-</option>{% for code, name in states.items() %}<option value="{{ code }}" {{ 'selected' if code == t.state_code }}>{{ code }} {{ name }}</option>{% endfor %}<option value="99" {{ 'selected' if t.state_code == '99' }}>99 Other country (export)</option></select></label>
+    </div>
+  </div>
+  <div class="card" style="margin-bottom:16px;">
+    <h2 class="mt-0">Part B - transport</h2>
+    <p class="field-help mt-0">Give the vehicle number, or just the transporter ID - the transporter then adds the vehicle on the portal.</p>
+    <div class="form-grid">
+      <label class="field"><span class="field-label">Mode</span>
+        <select name="trans_mode" class="field-input">{% for code, label in trans_modes.items() %}<option value="{{ code }}" {{ 'selected' if code == ewb.trans_mode }}>{{ label }}</option>{% endfor %}</select></label>
+      <label class="field"><span class="field-label">Distance (km)</span><input type="number" name="distance_km" value="{{ ewb.distance_km or '' }}" min="1" class="field-input" required></label>
+      <label class="field"><span class="field-label">Vehicle number</span><input type="text" name="vehicle_no" value="{{ ewb.vehicle_no or '' }}" placeholder="TN01AB1234" class="field-input" maxlength="20"></label>
+      <label class="field"><span class="field-label">Vehicle type</span>
+        <select name="vehicle_type" class="field-input">{% for code, label in vehicle_types.items() %}<option value="{{ code }}" {{ 'selected' if code == ewb.vehicle_type }}>{{ label }}</option>{% endfor %}</select></label>
+      <label class="field"><span class="field-label">Transporter ID</span><input type="text" name="transporter_id" value="{{ ewb.transporter_id or '' }}" class="field-input" maxlength="15"></label>
+      <label class="field"><span class="field-label">Transporter name</span><input type="text" name="transporter_name" value="{{ ewb.transporter_name or '' }}" class="field-input" maxlength="100"></label>
+      <label class="field"><span class="field-label">LR / RR / AWB / BL no. <small class="text-muted">(rail, air, ship)</small></span><input type="text" name="trans_doc_no" value="{{ ewb.trans_doc_no or '' }}" class="field-input" maxlength="15"></label>
+      <label class="field"><span class="field-label">Its date</span><input type="date" name="trans_doc_date" value="{{ ewb.trans_doc_date.isoformat() if ewb.trans_doc_date else '' }}" class="field-input"></label>
+    </div>
+    <button class="btn btn-primary">Save draft</button>
+    {% if ewb.id %}<a href="{{ url_for('einvoice.eway_view', ewb_id=ewb.id) }}" class="btn btn-quiet">Back</a>{% endif %}
+  </div>
+</form>
+{% else %}
+
+<div class="card" style="margin-bottom:16px;">
+  <div class="form-grid">
+    <div><strong>From</strong><p>{{ f.name }}<br>{{ f.gstin }}<br>{{ f.addr1 }}<br>{{ f.place }} {{ f.pincode }} ({{ f.state_code }})</p></div>
+    <div><strong>To</strong><p>{{ t.name }}<br>{{ t.gstin }}<br>{{ t.addr1 }}{% if t.addr2 %}, {{ t.addr2 }}{% endif %}<br>{{ t.place }} {{ t.pincode }} ({{ t.state_code }})</p></div>
+    <div><strong>Transport</strong><p>{{ trans_modes[ewb.trans_mode] }}, {{ ewb.distance_km }} km{% if ewb.vehicle_type == 'O' %} (ODC){% endif %}<br>
+      {% if ewb.vehicle_no %}Vehicle {{ ewb.vehicle_no }}<br>{% endif %}
+      {% if ewb.transporter_id %}Transporter {{ ewb.transporter_name or '' }} {{ ewb.transporter_id }}<br>{% endif %}
+      {% if ewb.trans_doc_no %}Doc {{ ewb.trans_doc_no }}{% if ewb.trans_doc_date %} of {{ ewb.trans_doc_date.strftime('%d %b %Y') }}{% endif %}{% endif %}</p></div>
+    <div><strong>Sub-supply</strong><p>{{ sub_supply[ewb.sub_supply_type] }}{% if ewb.sub_supply_desc %} - {{ ewb.sub_supply_desc }}{% endif %}</p></div>
+  </div>
+</div>
+
+{% if ewb.status.value == 'draft' %}
+<div class="card" style="margin-bottom:16px;">
+  {% if problems %}
+  <p><strong>Fix these first:</strong></p>
+  <ul>{% for p in problems %}<li>{{ p }}</li>{% endfor %}</ul>
+  {% else %}
+  <p class="text-muted mt-0">Valid for {{ days }} day{{ '' if days == 1 else 's' }} once generated with a vehicle ({{ ewb.distance_km }} km).</p>
+  {% endif %}
+  <div class="row" style="gap:8px;">
+    <a href="{{ url_for('einvoice.eway_view', ewb_id=ewb.id, edit=1) }}" class="btn btn-secondary">Edit</a>
+    {% if not problems %}
+      {% if has_login %}
+      <form method="post" action="{{ url_for('einvoice.eway_generate', ewb_id=ewb.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-primary">{{ 'Generate from the IRN' if by_irn else 'Generate e-way bill' }}</button>
+      </form>
+      {% endif %}
+      <a href="{{ url_for('einvoice.eway_json', ewb_id=ewb.id) }}" class="btn btn-secondary">Download JSON</a>
+    {% endif %}
+  </div>
+  {% if not has_login %}<p class="field-help">No API login saved - upload the JSON on the e-way bill portal (Bulk generation), then record the number below.</p>{% endif %}
+  <details style="margin-top:10px;">
+    <summary>Record the e-way bill number from the portal</summary>
+    <form method="post" action="{{ url_for('einvoice.eway_record', ewb_id=ewb.id) }}" class="form-grid" style="margin-top:8px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label class="field"><span class="field-label">EWB number (12 digits)</span><input type="text" name="ewb_no" required inputmode="numeric" maxlength="14" class="field-input"></label>
+      <label class="field"><span class="field-label">Generated on</span><input type="datetime-local" name="ewb_date" required class="field-input"></label>
+      <div class="field"><span class="field-label">&nbsp;</span><button class="btn btn-secondary">Save number</button></div>
+    </form>
+  </details>
+  <details style="margin-top:6px;">
+    <summary>Discard this draft</summary>
+    <form method="post" action="{{ url_for('einvoice.eway_cancel', ewb_id=ewb.id) }}" class="row" style="gap:8px; margin-top:8px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="text" name="remark" placeholder="Reason" required class="field-input" style="flex:1;">
+      <button class="btn btn-danger">Discard draft</button>
+    </form>
+  </details>
+</div>
+{% elif ewb.status.value == 'generated' %}
+<div class="card" style="margin-bottom:16px;">
+  <p class="mt-0"><strong>EWB No {{ ewb.ewb_no }}</strong> &middot; generated {{ ewb.ewb_date|ist }}
+    {% if ewb.generated_via == 'portal' %}on the portal{% elif ewb.generated_via == 'irn' %}from the IRN{% else %}through the API{% endif %}.</p>
+  <p>{% if ewb.valid_upto %}Valid until <strong>{{ ewb.valid_upto|ist }}</strong>{% if ewb.valid_upto < now %} <span class="tag tag-warn">Expired</span>{% endif %}
+     {% else %}<span class="tag tag-warn">Part A only</span> - not valid for movement until the vehicle is added.{% endif %}</p>
+  <details>
+    <summary>{{ 'Update vehicle (Part B)' if ewb.vehicle_no or ewb.trans_doc_no else 'Add vehicle (Part B)' }}</summary>
+    <form method="post" action="{{ url_for('einvoice.eway_part_b', ewb_id=ewb.id) }}" class="form-grid" style="margin-top:8px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label class="field"><span class="field-label">Reason</span>
+        <select name="reason_code" class="field-input">{% for code, label in part_b_reasons.items() %}<option value="{{ code }}" {{ 'selected' if code == ('4' if not ewb.vehicle_no else '1') }}>{{ label }}</option>{% endfor %}</select></label>
+      <label class="field"><span class="field-label">Remark</span><input type="text" name="reason_rem" maxlength="50" class="field-input"></label>
+      <label class="field"><span class="field-label">Mode</span>
+        <select name="trans_mode" class="field-input">{% for code, label in trans_modes.items() %}<option value="{{ code }}" {{ 'selected' if code == ewb.trans_mode }}>{{ label }}</option>{% endfor %}</select></label>
+      <label class="field"><span class="field-label">New vehicle number</span><input type="text" name="vehicle_no" class="field-input" placeholder="TN01AB1234" maxlength="20"></label>
+      <label class="field"><span class="field-label">Transport doc no. <small class="text-muted">(rail, air, ship)</small></span><input type="text" name="trans_doc_no" value="{{ ewb.trans_doc_no or '' }}" class="field-input" maxlength="15"></label>
+      <label class="field"><span class="field-label">Its date</span><input type="date" name="trans_doc_date" class="field-input"></label>
+      <label class="field"><span class="field-label">Starting from (place)</span><input type="text" name="from_place" value="{{ f.place }}" class="field-input"></label>
+      <label class="field"><span class="field-label">State</span>
+        <select name="from_state" class="field-input">{% for code, name in states.items() %}<option value="{{ code }}" {{ 'selected' if code == f.state_code }}>{{ name }}</option>{% endfor %}</select></label>
+      <input type="hidden" name="transporter_id" value="{{ ewb.transporter_id or '' }}"><input type="hidden" name="transporter_name" value="{{ ewb.transporter_name or '' }}">
+      <input type="hidden" name="vehicle_type" value="{{ ewb.vehicle_type }}">
+      <label class="field"><span class="field-label">&nbsp;</span><span><input type="checkbox" name="on_portal" value="1" {% if not has_login %}checked onclick="return false;"{% endif %}> Already updated on the portal</span></label>
+      <div class="field"><span class="field-label">&nbsp;</span><button class="btn btn-primary">Update vehicle</button></div>
+    </form>
+  </details>
+  {% if can_cancel %}
+  <details style="margin-top:6px;">
+    <summary>Cancel this e-way bill</summary>
+    <p class="field-help">Allowed within {{ ewb_cancel_hours }} hours of generating it, if the goods haven't moved.</p>
+    <form method="post" action="{{ url_for('einvoice.eway_cancel', ewb_id=ewb.id) }}" class="form-grid" onsubmit="return confirm('Cancel e-way bill {{ ewb.ewb_no }}?');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label class="field"><span class="field-label">Reason</span>
+        <select name="reason_code" class="field-input">{% for code, label in cancel_reasons.items() %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select></label>
+      <label class="field"><span class="field-label">Remark</span><input type="text" name="remark" maxlength="50" required class="field-input"></label>
+      <label class="field"><span class="field-label">&nbsp;</span><span><input type="checkbox" name="on_portal" value="1" {% if not has_login %}checked onclick="return false;"{% endif %}> Already cancelled on the portal</span></label>
+      <div class="field"><span class="field-label">&nbsp;</span><button class="btn btn-danger">Cancel e-way bill</button></div>
+    </form>
+  </details>
+  {% else %}
+  <p class="field-help">The {{ ewb_cancel_hours }}-hour window to cancel has passed.</p>
+  {% endif %}
+</div>
+{% else %}
+<div class="card" style="margin-bottom:16px;"><p class="mt-0"><strong>Cancelled</strong> {{ ewb.cancelled_at|ist }}</p><p class="text-muted">{{ ewb.cancel_reason }}</p></div>
+{% endif %}
+{% endif %}
+
+<div class="table-wrap card">
+  <table>
+    <thead><tr><th>Item</th><th>HSN</th><th class="num">Qty</th><th class="num">Taxable</th><th>GST</th></tr></thead>
+    <tbody>
+    {% for i in ewb.items %}
+      <tr><td>{{ i.name }}</td><td>{{ i.hsn or '-' }}</td><td class="num">{{ i.qty|qty }} {{ i.unit }}</td><td class="num">{{ '%.2f'|format(i.taxable|float) }}</td>
+        <td>{% if i.igst_rate|float %}IGST {{ i.igst_rate }}%{% elif i.cgst_rate|float %}CGST+SGST {{ (i.cgst_rate|float * 2)|round(2) }}%{% else %}-{% endif %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

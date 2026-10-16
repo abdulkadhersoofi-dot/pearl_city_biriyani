@@ -53,6 +53,7 @@
   </table>
 </div>
 
+{% if doc.kind.value == 'delivery_challan' %}{% with source=doc %}{% include "einvoice/_eway_panel.html" %}{% endwith %}{% endif %}
 {% if doc.status.value == 'open' %}
 {% if doc.kind.value == 'delivery_challan' %}
 <form method="post" action="{{ url_for('sales.document_returned', doc_id=doc.id) }}" class="card row" style="gap:10px; align-items:flex-end; margin-bottom:16px;">

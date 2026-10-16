@@ -1,0 +1,68 @@
+{# Included by invoice and note pages: doc = the invoice / note. #}
+{% set p = irn_panel(doc) %}
+{% if doc.irn %}
+<div class="card" style="margin-top:20px;">
+  <h2 style="margin-top:0;">e-Invoice</h2>
+  <div class="row" style="justify-content:space-between; align-items:flex-start; gap:16px;">
+    <div style="min-width:0; flex:1;">
+      <p style="word-break:break-all;"><strong>IRN:</strong> {{ doc.irn }}</p>
+      {% if doc.irn_ack_number %}<p><strong>Ack No:</strong> {{ doc.irn_ack_number }}{% if doc.irn_ack_date %} &middot; {{ doc.irn_ack_date|ist }}{% endif %}</p>{% endif %}
+      {% if doc.irn_cancelled_at %}<p><span class="tag tag-warn">IRN cancelled {{ doc.irn_cancelled_at|ist }}</span> <span class="text-muted">{{ doc.irn_cancel_reason }}</span></p>{% endif %}
+    </div>
+    {% set qr = irn_qr(doc) %}{% if qr %}<img src="{{ qr }}" alt="e-Invoice QR code" style="width:140px; height:140px;">{% endif %}
+  </div>
+  {% if p and not doc.irn_cancelled_at %}
+    {% if p.can_cancel %}
+    <details style="margin-top:8px;">
+      <summary>Cancel this IRN</summary>
+      <p class="text-muted">The IRP lets you cancel within {{ irn_cancel_hours }} hours of generating it. The {{ 'invoice' if p.kind == 'invoice' else 'note' }} is then voided with the same reason.</p>
+      <form method="post" action="{{ url_for('einvoice.cancel', kind=p.kind, doc_id=doc.id) }}" class="form-grid"
+            onsubmit="return confirm('Cancel the IRN and void this document? This cannot be undone.');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label class="field"><span class="field-label">Reason</span>
+          <select name="reason_code" class="field-input" required>{% for code, label in p.reasons.items() %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select></label>
+        <label class="field"><span class="field-label">Remark</span><input type="text" name="remark" maxlength="100" required class="field-input"></label>
+        <label class="field"><span class="field-label">&nbsp;</span>
+          <span><input type="checkbox" name="on_portal" value="1" {% if not p.has_login %}checked onclick="return false;"{% endif %}> Already cancelled on the IRP portal</span></label>
+        <div class="field"><span class="field-label">&nbsp;</span><button class="btn btn-danger">Cancel IRN &amp; void</button></div>
+      </form>
+    </details>
+    {% else %}
+    <p class="text-muted" style="margin-bottom:0;">The {{ irn_cancel_hours }}-hour window to cancel this IRN has passed. To reduce or reverse it, issue a credit note{% if p.credit_note_url %} - <a href="{{ p.credit_note_url }}">make a credit note</a>{% endif %}.</p>
+    {% endif %}
+  {% endif %}
+</div>
+{% elif p and p.needs %}
+<div class="card" style="margin-top:20px;">
+  <h2 style="margin-top:0;">IRN needed</h2>
+  <p class="text-muted mt-0">This {{ 'invoice' if p.kind == 'invoice' else 'note' }} must be reported to the IRP. Without an IRN it is not a valid document for your buyer.</p>
+  {% if p.warning %}<p class="flash flash-warning">{{ p.warning }}</p>{% endif %}
+  {% if p.problems %}
+  <p><strong>Fix these first:</strong></p>
+  <ul>{% for problem in p.problems %}<li>{{ problem }}</li>{% endfor %}</ul>
+  {% if 'e-Invoice settings' in p.problems|join(' ') %}<p><a href="{{ url_for('einvoice.settings') }}" class="btn btn-secondary">Open e-Invoice settings</a></p>{% endif %}
+  {% else %}
+  <div class="row">
+    {% if p.has_login %}
+    <form method="post" action="{{ url_for('einvoice.generate', kind=p.kind, doc_id=doc.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn btn-primary">Generate IRN</button>
+    </form>
+    {% endif %}
+    <a class="btn btn-secondary" href="{{ url_for('einvoice.document_json', kind=p.kind, doc_id=doc.id) }}">Download e-Invoice JSON</a>
+  </div>
+  {% if not p.has_login %}<p class="field-help">No IRP login saved - upload the JSON with the IRP's offline tool and record the IRN below, or <a href="{{ url_for('einvoice.settings') }}">add a login</a>.</p>{% endif %}
+  {% endif %}
+  <details style="margin-top:10px;">
+    <summary>Record an IRN got from the IRP portal / offline tool</summary>
+    <form method="post" action="{{ url_for('einvoice.record', kind=p.kind, doc_id=doc.id) }}" class="form-grid" style="margin-top:8px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label class="field"><span class="field-label">IRN (64 characters)</span><input type="text" name="irn" required maxlength="64" class="field-input"></label>
+      <label class="field"><span class="field-label">Ack No</span><input type="text" name="ack_no" required inputmode="numeric" class="field-input"></label>
+      <label class="field"><span class="field-label">Ack date &amp; time</span><input type="datetime-local" name="ack_date" required class="field-input"></label>
+      <label class="field"><span class="field-label">Signed QR code (optional)</span><textarea name="signed_qr" rows="2" class="field-input" placeholder="The long SignedQRCode text"></textarea></label>
+      <div class="field"><button class="btn btn-secondary">Save IRN</button></div>
+    </form>
+  </details>
+</div>
+{% endif %}

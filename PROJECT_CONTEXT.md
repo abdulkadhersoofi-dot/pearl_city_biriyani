@@ -328,7 +328,24 @@ this list is just the index.
   `app/reports/registers.py`; GSTR-1 B2CL (Rs. 1 lakh in gst_config) and
   HSN B2B/B2C; `FilingStatus` table; admin Filing page, monthly pack and
   Tally export; bulk GST export now ships monthly packs.
-  Phases 8-10 still to build, in order.
+- **Platform build Phase 8** (flags `einvoice`, `eway_bill`):
+  `app/einvoice/` - `rules.py` (AATO > Rs. 5 crore, B2B / export and
+  their notes; 30-day IRP limit at Rs. 10 crore; e-way bill > Rs. 50,000,
+  validity per Rule 138(10) - all numbers in gst_config), `schema.py`
+  (INV-01 1.1 builder + validator, plain-language problems), JSON
+  download for the IRP offline tool and recording the IRN it returns,
+  `providers/` (one interface; NIC sandbox / direct with RSA + AES-256
+  Sek, generic GSP via settings; tested against simulated servers only),
+  `vault.py` (Fernet, `EINVOICE_SECRET_KEY` or derived from SECRET_KEY),
+  `services.py` (every call logged in `gov_api_calls` + audit, one
+  re-login retry, duplicate IRN 2150 fetched), IRN + signed QR rendered
+  with segno, cancel within 24 h then void (blocked while an e-way bill
+  is active; plain void blocked while the IRN is active; after 24 h ->
+  credit note), `eway.py` (invoices, delivery challans, stock transfers;
+  bulk JSON, generate by IRN or standalone, Part B, cancel). Tables
+  `einvoice_credentials`, `gov_api_calls`, `eway_bills`; Gstin got city
+  and PIN. With `einvoice` on, LUT exports use an `EXL` series (16-char
+  IRP limit). Phases 9-10 still to build, in order.
 
 ## 5. Chronological development history (this session)
 
@@ -610,10 +627,11 @@ tracker state (see the warning in §11) — as of this file:
   guided first-run checklist.
 - **Admin console drill-down**: POS bills/notes don't have full
   drill-down pages yet — only invoices do.
-- **e-Invoice IRN/QR**: the DB columns and view/PDF rendering exist as
-  an extension point, but nothing populates them — needs real NIC IRP
-  (government e-invoice portal) credentials this deployment doesn't
-  have. Deliberately not faked.
+- **e-Invoice / e-way bill live calls**: built in Phase 8 to NIC's
+  published protocol and a configurable GSP, but only exercised against
+  simulated servers - no sandbox login was available. The first real
+  login should be checked with "Test login". The JSON-download path
+  works without any credentials.
 - **GSTR-1/3B explicit, by-design limits** (not bugs, don't "fix"
   these without the user asking): Input Tax Credit appears in GSTR-3B
   only for clients with the Purchases module on (from their purchase

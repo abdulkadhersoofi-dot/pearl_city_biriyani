@@ -95,6 +95,8 @@
 
   <p><strong>Reason:</strong> {{ note.reason }}</p>
 
+  {% with doc=note %}{% include "einvoice/_irn_print.html" %}{% endwith %}
+
   <p class="footer-note">
     {% if note.lines|selectattr('price_includes_tax')|list %}* Rate includes GST; the taxable value shown is net of tax.<br>{% endif %}
     This is a system-generated {{ document_label|lower }}{% if note.status.value == 'void' %} - VOID{% endif %}.

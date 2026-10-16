@@ -31,24 +31,41 @@ DEFAULT_PREFIXES = {
     DocumentType.SALES_ORDER: "SO",
 }
 
+# The IRP accepts a document number of at most 16 characters, and
+# "EXP-LUT/2026-27/0001" is 20 - so a client with e-invoicing on numbers
+# LUT exports in an "EXL" series instead (a new series from the next
+# LUT export; numbers already issued are untouched).
+EINVOICE_PREFIXES = {DocumentType.EXPORT_INVOICE_LUT: "EXL"}
+
+
+def _einvoice_prefix(tenant_id: int, document_type: DocumentType) -> str | None:
+    if document_type not in EINVOICE_PREFIXES:
+        return None
+    from app.models.tenant import Tenant
+
+    tenant = db.session.get(Tenant, tenant_id)
+    return EINVOICE_PREFIXES[document_type] if tenant is not None and tenant.has_feature("einvoice") else None
+
 
 def get_or_create_series(
     tenant_id: int, gstin_id: int, document_type: DocumentType, financial_year: str | None = None
 ) -> InvoiceSeries:
     financial_year = financial_year or current_financial_year()
-    series = InvoiceSeries.query.filter_by(
+    special = _einvoice_prefix(tenant_id, document_type)
+    query = InvoiceSeries.query.filter_by(
         tenant_id=tenant_id,
         gstin_id=gstin_id,
         document_type=document_type,
         financial_year=financial_year,
-    ).first()
+    )
+    series = (query.filter_by(prefix=special) if special else query).first()
     if series is None:
         series = InvoiceSeries(
             tenant_id=tenant_id,
             gstin_id=gstin_id,
             document_type=document_type,
             financial_year=financial_year,
-            prefix=DEFAULT_PREFIXES.get(document_type, "DOC"),
+            prefix=special or DEFAULT_PREFIXES.get(document_type, "DOC"),
             next_number=1,
         )
         db.session.add(series)

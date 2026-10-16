@@ -81,6 +81,10 @@ class Invoice(db.Model, TenantScopedMixin, TimestampMixin):
     irn_ack_number = db.Column(db.String(32))
     irn_ack_date = db.Column(db.DateTime(timezone=True))
     qr_code_data = db.Column(db.Text)
+    # Phase 8: the signed QR string from the IRP is kept in qr_code_data;
+    # a cancelled IRN keeps its number with these set.
+    irn_cancelled_at = db.Column(db.DateTime(timezone=True))
+    irn_cancel_reason = db.Column(db.Text)
 
     gstin = db.relationship("Gstin")
     series = db.relationship("InvoiceSeries")

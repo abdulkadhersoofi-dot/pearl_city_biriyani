@@ -128,6 +128,10 @@ app/
 ├── notes/           # Credit/Debit notes, created from an existing invoice
 ├── reports/         # gstr.py (aggregation), export.py (Excel/PDF/JSON) -
 │                     # GSTR-1/3B working papers, see Roadmap for scope
+├── einvoice/        # e-Invoice IRN + e-way bills (Phase 8): rules.py
+│                     # (when they apply), schema.py (INV-01 JSON),
+│                     # providers/ (NIC sandbox/direct, GSP), vault.py
+│                     # (encrypted logins), services.py, eway.py, errors.py
 ├── api/              # small JSON endpoints (product lookup today; POS
 │                     # cart/checkout from Phase 2) - kept separate so a
 │                     # future SPA frontend can reuse them
@@ -1399,6 +1403,96 @@ Five new flags, all off by default; with them off nothing changes (routes
   read or change them, an auditor can't reach clients that aren't theirs
   (`tests/test_phase7_reports.py`).
 
+### Platform build - Phase 8 (e-Invoice IRN and e-Way Bill)
+
+- **Two new flags, `einvoice` and `eway_bill`** (off by default). Off:
+  invoices, notes, challans and transfers look exactly as before and every
+  `/einvoice/...` route 404s; staff get 403. On: an **e-Invoice** (or
+  **e-Way bills**) menu with the IRN desk, e-way bill list, call log and
+  settings.
+- **When an IRN is needed - `app/einvoice/rules.py`**, every number from
+  `gst_config`: a Regular client whose AATO (Settings) is above
+  `EINVOICE_AATO_THRESHOLD` (Rs. 5 crore, Notification 10/2023-CT, from
+  01.08.2023), for tax / reverse-charge invoices to a buyer with a GSTIN,
+  export invoices (with IGST or under LUT) and credit / debit notes
+  against them. Never B2C, bills of supply, challans or branch transfers.
+  At AATO of `EINVOICE_REPORTING_LIMIT_AATO` (Rs. 10 crore) and above, the
+  IRP refuses documents older than `EINVOICE_REPORTING_DAYS` (30): the
+  page warns 5 days before and says plainly once it's too late. The
+  "IRN needed" panel shows only on documents that need one.
+- **INV-01 JSON (`app/einvoice/schema.py`)**, schema 1.1, built from the
+  document and checked in Python before anything is sent: document
+  number format (16 characters), GSTINs, both addresses and PIN codes,
+  HSN digits, GST slab, and the IRP's arithmetic (price x qty = amount,
+  amount - discount = taxable, taxable + tax = line total, lines = totals
+  + round off). Problems are listed in plain words on the invoice.
+  **Download e-Invoice JSON** (one document, or every ready document of
+  a month from the IRN desk) is the file for the IRP's offline /
+  bulk-upload tool; the IRN, Ack No / date and signed QR it returns are
+  then recorded on the document. This path needs no credentials.
+- **Providers (`app/einvoice/providers/`)** - one interface
+  (`authenticate`, `generate_irn`, `get_irn`, `cancel_irn`, `ewb_by_irn`,
+  `generate_ewb`, `update_part_b`, `cancel_ewb`), picked per GSTIN under
+  e-Invoice settings:
+  - **NIC sandbox / NIC direct**: the published NIC protocol - login with
+    the NIC public key (RSA), session key (Sek) decrypted with our random
+    AppKey, payloads AES-256 encrypted with the Sek; standalone e-way
+    bills through the e-way bill system's own API (address and paths are
+    settings, from the client's NIC onboarding mail).
+  - **GSP / ASP**: plain JSON to the GSP's address with its own headers
+    and paths as settings - so changing GSP is a settings change; a GSP
+    that works differently is one small subclass in the `PROVIDERS`
+    registry.
+  - Tested against a simulated NIC server (a real RSA / AES round trip)
+    and a fake GSP. **Not run against the live sandbox** - no sandbox
+    login was available. HTTP is always mocked in pytest.
+- **Logins are stored encrypted** (`app/einvoice/vault.py`, Fernet) with
+  `EINVOICE_SECRET_KEY` from the environment, or a key derived from
+  `SECRET_KEY`. Changing the key makes saved logins unreadable - the
+  client re-enters them; nothing else is lost. Secrets are never shown
+  again; leaving one blank keeps it.
+- **Every government call goes through `services.call`**: logs in when
+  the session has expired, retries once on an expired token, and writes a
+  `gov_api_calls` row (action, our request id, success or the error code
+  and message, the plain-language line, time taken) plus an audit entry
+  - committed even when the call fails. `errors.py` turns IRP messages
+  into a pointer to what to fix (customer GSTIN, PIN code, HSN, login...)
+  by words in the message, never by guessing what a code means; the
+  original code and message are always shown too. The one code used is
+  2150 (duplicate IRN): the app fetches the existing IRN instead of
+  failing, which also covers a retry after a timeout.
+- **IRN on the document**: IRN, Ack No / date (Indian time) and the
+  signed QR string are stored; the QR is drawn at view time (segno) on
+  the invoice / note page, the PDF and the admin console. **Cancel within
+  `IRN_CANCEL_HOURS`** (24) with the IRP's reason codes and a remark -
+  through the API or recorded as done on the portal - then the document
+  is voided with the same reason. Not while an e-way bill on it is
+  active. After 24 hours the page says to issue a credit note and links
+  to it. A plain void is refused while the IRN is active.
+- **LUT export numbering**: `EXP-LUT/2026-27/0001` is 20 characters and
+  the IRP takes 16, so with `einvoice` on, LUT exports start an `EXL`
+  series (`EXL/2026-27/0001`). Numbers already issued are untouched;
+  clients without the flag keep `EXP-LUT`.
+- **e-Way bills (`app/einvoice/eway.py`)** for invoices (including a
+  branch's delivery-challan invoice), delivery challans (job work,
+  approval, exhibition...) and stock transfers (valued at cost, to the
+  client's own GSTIN) worth more than `EWAY_BILL_VALUE_THRESHOLD`
+  (Rs. 50,000, Rule 138(1)). Part A comes from the document (both
+  addresses editable - ship-to, dispatch-from, exports); Part B is mode,
+  distance, vehicle or transporter ID, and the LR / RR / AWB number for
+  rail, air or ship. Then: **download the JSON** for the portal's bulk
+  tool and record the EWB number, or **generate** through the provider -
+  from the IRN when the invoice has one (IRP "EWB by IRN"), standalone
+  otherwise. **Validity** follows Rule 138(10): one day per 200 km (20 km
+  for over-dimensional cargo), each day ending at midnight Indian time,
+  starting once Part B is in; a Part-A-only bill says it isn't valid for
+  movement yet. **Vehicle update** (with reason) and **cancel** within
+  `EWAY_BILL_CANCEL_HOURS` (24), through the API or recorded as done on
+  the portal. Never deleted.
+- Tenant isolation: logins, call log and e-way bills are per client -
+  guessing another client's ids gives 404 and changes nothing
+  (`tests/test_phase8_einvoice.py`).
+
 ## Roadmap
 
 - **Platform build (ARFA general-purpose POS), phase by phase.**
@@ -1426,9 +1520,28 @@ Five new flags, all off by default; with them off nothing changes (routes
     daily summary, dashboard, GSTR-3B set-off, GSTR-1 B2CL and HSN
     B2B/B2C, purchase/expense registers, Tally XML, filing tracker,
     monthly pack.
+  - Phase 8: e-invoice (applicability, INV-01 JSON + validator, offline
+    upload path, NIC / GSP providers with encrypted logins, IRN + QR,
+    cancel within 24 h) and e-way bills (invoices, challans, transfers;
+    JSON, API by IRN or standalone, vehicle update, cancel, validity).
 
-  Next, in order: 8 e-invoice/e-way bill (only with real credentials; e-way
-  bills for transfers), 9 business-type modules, 10 platform polish.
+  Next, in order: 9 business-type modules, 10 platform polish.
+
+  Phase 8 limits:
+  - The NIC and GSP adapters follow the published protocol but have only
+    been run against simulated servers - the first real sandbox login
+    should be tried with "Test login" before going live.
+  - Counter (POS) bills to a registered buyer are not e-invoiced - B2B
+    sales have to go through Invoices.
+  - SEZ supplies (SEZWP / SEZWOP), deemed exports, export shipping
+    details (port, shipping bill) and the buyer's country code aren't
+    captured; ship-to / dispatch-from on the e-invoice itself aren't sent
+    (the e-way bill has both).
+  - No Part-B update through the API for bills recorded from the portal
+    unless a login is saved; no e-way bill extension, consolidated EWB or
+    multi-vehicle movement (do those on the portal).
+  - The bulk e-way bill JSON uses the portal tool's format version
+    1.0.0621 (`eway.BULK_VERSION`) - update it if the portal asks.
 
   Phase 7 limits:
   - Purchases in COGS are dated by when the stock arrived in the ledger,
@@ -1500,10 +1613,7 @@ Five new flags, all off by default; with them off nothing changes (routes
   - **Bulk GST export**: Super Admin picks a month and any number of
     Regular-scheme clients with a GSTIN on file, downloads one ZIP with
     a GSTR-1 and GSTR-3B workbook per client.
-  - **e-Invoice IRN/QR hook**: `Invoice.irn`/`irn_ack_number`/
-    `irn_ack_date`/`qr_code_data` columns exist and the invoice view/PDF
-    already render them when set - but nothing populates them. This is
-    deliberately just the extension point: a real integration needs NIC
-    IRP (government e-invoice portal) credentials this deployment doesn't
-    have, so there's no fake "generate e-Invoice" button pretending to
-    call an API that isn't there.
+  - **e-Invoice**: since Phase 8 the IRN columns are filled - by the
+    client's own NIC / GSP login, or by recording what the IRP's offline
+    tool returned. Without a login there is still no "generate" button:
+    nothing pretends to call an API it can't reach.

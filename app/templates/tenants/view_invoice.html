@@ -60,8 +60,10 @@
 {% if invoice.irn %}
 <div class="card" style="margin-top:20px;">
   <h2 style="margin-top:0;">e-Invoice</h2>
-  <p><strong>IRN:</strong> {{ invoice.irn }}</p>
-  {% if invoice.irn_ack_number %}<p><strong>Ack No:</strong> {{ invoice.irn_ack_number }}{% if invoice.irn_ack_date %} &middot; {{ invoice.irn_ack_date.strftime('%d %b %Y %H:%M') }}{% endif %}</p>{% endif %}
+  <p style="word-break:break-all;"><strong>IRN:</strong> {{ invoice.irn }}</p>
+  {% if invoice.irn_ack_number %}<p><strong>Ack No:</strong> {{ invoice.irn_ack_number }}{% if invoice.irn_ack_date %} &middot; {{ invoice.irn_ack_date|ist }}{% endif %}</p>{% endif %}
+  {% if invoice.irn_cancelled_at %}<p><span class="tag tag-warn">IRN cancelled {{ invoice.irn_cancelled_at|ist }}</span> {{ invoice.irn_cancel_reason }}</p>{% endif %}
+  {% set qr = irn_qr(invoice) %}{% if qr %}<img src="{{ qr }}" alt="e-Invoice QR code" style="width:140px; height:140px;">{% endif %}
 </div>
 {% endif %}
 

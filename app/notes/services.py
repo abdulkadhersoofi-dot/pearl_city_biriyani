@@ -9,6 +9,7 @@ from app.models.invoice_series import DocumentType
 from app.models.mixins import utcnow
 from app.models.note import CreditDebitNote, NoteLine, NoteStatus
 from app.models.tenant import RegistrationType, Tenant
+from app.utils import gst_config
 from app.utils.financial_year import financial_year_for
 from app.utils.gst import compute_invoice_totals, compute_line
 from app.utils.numbering import allocate_number, get_or_create_series
@@ -127,6 +128,9 @@ def void_note(note: CreditDebitNote, voided_by, reason: str) -> None:
         raise NoteValidationError("Note is already void.")
     if not reason or not reason.strip():
         raise NoteValidationError("A reason is required to void a note.")
+    if note.irn and not note.irn_cancelled_at:
+        raise NoteValidationError(f"This note has an IRN on the IRP - cancel the IRN first (allowed within {gst_config.IRN_CANCEL_HOURS} hours "
+                                  "of generating it).")
     note.status = NoteStatus.VOID
     note.voided_by_id = voided_by.id
     note.void_reason = reason.strip()

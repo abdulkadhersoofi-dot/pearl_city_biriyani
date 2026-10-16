@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}e-Invoice settings - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>e-Invoice &amp; e-way bill settings</h1>
+    <p class="text-muted mt-0">Per GSTIN: the address the IRP needs, and - if you want the app to talk to the IRP for you - who connects you and their login. Without a login everything still works through JSON download and upload on the portal.</p>
+  </div>
+</div>
+{% include "einvoice/_tabs.html" %}
+{% if has_feature('einvoice') and not in_scope %}
+<p class="flash flash-warning">Your turnover (AATO in Settings) is not above the e-invoicing limit, so no document needs an IRN yet. Set your AATO in Settings if it is.</p>
+{% endif %}
+{% for g in gstins %}
+{% set cred = creds[g.id] %}
+<div class="card" style="margin-bottom:16px;">
+  <h2 class="mt-0">{{ g.gstin }} <small class="text-muted">{{ g.state_name }}</small></h2>
+  <form method="post" class="form-grid">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="gstin_id" value="{{ g.id }}">
+    <label class="field"><span class="field-label">Address</span><input type="text" name="registered_address" value="{{ g.registered_address or '' }}" class="field-input" maxlength="200"></label>
+    <label class="field"><span class="field-label">City / place</span><input type="text" name="city" value="{{ g.city or '' }}" class="field-input" maxlength="100"></label>
+    <label class="field"><span class="field-label">PIN code</span><input type="text" name="pincode" value="{{ g.pincode or '' }}" class="field-input" inputmode="numeric" maxlength="6"></label>
+    <div class="field"><span class="field-label">&nbsp;</span><button name="action" value="address" class="btn btn-secondary">Save address</button></div>
+  </form>
+
+  <h3>Connection to the IRP</h3>
+  {% if cred %}
+  <p>Connected through <strong>{{ providers[cred.provider].label }}</strong> as <strong>{{ cred.username }}</strong>{% if cred.token_expiry %} &middot; <span class="text-muted">logged in until {{ cred.token_expiry|ist }}</span>{% endif %}.</p>
+  <form method="post" class="row" style="gap:8px;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="gstin_id" value="{{ g.id }}">
+    <button name="action" value="test" class="btn btn-secondary">Test login</button>
+    <button name="action" value="remove" class="btn btn-quiet" onclick="return confirm('Remove the saved login?');">Remove login</button>
+  </form>
+  {% else %}
+  <p class="text-muted">No login saved - use the JSON downloads and record the IRN / e-way bill number you get back.</p>
+  {% endif %}
+  <details style="margin-top:10px;" {% if not cred %}open{% endif %}>
+    <summary>{{ 'Change' if cred else 'Add' }} login</summary>
+    <p class="field-help">Pick one. Most businesses use a GSP (the company that sells you e-invoice access); NIC direct needs NIC to whitelist this server. Try the sandbox first with NIC's test login.</p>
+    {% for key, prov in providers.items() %}
+    <details class="card" style="margin-top:10px;" {% if cred and cred.provider == key %}open{% endif %}>
+    <summary><strong>{{ prov.label }}</strong></summary>
+    <form method="post" style="margin-top:10px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="gstin_id" value="{{ g.id }}">
+      <input type="hidden" name="provider" value="{{ key }}">
+      <div class="form-grid">
+      {% for f in prov.fields %}
+        <label class="field"><span class="field-label">{{ f.label }}{% if not f.required %} <small class="text-muted">(optional)</small>{% endif %}</span>
+          {% if f.multiline %}<textarea name="{{ f.name }}" rows="3" class="field-input" {% if f.secret and cred and cred.provider == key %}placeholder="Saved - leave blank to keep"{% endif %}></textarea>
+          {% else %}<input type="{{ 'password' if f.secret else 'text' }}" name="{{ f.name }}" class="field-input" autocomplete="off"
+                 value="{{ cred.username if f.name == 'username' and cred and cred.provider == key else '' }}"
+                 {% if f.secret and cred and cred.provider == key %}placeholder="Saved - leave blank to keep"{% endif %}>{% endif %}
+          {% if f.help %}<p class="field-help">{{ f.help }}</p>{% endif %}</label>
+      {% endfor %}
+      </div>
+      <button name="action" value="login" class="btn btn-primary">Save this login</button>
+    </form>
+    </details>
+    {% endfor %}
+    <p class="field-help">Passwords, keys and secrets are stored encrypted and never shown again.</p>
+  </details>
+</div>
+{% else %}
+<div class="card"><p class="empty-state">No registered GSTIN on file - e-invoices and e-way bills need one.</p></div>
+{% endfor %}
+{% endblock %}

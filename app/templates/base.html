@@ -73,6 +73,8 @@
           {% elif has_feature('payables') %}<a href="{{ url_for('accounts.payables_index') }}" class="{{ 'active' if request.blueprint == 'accounts' }}">Accounts</a>
           {% elif has_feature('cash_bank_book') %}<a href="{{ url_for('accounts.book', book='cash') }}" class="{{ 'active' if request.blueprint == 'accounts' }}">Accounts</a>{% endif %}
           <a href="{{ url_for('branches.list_branches') }}" class="{{ 'active' if request.blueprint == 'branches' }}">Branches</a>
+          {% if has_feature('einvoice') %}<a href="{{ url_for('einvoice.index') }}" class="{{ 'active' if request.blueprint == 'einvoice' }}">e-Invoice</a>
+          {% elif has_feature('eway_bill') %}<a href="{{ url_for('einvoice.eway_bills') }}" class="{{ 'active' if request.blueprint == 'einvoice' }}">e-Way bills</a>{% endif %}
           <a href="{{ url_for('reports.index') }}" class="{{ 'active' if request.blueprint == 'reports' }}">Reports</a>
           <a href="{{ url_for('live.dashboard') }}" class="{{ 'active' if request.blueprint == 'live' }}">Live</a>
           <a href="{{ url_for('settings.index') }}" class="{{ 'active' if request.blueprint == 'settings' }}">Settings</a>

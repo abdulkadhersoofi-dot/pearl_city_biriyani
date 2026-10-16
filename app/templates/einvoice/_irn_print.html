@@ -1,0 +1,11 @@
+{# The IRN block on a printed invoice / note: doc = the document. #}
+{% if doc.irn %}
+<div style="margin-top:12px; display:flex; justify-content:space-between; align-items:flex-start;">
+  <div style="font-size:8.5pt; word-break:break-all; padding-right:10px;">
+    <strong>IRN:</strong> {{ doc.irn }}<br>
+    {% if doc.irn_ack_number %}<strong>Ack No:</strong> {{ doc.irn_ack_number }}{% if doc.irn_ack_date %} - <strong>Ack Date:</strong> {{ doc.irn_ack_date|ist }}{% endif %}{% endif %}
+    {% if doc.irn_cancelled_at %}<br><strong>IRN CANCELLED</strong> {{ doc.irn_cancelled_at|ist }}{% endif %}
+  </div>
+  {% set qr = irn_qr(doc) %}{% if qr %}<img src="{{ qr }}" alt="e-Invoice QR code" style="width:90px; height:90px;">{% endif %}
+</div>
+{% endif %}

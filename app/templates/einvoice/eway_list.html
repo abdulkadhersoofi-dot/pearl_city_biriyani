@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}e-Way bills - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>e-Way bills</h1>
+    <p class="text-muted mt-0">Make one from an invoice, delivery challan or stock transfer worth more than the e-way bill limit - the button is on the document.</p>
+  </div>
+  <form method="get" class="row" style="gap:8px; align-items:flex-end;">
+    <label class="field" style="margin:0;"><span class="field-label">Status</span>
+      <select name="status" class="field-input"><option value="">All</option>{% for s in ('draft', 'generated', 'cancelled') %}<option value="{{ s }}" {{ 'selected' if s == status }}>{{ s|title }}</option>{% endfor %}</select></label>
+    <button class="btn btn-secondary">Show</button>
+  </form>
+</div>
+{% include "einvoice/_tabs.html" %}
+{% if bills|selectattr('status.value', 'equalto', 'draft')|list %}
+<p><a class="btn btn-secondary" href="{{ url_for('einvoice.eway_drafts_json') }}">Download all complete drafts as JSON (bulk generation tool)</a></p>
+{% endif %}
+<div class="table-wrap card">
+  <table>
+    <thead><tr><th>EWB No</th><th>Document</th><th>To</th><th class="num">Value</th><th>Vehicle</th><th>Valid until</th><th>Status</th></tr></thead>
+    <tbody>
+    {% for b in bills %}
+      <tr>
+        <td><a href="{{ url_for('einvoice.eway_view', ewb_id=b.id) }}">{{ b.ewb_no or 'Draft' }}</a></td>
+        <td><a href="{{ source_url(b.source_type, b.source_id) }}">{{ b.document_number }}</a><br><small class="text-muted">{{ b.document_date.strftime('%d %b %Y') }}</small></td>
+        <td>{{ b.to_party.name }}<br><small class="text-muted">{{ b.to_party.place }} {{ b.to_party.pincode }}</small></td>
+        <td class="num">Rs. {{ '%.2f'|format(b.total_invoice_value) }}</td>
+        <td>{{ b.vehicle_no or '-' }}</td>
+        <td>{% if b.valid_upto %}{{ b.valid_upto|ist }}{% if b.status.value == 'generated' and b.valid_upto < now %} <span class="tag tag-warn">Expired</span>{% endif %}{% else %}-{% endif %}</td>
+        <td>{{ b.status.value|title }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="7" class="empty-state">No e-way bills yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

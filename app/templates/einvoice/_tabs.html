@@ -1,0 +1,6 @@
+<div class="row" style="gap:6px; margin-bottom:16px; flex-wrap:wrap;">
+  {% if has_feature('einvoice') %}<a href="{{ url_for('einvoice.index') }}" class="btn {{ 'btn-primary' if request.endpoint == 'einvoice.index' else 'btn-secondary' }}">IRN desk</a>{% endif %}
+  {% if has_feature('eway_bill') %}<a href="{{ url_for('einvoice.eway_bills') }}" class="btn {{ 'btn-primary' if request.endpoint == 'einvoice.eway_bills' else 'btn-secondary' }}">e-Way bills</a>{% endif %}
+  <a href="{{ url_for('einvoice.log') }}" class="btn {{ 'btn-primary' if request.endpoint == 'einvoice.log' else 'btn-secondary' }}">Call log</a>
+  <a href="{{ url_for('einvoice.settings') }}" class="btn {{ 'btn-primary' if request.endpoint == 'einvoice.settings' else 'btn-secondary' }}">Settings</a>
+</div>

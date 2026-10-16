@@ -159,8 +159,20 @@ FEATURES = {
             "count - the Z-report shows expected vs actual. A closed day's bills can't be voided.",
             available=True,
         ),
-        Feature("einvoice", "e-Invoice", "Generate IRN and QR for B2B invoices."),
-        Feature("eway_bill", "e-Way Bill", "e-Way bills for goods movement."),
+        Feature(
+            "einvoice",
+            "e-Invoice (IRN)",
+            "IRN and signed QR for B2B and export invoices and their credit / debit notes - through your GSP or "
+            "NIC, or as JSON for the IRP's bulk-upload tool. Only applies once turnover crosses Rs. 5 crore.",
+            available=True,
+        ),
+        Feature(
+            "eway_bill",
+            "e-Way Bill",
+            "e-way bills for goods moving above Rs. 50,000 - invoices, delivery challans and stock transfers - "
+            "through your GSP or NIC, or as JSON for bulk upload on the portal. Vehicle updates and cancellation.",
+            available=True,
+        ),
         Feature("loyalty", "Loyalty points", "Points on purchases, redeemable at billing."),
     ]
 }

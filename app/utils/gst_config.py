@@ -119,3 +119,35 @@ B2CL_INVOICE_VALUE_THRESHOLD = Decimal("100000")
 # by Notification No. 82/2020-Central Tax (effective 01.01.2021).
 GSTR1_DUE_DAY = 11
 GSTR3B_DUE_DAY = 20
+
+# --- e-Invoice (IRN) ----------------------------------------------------------
+# Mandatory for B2B supplies, exports and their credit / debit notes when
+# the aggregate annual turnover in any year from 2017-18 exceeds this.
+# Source: Notification No. 10/2023-Central Tax dated 10.05.2023, effective
+# 01.08.2023 (amending Notification 13/2020-CT).
+EINVOICE_AATO_THRESHOLD = Decimal("50000000")  # Rs. 5 crore
+# Taxpayers with AATO at or above this can't report an invoice to the IRP
+# more than EINVOICE_REPORTING_DAYS after its date. Source: GSTN advisory
+# of 05.11.2024, effective 01.04.2025 (earlier, from 01.11.2023, only
+# AATO >= Rs. 100 crore).
+EINVOICE_REPORTING_LIMIT_AATO = Decimal("100000000")  # Rs. 10 crore
+EINVOICE_REPORTING_DAYS = 30
+EINVOICE_WARN_DAYS_BEFORE_LIMIT = 5
+# An IRN can be cancelled on the IRP only within 24 hours of generation
+# (IRP rule; after that a credit note is issued instead).
+IRN_CANCEL_HOURS = 24
+
+# --- e-Way Bill -----------------------------------------------------------------
+# Needed to move goods worth more than this (consignment value, including
+# tax). Source: Rule 138(1), CGST Rules 2017 (Notification 12/2018-CT).
+# Some states set a different limit for movement within the state.
+EWAY_BILL_VALUE_THRESHOLD = Decimal("50000")
+# Validity, Rule 138(10): one day per this many km (or part); an
+# over-dimensional cargo (ODC) vehicle gets one day per 20 km.
+EWAY_BILL_KM_PER_DAY = 200
+EWAY_BILL_KM_PER_DAY_ODC = 20
+# Rule 138(9): an e-way bill can be cancelled within 24 hours.
+EWAY_BILL_CANCEL_HOURS = 24
+# The e-way bill system refuses a distance above this (EWB system
+# validation, NIC e-way bill API v1.03 - max 4000 km).
+EWAY_BILL_MAX_DISTANCE_KM = 4000

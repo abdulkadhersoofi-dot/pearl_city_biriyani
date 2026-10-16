@@ -90,16 +90,10 @@
 </div>
 {% endif %}
 
-{% if invoice.irn %}
-<div class="card" style="margin-top:20px;">
-  <h2 style="margin-top:0;">e-Invoice</h2>
-  <p><strong>IRN:</strong> {{ invoice.irn }}</p>
-  {% if invoice.irn_ack_number %}<p><strong>Ack No:</strong> {{ invoice.irn_ack_number }}{% if invoice.irn_ack_date %} &middot; {{ invoice.irn_ack_date.strftime('%d %b %Y %H:%M') }}{% endif %}</p>{% endif %}
-  {% if invoice.qr_code_data and invoice.qr_code_data.startswith('data:image') %}<img src="{{ invoice.qr_code_data }}" alt="e-Invoice QR code" style="width:140px; height:140px;">{% endif %}
-</div>
-{% endif %}
+{% with doc=invoice %}{% include "einvoice/_irn_panel.html" %}{% endwith %}
+{% with source=invoice %}{% include "einvoice/_eway_panel.html" %}{% endwith %}
 
-{% if invoice.status.value == 'issued' %}
+{% if invoice.status.value == 'issued' and not (invoice.irn and not invoice.irn_cancelled_at) %}
 <div class="card" style="margin-top:20px;">
   <h2 style="margin-top:0;">Void this invoice</h2>
   <p class="text-muted">Invoices are never deleted - voiding keeps it on record with the reason, for audit.</p>
