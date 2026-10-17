@@ -2027,3 +2027,11 @@ a.console-stat { text-decoration: none; }
 .audit-filter-actions { display: flex; gap: 8px; }
 .audit-table td { vertical-align: top; }
 .pager { display: flex; align-items: center; justify-content: center; gap: 14px; }
+
+/* Pairing a phone for the ARFA Counter app (counter app, stage 1). */
+.pair-show { max-width: 560px; }
+.pair-steps { margin: 0 0 8px; padding-left: 20px; line-height: 1.6; }
+.pair-steps code { display: inline-block; max-width: 100%; overflow-wrap: anywhere; }
+.pair-big { display: flex; gap: 14px; margin: 10px 0 12px; font: 800 3rem/1 var(--font-mono); letter-spacing: 0.12em; color: var(--color-primary-dark); }
+.pair-big span { padding: 12px 16px; border-radius: 16px; background: var(--color-primary-soft); }
+@media (max-width: 640px) { .pair-big { font-size: 2.2rem; } }

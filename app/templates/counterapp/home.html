@@ -1,0 +1,48 @@
+{% extends "counterapp/_layout.html" %}
+{% block title %}{{ current_user.name }} - ARFA Counter{% endblock %}
+{% block body %}
+{# The app's home (counter app, stage 1): who this counter is, whether the
+   phone is online, and one big tile per job. The tiles open the counter
+   screens this branch already has; later stages give each its own
+   phone-sized screen. #}
+<div class="capp-shell" x-data="counterHome({{ (device_id or 'null')|tojson }})" x-init="start()">
+  <header class="capp-top">
+    <div class="capp-who">
+      <span class="capp-avatar" aria-hidden="true">{{ current_user.name[:1]|upper }}</span>
+      <div>
+        <p class="capp-business">{{ tenant.display_name }}</p>
+        <h1 class="capp-branch">{{ current_user.name }}</h1>
+      </div>
+    </div>
+    <span class="capp-status" :class="online ? 'is-on' : 'is-off'" role="status">
+      <span class="dot" aria-hidden="true"></span><span x-text="online ? 'Online' : 'Offline'">Online</span></span>
+  </header>
+
+  <main class="capp-main">
+    <p class="capp-hello">{{ 'Good morning' if now_hour < 12 else ('Good afternoon' if now_hour < 17 else 'Good evening') }}! What's next?</p>
+    <nav class="capp-tiles" aria-label="Counter">
+      <a href="{{ url_for('pos.terminal') }}" class="capp-tile tile-bill">
+        <span class="capp-tile-icon">{{ icon('receipt-text') }}</span>
+        <strong>Bill</strong><small>Ring up a sale</small></a>
+      {% if tables_on %}
+      <a href="{{ url_for('restaurant.tables') }}" class="capp-tile tile-kot">
+        <span class="capp-tile-icon">{{ icon('utensils-crossed') }}</span>
+        <strong>Tables &amp; KOT</strong><small>Orders to the kitchen</small></a>
+      {% endif %}
+      {% if can('view_reports') %}
+      <a href="{{ url_for('pos.day_book') }}" class="capp-tile tile-today">
+        <span class="capp-tile-icon">{{ icon('calendar-clock') }}</span>
+        <strong>Today</strong><small>Bills and totals</small></a>
+      {% endif %}
+    </nav>
+    <p class="capp-offline-note" x-show="!online" x-cloak>
+      {% if offline_on %}No internet - billing still works; bills go to the books when you're back online.
+      {% else %}No internet - billing needs the connection here (offline billing is off for this business).{% endif %}</p>
+  </main>
+
+  <footer class="capp-foot">
+    <span class="text-muted" x-text="device ? ('This phone: ' + device.name + ' · ' + device.code) : ''"></span>
+    <button type="button" class="btn btn-quiet btn-sm" @click="unpair()">Unpair this phone</button>
+  </footer>
+</div>
+{% endblock %}

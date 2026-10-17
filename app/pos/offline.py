@@ -74,7 +74,7 @@ def register_device(tenant, user, name: str, platform: str = "web") -> tuple[Cou
     token = secrets.token_urlsafe(32)
     device = CounterDevice(tenant_id=tenant.id, user_id=user.id, code=code,
                            name=(name or "").strip()[:60] or f"Counter {code}",
-                           platform="android" if platform == "android" else "web", token_hash=_hash(token),
+                           platform=platform if platform in ("android", "app") else "web", token_hash=_hash(token),
                            last_seen_at=utcnow())
     db.session.add(device)
     db.session.flush()

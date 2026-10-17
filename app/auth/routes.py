@@ -16,6 +16,10 @@ from app.utils.audit import record_audit
 from app.utils.billing import advance_billing_cycle, auditor_access_status, tenant_access_status
 
 
+# Set on a phone paired with the ARFA Counter app (app/counterapp).
+APP_COOKIE = "arfa_app"
+
+
 def _recent_failed_logins(email: str, window_minutes: int) -> int:
     since = utcnow() - timedelta(minutes=window_minutes)
     recent = AuditLog.query.filter(
@@ -40,6 +44,12 @@ def _post_login_redirect(user: User):
 def _login_view(login_tenant=None):
     if current_user.is_authenticated:
         return _post_login_redirect(current_user)
+    # A phone paired with the ARFA Counter app signs itself back in from
+    # /app/ (its device secret) - send it there instead of asking for an
+    # email and password. ?web=1 still shows this form.
+    if (request.method == "GET" and request.cookies.get(APP_COOKIE) and not request.args.get("web")
+            and login_tenant is None):
+        return redirect(url_for("counterapp.index"))
 
     form = LoginForm()
     if form.validate_on_submit():

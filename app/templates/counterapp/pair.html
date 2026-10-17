@@ -1,0 +1,40 @@
+{% extends "counterapp/_layout.html" %}
+{% block title %}Pair this phone - ARFA Counter{% endblock %}
+{% block body_class %}capp-pair{% endblock %}
+{% block body %}
+{# Not signed in: a paired phone signs itself back in (its device secret
+   in this phone's storage); otherwise ask for the owner's 6-digit code. #}
+<main class="pair" x-data="pairScreen()" x-init="start()">
+  <div class="pair-hero" aria-hidden="true">
+    <img src="{{ url_for('static', filename='img/counter-icon.svg') }}" alt="" class="pair-logo">
+  </div>
+  <h1 class="pair-title">ARFA Counter</h1>
+
+  <section x-show="state === 'resuming'" class="pair-card" aria-live="polite">
+    <div class="pair-spinner" aria-hidden="true"></div>
+    <p class="m-0"><strong>Signing you in...</strong></p>
+  </section>
+
+  <section x-show="state === 'offline'" x-cloak class="pair-card" aria-live="polite">
+    <p class="m-0"><strong>No internet right now.</strong></p>
+    <p class="text-muted mt-6 mb-0">This phone is paired. Connect once to open the counter - after that, billing keeps
+      working without internet.</p>
+    <button type="button" class="btn btn-primary capp-btn mt-16" @click="start()">Try again</button>
+  </section>
+
+  <form x-show="state === 'code'" x-cloak class="pair-card" @submit.prevent="submit()" novalidate>
+    <p class="pair-lead">Ask the owner to open <strong>Branches</strong> on the website and tap <strong>Pair a phone</strong>
+      next to your counter. Type the 6-digit code they see.</p>
+    <label class="pair-code-label" for="pair-code">Pairing code</label>
+    <input id="pair-code" class="pair-code" x-model="code" inputmode="numeric" autocomplete="one-time-code"
+           maxlength="7" placeholder="000000" aria-describedby="pair-error" @input="code = code.replace(/\D/g, '').slice(0, 6)">
+    <label class="field mt-16"><span class="field-label">Name this phone <span class="text-muted">(optional)</span></span>
+      <input class="field-input" x-model="name" maxlength="60" placeholder="Front counter"></label>
+    <p id="pair-error" class="pair-error" x-show="error" x-text="error" role="alert"></p>
+    <button type="submit" class="btn btn-primary capp-btn mt-16" :disabled="code.length !== 6 || busy">
+      <span x-text="busy ? 'Pairing...' : 'Pair this phone'">Pair this phone</span></button>
+    <p class="pair-foot text-muted">Only the owner can pair a phone. Paired once, it signs itself in - no email or
+      password at the counter. <a href="{{ url_for('auth.login', web=1) }}">Sign in with email instead</a></p>
+  </form>
+</main>
+{% endblock %}

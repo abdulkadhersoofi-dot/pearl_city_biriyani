@@ -1,0 +1,13 @@
+{% extends "counterapp/_layout.html" %}
+{% block body %}
+<main class="pair">
+  <div class="pair-hero" aria-hidden="true"><img src="{{ url_for('static', filename='img/counter-icon.svg') }}" alt="" class="pair-logo"></div>
+  <h1 class="pair-title">ARFA Counter</h1>
+  <section class="pair-card">
+    <p class="m-0"><strong>This app is for a branch's counter.</strong></p>
+    <p class="text-muted mt-6">You're signed in as {{ current_user.name }} ({{ current_user.role_label }}). Pair a phone from
+      your website's Branches page, then open the app on that phone.</p>
+    <a href="{{ url_for('auth.logout') }}" class="btn btn-secondary capp-btn">Sign out</a>
+  </section>
+</main>
+{% endblock %}

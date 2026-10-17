@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Pair a phone - {{ firm_name }}{% endblock %}
+{% block content %}
+{# The code that signs a phone in as this branch (counter app, stage 1) -
+   shown this once; it works for a few minutes, one time. #}
+<div class="page-header">
+  <div>
+    <a href="{{ url_for('branches.list_branches') }}" class="back-link">{{ icon('chevron-right', 'icon-sm icon-flip') }}Branches</a>
+    <h1>Pair a phone with {{ branch.name }}</h1>
+    <p class="text-muted mt-0">The phone will bill as {{ branch.name }} - no email or password at the counter.</p>
+  </div>
+</div>
+<div class="card pair-show" x-data="{ left: {{ minutes * 60 }} }" x-init="setInterval(() => { if (left > 0) left-- }, 1000)">
+  <ol class="pair-steps">
+    <li>Install and open the <strong>ARFA Counter</strong> app on the phone (or open <code>{{ url_for('counterapp.index', _external=True) }}</code> in its browser).</li>
+    <li>Type this code:</li>
+  </ol>
+  <p class="pair-big" aria-label="Pairing code {{ code|join(' ') }}"><span>{{ code[:3] }}</span><span>{{ code[3:] }}</span></p>
+  <p class="text-muted m-0" aria-live="polite" x-show="left > 0">Works once, for the next <strong x-text="Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0')">{{ minutes }}:00</strong>.</p>
+  <p class="flash flash-warning m-0" x-show="left === 0" x-cloak>This code has expired - make a new one.</p>
+  <div class="row mt-16">
+    <form method="post" action="{{ url_for('branches.pair_phone', user_id=branch.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn btn-secondary">New code</button>
+    </form>
+    <a href="{{ url_for('branches.list_branches', _anchor='sec-devices') }}" class="btn btn-primary">Done</a>
+  </div>
+</div>
+{% endblock %}

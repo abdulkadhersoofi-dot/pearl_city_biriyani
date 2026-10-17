@@ -28,6 +28,11 @@
           <a href="{{ url_for('branches.branch_permissions', user_id=u.id) }}">Permissions</a>
           <a href="{{ url_for('branches.reset_branch_password', user_id=u.id) }}">Reset password</a>
           {% if u.is_active %}
+          {# The ARFA Counter app: a one-time code signs a phone in as this branch. #}
+          <form method="post" action="{{ url_for('branches.pair_phone', user_id=u.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-secondary btn-sm">{{ icon('smartphone', 'icon-sm') }}Pair a phone</button>
+          </form>
           <form method="post" action="{{ url_for('branches.deactivate_branch', user_id=u.id) }}"
                 onsubmit="return confirm('Deactivate {{ u.name }}? They will no longer be able to sign in.');">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -72,4 +77,41 @@
     </tbody>
   </table>
 </div>
+
+{# Phones and tablets that bill as a branch (the ARFA Counter app), and any
+   browser counter registered for offline billing. #}
+<section class="card mt-20" id="sec-devices">
+  <div class="card-head">
+    <div><h2 class="m-0">Counter phones &amp; tablets</h2>
+      <p class="text-muted m-0">Each one bills as its branch, in its own offline series. Switch one off and it stops at once - its bills stay.</p></div>
+  </div>
+  {% if devices %}
+  <div class="table-wrap">
+    <table class="console-table">
+      <thead><tr><th>Device</th><th>Branch</th><th>Kind</th><th>Last seen</th><th>Status</th><th><span class="sr-only">Switch</span></th></tr></thead>
+      <tbody>
+        {% for d in devices %}
+        <tr>
+          <td><strong>{{ d.name }}</strong><small class="block text-muted">Series {{ d.code }}</small></td>
+          <td>{{ d.user.name }}</td>
+          <td>{{ {'android': 'ARFA Counter app', 'app': 'Counter app (browser)'}.get(d.platform, 'Browser counter') }}</td>
+          <td>{{ d.last_seen_at|ist('%d %b %H:%M') if d.last_seen_at else '-' }}</td>
+          <td>{% if d.is_active %}<span class="status-badge status-issued">On</span>{% else %}<span class="status-badge status-draft">Off</span>{% endif %}</td>
+          <td class="num">
+            <form method="post" action="{{ url_for('branches.device_active', device_id=d.id) }}"
+                  {% if d.is_active %}onsubmit="return confirm('Switch off {{ d.name }}? It stops billing for {{ d.user.name }} straight away.');"{% endif %}>
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="active" value="{{ '0' if d.is_active else '1' }}">
+              <button class="btn btn-quiet btn-sm">{{ 'Switch off' if d.is_active else 'Switch on' }}</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="text-muted m-0">None yet. Tap <strong>Pair a phone</strong> next to a branch, then type the code in the ARFA Counter app on that phone.</p>
+  {% endif %}
+</section>
 {% endblock %}

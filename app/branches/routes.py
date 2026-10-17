@@ -34,9 +34,51 @@ def list_branches():
     tenant = current_user.tenant
     branches = tenant_query(User).filter_by(role=UserRole.STAFF).order_by(User.name).all()
     stock_by_branch = {b.id: branch_stock_status(current_user.tenant_id, b.id) for b in branches}
+    from app.counterapp.pairing import app_devices
+
     return render_template("branches/list.html", branches=branches, stock_by_branch=stock_by_branch,
                            meters=[limit_meter(tenant, "branches"), limit_meter(tenant, "logins")],
-                           roles=BRANCH_ROLES)
+                           roles=BRANCH_ROLES, devices=app_devices(tenant))
+
+
+# --- the ARFA Counter app: pairing a phone (counter app, stage 1) ----------------------------
+
+@branches_bp.route("/<int:user_id>/pair", methods=["POST"])
+@roles_required(UserRole.CLIENT_ADMIN)
+def pair_phone(user_id):
+    """A one-time code that signs a phone in as this branch. Shown once,
+    here, never stored in the clear."""
+    from app.counterapp import pairing
+
+    branch = User.query.get_or_404(user_id)
+    assert_owns(branch)
+    try:
+        record, code = pairing.new_pairing(current_user.tenant, branch, current_user)
+    except pairing.PairingError as exc:
+        db.session.rollback()
+        flash(exc.message, "error")
+        return redirect(url_for("branches.list_branches"))
+    record_audit(current_user, "counter_pairing_code_made", tenant_id=current_user.tenant_id, entity_type="user",
+                 entity_id=branch.id, details={"branch": branch.name})
+    db.session.commit()
+    return render_template("branches/pair_code.html", branch=branch, code=code, expires_at=record.expires_at,
+                           minutes=pairing.PAIRING_MINUTES)
+
+
+@branches_bp.route("/devices/<int:device_id>/active", methods=["POST"])
+@roles_required(UserRole.CLIENT_ADMIN)
+def device_active(device_id):
+    from app.models.platform import CounterDevice
+
+    device = tenant_query(CounterDevice).filter_by(id=device_id).first_or_404()
+    device.is_active = request.form.get("active") == "1"
+    record_audit(current_user, "counter_device_on" if device.is_active else "counter_device_off",
+                 tenant_id=current_user.tenant_id, entity_type="counter_device", entity_id=device.id,
+                 details={"code": device.code, "name": device.name})
+    db.session.commit()
+    flash(f"{device.name} ({device.code}) is {'on again' if device.is_active else 'switched off - it stops billing now'}.",
+          "success")
+    return redirect(url_for("branches.list_branches", _anchor="sec-devices"))
 
 
 @branches_bp.route("/new", methods=["GET", "POST"])

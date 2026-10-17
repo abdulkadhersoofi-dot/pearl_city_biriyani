@@ -2631,6 +2631,42 @@ Packages list now says who it's for.
 - Fixed on the way: the audit filter by person uses the log's
   `actor_user_id` column (caught by its test before it shipped).
 
+### Counter app - stage 1 (pairing and phone sign-in)
+
+The ARFA Counter app is a small phone app for a branch's counter: billing,
+and tables & KOT where the business has them. It opens the website's own
+phone screens (`/app/`) inside the Android shell, so billing rules, GST
+and numbering are the website's. Stage 1 is how a phone gets in.
+
+- **The owner pairs a phone** - Branches > **Pair a phone** next to a
+  branch login shows a 6-digit code, good once for 15 minutes. A new code
+  for that branch retires the old one. Only a Client Admin makes codes,
+  and only for an active branch login of their own business. The code is
+  kept only as a hash.
+- **The phone types the code once** - `/app/` shows the pairing screen.
+  With the right code the phone becomes one of the business's counter
+  devices: the same record offline billing numbers its bills from
+  (series O1, O2...). It gets its own secret and is signed in as that
+  branch. Nobody at the counter types the branch's email or password.
+- **It signs itself back in** - when the session ends (idle sign-out, the
+  app closed for long), the app sends its secret to `/app/resume` and is
+  back on the home screen. A paired phone that opens the sign-in page
+  goes to the app instead (`?web=1` still shows the email form).
+- **The owner stays in charge** - the Branches page lists "Counter phones
+  & tablets" (name, series, branch, kind, last seen, on/off). Switching
+  one off stops it at once; so does pausing the branch login or the
+  business. "Unpair this phone" on the phone does the same from its end.
+  Bills it made stay.
+- **Wrong codes and secrets** are counted per network address, as wrong
+  passwords are. After 10 in 15 minutes even the right code waits.
+- **The home screen** - business, branch, online / offline, and big
+  tiles: Bill, Tables & KOT (if on) and Today (if the branch may see
+  reports). For now the tiles open the counter screens the branch already
+  has; stages 2-4 give each one its own phone screen.
+- Audit log: `counter_pairing_code_made`, `counter_device_paired`,
+  `counter_device_on` / `_off`, `counter_device_unpaired`, and
+  `device_pair_failed` for refusals.
+
 ### Console cleanup - how to run it (hand-over)
 
 For the Ultra Admin; an Auditor sees the same pages for their own clients,
@@ -2814,6 +2850,21 @@ before packages.
     Name & price) and a compare-packages table.
   - Stage 5 (done): auditor page in tabs, onboarding in three steps,
     audit-log filters and pages, walk-through, hand-over.
+
+- **ARFA Counter app** (plan approved with the recommendations: the
+  website's own phone screens, kept for offline use, inside the existing
+  Android shell; the owner pairs a phone with a code, then cashier PINs;
+  KOT works offline; a kitchen screen while online; branch logins only),
+  in five stages:
+  - Stage 1 (done): pairing codes and phone sign-in, the app's home screen,
+    "Counter phones & tablets" on the Branches page.
+  - Stage 2: the Bill tab, phone-sized, online and offline.
+  - Stage 3: Tables & KOT on the phone, KOTs kept offline and sent when
+    back online.
+  - Stage 4: Held bills, Today, cashier PIN switch, the kitchen screen.
+  - Stage 5: the Android shell as "ARFA Counter" (name, icon, pairing
+    screen, Counter / Waiter / Kitchen mode), CI build, walk-through,
+    hand-over.
 
   Interface redesign limits:
   - Stage 3 changed pages through shared CSS and two small scripts, not

@@ -580,6 +580,17 @@ this list is just the index.
   action name) / `from` / `to` (IST days), `AUDIT_PER_PAGE` = 50. README
   has "Console cleanup - how to run it".
 
+- **Counter app, stage 1 (pairing).** Blueprint `app/counterapp`
+  (`/app/`). `pairing.py`: `DevicePairing` (migration a4d9e2f71c58; the
+  code is a sha256 hash, 15 minutes, one use) -> `pair()` calls
+  `pos.offline.register_device`, so the paired phone *is* its offline
+  `CounterDevice` (series O1...). `resume()` signs a device back in by its
+  secret. The app keeps the device under localStorage `arfa.app.device`
+  and the POS offline key `arfa.device.<tenant>.<user>`. The cookie
+  `arfa_app` sends `/auth/login` (without `?web=1`) to `/app/`. Branches
+  page: `branches.pair_phone`, `branches.device_active`, `#sec-devices`.
+  Plan for stages 2-5: the "ARFA Counter app" Roadmap entry in the README.
+
 ## 5. Chronological development history (this session)
 
 This is the part README.md doesn't capture — the actual sequence of

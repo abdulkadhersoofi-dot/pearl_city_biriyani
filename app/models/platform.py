@@ -4,6 +4,8 @@
                   with its own bill series (prefix O1, O2, ...) for bills
                   made while offline; OfflineBill - each bill a device
                   queued, kept until it is on the books
+                  DevicePairing - a one-time code that signs a phone in
+                  as a branch login (the ARFA Counter app)
   cashier_pin     Cashier - people sharing one branch counter, each with
                   a PIN, so the bill records who rang it up
   platform        PlatformProfile - the firm's own billing details (one
@@ -35,7 +37,7 @@ class CounterDevice(db.Model, TenantScopedMixin, TimestampMixin):
     # numbers ("O1/2026-27/0001") stay within GST's 16 characters.
     code = db.Column(db.String(4), nullable=False)
     name = db.Column(db.String(60), nullable=False)
-    platform = db.Column(db.String(10), nullable=False, default="web", server_default="web")  # web / android
+    platform = db.Column(db.String(10), nullable=False, default="web", server_default="web")  # web / android / app
     # SHA-256 of the device's secret - the secret itself only ever lives on
     # the device.
     token_hash = db.Column(db.String(64), nullable=False)
@@ -44,6 +46,28 @@ class CounterDevice(db.Model, TenantScopedMixin, TimestampMixin):
     last_synced_at = db.Column(db.DateTime(timezone=True))
 
     user = db.relationship("User")
+
+
+class DevicePairing(db.Model, TenantScopedMixin, TimestampMixin):
+    """A one-time code the Client Admin gives a branch login's phone or
+    tablet so the ARFA Counter app can sign in without the branch's email
+    and password (counter app, stage 1). Six digits, valid for 15 minutes,
+    used once; only its hash is kept. Pairing makes the device a
+    CounterDevice of that login."""
+
+    __tablename__ = "device_pairings"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id", name="fk_device_pairings_user"), nullable=False,
+                        index=True)
+    code_hash = db.Column(db.String(64), nullable=False, index=True)
+    expires_at = db.Column(db.DateTime(timezone=True), nullable=False)
+    used_at = db.Column(db.DateTime(timezone=True))
+    created_by_id = db.Column(db.Integer, db.ForeignKey("users.id", name="fk_device_pairings_created_by"))
+    device_id = db.Column(db.Integer, db.ForeignKey("counter_devices.id", name="fk_device_pairings_device"))
+
+    user = db.relationship("User", foreign_keys=[user_id])
+    device = db.relationship("CounterDevice")
 
 
 class OfflineBillStatus(str, enum.Enum):

@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  {# The ARFA Counter app's own frame (counter app): phone-sized, no side
+     menu - one job at a time, big targets. Shares the website's colours,
+     fonts and dark mode (app.css) and adds its own (counter_app.css). #}
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1f7a4d">
+  <title>{% block title %}ARFA Counter{% endblock %}</title>
+  {% include "_theme_boot.html" %}
+  <link rel="manifest" href="{{ url_for('counterapp.manifest') }}">
+  <link rel="icon" href="{{ url_for('static', filename='img/counter-icon.svg') }}">
+  <link rel="preload" href="{{ url_for('static', filename='fonts/figtree.woff2') }}" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/counter_app.css') }}">
+  <script src="{{ url_for('static', filename='js/counter_app.js') }}"></script>
+  <script defer src="{{ url_for('static', filename='js/vendor/alpine.min.js') }}"></script>
+  {% block head %}{% endblock %}
+</head>
+<body class="capp {% block body_class %}{% endblock %}">
+  <span hidden id="icon-sprite" data-href="{{ url_for('static', filename='img/icons.svg') }}"></span>
+  {% block body %}{% endblock %}
+</body>
+</html>
