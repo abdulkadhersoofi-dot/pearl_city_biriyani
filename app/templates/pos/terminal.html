@@ -1557,10 +1557,10 @@ function posTerminal() {
         window.AndroidPrint.printReceipt(url);
         if (after) setTimeout(after, 1500);
       } else {
-        const frame = document.getElementById("receipt-print-frame");
-        // print() returns once the print dialog is closed - then move on.
-        frame.onload = () => { frame.contentWindow.print(); if (after) after(); };
-        frame.src = url;
+        // print() returns once the print dialog is closed - then move on
+        // (static/js/print.js; opens the PDF in a tab where a browser
+        // won't print from the hidden frame).
+        ArfaPrint.pdf(url, {after: after});
       }
     },
     // original=true only for the print straight after checkout - the

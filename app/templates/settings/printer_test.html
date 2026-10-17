@@ -20,7 +20,7 @@
     <button type="button" class="btn btn-primary" @click="
       const url = '{{ url_for('settings.printer_test_pdf') }}?format=' + format;
       if (window.AndroidPrint && window.AndroidPrint.openSettings) { window.AndroidPrint.openSettings(); }
-      else { const f = document.getElementById('test-print-frame'); f.onload = () => f.contentWindow.print(); f.src = url; }">Print the test receipt</button>
+      else { ArfaPrint.pdf(url, {frame: 'test-print-frame'}); }">Print the test receipt</button>
     <a class="btn btn-quiet" :href="'{{ url_for('settings.printer_test_pdf') }}?format=' + format" target="_blank">Open it as a PDF</a>
   </div>
   <p class="text-muted">In the ARFA POS Android app, the button opens Printer settings - choose the Bluetooth or USB printer there and tap "Print a test page".</p>

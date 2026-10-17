@@ -2058,6 +2058,14 @@ helpers in `posTerminal()` are new.
   the split sign-in page and a client's branded one, the wrong-password
   alert, the two-step heading, the console's counts by state, the client
   page's jump links and Indian amounts, and errors tied to their fields.
+- **Printing fix**: newer Chrome shows a PDF in a frame the page may not
+  reach into, so printing a receipt from the counter's hidden frame threw
+  "Blocked a frame ... from accessing a cross-origin frame". Every PDF
+  print (counter, day-book, receipt, return, printer test) now goes
+  through `static/js/print.js`: it still prints from the frame where the
+  browser allows it, and otherwise opens the receipt in a new tab to
+  print - or, if a pop-up blocker stops that, shows a note with a link.
+  Tests: `tests/test_print_fallback.py`.
 
 ## Roadmap
 

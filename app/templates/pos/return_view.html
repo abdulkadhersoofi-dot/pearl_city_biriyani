@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ ret.return_number }} - {{ firm_name }}{% endblock %}
 {% block content %}
-<div x-data="{ print() { const f = document.getElementById('receipt-print-frame'); f.onload = () => f.contentWindow.print(); f.src = '{{ url_for('pos.return_pdf', return_id=ret.id) }}?format={{ default_receipt_format }}'; } }">
+<div x-data="{ print() { ArfaPrint.pdf('{{ url_for('pos.return_pdf', return_id=ret.id) }}?format={{ default_receipt_format }}'); } }">
 <div class="page-header">
   <div>
     <h1>{{ ret.return_number }}</h1>

@@ -83,9 +83,7 @@
 function receiptView() {
   return {
     printReceipt() {
-      const frame = document.getElementById("receipt-print-frame");
-      frame.onload = () => { frame.contentWindow.print(); };
-      frame.src = "{{ url_for('pos.receipt_pdf', bill_id=bill.id) }}?format={{ default_receipt_format }}";
+      ArfaPrint.pdf("{{ url_for('pos.receipt_pdf', bill_id=bill.id) }}?format={{ default_receipt_format }}");
     },
     async share() {
       const res = await fetch("{{ url_for('pos.share_bill', bill_id=bill.id) }}");

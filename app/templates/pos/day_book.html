@@ -97,9 +97,7 @@
 function dayBook() {
   return {
     print(billId) {
-      const frame = document.getElementById("receipt-print-frame");
-      frame.onload = () => { frame.contentWindow.print(); };
-      frame.src = "{{ url_for('pos.receipt_pdf', bill_id=0) }}".replace("/0/", "/" + billId + "/") + "?format={{ default_receipt_format }}";
+      ArfaPrint.pdf("{{ url_for('pos.receipt_pdf', bill_id=0) }}".replace("/0/", "/" + billId + "/") + "?format={{ default_receipt_format }}");
     }
   };
 }

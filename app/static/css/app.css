@@ -1715,3 +1715,4 @@ a.report-tile:hover .report-go { transform: translateX(3px); color: var(--color-
 .row-go { display: inline-grid; place-items: center; width: 34px; height: 34px; border-radius: 8px; color: var(--color-text-muted); }
 .row-go:hover { background: var(--color-surface-2); color: var(--color-text); }
 @media (max-width: 900px) { .console-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.print-note a { color: var(--color-on-ink); font-weight: 700; }
