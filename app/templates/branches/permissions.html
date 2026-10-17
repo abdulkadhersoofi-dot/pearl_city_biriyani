@@ -1,32 +1,80 @@
 {% extends "base.html" %}
 {% from "macros.html" import field %}
-{% macro checkbox(f, help=None) %}
-<div class="field {{ 'field-error' if f.errors }}">
-  <label class="row items-center gap-8 fw-600">{{ f() }} {{ f.label.text }}</label>
-  {% if help %}<p class="field-help m-0 mt-4">{{ help }}</p>{% endif %}
-  {% for error in f.errors %}<p class="field-error-msg">{{ error }}</p>{% endfor %}
-</div>
-{% endmacro %}
 {% block title %}Permissions - {{ branch.name }} - {{ firm_name }}{% endblock %}
 {% block content %}
 <div class="page-header">
   <h1>Permissions - {{ branch.name }}</h1>
   <a href="{{ url_for('branches.list_branches') }}" class="btn btn-quiet">Back</a>
 </div>
-<form method="post" class="card stack" novalidate x-data="{ discount: {{ (form.can_give_discount.data or false)|tojson }} }">
+{# Picking a role fills the permissions below; changing one by one makes it
+   "Own set". What the package doesn't allow, and what ARFA set for this
+   login, show switched off or fixed and aren't sent. #}
+{% set perms = {} %}{% for row in ctx.rows %}{% set _ = perms.update({row.key: row.own}) %}{% endfor %}
+{% set role_perms = {} %}{% for key, role in ctx.roles.items() %}{% set _ = role_perms.update({key: {'p': role.permissions, 'd': role.max_discount|float}}) %}{% endfor %}
+<form method="post" class="card stack" novalidate
+      x-data='{ role: {{ (ctx.role or "own")|tojson }}, perms: {{ perms|tojson }}, discount: {{ (form.max_discount_percent.data or 0)|float|tojson }}, roles: {{ role_perms|tojson }},
+                pick(key) { this.role = key; if (this.roles[key]) { this.perms = Object.assign({}, this.roles[key].p); this.discount = this.roles[key].d; } },
+                own() { this.role = "own"; } }'>
   {{ form.hidden_tag() }}
   <p class="text-muted mt-0">This login can always bill, hold and resume bills. Choose what else it may do. You (the owner) can always do everything.</p>
-  <div class="field">
-    <label class="row items-center gap-8 fw-600">{{ form.can_give_discount(**{"x-model": "discount"}) }} {{ form.can_give_discount.label.text }}</label>
+  {% if ctx.any_arfa %}<p class="lock-note">{{ icon('lock-keyhole', 'icon-sm') }}<span>Some of this login's permissions and modules are set by ARFA. They show as "Set by ARFA" and stay as they are.</span></p>{% endif %}
+
+  <fieldset class="plain-fieldset">
+    <legend class="field-label">Role</legend>
+    <div class="role-picker">
+      {% for key, role in ctx.roles.items() %}
+      <label class="role-option"><input type="radio" name="role" value="{{ key }}" :checked="role === '{{ key }}'" @change="pick('{{ key }}')">
+        <span><strong>{{ role.label }}</strong><small>{{ role.help }}</small></span></label>
+      {% endfor %}
+      <label class="role-option"><input type="radio" name="role" value="own" :checked="role === 'own'" @change="own()">
+        <span><strong>Own set</strong><small>Pick each permission yourself.</small></span></label>
+    </div>
+  </fieldset>
+
+  <div class="stack">
+    {% for row in ctx.rows %}
+    {% set fixed = row.arfa is not none or not row.allowed %}
+    <div class="field perm-row {{ 'is-capped' if fixed }}">
+      <label class="row items-center gap-8 fw-600">
+        <input type="checkbox" name="{{ row.column }}" value="y" {% if fixed %}disabled {% if row.on %}checked{% endif %}{% else %}x-model="perms.{{ row.key }}" @change="own()"{% endif %}>
+        {{ row.label }}
+        {% if row.arfa is not none %}<span class="set-by-arfa">{{ icon('lock-keyhole', 'icon-sm') }}Set by ARFA</span>
+        {% elif not row.allowed %}<span class="set-by-arfa">{{ icon('lock-keyhole', 'icon-sm') }}Not in your package</span>{% endif %}
+      </label>
+      {% if row.key == 'discount' %}
+      <div x-show="{{ 'true' if (fixed and row.on) else 'perms.discount' }}" class="mt-6">
+        {% if ctx.arfa_discount_cap is not none %}
+        <p class="field-help m-0">Up to {{ ctx.max_discount|inr(0) }}% - ARFA's limit for this login.</p>
+        {% else %}
+        <div class="field">
+          <label class="field-label" for="max_discount_percent">{{ form.max_discount_percent.label.text }}</label>
+          <input type="number" step="0.01" min="0" max="100" name="max_discount_percent" id="max_discount_percent" class="field-input maxw-120" x-model="discount" @input="own()" {% if fixed %}disabled{% endif %}>
+          <p class="field-help">e.g. 10 lets this counter give up to 10% off a line.</p>
+        </div>
+        {% endif %}
+      </div>
+      {% elif row.key == 'edit_price' %}<p class="field-help m-0 mt-4">Off: billing always uses the item's saved price.</p>
+      {% elif row.key == 'manage_stock' %}<p class="field-help m-0 mt-4">Applies once stock adjustments and transfers are switched on.</p>{% endif %}
+    </div>
+    {% endfor %}
   </div>
-  <div x-show="discount">
-    {{ field(form.max_discount_percent, help="e.g. 10 lets this counter give up to 10% off a line.") }}
-  </div>
-  {{ checkbox(form.can_edit_price_at_pos, help="Off: billing always uses the item's saved price.") }}
-  {{ checkbox(form.can_refund) }}
-  {{ checkbox(form.can_void) }}
-  {{ checkbox(form.can_view_reports) }}
-  {{ checkbox(form.can_manage_stock, help="Applies once stock adjustments and transfers are switched on.") }}
+
+  {% set counter_modules = ctx.modules|selectattr('business_on')|list %}
+  {% if counter_modules %}
+  <fieldset class="plain-fieldset">
+    <legend class="field-label">Modules at this counter</legend>
+    <p class="field-help mt-0">Untick one this branch doesn't need - its pages and counter panel go from this login only. Your business keeps it.</p>
+    <div class="chip-checks">
+      {% for m in counter_modules %}
+      <label class="chip-check">
+        <input type="checkbox" name="module" value="{{ m.key }}" {% if not m.hidden_by_client and not m.hidden_by_arfa %}checked{% endif %} {% if m.hidden_by_arfa %}disabled{% endif %}>
+        <span>{{ icon('check', 'icon-sm') }}{{ m.label }}{% if m.hidden_by_arfa %} <small>(hidden by ARFA)</small>{% endif %}</span>
+      </label>
+      {% endfor %}
+    </div>
+  </fieldset>
+  {% endif %}
+
   {% if lists_on %}
   {{ field(form.price_list_id, help="The prices this counter bills at. Only a login allowed to change prices can switch lists at the counter.") }}
   {% endif %}

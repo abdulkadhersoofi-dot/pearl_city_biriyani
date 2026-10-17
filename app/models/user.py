@@ -88,6 +88,13 @@ class User(db.Model, UserMixin, TimestampMixin):
     can_view_reports = db.Column(db.Boolean, nullable=False, default=True, server_default=db.true())
     can_edit_price_at_pos = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
     can_manage_stock = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
+    # The role a Client Admin gave this branch login (app/utils/permissions
+    # BRANCH_ROLES) - null for a login whose permissions were set one by one
+    # (every login made before roles existed keeps exactly its six).
+    branch_role = db.Column(db.String(20))
+    # Branch modules (app/utils/entitlements.BRANCH_MODULES) the Client
+    # Admin hid at this counter; the business keeps them.
+    hidden_modules = db.Column(db.JSON)
     # The price list this counter bills from (feature "multi_price_list") -
     # null = items' normal sale prices.
     price_list_id = db.Column(db.Integer, db.ForeignKey("price_lists.id", name="fk_users_price_list"))

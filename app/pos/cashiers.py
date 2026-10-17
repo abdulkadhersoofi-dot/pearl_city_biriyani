@@ -51,7 +51,11 @@ def uses_pins(tenant, counter_user) -> bool:
 
 
 def lock_minutes(tenant) -> int:
-    return int(module_settings(tenant, "cashier").get("lock_minutes") or 0)
+    from app.utils.entitlements import security_minimum, strictest_minutes
+
+    # Never longer than the package's sign-in minimum (stage 5).
+    return strictest_minutes(int(module_settings(tenant, "cashier").get("lock_minutes") or 0),
+                             security_minimum(tenant, "lock_minutes"))
 
 
 def current_cashier(tenant, counter_user) -> Cashier | None:

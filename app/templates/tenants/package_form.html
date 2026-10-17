@@ -103,6 +103,39 @@
     </div>
   </div>
 
+  <div class="card mb-20">
+    <h2 class="mt-0">Branch logins and sign-in</h2>
+    <input type="hidden" name="counter_form" value="1">
+    <fieldset class="plain-fieldset">
+      <legend class="field-label">Counter permissions the client may give branch logins</legend>
+      <p class="field-help mt-0">A permission left unticked shows "Not in your package" on the client's Branches page, and the client can't give it - only your own switches for one login can.</p>
+      <div class="chip-checks">
+        {% for key, label in permission_labels.items() %}
+        <label class="chip-check"><input type="checkbox" name="counter_permission" value="{{ key }}" {% if package.counter_permissions is none or key in package.counter_permissions %}checked{% endif %}>
+          <span>{{ icon('check', 'icon-sm') }}{{ label }}</span></label>
+        {% endfor %}
+      </div>
+    </fieldset>
+    {% set sec = package.security or {} %}
+    <p class="field-label mt-16 mb-0">Sign-in minimums - the client may be stricter, never looser</p>
+    <div class="form-grid">
+      <label class="field"><span class="field-label">{{ security_minimums.idle_minutes }}</span>
+        <select name="sec_idle_minutes" class="field-input">
+          <option value="">No minimum</option>
+          {% for m in idle_choices %}<option value="{{ m }}" {% if sec.get('idle_minutes') == m %}selected{% endif %}>{{ m }} minutes</option>{% endfor %}
+        </select></label>
+      <label class="field"><span class="field-label">{{ security_minimums.lock_minutes }}</span>
+        <select name="sec_lock_minutes" class="field-input">
+          <option value="">No minimum</option>
+          {% for m in lock_choices %}<option value="{{ m }}" {% if sec.get('lock_minutes') == m %}selected{% endif %}>{{ m }} minutes</option>{% endfor %}
+        </select></label>
+    </div>
+    <label class="switch-row">
+      <span class="switch"><input type="checkbox" name="sec_owner_two_step" value="y" {% if sec.get('owner_two_step') %}checked{% endif %}><span class="switch-track"></span></span>
+      <span><strong>{{ security_minimums.owner_two_step }}</strong><small>The owner sets up a code from their phone at their next sign-in.</small></span>
+    </label>
+  </div>
+
   <div class="row">
     <button type="submit" class="btn btn-primary">{{ 'Create package' if is_new else 'Save package' }}</button>
   </div>

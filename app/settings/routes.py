@@ -18,7 +18,9 @@ from app.settings.forms import (
 )
 from app.settings.sections import module_groups, section_info, section_menu
 from app.utils.audit import record_audit
-from app.utils.entitlements import SETTINGS, acting_console_user, auditor_can, client_may_switch, locked_for_client
+from app.utils.entitlements import (
+    SETTINGS, acting_console_user, auditor_can, client_may_switch, locked_for_client, own_branding,
+)
 from app.utils.features import AVAILABLE_FEATURES, BUSINESS_TYPE_LABELS, FEATURES, apply_business_type_preset
 from app.utils.uploads import UploadError, delete_uploaded_image, save_uploaded_image
 
@@ -110,7 +112,8 @@ def _finish(tenant, before_features, section=None):
 def _section(template, key, **context):
     tenant = current_user.tenant
     return render_template(template, section=section_info(key), sections=section_menu(key), tenant=tenant,
-                           locked={k: locked_for_client(tenant, k) for k in SETTINGS}, **context)
+                           locked={k: locked_for_client(tenant, k) for k in SETTINGS},
+                           arfa_look=not own_branding(tenant), **context)
 
 
 def _locked(key):
@@ -373,26 +376,35 @@ LOCK_CHOICES = [0, 2, 5, 10, 15, 30]
 def security():
     """Idle sign-out for this client's logins, and the counter's auto-lock
     with cashier PINs. Both off unless set here."""
+    from app.utils.entitlements import security_minimum, strictest_minutes
     from app.utils.module_settings import module_settings, save_module_settings
 
     tenant = current_user.tenant
     if request.method == "POST" and _locked("security"):
         abort(403)
+    # The package's sign-in minimums: the client may be stricter, never
+    # looser - a longer time (or "never") is saved as the minimum.
+    most_idle = security_minimum(tenant, "idle_minutes")
+    most_lock = security_minimum(tenant, "lock_minutes")
     if request.method == "POST":
         idle = request.form.get("idle_minutes", type=int) or 0
-        save_module_settings(tenant, "security", {"idle_minutes": idle if idle in IDLE_CHOICES else 0})
-        details = {"idle_minutes": idle if idle in IDLE_CHOICES else 0}
+        idle = strictest_minutes(idle if idle in IDLE_CHOICES else 0, most_idle)
+        save_module_settings(tenant, "security", {"idle_minutes": idle})
+        details = {"idle_minutes": idle}
         if tenant.has_feature("cashier_pin"):
             lock = request.form.get("lock_minutes", type=int) or 0
-            save_module_settings(tenant, "cashier", {"lock_minutes": lock if lock in LOCK_CHOICES else 0})
-            details["lock_minutes"] = lock if lock in LOCK_CHOICES else 0
+            lock = strictest_minutes(lock if lock in LOCK_CHOICES else 0, most_lock)
+            save_module_settings(tenant, "cashier", {"lock_minutes": lock})
+            details["lock_minutes"] = lock
         record_audit(current_user, "security_settings_saved", tenant_id=tenant.id, details=details)
         db.session.commit()
         flash("Saved.", "success")
         return redirect(url_for("settings.security"))
-    return _section("settings/security.html", "security", idle=module_settings(tenant, "security")["idle_minutes"],
-                    lock=module_settings(tenant, "cashier")["lock_minutes"], idle_choices=IDLE_CHOICES,
-                    lock_choices=LOCK_CHOICES)
+    return _section("settings/security.html", "security",
+                    idle=strictest_minutes(module_settings(tenant, "security")["idle_minutes"], most_idle),
+                    lock=strictest_minutes(module_settings(tenant, "cashier")["lock_minutes"], most_lock),
+                    idle_choices=IDLE_CHOICES, lock_choices=LOCK_CHOICES, most_idle=most_idle, most_lock=most_lock,
+                    owner_two_step=security_minimum(tenant, "owner_two_step"))
 
 
 # --- first-run checklist ---------------------------------------------------------------------

@@ -151,6 +151,37 @@
           </select>
         </label>
       </div>
+      {# Counter permissions and sign-in minimums for this client (stage 5). #}
+      <div class="form-grid mt-16">
+        <fieldset class="limit-field" x-data="{ mode: '{{ 'own' if pkg.counter_exception is not none else 'package' }}' }">
+          <legend class="field-label">Counter permissions they may give <span class="text-muted">(package: {{ 'all' if pkg.counter_package is none else pkg.counter_package|length ~ ' of ' ~ pkg.permission_labels|length }})</span></legend>
+          <select name="counter_mode" class="field-input" x-model="mode" aria-label="Counter permissions">
+            <option value="package">As the package</option>
+            <option value="own">Own list</option>
+          </select>
+          {% set chosen = pkg.counter_exception if pkg.counter_exception is not none else (pkg.counter_package if pkg.counter_package is not none else pkg.permission_labels.keys()|list) %}
+          <div class="chip-checks mt-6" x-show="mode === 'own'">
+            {% for key, label in pkg.permission_labels.items() %}
+            <label class="chip-check"><input type="checkbox" name="counter_permission" value="{{ key }}" {% if key in chosen %}checked{% endif %}><span>{{ icon('check', 'icon-sm') }}{{ label }}</span></label>
+            {% endfor %}
+          </div>
+        </fieldset>
+        {% for row in pkg.security_rows %}
+        {% set now = ('package' if not row.has_exception else ('none' if row.exception is none else (('yes' if row.exception else 'no') if row.key == 'owner_two_step' else row.exception|string))) %}
+        <label class="field"><span class="field-label">{{ row.label }} <span class="text-muted">(package: {% if row.key == 'owner_two_step' %}{{ 'required' if row.package_value else 'not required' }}{% else %}{{ row.package_value ~ ' min' if row.package_value else 'no minimum' }}{% endif %})</span></span>
+          <select name="secmode_{{ row.key }}" class="field-input">
+            <option value="package" {% if now == 'package' %}selected{% endif %}>As the package</option>
+            {% if row.key == 'owner_two_step' %}
+            <option value="yes" {% if now == 'yes' %}selected{% endif %}>Required</option>
+            <option value="no" {% if now == 'no' %}selected{% endif %}>Not required</option>
+            {% else %}
+            <option value="none" {% if now == 'none' %}selected{% endif %}>No minimum</option>
+            {% for m in row.choices %}<option value="{{ m }}" {% if now == m|string %}selected{% endif %}>At most {{ m }} minutes</option>{% endfor %}
+            {% endif %}
+          </select>
+        </label>
+        {% endfor %}
+      </div>
       <button type="submit" class="btn btn-primary mt-12">Save changes for this client</button>
     </details>
   </form>

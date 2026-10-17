@@ -1,0 +1,51 @@
+{# The Ultra Admin's own switches for one branch login (packages and
+   powers, stage 5). Context: u (the login), sw = branch_login_context(u). #}
+{% set role_perms = {} %}{% for key, role in sw.roles.items() %}{% set _ = role_perms.update({key: role.permissions}) %}{% endfor %}
+{% set current = {} %}{% for row in sw.rows %}{% set _ = current.update({row.key: ('on' if row.arfa else 'off') if row.arfa is not none else ''}) %}{% endfor %}
+<details class="login-switches" id="login-{{ u.id }}" {% if sw.any_arfa %}open{% endif %}>
+  <summary><strong>ARFA's switches for {{ u.name }}</strong>
+    <span class="text-muted">{% if sw.any_arfa %}- set by ARFA, above the client's own choices{% else %}- none set; the client decides{% endif %}</span></summary>
+  <form method="post" action="{{ url_for('tenants.save_login_switches', tenant_id=tenant.id, user_id=u.id) }}" class="stack mt-12"
+        x-data='{ perms: {{ current|tojson }}, roles: {{ role_perms|tojson }},
+                  fill(key) { if (!this.roles[key]) return; for (const p in this.roles[key]) this.perms[p] = this.roles[key][p] ? "on" : "off"; } }'>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="field m-0"><span class="field-label">Fill from a role</span>
+      <select name="role" class="field-input maxw-200" @change="fill($event.target.value)">
+        <option value="">-</option>
+        {% for key, role in sw.roles.items() %}<option value="{{ key }}" {% if sw.arfa_role == key %}selected{% endif %}>{{ role.label }}</option>{% endfor %}
+      </select>
+    </label>
+    <div class="table-wrap">
+      <table class="exceptions-table no-stack">
+        <thead><tr><th>Counter permission</th><th>Client set</th><th>ARFA</th><th>Now</th></tr></thead>
+        <tbody>
+          {% for row in sw.rows %}
+          <tr class="{{ 'has-exception' if row.arfa is not none }}">
+            <td><label for="perm_{{ u.id }}_{{ row.key }}">{{ row.label }}</label>{% if not row.allowed %} <small class="text-muted">(not in the package)</small>{% endif %}</td>
+            <td>{{ 'Yes' if row.own else 'No' }}</td>
+            <td><select name="perm_{{ row.key }}" id="perm_{{ u.id }}_{{ row.key }}" class="field-input" x-model="perms.{{ row.key }}">
+                <option value="">As the client sets</option><option value="on">Always on</option><option value="off">Always off</option></select></td>
+            <td>{% if row.on %}<span class="status-badge status-issued">On</span>{% else %}<span class="status-badge status-draft">Off</span>{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <label class="field m-0"><span class="field-label">Largest discount (%) - blank for the client's own limit</span>
+      <input type="number" name="max_discount" min="0" max="100" step="0.01" class="field-input maxw-120"
+             value="{{ sw.arfa_discount_cap if sw.arfa_discount_cap is not none else '' }}"></label>
+    <fieldset class="plain-fieldset">
+      <legend class="field-label">Hide at this counter</legend>
+      <div class="chip-checks">
+        {% for m in sw.modules %}
+        <label class="chip-check"><input type="checkbox" name="hide" value="{{ m.key }}" {% if m.hidden_by_arfa %}checked{% endif %}>
+          <span>{{ icon('check', 'icon-sm') }}{{ m.label }}{% if not m.business_on %} <small>(off for the business)</small>{% elif m.hidden_by_client %} <small>(client hid it)</small>{% endif %}</span></label>
+        {% endfor %}
+      </div>
+    </fieldset>
+    <div class="row">
+      <button type="submit" class="btn btn-primary btn-sm">Save switches</button>
+      {% if sw.any_arfa %}<button type="submit" name="action" value="clear" class="btn btn-quiet btn-sm">Hand back to the client</button>{% endif %}
+    </div>
+  </form>
+</details>

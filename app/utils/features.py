@@ -335,11 +335,18 @@ def apply_business_type_preset(tenant, business_type: BusinessType) -> None:
 
 def current_tenant_has(key: str) -> bool:
     """Template/route helper: does the signed-in user's own client have
-    this flag on? Always False for admin-hierarchy logins (no tenant)."""
+    this flag on? Always False for admin-hierarchy logins (no tenant). A
+    branch login also loses the modules hidden at its counter (packages
+    and powers, stage 5) - its menu, pages and counter panels follow; the
+    business's own rules (stock, GST, points) still use Tenant.has_feature."""
     if not current_user.is_authenticated or current_user.tenant_id is None:
         return False
     tenant = current_user.tenant
-    return bool(tenant and tenant.has_feature(key))
+    if not (tenant and tenant.has_feature(key)):
+        return False
+    from app.utils.entitlements import login_hides
+
+    return not login_hides(current_user, key)
 
 
 def current_tenant_reads(key: str) -> bool:
@@ -348,8 +355,10 @@ def current_tenant_reads(key: str) -> bool:
         return False
     from app.utils.entitlements import READ_ONLY, module_mode
 
+    from app.utils.entitlements import login_hides
+
     tenant = current_user.tenant
-    return bool(tenant and module_mode(tenant, key) == READ_ONLY)
+    return bool(tenant and module_mode(tenant, key) == READ_ONLY and not login_hides(current_user, key))
 
 
 def feature_required(key: str):

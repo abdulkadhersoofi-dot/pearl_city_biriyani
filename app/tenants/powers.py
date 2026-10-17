@@ -1,4 +1,5 @@
-"""Auditor powers in the console (packages and powers, stage 4).
+"""Auditor powers in the console (packages and powers, stage 4), and the
+Ultra Admin's switches for one branch login (stage 5).
 
 The Ultra Admin sets each Auditor's and Sub-Auditor's powers, the packages
 they may give clients, and their client / Sub-Auditor limits. An Auditor
@@ -7,18 +8,21 @@ and only from their own allowed packages. A Sub-Auditor never holds a
 power their Auditor doesn't (app/utils/entitlements.auditor_can).
 """
 
+from decimal import Decimal, InvalidOperation
+
 from flask import abort, flash, redirect, request, url_for
 from flask_login import current_user
 
-from app.auth.decorators import admin_or_auditor_required
+from app.auth.decorators import admin_or_auditor_required, roles_required
 from app.extensions import db
 from app.models.package import Package
 from app.models.user import User, UserRole
 from app.tenants import tenants_bp
 from app.utils.entitlements import (
     AUDITOR_POWERS, ROLE_DEFAULT_POWERS, allowed_packages, auditor_can, client_room, grantable_powers,
-    set_auditor_powers, sub_auditor_room,
+    set_auditor_powers, set_login_switches, sub_auditor_room,
 )
+from app.utils.permissions import PERMISSION_COLUMNS
 
 
 def may_set_powers(viewer, auditor) -> bool:
@@ -92,3 +96,35 @@ def save_auditor_powers(auditor_id):
     db.session.commit()
     flash(f"Powers saved for {auditor.name}.", "success")
     return redirect(url_for("tenants.auditor_detail", auditor_id=auditor.id, _anchor="sec-powers"))
+
+
+# --- the Ultra Admin's switches for one branch login (stage 5) -------------------------------------
+
+@tenants_bp.route("/clients/<int:tenant_id>/logins/<int:user_id>/switches", methods=["POST"])
+@roles_required(UserRole.SUPER_ADMIN)
+def save_login_switches(tenant_id, user_id):
+    """Modules hidden at this counter, counter permissions forced on or
+    off, and a discount limit - above whatever the Client Admin set."""
+    login = User.query.filter_by(id=user_id, tenant_id=tenant_id, role=UserRole.STAFF).first_or_404()
+    hidden = request.form.getlist("hide")
+    permissions = {}
+    for key in PERMISSION_COLUMNS:
+        value = request.form.get(f"perm_{key}")
+        if value in ("on", "off"):
+            permissions[key] = value == "on"
+    raw = (request.form.get("max_discount") or "").strip()
+    try:
+        cap = Decimal(raw) if raw else None
+        if cap is not None and not Decimal("0") <= cap <= Decimal("100"):
+            raise InvalidOperation
+    except InvalidOperation:
+        flash("The discount limit is a percentage from 0 to 100 - or leave it blank.", "error")
+        return redirect(url_for("tenants.detail", tenant_id=tenant_id, _anchor=f"login-{login.id}"))
+    if request.form.get("action") == "clear":
+        hidden, permissions, cap = [], {}, None
+    set_login_switches(login, current_user, hidden_modules=hidden, permissions=permissions, max_discount_percent=cap,
+                       role=request.form.get("role") or None)
+    db.session.commit()
+    flash(f"{'Handed back to the client' if request.form.get('action') == 'clear' else 'Switches saved'} "
+          f"for {login.name}.", "success")
+    return redirect(url_for("tenants.detail", tenant_id=tenant_id, _anchor=f"login-{login.id}"))

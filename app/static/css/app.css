@@ -1796,6 +1796,20 @@ a.report-tile:hover .report-go { transform: translateX(3px); color: var(--color-
 .lock-fieldset[disabled] .field-input, .lock-fieldset[disabled] .chip-check, .lock-fieldset[disabled] .switch-row { opacity: 0.75; cursor: not-allowed; }
 .lock-note { display: flex; align-items: flex-start; gap: 8px; margin: 0 0 12px; padding: 10px 12px; border-radius: var(--radius); background: var(--color-primary-soft); color: var(--color-primary-dark); font-weight: 600; font-size: 0.9rem; }
 .lock-note .icon { margin-top: 2px; }
+/* "3 of 5 used" meters (packages and powers, stage 5) */
+.limit-meter { display: grid; gap: 6px; max-width: 360px; margin: 0 0 16px; font-size: 0.9rem; }
+.limit-meter-bar { height: 6px; border-radius: 999px; background: var(--color-border); overflow: hidden; }
+.limit-meter-bar span { display: block; height: 100%; border-radius: 999px; background: var(--color-primary); }
+.limit-meter.is-full .limit-meter-text { color: var(--color-warn-text); }
+.limit-meter.is-full .limit-meter-bar span { background: var(--color-warn-text); }
+.set-by-arfa { display: inline-flex; align-items: center; gap: 4px; font-size: 0.8rem; font-weight: 600; color: var(--color-primary-dark); }
+.role-picker { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; }
+.role-option { display: flex; gap: 8px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: var(--radius); cursor: pointer; background: var(--color-surface); }
+.role-option:has(input:checked) { border-color: var(--color-primary); box-shadow: 0 0 0 1px var(--color-primary); }
+.role-option small { display: block; color: var(--color-text-muted); font-weight: 400; }
+.perm-row.is-capped { opacity: 0.6; }
+.plain-fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
+.login-switches { border-top: 1px solid var(--color-border); padding-top: 12px; margin-top: 8px; }
 .request-list { display: grid; gap: 8px; padding: 14px; margin-bottom: 18px; border-radius: var(--radius); background: var(--color-warn-bg); }
 .request-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .request-row > span:first-of-type { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }

@@ -299,6 +299,7 @@ def transfer_challan(transfer_id):
     from flask import current_app
     from weasyprint import HTML
 
+    from app.utils.entitlements import brand_logo_id
     from app.utils.uploads import image_data_uri
 
     transfer = tenant_query(StockTransfer).filter_by(id=transfer_id).first_or_404()
@@ -306,7 +307,7 @@ def transfer_challan(transfer_id):
     tenant = _tenant()
     value = sum((Decimal(l.qty) * Decimal(l.unit_cost or 0) for l in transfer.lines), Decimal("0")).quantize(Decimal("0.01"))
     html = render_template("inventory/challan_pdf.html", transfer=transfer, firm_name=tenant.display_name,
-                           logo_data_uri=image_data_uri(tenant.logo_image_id), total_value=value)
+                           logo_data_uri=image_data_uri(brand_logo_id(tenant)), total_value=value)
     pdf = HTML(string=html, base_url=current_app.root_path).write_pdf()
     return Response(pdf, mimetype="application/pdf",
                     headers={"Content-Disposition": f'inline; filename="{transfer.number.replace("/", "-")}.pdf"'})

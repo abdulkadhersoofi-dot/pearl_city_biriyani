@@ -32,7 +32,12 @@ from app.utils.entitlements import (
     refresh_read_only, resolve_module_request, set_branding_exception, set_limit_exception, set_module_exception, set_setting_exception,
     setting_state,
 )
+from app.utils.entitlements import (
+    IDLE_MINUTE_CHOICES, LOCK_MINUTE_CHOICES, SECURITY_MINIMUMS, security_from_form, set_counter_permissions_exception,
+    set_security_exception,
+)
 from app.utils.features import AVAILABLE_FEATURES, FEATURES
+from app.utils.permissions import PERMISSION_COLUMNS, PERMISSION_LABELS
 
 
 def module_rows():
@@ -70,6 +75,13 @@ def _count(raw, label):
     if not raw.isdigit():
         raise ValueError(f"{label}: enter a whole number, or leave it blank for no limit.")
     return int(raw)
+
+
+def _login_bits() -> dict:
+    """What the package editor and a client's exceptions need for branch
+    logins and sign-in (stage 5)."""
+    return {"permission_labels": PERMISSION_LABELS, "security_minimums": SECURITY_MINIMUMS,
+            "idle_choices": IDLE_MINUTE_CHOICES, "lock_choices": LOCK_MINUTE_CHOICES}
 
 
 def _clients_using(package_id):
@@ -131,6 +143,12 @@ def _package_from_form(package):
         state = request.form.get(f"set_{key}")
         settings[key] = state if state in SETTING_STATES else "client"
     package.settings = settings
+    # Branch logins and sign-in (stage 5). Every permission ticked = all, as
+    # before packages (stored as "no narrowing").
+    if request.form.get("counter_form"):
+        ticked = [k for k in PERMISSION_COLUMNS if k in set(request.form.getlist("counter_permission"))]
+        package.counter_permissions = None if len(ticked) == len(PERMISSION_COLUMNS) else ticked
+        package.security = security_from_form(request.form)
     return errors
 
 
@@ -138,7 +156,8 @@ def _package_from_form(package):
 @roles_required(UserRole.SUPER_ADMIN)
 def package_new():
     source = Package.query.get(request.args.get("copy", type=int) or 0)
-    package = Package(name="", modules={}, settings={}, limits={}, unlisted_modules=OFF, own_branding=True)
+    package = Package(name="", modules={}, settings={}, limits={}, unlisted_modules=OFF, own_branding=True,
+                      security={})
     if source is not None and request.method == "GET":
         package.name = f"{source.name} (copy)"
         package.description = source.description
@@ -146,6 +165,8 @@ def package_new():
         package.settings = dict(source.settings or {})
         package.limits = dict(source.limits or {})
         package.own_branding = source.own_branding
+        package.counter_permissions = list(source.counter_permissions) if source.counter_permissions is not None else None
+        package.security = dict(source.security or {})
         package.price_monthly, package.price_yearly = source.price_monthly, source.price_yearly
     if request.method == "POST":
         errors = _package_from_form(package)
@@ -163,7 +184,7 @@ def package_new():
             return redirect(url_for("tenants.package_edit", package_id=package.id))
     return render_template("tenants/package_form.html", package=package, groups=module_rows(), clients=0,
                            settings=SETTINGS, limits=LIMITS, states=MODULE_STATES, state_of=package_module_state,
-                           is_new=True)
+                           is_new=True, **_login_bits())
 
 
 @tenants_bp.route("/packages/<int:package_id>", methods=["GET", "POST"])
@@ -173,6 +194,7 @@ def package_edit(package_id):
     if request.method == "POST":
         before = {"modules": dict(package.modules or {}), "settings": dict(package.settings or {}),
                   "limits": dict(package.limits or {}), "own_branding": package.own_branding,
+                  "counter_permissions": package.counter_permissions, "security": dict(package.security or {}),
                   "price_monthly": str(package.price_monthly), "price_yearly": str(package.price_yearly)}
         errors = _package_from_form(package)
         if errors:
@@ -188,6 +210,8 @@ def package_edit(package_id):
                          details={"name": package.name, "before": before,
                                   "after": {"modules": package.modules, "settings": package.settings,
                                             "limits": package.limits, "own_branding": package.own_branding,
+                                            "counter_permissions": package.counter_permissions,
+                                            "security": package.security,
                                             "price_monthly": str(package.price_monthly),
                                             "price_yearly": str(package.price_yearly)}})
             db.session.commit()
@@ -195,7 +219,7 @@ def package_edit(package_id):
             return redirect(url_for("tenants.package_edit", package_id=package.id))
     return render_template("tenants/package_form.html", package=package, groups=module_rows(),
                            clients=_clients_using(package.id), settings=SETTINGS, limits=LIMITS,
-                           states=MODULE_STATES, state_of=package_module_state, is_new=False)
+                           states=MODULE_STATES, state_of=package_module_state, is_new=False, **_login_bits())
 
 
 @tenants_bp.route("/packages/<int:package_id>/active", methods=["POST"])
@@ -246,15 +270,25 @@ def client_package_context(tenant, viewer=None):
                    "has_exception": grant is not None and key in (grant.limit_overrides or {}),
                    "exception": (grant.limit_overrides or {}).get(key) if grant is not None else None}
                   for key, label in LIMITS.items()]
+    security_rows = [{"key": key, "label": label,
+                      "package_value": (current.security or {}).get(key) if current else None,
+                      "has_exception": grant is not None and key in (grant.security_overrides or {}),
+                      "exception": (grant.security_overrides or {}).get(key) if grant is not None else None,
+                      "choices": {"idle_minutes": IDLE_MINUTE_CHOICES, "lock_minutes": LOCK_MINUTE_CHOICES}.get(key)}
+                     for key, label in SECURITY_MINIMUMS.items()]
     return {
         "grant": grant, "current_package": current,
         "package_choices": allowed_packages(viewer),
+        "security_rows": security_rows, "permission_labels": PERMISSION_LABELS,
+        "counter_exception": grant.counter_permissions_override if grant is not None else None,
+        "counter_package": current.counter_permissions if current else None,
         "is_ultra": is_ultra, "can_assign": can_assign, "can_switch": can_switch,
         "module_rows": rows, "setting_rows": setting_rows, "limit_rows": limit_rows,
         "branding_exception": grant.own_branding_override if grant is not None else None,
         "branding_now": own_branding(tenant), "branding_package": current.own_branding if current else True,
         "exception_count": (len(grant.module_overrides or {}) + len(grant.setting_overrides or {})
-                            + len(grant.limit_overrides or {}) + (grant.own_branding_override is not None))
+                            + len(grant.limit_overrides or {}) + (grant.own_branding_override is not None)
+                            + len(grant.security_overrides or {}) + (grant.counter_permissions_override is not None))
         if grant is not None else 0,
         "module_states": MODULE_STATES, "setting_states": SETTING_STATES,
         "requests": [{"req": r, "label": FEATURES[r.feature_key].label if r.feature_key in FEATURES else r.feature_key}
@@ -370,6 +404,34 @@ def save_client_exceptions(tenant_id):
         current = grant.own_branding_override if grant is not None else None
         if target != current:
             set_branding_exception(tenant, target, current_user)
+            changed += 1
+    # Counter permissions and sign-in minimums (stage 5).
+    counter_mode = request.form.get("counter_mode")
+    if counter_mode is not None:
+        target = (None if counter_mode != "own"
+                  else [k for k in PERMISSION_COLUMNS if k in set(request.form.getlist("counter_permission"))])
+        current = grant.counter_permissions_override if grant is not None else None
+        if target != current:
+            grant = set_counter_permissions_exception(tenant, target, current_user)
+            changed += 1
+    for key in SECURITY_MINIMUMS:
+        wanted = request.form.get(f"secmode_{key}")
+        if wanted is None:
+            continue
+        if wanted == AS_PACKAGE:
+            target = AS_PACKAGE
+        elif key == "owner_two_step":
+            target = {"yes": True, "no": False}.get(wanted, AS_PACKAGE)
+        elif wanted == "none":
+            target = None
+        elif wanted.isdigit():
+            target = int(wanted)
+        else:
+            abort(400)
+        overrides = (grant.security_overrides or {}) if grant is not None else {}
+        current = overrides[key] if key in overrides else AS_PACKAGE
+        if target != current:
+            grant = set_security_exception(tenant, key, target, current_user)
             changed += 1
     db.session.commit()
     flash(f"{changed} change{'s' if changed != 1 else ''} saved for {tenant.legal_name}." if changed

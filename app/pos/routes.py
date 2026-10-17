@@ -94,7 +94,7 @@ def _module_fields() -> dict:
     the module on, so a client without it can't smuggle them in."""
     tenant = current_user.tenant
     out = {}
-    if tenant.has_feature("restaurant_mode"):
+    if current_tenant_has("restaurant_mode"):
         from app.models.business import DiningTable
         from app.utils.module_settings import ORDER_TYPES
 
@@ -108,7 +108,7 @@ def _module_fields() -> dict:
     if tenant.has_feature("pharmacy"):
         rx = {k: request.form.get(f"rx_{k}", "") for k in ("doctor", "doctor_reg_no", "patient", "patient_address")}
         out["prescription"] = rx if any(rx.values()) else None
-    if tenant.has_feature("wholesale"):
+    if current_tenant_has("wholesale"):
         out["salesman_id"] = _int_or_none(request.form.get("salesman_id"))
     return out
 
@@ -261,7 +261,7 @@ def _module_context(tenant) -> dict:
     """What the counter screen needs from the business-type modules - only
     what's switched on."""
     out = {"quote": False}
-    if tenant.has_feature("restaurant_mode"):
+    if current_tenant_has("restaurant_mode"):
         from app.models.business import DiningTable
         from app.restaurant import services as rs
         from app.utils.module_settings import ORDER_TYPES
@@ -295,18 +295,18 @@ def _module_context(tenant) -> dict:
     if tenant.has_feature("jewellery"):
         out["jewellery"] = {"lookup_url": url_for("jewellery.old_gold_lookup")}
         out["quote"] = True
-    if tenant.has_feature("loyalty"):
+    if current_tenant_has("loyalty"):
         from app.loyalty.points import settings as loyalty_settings
 
         ls = loyalty_settings(tenant)
         out["loyalty"] = {"point_value": float(ls["point_value"]), "min_redeem": ls["min_redeem"]}
-    if tenant.has_feature("wholesale"):
+    if current_tenant_has("wholesale"):
         from app.models.business import Salesman
 
         out["salesmen"] = [{"id": s.id, "name": s.name}
                            for s in tenant_query(Salesman).filter_by(is_active=True).order_by(Salesman.name)]
         out["quote"] = True
-    if tenant.has_feature("pharmacy") or tenant.has_feature("wholesale"):
+    if tenant.has_feature("pharmacy") or current_tenant_has("wholesale"):
         out["packs"] = True
         out["quote"] = True
     if tenant.has_feature("weighing"):

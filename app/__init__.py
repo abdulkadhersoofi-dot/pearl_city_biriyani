@@ -151,7 +151,9 @@ def _register_context_processors(app: Flask) -> None:
         if current_user.is_authenticated and not current_user.is_super_admin and current_user.tenant:
             brand_tenant = current_user.tenant
             brand_name = brand_tenant.display_name
-            if brand_tenant.logo_image_id:
+            from app.utils.entitlements import brand_logo_id
+
+            if brand_logo_id(brand_tenant):
                 brand_logo_url = url_for("main.media", image_id=brand_tenant.logo_image_id)
 
             from app.utils.billing import tenant_access_status

@@ -7,7 +7,7 @@
     <a href="{{ url_for('auth.account_security') }}" class="link-tile">
       <span class="link-tile-icon">{{ icon('shield-check') }}</span>
       <span><strong>Two-step sign-in</strong>
-        <small>{% if current_user.has_two_factor %}On - a code from your phone at every sign-in{% else %}Off - add a code from your phone{% endif %}</small></span>
+        <small>{% if current_user.has_two_factor %}On - a code from your phone at every sign-in{% else %}Off - add a code from your phone{% endif %}{% if owner_two_step %} · required by your package{% endif %}</small></span>
       <span class="pill {{ 'pill-ok' if current_user.has_two_factor else 'pill-muted' }}">{{ 'On' if current_user.has_two_factor else 'Off' }}</span>
     </a>
     <a href="{{ url_for('auth.change_password') }}" class="link-tile">
@@ -29,20 +29,20 @@
       <label class="field-label" for="idle_minutes">Sign out your logins (you and every branch) after</label>
       <select name="idle_minutes" id="idle_minutes" class="field-input">
         {% for m in idle_choices %}
-        <option value="{{ m }}" {{ 'selected' if m == idle }}>{{ 'Never' if m == 0 else (m ~ ' minutes' if m < 60 else (m // 60) ~ ' hour' ~ ('s' if m >= 120 else '')) }} {{ 'without activity' if m }}</option>
+        <option value="{{ m }}" {{ 'selected' if m == idle }} {{ 'disabled' if most_idle and (m == 0 or m > most_idle) }}>{{ 'Never' if m == 0 else (m ~ ' minutes' if m < 60 else (m // 60) ~ ' hour' ~ ('s' if m >= 120 else '')) }} {{ 'without activity' if m }}</option>
         {% endfor %}
       </select>
-      <p class="field-help">"Never" keeps everyone signed in for the working day, as before. A shorter time is safer on a shared computer.</p>
+      <p class="field-help">{% if most_idle %}Your package asks for {{ most_idle }} minutes at most - you can pick a shorter time.{% else %}"Never" keeps everyone signed in for the working day, as before. A shorter time is safer on a shared computer.{% endif %}</p>
     </div>
     {% if has_feature('cashier_pin') %}
     <div class="field">
       <label class="field-label" for="lock_minutes">Lock a counter with cashier PINs after</label>
       <select name="lock_minutes" id="lock_minutes" class="field-input">
         {% for m in lock_choices %}
-        <option value="{{ m }}" {{ 'selected' if m == lock }}>{{ 'Only when a cashier taps Lock' if m == 0 else m ~ ' minutes idle' }}</option>
+        <option value="{{ m }}" {{ 'selected' if m == lock }} {{ 'disabled' if most_lock and (m == 0 or m > most_lock) }}>{{ 'Only when a cashier taps Lock' if m == 0 else m ~ ' minutes idle' }}</option>
         {% endfor %}
       </select>
-      <p class="field-help">The counter stays signed in; the next cashier just enters their PIN.</p>
+      <p class="field-help">The counter stays signed in; the next cashier just enters their PIN.{% if most_lock %} Your package asks for {{ most_lock }} minutes at most.{% endif %}</p>
     </div>
     {% endif %}
   </section>

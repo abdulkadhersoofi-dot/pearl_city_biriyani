@@ -35,6 +35,14 @@ class Package(db.Model, TimestampMixin):
     # {"branches": n, "logins": n, "gstins": n}; not listed = no limit.
     limits = db.Column(db.JSON, nullable=False, default=dict, server_default="{}")
     own_branding = db.Column(db.Boolean, nullable=False, default=True, server_default="true")
+    # Counter permissions the client may hand their branch logins (stage 5):
+    # a list of permission keys (app/utils/permissions.py); null = all, as
+    # before packages.
+    counter_permissions = db.Column(db.JSON)
+    # Sign-in minimums the client may tighten but never loosen (stage 5):
+    # {"idle_minutes": n, "lock_minutes": n, "owner_two_step": bool};
+    # not listed = no minimum.
+    security = db.Column(db.JSON, nullable=False, default=dict, server_default="{}")
     price_monthly = db.Column(db.Numeric(10, 2))
     price_yearly = db.Column(db.Numeric(10, 2))
     is_active = db.Column(db.Boolean, nullable=False, default=True, server_default="true")
@@ -65,6 +73,11 @@ class TenantPackage(db.Model, TimestampMixin):
     # {limit key: n or null (no limit)}
     limit_overrides = db.Column(db.JSON, nullable=False, default=dict, server_default="{}")
     own_branding_override = db.Column(db.Boolean)
+    # A list of counter permission keys replacing the package's for this
+    # client (null = as the package).
+    counter_permissions_override = db.Column(db.JSON)
+    # {security key: value or null (no minimum)}, each beating the package.
+    security_overrides = db.Column(db.JSON, nullable=False, default=dict, server_default="{}")
     # Modules taken away while they still held data: their old records stay
     # readable (stage 3 decides when a module lands here).
     read_only_modules = db.Column(db.JSON, nullable=False, default=list, server_default="[]")
@@ -124,3 +137,32 @@ class ModuleRequest(db.Model, TimestampMixin):
 
     def __repr__(self):
         return f"<ModuleRequest tenant={self.tenant_id} {self.feature_key} {self.status}>"
+
+
+class LoginGrant(db.Model, TimestampMixin):
+    """The Ultra Admin's own switches for one branch login (stage 5): modules
+    hidden at this counter and counter permissions forced on or off. They
+    sit above what the Client Admin set, who sees them marked "Set by ARFA"
+    but can't change them. No row means nothing set by ARFA."""
+
+    __tablename__ = "login_grants"
+
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey("tenants.id", name="fk_login_grants_tenant"),
+                          nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id", name="fk_login_grants_user"),
+                        nullable=False, unique=True, index=True)
+    # Branch modules (entitlements.BRANCH_MODULES) hidden for this login.
+    hidden_modules = db.Column(db.JSON, nullable=False, default=list, server_default="[]")
+    # {permission key: true | false}; not listed = as the Client Admin set.
+    permissions = db.Column(db.JSON, nullable=False, default=dict, server_default="{}")
+    # The largest discount this login may give, when ARFA sets one.
+    max_discount_percent = db.Column(db.Numeric(5, 2))
+    # The role ARFA picked to fill the permissions (shown only).
+    role = db.Column(db.String(20))
+    set_by_id = db.Column(db.Integer, db.ForeignKey("users.id", name="fk_login_grants_set_by"))
+
+    user = db.relationship("User", foreign_keys=[user_id], backref=db.backref("login_grant", uselist=False))
+
+    def __repr__(self):
+        return f"<LoginGrant user={self.user_id}>"

@@ -43,7 +43,7 @@
   </section>
   {% endif %}
 
-  {% if tenant.login_slug %}
+  {% if tenant.login_slug and not arfa_look %}
   <section class="card settings-card">
     <h2>Your branded sign-in page</h2>
     <p class="text-muted mt-0">Share this link with your staff instead of the general sign-in page - it shows your own logo and theme.</p>

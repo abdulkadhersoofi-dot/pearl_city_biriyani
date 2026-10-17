@@ -491,6 +491,21 @@ this list is just the index.
   `client_package_context(tenant, viewer)` returns None for viewers who
   may neither assign packages nor switch choices. New console actions
   need a power (or an explicit decision that every auditor gets them).
+- **Packages and powers, stage 5: branches, logins and style.** Branch
+  login permissions go through `permissions.user_can` ->
+  `entitlements.branch_permission` (ARFA's `LoginGrant` switch, else the
+  User column capped by `counter_permissions_allowed`) - never read the
+  `can_*` columns directly. Roles: `permissions.BRANCH_ROLES`,
+  `role_of()`. Per-branch modules: `entitlements.BRANCH_MODULES`,
+  `login_hides()`; `features.current_tenant_has` (templates, routes,
+  menus, the counter's panels) follows the login, while services keep
+  `Tenant.has_feature` (business rules). Limits: `limit_usage`,
+  `limit_meter`, `may_add` (Ultra Admin passes) and the `limit_meter`
+  macro. Sign-in minimums: `security_minimum`, `strictest_minutes`,
+  used by `auth.security.idle_limit_minutes`, `pos.cashiers.lock_minutes`
+  and `two_factor_required`. Branding: `own_branding`, `brand_logo_id`
+  (use it for any printed logo), `tenant_theme_css` returns "" without
+  own branding.
 
 ## 5. Chronological development history (this session)
 

@@ -2254,6 +2254,71 @@ change yet.
   their Auditor's, a Sub-Auditor losing their Auditor's power or package, and the
   Sub-Auditor limit.
 
+### Packages and powers - stage 5 (branches, logins and style)
+
+- **Roles for branch logins.** Adding a branch (or its Permissions page)
+  offers a role - **Cashier** (bills, refunds, Day-book: exactly what a
+  new branch login could do before), **Senior cashier** (also discounts
+  up to 10%, price changes, voids), **Manager** (everything at the
+  counter, stock included, discounts up to 25%) or **Stock keeper**
+  (bills, stock adjustments and transfers, no refunds or discounts). A
+  role fills the six counter permissions; changing one makes it an
+  **Own set**. Every branch login made before roles keeps its six
+  permissions as they were ("Own set").
+- **The package caps the permissions.** The package editor lists the
+  counter permissions a client may give; one left out shows "Not in your
+  package" on the client's Permissions page and isn't usable by any of
+  their branch logins (a role keeps it stored, so it comes back if the
+  package allows it later). All ticked = no narrowing, as before.
+- **Modules at one counter.** On a branch's Permissions page the Client
+  Admin can untick Restaurant tables & KOT, Job cards, Loyalty points,
+  Inventory or Wholesale for that branch only: its pages answer "not
+  found" for that login and its counter panels (table picker, Jobs link,
+  points, salesman) go. The business keeps the module - stock, GST,
+  points earned and every bill work as before.
+- **The Ultra Admin's switches for one login.** On a client's page, each
+  branch login has **ARFA's switches**: each counter permission "As the
+  client sets / Always on / Always off" (fill them from a role in one
+  go), a discount limit, and modules hidden at that counter. The Client
+  Admin sees them marked **Set by ARFA** and can't change them; **Hand
+  back to the client** clears them. Auditors don't get these switches.
+- **Limits with meters.** Branches (active branch logins), logins (the
+  owner's login, each branch login and each cashier PIN) and GSTINs, each
+  with a **"3 of 5 used"** meter where they're added - Branches, Cashiers
+  & PINs, and the client's business locations in the console. At the
+  limit, adding (or switching a login back on) is refused with "Ask ARFA
+  to raise it". The Ultra Admin, directly or acting as the client, may go
+  past a limit. No limit = no meter, as before.
+- **Branding by package.** Without own branding the client gets ARFA's
+  look: no own colours or font, no logo in the menu or on invoices,
+  credit notes, challans and stock reports, and their own sign-in link
+  goes to ARFA's sign-in. Settings > Appearance says so and refuses
+  changes. For a look the firm sets and locks, allow own branding, lock
+  the "Logo, colours and font" setting, and set it by acting as the
+  client. Each person still picks Light or Dark for themselves.
+- **Sign-in minimums.** A package (or a client's exception) can set the
+  longest idle sign-out, the longest counter lock, and two-step sign-in
+  for the owner's login. The client may pick a shorter time, never a
+  longer one ("Never" and longer choices are greyed out, and a longer
+  saved time works as the minimum); with two-step required the owner sets
+  it up at their next sign-in.
+- **Per-client exceptions** gained the counter permissions ("Own list")
+  and each sign-in minimum.
+- Database: migration `d5f2b8c94e13` - `users.branch_role`,
+  `users.hidden_modules`, `packages.counter_permissions`,
+  `packages.security`, `tenant_packages.counter_permissions_override`,
+  `tenant_packages.security_overrides`, and the `login_grants` table (with
+  `tenant_id`). No data changes.
+- Tests: `tests/test_branches_and_logins.py` - nothing changes without a
+  package, roles on a new branch, existing logins keeping their six, a
+  role turning into an own set, the package capping a role, a branch
+  without a module (the owner still has it), ARFA's switches (and "Set by
+  ARFA" the client can't change, handing back, the discount limit,
+  auditors refused, a login's switches reachable only through its own
+  client), branch / login / cashier PIN / GSTIN limits, the idle minimum,
+  two-step for the owner, client exceptions, the package editor, and
+  ARFA's look.
+
 ## Roadmap
 
 - **Platform build (ARFA general-purpose POS), phase by phase.**
@@ -2339,8 +2404,9 @@ change yet.
     "Ask ARFA to add", read-only for removed modules with data.
   - Stage 4 (done): auditor powers on each auditor's page, enforced on
     every console page and in "Act as"; packages and limits for auditors.
-  - Stage 5: branch logins by role, modules per branch, the Ultra
-    Admin's per-login switches, limits with usage, branding by package.
+  - Stage 5 (done): branch logins by role, modules per branch, the Ultra
+    Admin's per-login switches, limits with usage meters, branding by
+    package, sign-in minimums.
   - Stage 6: change history per client, checks, hand-over.
 
   Stage 1 limits:

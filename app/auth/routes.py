@@ -269,6 +269,11 @@ def tenant_login(slug):
     # distinct from the firm's generic /auth/login - same form, same
     # credential check, just themed for this one tenant.
     tenant = Tenant.query.filter_by(login_slug=slug, is_active=True).first_or_404()
+    from app.utils.entitlements import own_branding
+
+    # The own sign-in link comes with own branding (packages and powers, stage 5).
+    if not own_branding(tenant):
+        return redirect(url_for("auth.login"))
     return _login_view(login_tenant=tenant)
 
 

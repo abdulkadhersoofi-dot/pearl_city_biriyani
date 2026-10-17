@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "macros.html" import field %}
+{% from "macros.html" import field, limit_meter %}
 {% block title %}{{ tenant.legal_name }} - {{ firm_name }}{% endblock %}
 {% block content %}
 {% set badge = {'paused': 'status-void', 'billing_overdue': 'status-void', 'pending_verification': 'status-void'} %}
@@ -174,7 +174,8 @@
       <li class="text-muted">No business location on file yet - POS and invoicing need at least one to bill from.</li>
     {% endfor %}
   </ul>
-  {% if console_can('edit_client_details') %}
+  {{ limit_meter(gstin_meter, 'GSTINs') }}
+  {% if console_can('edit_client_details') and (not gstin_meter.full or current_user.is_super_admin) %}
   <form method="post" action="{{ url_for('tenants.add_gstin', tenant_id=tenant.id) }}" class="form-grid mt-12">
     {{ gstin_form.hidden_tag() }}
     {{ field(gstin_form.gstin, help="Leave blank if this client isn't GST-registered.") }}
@@ -232,6 +233,9 @@
           {% endif %}
         </td>
       </tr>
+      {% if u.id in login_switches %}
+      <tr><td colspan="5">{% with sw = login_switches[u.id] %}{% include "tenants/_login_switches.html" %}{% endwith %}</td></tr>
+      {% endif %}
     {% endfor %}
     </tbody>
   </table>

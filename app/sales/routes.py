@@ -31,6 +31,7 @@ from app.sales.services import SalesError
 from app.utils.audit import record_audit
 from app.utils.features import feature_required
 from app.utils.tenant_scope import assert_owns, tenant_query
+from app.utils.entitlements import brand_logo_id
 from app.utils.uploads import image_data_uri
 
 ADMIN = UserRole.CLIENT_ADMIN
@@ -150,7 +151,7 @@ def document_pdf(doc_id):
     doc = _doc(doc_id)
     tenant = db.session.get(Tenant, doc.tenant_id)
     html = render_template("sales/document_pdf.html", doc=doc, firm_name=tenant.display_name,
-                           logo_data_uri=image_data_uri(tenant.logo_image_id), purposes=CHALLAN_PURPOSE_LABELS,
+                           logo_data_uri=image_data_uri(brand_logo_id(tenant)), purposes=CHALLAN_PURPOSE_LABELS,
                            doc_type_labels=DOCUMENT_TYPE_LABELS)
     pdf = HTML(string=html, base_url=current_app.root_path).write_pdf()
     return send_file(BytesIO(pdf), mimetype="application/pdf", as_attachment=False,

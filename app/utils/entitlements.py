@@ -7,8 +7,10 @@ to narrow the one before it:
      Client's choice; each setting changeable by the client or ARFA only;
   2. the Ultra Admin's exceptions for that one client;
   3. the client's own switches - only for Client's-choice modules;
-  4. a branch's narrowing (stage 5);
-  5. a login's own powers (app/utils/permissions.py, stage 5).
+  4. a branch's narrowing - modules the Client Admin (or the Ultra
+     Admin, per login) hid at one counter (stage 5);
+  5. a login's own powers - its role and counter permissions, capped by
+     the package (app/utils/permissions.py, stage 5).
 
 `module_mode` is the one answer every check goes through:
 Tenant.has_feature asks it, so menus, search, route guards and saves all
@@ -58,9 +60,32 @@ SETTINGS = {
 
 LIMITS = {
     "branches": "Branches",
-    "logins": "Branch logins",
+    "logins": "Logins (owner, branches and cashier PINs)",
     "gstins": "GSTINs",
 }
+
+# --- sign-in minimums (stage 5) ---------------------------------------------------------------------
+# The client may make each stricter than this, never looser.
+
+SECURITY_MINIMUMS = {
+    "idle_minutes": "Idle sign-out - at most this many minutes",
+    "lock_minutes": "Counter lock with cashier PINs - at most this many minutes",
+    "owner_two_step": "Two-step sign-in for the owner's login",
+}
+IDLE_MINUTE_CHOICES = (15, 30, 60, 120, 240, 480)   # as Settings > Sign-in & security offers
+LOCK_MINUTE_CHOICES = (2, 5, 10, 15, 30)
+
+
+def security_from_form(form, prefix: str = "sec_") -> dict:
+    """Sign-in minimums from a posted form (package editor): blank = none."""
+    out = {}
+    for key, choices in (("idle_minutes", IDLE_MINUTE_CHOICES), ("lock_minutes", LOCK_MINUTE_CHOICES)):
+        raw = form.get(f"{prefix}{key}", "")
+        if raw.isdigit() and int(raw) in choices:
+            out[key] = int(raw)
+    if form.get(f"{prefix}owner_two_step") == "y":
+        out["owner_two_step"] = True
+    return out
 
 # --- auditor powers ---------------------------------------------------------------------------------
 
@@ -316,6 +341,8 @@ def assign_package(tenant, package, actor, keep_exceptions: bool = False):
         grant.setting_overrides = {}
         grant.limit_overrides = {}
         grant.own_branding_override = None
+        grant.counter_permissions_override = None
+        grant.security_overrides = {}
     refresh_read_only(tenant)
     record_audit(actor, "package_assigned", tenant_id=tenant.id, entity_type="tenant", entity_id=tenant.id,
                  details={"from": before, "to": package.name, "kept_exceptions": keep_exceptions})
@@ -466,8 +493,11 @@ def acting_console_user():
 
 
 def locked_for_client(tenant, key: str) -> bool:
-    """Is this setting locked for whoever is signed in as the client now?"""
-    return setting_locked(tenant, key) and not ultra_admin_acting()
+    """Is this setting locked for whoever is signed in as the client now?
+    Their look is also locked when their package uses ARFA's look."""
+    if ultra_admin_acting():
+        return False
+    return setting_locked(tenant, key) or (key == "branding" and not own_branding(tenant))
 
 
 def request_module(tenant, key: str, user):
@@ -637,3 +667,236 @@ def current_setup_package():
         ensure_starting_packages()
         package = Package.query.filter_by(key=CURRENT_SETUP).first()
     return package
+
+
+# --- branches, logins, limits, style and sign-in minimums (stage 5) -------------------------------------
+
+# Modules one branch can be left without. Each opens its own pages or adds
+# its own panel at the counter, and a counter without it still bills
+# correctly - the business keeps the module, its stock rules and GST.
+BRANCH_MODULES = ("restaurant_mode", "job_cards", "loyalty", "inventory", "wholesale")
+
+
+def login_grant_of(user):
+    return getattr(user, "login_grant", None) if user is not None else None
+
+
+def hidden_by_arfa(user, key: str) -> bool:
+    grant = login_grant_of(user)
+    return bool(grant is not None and key in (grant.hidden_modules or []))
+
+
+def login_hides(user, key: str) -> bool:
+    """Is this module hidden for this one branch login (by the Client Admin
+    or by the Ultra Admin)? Only branch logins are ever narrowed."""
+    if not getattr(user, "is_staff", False) or key not in BRANCH_MODULES:
+        return False
+    return key in (user.hidden_modules or []) or hidden_by_arfa(user, key)
+
+
+def counter_permissions_allowed(tenant) -> set:
+    """Counter permissions this client may hand their branch logins - all of
+    them unless their package (or an exception) narrows it."""
+    from app.utils.permissions import PERMISSION_COLUMNS
+
+    grant = grant_of(tenant)
+    if grant is None:
+        return set(PERMISSION_COLUMNS)
+    chosen = grant.counter_permissions_override
+    if chosen is None:
+        chosen = grant.package.counter_permissions
+    return set(PERMISSION_COLUMNS) if chosen is None else set(chosen) & set(PERMISSION_COLUMNS)
+
+
+def arfa_permission(user, permission: str):
+    """True / False when the Ultra Admin set this permission for this login,
+    else None (the Client Admin decides)."""
+    grant = login_grant_of(user)
+    if grant is None:
+        return None
+    value = (grant.permissions or {}).get(permission)
+    return None if value is None else bool(value)
+
+
+def branch_permission(user, permission: str) -> bool:
+    """May this branch login do this? The Ultra Admin's switch if set, else
+    what the Client Admin gave it - but only if the package allows it."""
+    from app.utils.permissions import PERMISSION_COLUMNS
+
+    forced = arfa_permission(user, permission)
+    if forced is not None:
+        return forced
+    return (bool(getattr(user, PERMISSION_COLUMNS[permission]))
+            and permission in counter_permissions_allowed(user.tenant))
+
+
+def branch_max_discount(user):
+    from decimal import Decimal
+
+    if not branch_permission(user, "discount"):
+        return Decimal("0")
+    own = Decimal(user.max_discount_percent or 0)
+    grant = login_grant_of(user)
+    if grant is not None and grant.max_discount_percent is not None:
+        cap = Decimal(grant.max_discount_percent)
+        return cap if arfa_permission(user, "discount") else min(own, cap)
+    return own
+
+
+def set_login_switches(user, actor, hidden_modules=(), permissions=None, max_discount_percent=None, role=None):
+    """The Ultra Admin's switches for one branch login. Empty everything to
+    hand the login back to the Client Admin."""
+    from app.models.package import LoginGrant
+    from app.utils.permissions import BRANCH_ROLES, PERMISSION_COLUMNS
+
+    if not user.is_staff:
+        raise ValueError("Only branch logins have their own switches.")
+    hidden = sorted(k for k in hidden_modules if k in BRANCH_MODULES)
+    perms = {k: bool(v) for k, v in (permissions or {}).items() if k in PERMISSION_COLUMNS and v is not None}
+    grant = login_grant_of(user)
+    before = ({"hidden": grant.hidden_modules, "permissions": grant.permissions,
+               "max_discount": str(grant.max_discount_percent) if grant.max_discount_percent is not None else None}
+              if grant is not None else None)
+    if grant is None:
+        grant = LoginGrant(tenant_id=user.tenant_id, user_id=user.id)
+        db.session.add(grant)
+        user.login_grant = grant
+    grant.hidden_modules = hidden
+    grant.permissions = perms
+    grant.max_discount_percent = max_discount_percent
+    grant.role = role if role in BRANCH_ROLES else None
+    grant.set_by_id = _id(actor)
+    record_audit(actor, "login_switches_set", tenant_id=user.tenant_id, entity_type="user", entity_id=user.id,
+                 details={"before": before, "after": {"hidden": hidden, "permissions": perms,
+                                                      "max_discount": str(max_discount_percent)
+                                                      if max_discount_percent is not None else None}})
+    return grant
+
+
+def set_counter_permissions_exception(tenant, permissions, actor):
+    """The counter permissions this client may give, for this client only -
+    a list of keys, or None to go back to the package's."""
+    from app.utils.permissions import PERMISSION_COLUMNS
+
+    grant = _ensure_grant(tenant, actor)
+    before = grant.counter_permissions_override
+    grant.counter_permissions_override = (None if permissions is None
+                                          else [k for k in PERMISSION_COLUMNS if k in set(permissions)])
+    record_audit(actor, "counter_permissions_exception_set", tenant_id=tenant.id, entity_type="tenant",
+                 entity_id=tenant.id, details={"from": before, "to": grant.counter_permissions_override})
+    return grant
+
+
+# Limits: how many there are now. A login is anyone who signs in - the
+# owner's login, each branch login, and each cashier with a PIN.
+
+def limit_usage(tenant, key: str) -> int:
+    from app.models.platform import Cashier
+    from app.models.user import User, UserRole
+
+    if key not in LIMITS:
+        raise ValueError(f"Unknown limit: {key}")
+    if key == "branches":
+        return User.query.filter_by(tenant_id=tenant.id, role=UserRole.STAFF, is_active=True).count()
+    if key == "logins":
+        return (User.query.filter_by(tenant_id=tenant.id, is_active=True).count()
+                + Cashier.query.filter_by(tenant_id=tenant.id, is_active=True).count())
+    return tenant.gstins.filter_by(is_active=True).count()
+
+
+def limit_meter(tenant, key: str) -> dict:
+    """For a "3 of 5 used" meter where branches, logins and GSTINs are added."""
+    used, limit = limit_usage(tenant, key), limit_of(tenant, key)
+    return {"key": key, "label": LIMITS[key], "used": used, "limit": limit,
+            "full": limit is not None and used >= limit, "over": limit is not None and used > limit,
+            "percent": min(100, round(used * 100 / limit)) if limit else 0}
+
+
+def may_add(tenant, key: str, actor=None, adding: int = 1) -> bool:
+    """Room for `adding` more under this limit? The Ultra Admin (directly or
+    acting as the client) may always go past it."""
+    if getattr(actor, "is_super_admin", False) or ultra_admin_acting():
+        return True
+    limit = limit_of(tenant, key)
+    return limit is None or limit_usage(tenant, key) + adding <= limit
+
+
+def limit_message(tenant, key: str) -> str:
+    return (f"Your package allows {limit_of(tenant, key)} {LIMITS[key].split(' (')[0].lower()} - all in use. "
+            "Ask ARFA to raise it.")
+
+
+# Sign-in minimums.
+
+def security_minimum(tenant, key: str):
+    if key not in SECURITY_MINIMUMS:
+        raise ValueError(f"Unknown sign-in minimum: {key}")
+    grant = grant_of(tenant)
+    if grant is None:
+        return None
+    overrides = grant.security_overrides or {}
+    value = overrides[key] if key in overrides else (grant.package.security or {}).get(key)
+    if key == "owner_two_step":
+        return bool(value)
+    return int(value) if value else None
+
+
+def strictest_minutes(chosen: int, most) -> int:
+    """The client's choice, but never longer than ARFA's most (0 = never)."""
+    if not most:
+        return chosen
+    return chosen if chosen and chosen <= most else most
+
+
+def set_security_exception(tenant, key: str, value, actor):
+    """One sign-in minimum for this client only: a number (minutes) or
+    True / False, None for no minimum, AS_PACKAGE for the package's."""
+    if key not in SECURITY_MINIMUMS:
+        raise ValueError(f"Unknown sign-in minimum: {key}")
+    grant = _ensure_grant(tenant, actor)
+    overrides = dict(grant.security_overrides or {})
+    before = overrides.get(key, AS_PACKAGE)
+    if value == AS_PACKAGE:
+        overrides.pop(key, None)
+    else:
+        overrides[key] = value
+    grant.security_overrides = overrides
+    record_audit(actor, "security_exception_set", tenant_id=tenant.id, entity_type="tenant", entity_id=tenant.id,
+                 details={"minimum": key, "from": before, "to": overrides.get(key, AS_PACKAGE)})
+    return grant
+
+
+# Branding.
+
+def brand_logo_id(tenant):
+    """The client's logo where their own branding shows (screens, printed
+    documents), or None when their package uses ARFA's look."""
+    return tenant.logo_image_id if tenant is not None and own_branding(tenant) else None
+
+
+def branch_login_context(user) -> dict:
+    """What a branch login's permissions page (Client Admin) and its
+    switches in the console (Ultra Admin) show: each permission with what
+    the Client Admin gave, whether the package allows it, what ARFA set and
+    the result; and the modules at this counter."""
+    from app.utils.features import FEATURES
+    from app.utils.permissions import BRANCH_ROLES, PERMISSION_COLUMNS, PERMISSION_LABELS
+
+    tenant = user.tenant
+    allowed = counter_permissions_allowed(tenant)
+    grant = login_grant_of(user)
+    rows = [{"key": key, "label": PERMISSION_LABELS[key], "column": column,
+             "own": bool(getattr(user, column)), "allowed": key in allowed,
+             "arfa": arfa_permission(user, key), "on": branch_permission(user, key)}
+            for key, column in PERMISSION_COLUMNS.items()]
+    modules = [{"key": key, "label": FEATURES[key].label, "business_on": tenant.has_feature(key),
+                "hidden_by_client": key in (user.hidden_modules or []), "hidden_by_arfa": hidden_by_arfa(user, key)}
+               for key in BRANCH_MODULES]
+    return {
+        "rows": rows, "modules": modules, "roles": BRANCH_ROLES, "role": user.branch_role,
+        "allowed": allowed, "grant": grant, "max_discount": branch_max_discount(user),
+        "arfa_discount_cap": grant.max_discount_percent if grant is not None else None,
+        "arfa_role": grant.role if grant is not None else None,
+        "any_arfa": bool(grant is not None and (grant.hidden_modules or grant.permissions
+                                                or grant.max_discount_percent is not None)),
+    }

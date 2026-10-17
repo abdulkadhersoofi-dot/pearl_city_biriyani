@@ -12,21 +12,41 @@ from app.models.price_list import PriceList
 from app.models.user import BranchType, User, UserRole
 from app.pos.stock import branch_stock_status
 from app.utils.audit import record_audit
+from app.utils.entitlements import (
+    BRANCH_MODULES, branch_login_context, counter_permissions_allowed, limit_message, limit_meter, may_add,
+)
 from app.utils.features import feature_required
+from app.utils.permissions import BRANCH_ROLES, PERMISSION_COLUMNS, role_of
 from app.utils.tenant_scope import assert_owns, tenant_query
+
+
+def _room_for_a_branch(tenant):
+    """None if there's room for one more branch login, else why not."""
+    for key in ("branches", "logins"):
+        if not may_add(tenant, key):
+            return limit_message(tenant, key)
+    return None
 
 
 @branches_bp.route("/")
 @roles_required(UserRole.CLIENT_ADMIN)
 def list_branches():
+    tenant = current_user.tenant
     branches = tenant_query(User).filter_by(role=UserRole.STAFF).order_by(User.name).all()
     stock_by_branch = {b.id: branch_stock_status(current_user.tenant_id, b.id) for b in branches}
-    return render_template("branches/list.html", branches=branches, stock_by_branch=stock_by_branch)
+    return render_template("branches/list.html", branches=branches, stock_by_branch=stock_by_branch,
+                           meters=[limit_meter(tenant, "branches"), limit_meter(tenant, "logins")],
+                           roles=BRANCH_ROLES)
 
 
 @branches_bp.route("/new", methods=["GET", "POST"])
 @roles_required(UserRole.CLIENT_ADMIN)
 def new_branch():
+    tenant = current_user.tenant
+    full = _room_for_a_branch(tenant)
+    if full:
+        flash(full, "error")
+        return redirect(url_for("branches.list_branches"))
     form = BranchForm()
     if form.validate_on_submit():
         email = form.email.data.strip().lower()
@@ -43,13 +63,23 @@ def new_branch():
             branch_type=BranchType(form.branch_type.data),
             must_change_password=True,
         )
+        _apply_role(user, form.role.data)
         user.set_password(form.password.data)
         db.session.add(user)
         record_audit(current_user, "branch_created", tenant_id=current_user.tenant_id, entity_type="user")
         db.session.commit()
         flash(f"{user.name} added. Share the password you set with them.", "success")
         return redirect(url_for("branches.list_branches"))
-    return render_template("branches/form.html", form=form)
+    return render_template("branches/form.html", form=form, roles=BRANCH_ROLES,
+                           meters=[limit_meter(tenant, "branches"), limit_meter(tenant, "logins")])
+
+
+def _apply_role(user, role_key):
+    role = BRANCH_ROLES[role_key]
+    for key, value in role["permissions"].items():
+        setattr(user, PERMISSION_COLUMNS[key], value)
+    user.max_discount_percent = role["max_discount"]
+    user.branch_role = role_key
 
 
 @branches_bp.route("/<int:user_id>/deactivate", methods=["POST"])
@@ -69,6 +99,10 @@ def deactivate_branch(user_id):
 def activate_branch(user_id):
     user = tenant_query(User).filter_by(id=user_id, role=UserRole.STAFF).first_or_404()
     assert_owns(user)
+    full = None if user.is_active else _room_for_a_branch(current_user.tenant)
+    if full:
+        flash(full, "error")
+        return redirect(url_for("branches.list_branches"))
     user.is_active = True
     record_audit(current_user, "branch_activated", tenant_id=current_user.tenant_id, entity_type="user", entity_id=user.id)
     db.session.commit()
@@ -109,16 +143,22 @@ def branch_stock(user_id):
 @branches_bp.route("/<int:user_id>/permissions", methods=["GET", "POST"])
 @roles_required(UserRole.CLIENT_ADMIN)
 def branch_permissions(user_id):
+    """A branch login's role, its counter permissions and the modules at
+    its counter. The package caps what can be given, and whatever the
+    Ultra Admin set for this login shows as "Set by ARFA" and stays."""
     branch = tenant_query(User).filter_by(id=user_id, role=UserRole.STAFF).first_or_404()
     assert_owns(branch)
+    tenant = current_user.tenant
     form = BranchPermissionsForm(obj=branch)
-    lists_on = current_user.tenant.has_feature("multi_price_list")
+    lists_on = tenant.has_feature("multi_price_list")
     price_lists = tenant_query(PriceList).filter_by(is_active=True).order_by(PriceList.name).all() if lists_on else []
     form.price_list_id.choices = [("", "Normal prices")] + [(str(pl.id), pl.name) for pl in price_lists]
     if request.method == "GET":
         form.price_list_id.data = str(branch.price_list_id) if branch.price_list_id else ""
+    ctx = branch_login_context(branch)
     if form.validate_on_submit():
         before = {name: getattr(branch, name) for name in PERMISSION_FIELDS}
+        before_hidden = list(branch.hidden_modules or [])
         previous_list = branch.price_list_id
         form.populate_obj(branch)
         branch.price_list_id = previous_list
@@ -126,11 +166,41 @@ def branch_permissions(user_id):
             chosen = (form.price_list_id.raw_data or [""])[0]
             valid = {str(pl.id): pl.id for pl in price_lists}
             branch.price_list_id = valid.get(chosen)
+        role_key = request.form.get("role")
+        if role_key in BRANCH_ROLES:
+            for key, value in BRANCH_ROLES[role_key]["permissions"].items():
+                setattr(branch, PERMISSION_COLUMNS[key], value)
+            branch.max_discount_percent = BRANCH_ROLES[role_key]["max_discount"]
+        else:
+            # One by one: what the package doesn't allow, or ARFA set for this
+            # login, was shown fixed and isn't sent - keep it as it was. (A
+            # role is stored whole; the package still caps it when used.)
+            allowed = counter_permissions_allowed(tenant)
+            for row in ctx["rows"]:
+                if not row["allowed"] or row["arfa"] is not None:
+                    setattr(branch, row["column"], before[row["column"]])
+            if (("discount" not in allowed or ctx["arfa_discount_cap"] is not None)
+                    and before["max_discount_percent"] is not None):
+                branch.max_discount_percent = before["max_discount_percent"]
         # A discount limit only means something with discounts allowed;
         # switching discounts off also zeroes it so a later re-enable
         # starts from a deliberate number, not a forgotten old one.
         if not branch.can_give_discount or branch.max_discount_percent is None:
             branch.max_discount_percent = Decimal("0")
+        branch.branch_role = role_of({k: getattr(branch, c) for k, c in PERMISSION_COLUMNS.items()},
+                                     branch.max_discount_percent)
+        # Modules at this counter: those ticked stay; the business keeps them all.
+        # (One the business has off, or ARFA hid, isn't on the form: it keeps
+        # the Client Admin's earlier choice.)
+        shown = set(request.form.getlist("module"))
+        hidden = []
+        for m in ctx["modules"]:
+            if not m["business_on"] or m["hidden_by_arfa"]:
+                if m["hidden_by_client"]:
+                    hidden.append(m["key"])
+            elif m["key"] not in shown:
+                hidden.append(m["key"])
+        branch.hidden_modules = hidden or None
         after = {name: getattr(branch, name) for name in PERMISSION_FIELDS}
         record_audit(
             current_user,
@@ -141,13 +211,16 @@ def branch_permissions(user_id):
             details={
                 "before": {k: str(v) for k, v in before.items()},
                 "after": {k: str(v) for k, v in after.items()},
+                "role": branch.branch_role,
+                **({"hidden_modules": [before_hidden, branch.hidden_modules or []]}
+                   if before_hidden != (branch.hidden_modules or []) else {}),
                 **({"price_list_id": [previous_list, branch.price_list_id]} if previous_list != branch.price_list_id else {}),
             },
         )
         db.session.commit()
         flash(f"Permissions updated for {branch.name}.", "success")
         return redirect(url_for("branches.list_branches"))
-    return render_template("branches/permissions.html", form=form, branch=branch, lists_on=lists_on)
+    return render_template("branches/permissions.html", form=form, branch=branch, lists_on=lists_on, ctx=ctx)
 
 
 PERMISSION_FIELDS = (
@@ -175,6 +248,9 @@ def cashiers():
     if request.method == "POST":
         action = request.form.get("action")
         try:
+            if action in ("add", "activate") and not may_add(tenant, "logins"):
+                flash(limit_message(tenant, "logins"), "error")
+                return redirect(url_for("branches.cashiers"))
             if action == "add":
                 counter = tenant_query(User).filter_by(id=request.form.get("counter_id", type=int)).first_or_404()
                 if counter not in counters:
@@ -200,4 +276,4 @@ def cashiers():
         flash(message, "success")
         return redirect(url_for("branches.cashiers"))
     rows = [(c, cashier_service.cashiers_for(tenant, c, active_only=False)) for c in counters]
-    return render_template("branches/cashiers.html", rows=rows)
+    return render_template("branches/cashiers.html", rows=rows, meter=limit_meter(tenant, "logins"))

@@ -43,8 +43,9 @@ from app.models.package import Package
 from app.tenants.packages import client_package_context
 from app.tenants.powers import auditor_powers_context
 from app.utils.entitlements import (
-    BUSINESS_TYPE_PACKAGE, allowed_packages, assign_package, client_room, ensure_starting_packages, grant_of, has_room,
-    package_price_for, power_required, sub_auditor_room,
+    BUSINESS_TYPE_PACKAGE, allowed_packages, assign_package, branch_login_context, client_room,
+    ensure_starting_packages, grant_of, has_room, limit_meter, limit_of, may_add, package_price_for, power_required,
+    sub_auditor_room,
 )
 from app.utils.indian_states import STATE_NAME_BY_CODE
 from app.utils.uploads import UploadError, delete_uploaded_image, save_uploaded_image
@@ -233,6 +234,8 @@ def detail(tenant_id):
         access_status=tenant_access_status(tenant),
         default_period=_current_period(),
         pkg=client_package_context(tenant),
+        gstin_meter=limit_meter(tenant, "gstins"),
+        login_switches={u.id: branch_login_context(u) for u in users if u.is_staff} if current_user.is_super_admin else {},
     )
 
 
@@ -451,6 +454,10 @@ def update_logo(tenant_id):
 def add_gstin(tenant_id):
     tenant = Tenant.query.get_or_404(tenant_id)
     assert_auditor_owns_tenant(current_user, tenant)
+    if not may_add(tenant, "gstins", current_user):
+        flash(f"{tenant.display_name}'s package allows {limit_of(tenant, 'gstins')} GSTIN(s) - all in use. "
+              "Ask ARFA to raise the limit.", "error")
+        return redirect(url_for("tenants.detail", tenant_id=tenant.id, _anchor="sec-locations"))
     form = AddGstinForm()
     if form.validate_on_submit():
         gstin = Gstin(
@@ -657,6 +664,12 @@ def activate_user(tenant_id, user_id):
     tenant = Tenant.query.get_or_404(tenant_id)
     assert_auditor_owns_tenant(current_user, tenant)
     user = User.query.filter_by(id=user_id, tenant_id=tenant_id).first_or_404()
+    if not user.is_active:
+        for key in (("branches", "logins") if user.is_staff else ("logins",)):
+            if not may_add(tenant, key, current_user):
+                flash(f"{tenant.display_name}'s package has no room for another login - ask ARFA to raise it.",
+                      "error")
+                return redirect(url_for("tenants.detail", tenant_id=tenant_id, _anchor="sec-users"))
     user.is_active = True
     record_audit(
         current_user, "client_user_activated_by_firm", tenant_id=tenant_id, entity_type="user", entity_id=user.id,

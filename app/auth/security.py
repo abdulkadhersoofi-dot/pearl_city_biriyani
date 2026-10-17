@@ -157,7 +157,14 @@ def disable_two_factor(user) -> None:
 
 
 def two_factor_required(user) -> bool:
-    return bool(user.is_admin_hierarchy and current_app.config.get("ADMIN_2FA_REQUIRED", True))
+    if user.is_admin_hierarchy:
+        return bool(current_app.config.get("ADMIN_2FA_REQUIRED", True))
+    # A client's package can require it for the owner's login (stage 5).
+    if user.is_client_admin and user.tenant is not None:
+        from app.utils.entitlements import security_minimum
+
+        return security_minimum(user.tenant, "owner_two_step")
+    return False
 
 
 def two_factor_allowed(user) -> bool:
@@ -208,9 +215,12 @@ def idle_limit_minutes(user, impersonating: bool = False) -> int:
     tenant = user.tenant
     if tenant is None:
         return 0
+    from app.utils.entitlements import security_minimum, strictest_minutes
     from app.utils.module_settings import module_settings
 
-    return int(module_settings(tenant, "security").get("idle_minutes") or 0)
+    # Never longer than the package's sign-in minimum (stage 5).
+    return strictest_minutes(int(module_settings(tenant, "security").get("idle_minutes") or 0),
+                             security_minimum(tenant, "idle_minutes"))
 
 
 # --- cashier PIN -----------------------------------------------------------------------------

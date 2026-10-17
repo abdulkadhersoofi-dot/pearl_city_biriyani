@@ -4,6 +4,17 @@
 {% if on %}<p class="lock-note">{{ icon('lock-keyhole', 'icon-sm') }}<span>{{ what }} is set by ARFA as part of your package. Ask ARFA if it needs to change.</span></p>{% endif %}
 {% endmacro %}
 
+{# "3 of 5 used" where branches, logins and GSTINs are added (packages
+   and powers, stage 5). Nothing shows when the package sets no limit. #}
+{% macro limit_meter(m, noun) %}
+{% if m and m.limit is not none %}
+<div class="limit-meter {{ 'is-full' if m.full }}" role="group" aria-label="{{ m.label }}">
+  <div class="limit-meter-text"><strong>{{ m.used }} of {{ m.limit }}</strong> {{ noun }} used{% if m.over %} - more than your package allows{% elif m.full %} - ask ARFA to raise the limit{% endif %}</div>
+  <div class="limit-meter-bar" role="progressbar" aria-valuemin="0" aria-valuemax="{{ m.limit }}" aria-valuenow="{{ m.used }}" aria-label="{{ m.used }} of {{ m.limit }} {{ noun }} used"><span style="width: {{ m.percent }}%"></span></div>
+</div>
+{% endif %}
+{% endmacro %}
+
 {% macro field(f, help=None) %}
 {# Help text and errors are tied to the field (aria-describedby), so a
    screen reader reads them with it; a field in error says so. #}

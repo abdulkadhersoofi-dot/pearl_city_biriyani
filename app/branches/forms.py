@@ -8,11 +8,18 @@ BRANCH_TYPE_CHOICES = [
 ]
 
 
+def _role_choices():
+    from app.utils.permissions import BRANCH_ROLES
+
+    return [(key, role["label"]) for key, role in BRANCH_ROLES.items()]
+
+
 class BranchForm(FlaskForm):
     name = StringField("Branch name", validators=[DataRequired(), Length(max=255)])
     email = StringField("Login email", validators=[DataRequired(), Email(), Length(max=255)])
     phone = StringField("Phone", validators=[Optional(), Length(max=20)])
     branch_type = SelectField("Branch type", choices=BRANCH_TYPE_CHOICES, validators=[DataRequired()])
+    role = SelectField("Role", choices=_role_choices, default="cashier", validators=[DataRequired()])
     password = PasswordField("Initial password", validators=[DataRequired(), Length(min=8)])
     confirm_password = PasswordField(
         "Confirm password",

@@ -4,7 +4,8 @@
 <form method="post" class="settings-form stack" novalidate enctype="multipart/form-data"
       x-data="settingsForm({{ form.errors|tojson }})" @input="touch()" @change="touch()" @submit="saving()">
   {{ form.hidden_tag() }}
-  {{ lock_note(locked.branding, "Your logo, colours and font") }}
+  {% if arfa_look %}<p class="lock-note">{{ icon('lock-keyhole', 'icon-sm') }}<span>Your package uses ARFA's look - your own logo, colours and sign-in link come with a package that includes own branding. Ask ARFA.</span></p>
+  {% else %}{{ lock_note(locked.branding, "Your logo, colours and font") }}{% endif %}
   <fieldset class="lock-fieldset stack" {% if locked.branding %}disabled{% endif %}>
 
   <section class="card settings-card">

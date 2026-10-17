@@ -57,6 +57,11 @@ def tenant_theme_css(tenant) -> str:
     color choice only affects text sitting directly on their background."""
     if not tenant:
         return ""
+    from app.utils.entitlements import own_branding
+
+    # A package without own branding gets ARFA's look (packages and powers, stage 5).
+    if not own_branding(tenant):
+        return ""
     primary = _safe_hex(tenant.primary_color, DEFAULT_PRIMARY_COLOR)
     background = _safe_hex(tenant.background_color, DEFAULT_BACKGROUND_COLOR)
     text = _safe_hex(tenant.text_color, DEFAULT_TEXT_COLOR)
