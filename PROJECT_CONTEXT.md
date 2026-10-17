@@ -515,6 +515,19 @@ this list is just the index.
   `GUARDED_IN_VIEW`). The README has a hand-over guide for the Ultra Admin
   ("Packages and powers - how to run it").
 
+- **Second-hand goods module.** Pages in `app/secondhand/` (blueprint
+  `margin`, `/second-hand/...`); rules in `app/margin/buying.py` (purchase
+  voucher = a PurchaseBill of kind `margin_voucher`, series
+  `DocumentType.MARGIN_PURCHASE` "SHP"), `app/margin/selling.py` (used
+  stock, preview, sale through `invoicing.services.create_invoice`, whose
+  `LineInput.serials` carries IMEI units), `app/margin/services.py` (lots)
+  and `app/utils/margin.py` (math). e-Way bills: `eway.draft_from` sets
+  `other_value` for MSI invoices and builds inward bills from vouchers
+  (`source_type` "purchase_bill"). Returns: `gstr._margin_remainder_exempt`
+  / `_table_8` (setting `module_settings(tenant, "margin")["remainder_as"]`).
+  Postgres stores `document_type` by member NAME - add enum values in
+  migrations by name (`'MARGIN_PURCHASE'`).
+
 ## 5. Chronological development history (this session)
 
 This is the part README.md doesn't capture — the actual sequence of

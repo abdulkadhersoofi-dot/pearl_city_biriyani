@@ -640,8 +640,42 @@ def gstr1_data(tenant: Tenant, gstin: Gstin, period: str) -> dict:
         "b2cl": sorted(b2cl.values(), key=lambda d: (d["doc_date"], d["doc_number"])),
         "document_summary": _document_summaries(tenant, gstin, raw),
         "totals": totals,
+        **({"nil_exempt": _table_8(gstin, lines)} if _margin_remainder_exempt(tenant) else {}),
         **({"advances": _advances(tenant, gstin, raw)} if tenant.uses_module("receivables") else {}),
     }
+
+
+def _margin_remainder_exempt(tenant) -> bool:
+    """Does this client report the non-margin part of margin-scheme sales
+    as exempt (GSTR-1 Table 8, GSTR-3B 3.1(c))? Their setting - only with
+    the margin scheme in use."""
+    if not tenant.uses_module("margin_scheme"):
+        return False
+    from app.utils.module_settings import module_settings
+
+    return module_settings(tenant, "margin").get("remainder_as") == "exempt"
+
+
+TABLE_8_ROWS = (
+    ("inter_registered", "Inter-State supplies to registered persons"),
+    ("intra_registered", "Intra-State supplies to registered persons"),
+    ("inter_unregistered", "Inter-State supplies to unregistered persons"),
+    ("intra_unregistered", "Intra-State supplies to unregistered persons"),
+)
+
+
+def _table_8(gstin, lines) -> dict:
+    """GSTR-1 Table 8 (nil rated, exempted and non-GST supplies): the part
+    of margin-scheme sales that isn't margin, as exempt."""
+    rows = {key: {"label": label, "nil_rated": ZERO, "exempted": ZERO, "non_gst": ZERO} for key, label in TABLE_8_ROWS}
+    for l in lines:
+        if not l.margin_remainder:
+            continue
+        inter = (l.place_of_supply or gstin.state_code) != gstin.state_code
+        key = f"{'inter' if inter else 'intra'}_{'registered' if l.is_b2b else 'unregistered'}"
+        rows[key]["exempted"] += l.sign * l.margin_remainder
+    total = {k: sum((r[k] for r in rows.values()), ZERO) for k in ("nil_rated", "exempted", "non_gst")}
+    return {"rows": rows, "total": total}
 
 
 def _advances(tenant, gstin, raw) -> dict:
@@ -690,6 +724,10 @@ def gstr3b_data(tenant: Tenant, gstin: Gstin, period: str) -> dict:
         bucket["cgst"] += l.sign * l.cgst
         bucket["sgst"] += l.sign * l.sgst
         bucket["igst"] += l.sign * l.igst
+        # Margin scheme: the part of the price that isn't margin carries no
+        # GST - shown as exempt in 3.1(c) when the client reports it so.
+        if l.margin_remainder and _margin_remainder_exempt(tenant):
+            buckets["nil_rated"]["taxable_value"] += l.sign * l.margin_remainder
 
     advances = None
     if tenant.uses_module("receivables"):

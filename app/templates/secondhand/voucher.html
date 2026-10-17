@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}{{ bill.number }} - {{ firm_name }}{% endblock %}
+{% block content %}
+{% set d = bill.seller_details or {} %}
+<div class="page-header">
+  <div>
+    <a href="{{ url_for('margin.buy_list') }}" class="back-link">{{ icon('chevron-right', 'icon-sm icon-flip') }}Purchases</a>
+    <h1>{{ bill.number }}</h1>
+    <p class="text-muted mt-0">Purchase voucher - second-hand goods · {{ bill.bill_date.strftime('%d %b %Y') }}
+      <span class="status-badge {{ 'status-void' if bill.status.value == 'voided' else 'status-issued' }}">{{ bill.status.value|title }}</span></p>
+  </div>
+  <div class="row">
+    <a href="{{ url_for('margin.voucher_pdf', bill_id=bill.id) }}" class="btn btn-secondary" target="_blank" rel="noopener">{{ icon('printer', 'icon-sm') }}Print voucher</a>
+    {% if bill.status.value == 'posted' %}<a href="{{ url_for('margin.sell_new') }}" class="btn btn-primary">Sell</a>{% endif %}
+  </div>
+</div>
+{% include "secondhand/_nav.html" %}
+
+<div class="grid-2 gap-16 mb-16">
+  <div class="card">
+    <h2 class="mt-0">Bought from</h2>
+    <p class="m-0"><strong>{{ bill.supplier_snapshot.name }}</strong></p>
+    {% if d.registered %}<p class="m-0">GSTIN {{ bill.supplier_snapshot.gstin }} · their invoice {{ bill.supplier_invoice_no }} of {{ bill.supplier_invoice_date.strftime('%d %b %Y') }}</p>
+    {% else %}<p class="m-0 text-muted">Not GST-registered{% if d.id_type %} · {{ id_types.get(d.id_type, d.id_type) }} {{ d.id_no }}{% endif %}</p>{% endif %}
+    {% if d.phone %}<p class="m-0">{{ d.phone }}</p>{% endif %}
+    {% if d.address %}<p class="m-0">{{ d.address }}</p>{% endif %}
+    <p class="m-0 mt-6 text-muted">Paid by {{ paid_by.get(d.paid_by, '-') }}</p>
+  </div>
+  <div class="card">
+    <h2 class="mt-0">Tax</h2>
+    <p class="m-0">No input tax credit is taken on these goods (Rule 32(5)). What was paid{% if d.registered %}, GST included,{% endif %} is the purchase price the margin is worked from when each unit is sold.</p>
+  </div>
+</div>
+
+<div class="table-wrap card mb-16">
+  <table>
+    <thead><tr><th>Item</th><th>HSN</th><th class="num">Qty</th><th class="num">Price</th>{% if d.registered %}<th class="num">GST</th>{% endif %}<th class="num">Paid</th><th class="num">Unsold</th></tr></thead>
+    <tbody>
+    {% for line, left in lots %}
+      <tr>
+        <td>{{ line.description }}</td>
+        <td>{{ line.hsn_or_sac_code }}</td>
+        <td class="num">{{ line.qty|qty }}</td>
+        <td class="num">{{ '%.2f'|format(line.rate) }}</td>
+        {% if d.registered %}<td class="num">{{ '%.2f'|format(line.cgst_amount + line.sgst_amount + line.igst_amount) }}</td>{% endif %}
+        <td class="num">{{ '%.2f'|format(line.line_total) }}</td>
+        <td class="num">{{ left|qty }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+    <tfoot><tr><th colspan="{{ 5 if d.registered else 4 }}">Total paid</th><td class="num"><strong>{{ '%.2f'|format(bill.grand_total) }}</strong></td><td></td></tr></tfoot>
+  </table>
+</div>
+{% if bill.notes %}<p class="card">{{ bill.notes }}</p>{% endif %}
+
+{% with source=bill %}{% include "einvoice/_eway_panel.html" %}{% endwith %}
+
+{% if bill.status.value == 'posted' %}
+<details class="card mt-16">
+  <summary><strong>Void this voucher</strong> <span class="text-muted">- takes the goods out of your used stock</span></summary>
+  {% if sold_any %}<p class="text-muted">Some of these goods were already sold - void those sales first.</p>
+  {% else %}
+  <form method="post" action="{{ url_for('margin.voucher_void', bill_id=bill.id) }}" class="row items-end gap-8 mt-12" onsubmit="return confirm('Void {{ bill.number }}?');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="field m-0"><span class="field-label">Reason</span><input type="text" name="reason" class="field-input" required></label>
+    <button class="btn btn-danger">Void</button>
+  </form>
+  {% endif %}
+</details>
+{% else %}
+<p class="text-muted mt-16">Voided: {{ bill.void_reason }}</p>
+{% endif %}
+{% endblock %}

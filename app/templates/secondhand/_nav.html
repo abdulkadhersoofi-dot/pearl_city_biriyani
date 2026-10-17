@@ -1,0 +1,10 @@
+{# Second-hand goods, in the order the work happens. #}
+<nav class="subnav" aria-label="Second-hand goods">
+  <a href="{{ url_for('margin.index') }}" class="{{ 'active' if request.endpoint == 'margin.index' }}">Overview</a>
+  <a href="{{ url_for('margin.buy_list') }}" class="{{ 'active' if request.endpoint in ('margin.buy_list', 'margin.buy_new', 'margin.voucher') }}">1 · Buy</a>
+  <a href="{{ url_for('margin.stock') }}" class="{{ 'active' if request.endpoint == 'margin.stock' }}">2 · Used stock</a>
+  <a href="{{ url_for('margin.sell_list') }}" class="{{ 'active' if request.endpoint in ('margin.sell_list', 'margin.sell_new') }}">3 · Sell</a>
+  <a href="{{ url_for('margin.eway') }}" class="{{ 'active' if request.endpoint == 'margin.eway' }}">4 · e-Way bills</a>
+  <a href="{{ url_for('reports.margin_register') }}">5 · Register &amp; returns</a>
+  <a href="{{ url_for('margin.settings') }}" class="{{ 'active' if request.endpoint == 'margin.settings' }}">Settings</a>
+</nav>

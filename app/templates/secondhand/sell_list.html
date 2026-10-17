@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Sell - Second-hand goods - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Second-hand sales</h1>
+  <a href="{{ url_for('margin.sell_new') }}" class="btn btn-primary">+ Sell</a>
+</div>
+{% include "secondhand/_nav.html" %}
+<p class="text-muted mt-0">Invoices - Margin Scheme (MSI). GST is on the margin only and is never added on top of the price. Counter sales of second-hand goods are in the POS day-book; both are in the margin register.</p>
+<div class="table-wrap card">
+  <table>
+    <thead><tr><th>Invoice</th><th>Buyer</th><th>Date</th><th class="num">Price</th><th class="num">Margin (taxable)</th><th class="num">GST</th><th>Status</th></tr></thead>
+    <tbody>
+    {% for i in invoices %}
+      <tr>
+        <td><a href="{{ url_for('invoicing.view_invoice', invoice_id=i.id) }}">{{ i.invoice_number }}</a></td>
+        <td>{{ i.customer_snapshot.name }}</td>
+        <td>{{ i.invoice_date.strftime('%d %b %Y') }}</td>
+        <td class="num">{{ '%.2f'|format(i.grand_total) }}</td>
+        <td class="num">{{ '%.2f'|format(i.total_taxable_value) }}</td>
+        <td class="num">{{ '%.2f'|format(i.total_cgst + i.total_sgst + i.total_igst) }}</td>
+        <td><span class="status-badge status-{{ i.status.value }}">{{ i.status.value|title }}</span></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="7" class="empty-state">Nothing sold yet. <a href="{{ url_for('margin.sell_new') }}">Sell</a> from your used stock.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

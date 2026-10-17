@@ -1,0 +1,69 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @page { size: A4; margin: 18mm 16mm; }
+  body { font-family: "Helvetica Neue", Arial, sans-serif; color: #1f2a24; font-size: 11pt; }
+  h1 { font-size: 16pt; margin: 0 0 2px; }
+  .doc-type { font-size: 11pt; color: #5c6b62; margin: 0 0 16px; }
+  .header { display: flex; justify-content: space-between; border-bottom: 2px solid #1f7a4d; padding-bottom: 12px; margin-bottom: 16px; }
+  .header .firm { text-align: right; }
+  .meta-grid { display: flex; justify-content: space-between; margin-bottom: 16px; }
+  .meta-grid .block { width: 48%; }
+  .label { font-size: 8.5pt; text-transform: uppercase; color: #5c6b62; letter-spacing: .04em; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+  th, td { border: 1px solid #d8ddd6; padding: 6px 8px; font-size: 10pt; text-align: left; }
+  th { background: #f0f2ee; }
+  td.num, th.num { text-align: right; }
+  .declaration { border: 1px solid #1f2a24; padding: 8px 10px; font-size: 9.5pt; margin-top: 8px; }
+  .signs { display: flex; justify-content: space-between; margin-top: 48px; font-size: 10pt; }
+  .signs div { width: 40%; border-top: 1px solid #1f2a24; padding-top: 4px; text-align: center; }
+  .firm-logo { max-height: 48px; max-width: 160px; object-fit: contain; margin-bottom: 6px; }
+</style>
+</head>
+<body>
+  {% set d = bill.seller_details or {} %}
+  <div class="header">
+    <div>
+      <h1>Purchase Voucher - Second-hand Goods</h1>
+      <p class="doc-type">{{ bill.number }} · {{ bill.bill_date.strftime('%d %b %Y') }}{% if bill.status.value == 'voided' %} · VOID{% endif %}</p>
+    </div>
+    <div class="firm">
+      {% if logo_data_uri %}<img class="firm-logo" src="{{ logo_data_uri }}">{% endif %}
+      <strong>{{ tenant.display_name }}</strong><br>
+      GSTIN {{ bill.gstin.gstin }}<br>{{ bill.gstin.registered_address or '' }}
+    </div>
+  </div>
+  <div class="meta-grid">
+    <div class="block">
+      <div class="label">Bought from</div>
+      <strong>{{ bill.supplier_snapshot.name }}</strong><br>
+      {% if d.registered %}GSTIN {{ bill.supplier_snapshot.gstin }}<br>Their invoice {{ bill.supplier_invoice_no }} of {{ bill.supplier_invoice_date.strftime('%d %b %Y') }}<br>
+      {% else %}Not registered under GST<br>{% if d.id_type %}{{ id_types.get(d.id_type, d.id_type) }}: {{ d.id_no }}<br>{% endif %}{% endif %}
+      {% if d.phone %}Phone {{ d.phone }}<br>{% endif %}{{ d.address or '' }}
+    </div>
+    <div class="block">
+      <div class="label">Payment</div>
+      Rs. {{ '%.2f'|format(bill.grand_total) }} by {{ paid_by.get(d.paid_by, '-') }}
+    </div>
+  </div>
+  <table>
+    <thead><tr><th>#</th><th>Item</th><th>HSN</th><th class="num">Qty</th><th class="num">Price</th>{% if d.registered %}<th class="num">GST</th>{% endif %}<th class="num">Amount</th></tr></thead>
+    <tbody>
+    {% for line in bill.lines %}
+      <tr><td>{{ loop.index }}</td><td>{{ line.description }}</td><td>{{ line.hsn_or_sac_code }}</td><td class="num">{{ line.qty|qty }}</td>
+        <td class="num">{{ '%.2f'|format(line.rate) }}</td>{% if d.registered %}<td class="num">{{ '%.2f'|format(line.cgst_amount + line.sgst_amount + line.igst_amount) }}</td>{% endif %}
+        <td class="num">{{ '%.2f'|format(line.line_total) }}</td></tr>
+    {% endfor %}
+    </tbody>
+    <tfoot><tr><th colspan="{{ 6 if d.registered else 5 }}">Total</th><td class="num"><strong>{{ '%.2f'|format(bill.grand_total) }}</strong></td></tr></tfoot>
+  </table>
+  <div class="declaration">
+    Second-hand goods bought for resale under the margin scheme (Rule 32(5) of the CGST Rules, 2017). No input tax credit is availed on these goods.
+    {% if not d.registered %}The seller declares that the goods are their own, sold free of any claim, and that they are not registered under GST.{% endif %}
+  </div>
+  {% if bill.notes %}<p style="font-size:10pt;">{{ bill.notes }}</p>{% endif %}
+  <div class="signs"><div>Seller's signature</div><div>For {{ tenant.display_name }}</div></div>
+</body>
+</html>

@@ -31,6 +31,7 @@ DEFAULT_PREFIXES = {
     DocumentType.SALES_ORDER: "SO",
     DocumentType.JOB_CARD: "JOB",
     DocumentType.OLD_GOLD_PURCHASE: "OG",
+    DocumentType.MARGIN_PURCHASE: "SHP",
 }
 
 # The IRP accepts a document number of at most 16 characters, and

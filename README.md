@@ -1245,9 +1245,9 @@ Gunicorn workers or add app servers behind Nginx as load grows.
     title, with the declaration. The declaration text is editable in
     Settings; blank means the standard wording.
   - **Restrictions:**
-    - Invoicing refuses margin goods to a branch, as an export / RCM /
-      bill of supply, and serial-tracked margin goods (those are sold at
-      the counter, where the IMEI is picked).
+    - Invoicing refuses margin goods to a branch, or as an export / RCM /
+      bill of supply. Serial-tracked margin goods need their IMEI on the
+      line (Second-hand goods -> Sell picks it; see the module section).
     - Credit/debit notes against a margin invoice are refused; void and
       re-bill instead.
 - **GSTR-1.** B2B/B2C is split by the buyer's GSTIN as usual, at the
@@ -1271,6 +1271,97 @@ Gunicorn workers or add app servers behind Nginx as load grows.
   404, and the item-form and Settings fields aren't shown. Tenant
   isolation: lots and register rows are per client
   (`tests/test_margin_scheme.py`).
+
+### Second-hand goods - the margin scheme as its own module
+
+The margin scheme now has its own area, **Second-hand goods**, in the side
+menu (module `margin_scheme`), laid out in the order the work happens:
+**Overview -> 1 Buy -> 2 Used stock -> 3 Sell -> 4 e-Way bills -> 5 Register
+& returns -> Settings**. The "New" button has "Buy used goods" and
+"Second-hand sale"; search finds every screen. Settings > Modules sends the
+module's "Set up" link here. Purchases no longer has to be on.
+
+**The law, as built (Rule 32(5), CGST Rules 2017)** - checked against the
+request "the base amount is exempt and the margin is taxed at 18% or the
+applicable rate":
+- The value of supply is the **margin** = selling price - purchase price,
+  only when **no input tax credit** was taken on the purchase. A negative
+  margin is ignored (no tax, never a refund).
+- GST is at the **goods' own rate** - 18% for used phones and most
+  electronics, but not always 18% (old and used vehicles have their own
+  notified rates on the margin); the rate is the one on the item. The
+  margin is treated as GST-inclusive: taxable = margin x 100 / (100 +
+  rate); the buyer pays one price, GST is never added on top.
+- The purchase-cost part of the price is **not taxed**. Strictly it is
+  outside the value of supply rather than an "exempt supply" by
+  definition; reporting it as exempt (GSTR-1 table 8, GSTR-3B 3.1(c)) is
+  the common practice so the returns add up to the turnover - that is the
+  default here, and **Settings** lets a firm switch it off (then it shows
+  only in the HSN summary's 0% row). Reporting it as exempt can bring in
+  Rule 42/43 reversal of common input tax credit - the settings page says
+  so; the firm's auditor decides.
+
+**1 Buy - purchase voucher (SHP/<FY>/0001)**, `app/margin/buying.py`:
+- From **a person** (not GST-registered): the voucher is the document -
+  name, phone, address (with PIN, for an e-way bill), ID proof (Aadhaar,
+  PAN, licence, voter ID, passport; required unless switched off in
+  Settings), no GST.
+- From **a registered dealer**: their GSTIN, invoice number and date and
+  the GST they charged - still no credit taken, so what was paid, GST
+  included, is the cost the margin is worked from.
+- Items: any second-hand item, or a **new used item made right on the
+  voucher** (name, HSN, GST rate on the margin); one IMEI / serial per unit
+  when Serial / IMEI is on. Regular goods are refused here.
+- Paid by cash / UPI / bank / cheque; printable voucher (PDF) with the
+  no-ITC declaration and signature lines; void with a reason (refused once
+  a unit from it is sold). Underneath it is a purchase bill of kind
+  `margin_voucher` (repeat sellers reuse one supplier record), so stock,
+  IMEI units, lots, the purchase register and supplier accounts all work.
+
+**2 Used stock** - every unsold unit (IMEI by IMEI) or lot: cost, date,
+seller, voucher, days held; searchable.
+
+**3 Sell - margin-scheme invoice (MSI)**, `app/margin/selling.py`: tick
+units from used stock, enter the price, and a **live box** shows, per item
+and in total, the price, what was paid, the margin (a loss flagged, no
+GST), the taxable value and CGST/SGST or IGST on it, and the part with no
+GST - before anything is saved. Buyer: an existing customer or a new one
+(saved). Saving makes the MSI invoice through the one invoicing service,
+with the IMEI on the line and the unit marked sold; voiding it puts the
+IMEI back in stock. The general invoice form now also accepts IMEI units
+for margin goods (it asks for them and points here).
+
+**4 e-Way bills**, `app/einvoice/eway.py`:
+- **Out (sale)**: the margin is the taxable value and the rest of the
+  price goes in **"other value"** (new `eway_bills.other_value`, sent as
+  `otherValue` / `OthValue`), so taxable + tax + other = invoice value, as
+  the portal checks. (Before this, a margin invoice's e-way bill didn't add
+  up.)
+- **In (purchase)**: from a voucher, an **inward** e-way bill - supply type
+  Inward, from the seller (URP when unregistered; their GSTIN and invoice
+  otherwise) to the dealer, document "Bill" / "Invoice", seller's state and
+  PIN editable.
+- The page lists sales and purchases over the Rs. 50,000 limit (or all)
+  with "Make e-way bill". Whether a margin sale's consignment value is the
+  full price or only margin + tax is not settled; the full price is used
+  for the limit (the safer reading).
+
+**5 Register & returns**: the margin register as before; GSTR-1 now has a
+**table 8** section (inter/intra-state x registered/unregistered,
+"Exempted") and an Excel sheet for it, and GSTR-3B 3.1(c) includes the
+same amount - both only with the margin scheme in use and the setting on.
+
+- Database: migration `e7a1c5d9b234` - document type `MARGIN_PURCHASE`
+  (series SHP), `purchase_bills.kind`, `purchase_bills.seller_details`,
+  `eway_bills.other_value`. No data changes.
+- Tests: `tests/test_second_hand.py` - voucher from a person (number, no
+  GST / ITC, IMEI unit, supplier, page, PDF), ID proof, a dealer's GST in
+  the cost, a new item from the voucher, regular goods refused, used stock,
+  the preview and the sale (Rs. 10,000 -> 11,800: margin 1,800, taxable
+  1,525.42, GST 274.58), a loss, IGST across states, the general form
+  pointing here, voids, e-way bill out (other value 60,000 on 70,800) and
+  in (URP, Inward), table 8 / 3.1(c) and the setting, the overview, the
+  module off, and isolation.
 
 ### Platform build - Phase 6 (accounts, pre-sale documents, recurring invoices)
 

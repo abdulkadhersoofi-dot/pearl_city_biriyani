@@ -81,9 +81,9 @@ FEATURES = {
         Feature(
             "margin_scheme",
             "Margin scheme (second-hand goods)",
-            "Used phones, vehicles and other second-hand goods: GST on your margin only (Rule 32(5)), on a "
-            "separate margin-scheme invoice, with a margin register. Needs Purchases on to record what each "
-            "item cost.",
+            "Used phones, vehicles and other second-hand goods: buy on your own voucher (with the seller's ID), "
+            "sell on a margin-scheme invoice with GST on your margin only (Rule 32(5)), e-way bills both ways "
+            "and a margin register - all under Second-hand goods in the menu.",
             available=True,
         ),
         Feature(

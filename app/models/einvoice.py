@@ -83,6 +83,10 @@ class EWayBill(db.Model, TenantScopedMixin, TimestampMixin):
     cgst_value = db.Column(db.Numeric(14, 2), nullable=False, default=0, server_default="0")
     sgst_value = db.Column(db.Numeric(14, 2), nullable=False, default=0, server_default="0")
     igst_value = db.Column(db.Numeric(14, 2), nullable=False, default=0, server_default="0")
+    # Value on the document that isn't taxable value or tax - for a margin-
+    # scheme sale, the part of the price that isn't margin (so taxable +
+    # tax + other = invoice value, as the e-way bill system checks).
+    other_value = db.Column(db.Numeric(14, 2), nullable=False, default=0, server_default="0")
     total_invoice_value = db.Column(db.Numeric(14, 2), nullable=False, default=0)
     # Part B
     trans_mode = db.Column(db.String(1), nullable=False, default="1", server_default="1")  # 1 road 2 rail 3 air 4 ship

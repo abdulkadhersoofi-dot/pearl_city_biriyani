@@ -39,6 +39,9 @@ class DocumentType(str, enum.Enum):
     # old gold bought from a customer.
     JOB_CARD = "job_card"
     OLD_GOLD_PURCHASE = "old_gold_purchase"
+    # Second-hand goods bought for resale under the margin scheme - the
+    # dealer's own purchase voucher (a seller with no invoice of theirs).
+    MARGIN_PURCHASE = "margin_purchase"
 
 
 # Document types a tenant may issue, gated by their GST registration type.
@@ -71,6 +74,7 @@ DOCUMENT_TYPE_LABELS = {
     DocumentType.SALES_ORDER: "Sales Order",
     DocumentType.JOB_CARD: "Job Card",
     DocumentType.OLD_GOLD_PURCHASE: "Old Gold Purchase Voucher",
+    DocumentType.MARGIN_PURCHASE: "Purchase Voucher - Second-hand Goods",
 }
 
 

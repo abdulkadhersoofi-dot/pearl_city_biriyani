@@ -33,7 +33,7 @@ GUARDED_IN_VIEW = {
     "accounts.shared_statement",                               # public signed link; needs receivables
 }
 MODULE_BLUEPRINTS = ("purchases", "expenses", "accounts", "sales", "loyalty", "jobs", "restaurant", "pharmacy",
-                     "jewellery", "wholesale", "einvoice", "inventory")
+                     "jewellery", "wholesale", "einvoice", "inventory", "margin")
 
 
 def _login(client, email, password):

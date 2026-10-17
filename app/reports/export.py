@@ -108,6 +108,13 @@ def build_gstr1_workbook(data: dict) -> BytesIO:
                             _money(b.sgst), _money(b.igst)])
         _autosize(adv)
 
+    if "nil_exempt" in data:
+        nil = wb.create_sheet("Nil-Exempt (8)")
+        _write_header(nil, 1, ["Description", "Nil rated", "Exempted", "Non-GST"])
+        for row in data["nil_exempt"]["rows"].values():
+            nil.append([row["label"], _money(row["nil_rated"]), _money(row["exempted"]), _money(row["non_gst"])])
+        _autosize(nil)
+
     docs = wb.create_sheet("Documents issued")
     _write_header(docs, 1, ["Document type", "Series prefix", "From", "To", "Total issued", "Cancelled"])
     for s in data["document_summary"]:

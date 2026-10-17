@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Used stock - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Used stock</h1>
+  <div class="row">
+    <a href="{{ url_for('margin.buy_new') }}" class="btn btn-secondary">+ Buy</a>
+    <a href="{{ url_for('margin.sell_new') }}" class="btn btn-primary">Sell</a>
+  </div>
+</div>
+{% include "secondhand/_nav.html" %}
+<form class="search-bar" method="get">
+  <input type="search" name="q" value="{{ q }}" class="field-input" placeholder="Item, IMEI, seller or voucher" aria-label="Search used stock">
+  <button class="btn btn-secondary">Search</button>
+</form>
+<p class="text-muted">{{ totals.units|qty }} unit{{ 's' if totals.units != 1 }} · bought for Rs. {{ totals.value|inr }}</p>
+<div class="table-wrap card">
+  <table>
+    <thead><tr><th>Item</th><th>IMEI / serial</th><th class="num">Qty</th><th class="num">Cost (each)</th><th>Bought</th><th>From</th><th>Voucher</th><th class="num">Days held</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td>{{ r.product.name }}</td>
+        <td>{{ r.serial or '-' }}</td>
+        <td class="num">{{ r.qty|qty }}</td>
+        <td class="num">{{ '%.2f'|format(r.unit_cost) }}</td>
+        <td>{{ r.bought_on.strftime('%d %b %Y') }}</td>
+        <td>{{ r.seller }}</td>
+        <td><a href="{{ url_for('margin.voucher', bill_id=r.bill.id) if r.bill.kind == 'margin_voucher' else url_for('purchases.view_bill', bill_id=r.bill.id) }}">{{ r.bill.number }}</a></td>
+        <td class="num">{{ r.days }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="8" class="empty-state">{% if q %}Nothing matches "{{ q }}".{% else %}No used stock. <a href="{{ url_for('margin.buy_new') }}">Buy used goods</a> first - its price is what the margin is worked from.{% endif %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

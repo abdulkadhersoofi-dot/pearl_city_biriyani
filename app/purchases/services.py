@@ -80,6 +80,10 @@ class PurchaseInput:
     notes: str | None = None
     purchase_order_id: int | None = None
     attachment_id: int | None = None
+    # A second-hand goods voucher (app/margin/buying.py): numbered in its
+    # own series; with no seller invoice, the voucher is the document.
+    kind: str = "bill"
+    seller_details: dict | None = None
 
 
 def _num(value, label, default=None):
@@ -220,15 +224,16 @@ def create_purchase_bill(tenant, user, data: PurchaseInput) -> PurchaseBill:
     supplier = _supplier(tenant, data.supplier_id)
     gstin = _gstin(tenant, data.gstin_id)
     location = _location(tenant, data.location_id)
+    voucher = data.kind == "margin_voucher"
     invoice_no = (data.supplier_invoice_no or "").strip()[:50]
-    if not invoice_no:
+    if not invoice_no and not voucher:
         raise PurchaseError("Enter the supplier's invoice number.")
-    if not data.supplier_invoice_date:
+    if not data.supplier_invoice_date and not (voucher and not invoice_no):
         raise PurchaseError("Enter the supplier's invoice date.")
     duplicate = PurchaseBill.query.filter(
         PurchaseBill.tenant_id == tenant.id, PurchaseBill.supplier_id == supplier.id,
         db.func.lower(PurchaseBill.supplier_invoice_no) == invoice_no.lower(), PurchaseBill.status == PurchaseStatus.POSTED,
-    ).first()
+    ).first() if invoice_no else None
     if duplicate is not None:
         raise PurchaseError(f"Invoice {invoice_no} from {supplier.name} is already entered as {duplicate.number}.")
     other_charges = Decimal(data.other_charges or 0)
@@ -255,11 +260,17 @@ def create_purchase_bill(tenant, user, data: PurchaseInput) -> PurchaseBill:
     costs = itc.landed_costs(computed, [l.qty for l in data.lines], eligibilities, other_charges)
 
     bill_date = data.bill_date or date.today()
-    series = get_or_create_series(tenant.id, gstin.id, DocumentType.PURCHASE_BILL, financial_year_for(bill_date))
+    series = get_or_create_series(tenant.id, gstin.id,
+                                  DocumentType.MARGIN_PURCHASE if voucher else DocumentType.PURCHASE_BILL,
+                                  financial_year_for(bill_date))
+    number = allocate_number(series)
     bill = PurchaseBill(
-        tenant_id=tenant.id, gstin_id=gstin.id, invoice_series_id=series.id, number=allocate_number(series),
-        supplier_id=supplier.id, supplier_snapshot=supplier.snapshot(), supplier_invoice_no=invoice_no,
-        supplier_invoice_date=data.supplier_invoice_date, bill_date=bill_date,
+        tenant_id=tenant.id, gstin_id=gstin.id, invoice_series_id=series.id, number=number,
+        supplier_id=supplier.id, supplier_snapshot=supplier.snapshot(),
+        # A seller with no invoice of their own: the voucher is the document.
+        supplier_invoice_no=invoice_no or number[:50],
+        supplier_invoice_date=data.supplier_invoice_date or bill_date, bill_date=bill_date,
+        kind=data.kind, seller_details=data.seller_details,
         place_of_supply_state_code=gstin.state_code, is_rcm=bool(data.is_rcm), location_id=location.id,
         purchase_order_id=data.purchase_order_id, other_charges=other_charges,
         other_charges_label=(data.other_charges_label or "").strip()[:60] or None,

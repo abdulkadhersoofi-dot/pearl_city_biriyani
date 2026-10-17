@@ -36,6 +36,9 @@ class LineInput:
     product_id: int | None = None
     unit: str = "pcs"
     price_includes_tax: bool = False
+    # Serial/IMEI units sold on this line (second-hand goods: each unit's
+    # own purchase price sets its margin - app/margin/selling.py).
+    serials: list = field(default_factory=list)
 
 
 @dataclass
@@ -177,9 +180,19 @@ def create_invoice(tenant: Tenant, created_by, data: InvoiceInput) -> Invoice:
             raise InvoiceValidationError("Margin-scheme goods are billed on a margin-scheme invoice - "
                                          "pick Tax Invoice and it is issued as one.")
         margin_items = margin_services.margin_products(tenant, [l.product_id for l in data.lines])
-        if tenant.has_feature("serial_imei") and any(p.track_serial for p in margin_items.values()):
-            raise InvoiceValidationError("Serial-tracked margin-scheme goods are sold at the counter (POS), where "
-                                         "the serial/IMEI being sold - and so its purchase price - is picked.")
+        if tenant.has_feature("serial_imei"):
+            for line in data.lines:
+                product = margin_items[line.product_id]
+                if not product.track_serial:
+                    continue
+                if not line.serials:
+                    raise InvoiceValidationError(
+                        f"{product.name}: pick the serial/IMEI being sold - sell it from Second-hand goods -> Sell, "
+                        "or at the counter.")
+                try:
+                    inventory_hooks._check_serials(tenant.id, product, line)
+                except inventory_ledger.StockError as exc:
+                    raise InvoiceValidationError(exc.message)
         document_type = DocumentType.MARGIN_SCHEME_INVOICE
 
     # A branch-owned (internal) transfer never carries GST, same as a
@@ -197,7 +210,7 @@ def create_invoice(tenant: Tenant, created_by, data: InvoiceInput) -> Invoice:
     for line in data.lines:
         if is_margin:
             try:
-                plan = margin_services.plan_line(tenant, margin_items[line.product_id], line.qty)
+                plan = margin_services.plan_line(tenant, margin_items[line.product_id], line.qty, line.serials)
             except margin_services.MarginError as exc:
                 raise InvoiceValidationError(exc.message)
             priced = margin_services.price_line(line.qty, line.rate, line.discount_percent, 0, line.gst_rate,
@@ -319,7 +332,8 @@ def create_invoice(tenant: Tenant, created_by, data: InvoiceInput) -> Invoice:
         for saved, item in zip(invoice.lines, computed_lines):
             margin_services.record(tenant.id, "invoice", invoice.id, saved.id, invoice.invoice_number,
                                    data.invoice_date, saved.product_id, item)
-    inventory_hooks.post_invoice(tenant, invoice, created_by.id)
+    serials = {saved.id: list(line.serials) for saved, line in zip(invoice.lines, data.lines) if line.serials}
+    inventory_hooks.post_invoice(tenant, invoice, created_by.id, serials_by_line=serials)
     return invoice
 
 

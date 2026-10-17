@@ -138,6 +138,24 @@
   <div class="table-wrap">{% include "reports/_b2cl_hsn.html" %}</div>
 </div>
 
+{% if data.nil_exempt is defined %}
+<div class="card mb-20" id="table-8">
+  <h2 class="mt-0">Nil rated, exempted and non-GST supplies (table 8)</h2>
+  <p class="text-muted mt-0">Margin scheme: the part of each second-hand sale that isn't margin carries no GST and is shown here as exempt (your setting under Second-hand goods).</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Description</th><th class="num">Nil rated</th><th class="num">Exempted</th><th class="num">Non-GST</th></tr></thead>
+      <tbody>
+        {% for key, row in data.nil_exempt.rows.items() %}
+        <tr><td>{{ row.label }}</td><td class="num">{{ '%.2f'|format(row.nil_rated) }}</td><td class="num">{{ '%.2f'|format(row.exempted) }}</td><td class="num">{{ '%.2f'|format(row.non_gst) }}</td></tr>
+        {% endfor %}
+      </tbody>
+      <tfoot><tr><th>Total</th><td class="num">{{ '%.2f'|format(data.nil_exempt.total.nil_rated) }}</td><td class="num"><strong>{{ '%.2f'|format(data.nil_exempt.total.exempted) }}</strong></td><td class="num">{{ '%.2f'|format(data.nil_exempt.total.non_gst) }}</td></tr></tfoot>
+    </table>
+  </div>
+</div>
+{% endif %}
+
 {% if data.advances is defined %}
 <div class="card mb-20">
   <h2 class="mt-0">Advances (tables 11A / 11B)</h2>

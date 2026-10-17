@@ -112,6 +112,13 @@ class PurchaseBill(db.Model, TenantScopedMixin, TimestampMixin):
     itc_sgst = db.Column(db.Numeric(12, 2), nullable=False, default=0, server_default="0")
     itc_igst = db.Column(db.Numeric(12, 2), nullable=False, default=0, server_default="0")
 
+    # "bill" - a supplier's invoice entered here; "margin_voucher" - the
+    # dealer's own voucher for second-hand goods bought for resale under
+    # the margin scheme (app/margin/buying.py), numbered SHP/<FY>/0001.
+    kind = db.Column(db.String(20), nullable=False, default="bill", server_default="bill")
+    # For a margin voucher: who sold the goods - address, ID proof, how
+    # they were paid ({"address", "id_type", "id_no", "paid_by"}).
+    seller_details = db.Column(db.JSON)
     notes = db.Column(db.Text)
     attachment_id = db.Column(db.Integer, db.ForeignKey("uploaded_images.id", name="fk_purchase_bills_attachment"))
     created_by_id = db.Column(db.Integer, db.ForeignKey("users.id", name="fk_purchase_bills_created_by"), nullable=False)

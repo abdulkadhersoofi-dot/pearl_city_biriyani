@@ -54,7 +54,7 @@ MODULE_GROUPS = [
     ("GST", [
         ("einvoice", "file-check", "einvoice.settings", {}, "e-Invoice login"),
         ("eway_bill", "truck", "einvoice.settings", {}, "e-Way Bill login"),
-        ("margin_scheme", "coins", "settings.documents", {}, "Declaration wording"),
+        ("margin_scheme", "coins", "margin.index", {}, "Second-hand goods"),
     ]),
     ("Your industry", [
         ("restaurant_mode", "utensils-crossed", "restaurant.setup", {}, "Tables, order types & charges"),

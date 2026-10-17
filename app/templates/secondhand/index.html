@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Second-hand goods - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Second-hand goods</h1>
+    <p class="text-muted mt-0">Margin scheme (Rule 32(5)): GST only on your margin - the selling price less what you paid.</p>
+  </div>
+  <div class="row">
+    <a href="{{ url_for('margin.buy_new') }}" class="btn btn-secondary">{{ icon('truck', 'icon-sm') }}Buy used goods</a>
+    <a href="{{ url_for('margin.sell_new') }}" class="btn btn-primary">{{ icon('receipt-text', 'icon-sm') }}Sell</a>
+  </div>
+</div>
+{% include "secondhand/_nav.html" %}
+
+{% if not ready %}
+<p class="flash flash-warning">The margin scheme works for a regular GST registration with a GSTIN on file. Add the business's GSTIN (or ask ARFA) before buying or selling here.</p>
+{% endif %}
+
+<section class="stat-grid-lg" aria-label="Second-hand at a glance">
+  <a class="stat-tile" href="{{ url_for('margin.stock') }}">
+    <span class="stat-label">{{ icon('package', 'icon-sm') }} Used stock on hand</span>
+    <strong class="stat-value">{{ stock.units|qty }} unit{{ 's' if stock.units != 1 }}</strong>
+    <small class="stat-sub">Bought for Rs. {{ stock.value|inr }} · {{ stock.item_count }} item{{ 's' if stock.item_count != 1 }}</small>
+  </a>
+  <a class="stat-tile" href="{{ url_for('reports.margin_register') }}">
+    <span class="stat-label">{{ icon('receipt-text', 'icon-sm') }} Sold this month</span>
+    <strong class="stat-value">Rs. {{ month.sale|inr }}</strong>
+    <small class="stat-sub">{{ month.units|qty }} unit{{ 's' if month.units != 1 }} · margin Rs. {{ month.margin|inr }}</small>
+  </a>
+  <a class="stat-tile" href="{{ url_for('reports.gstr3b_view') }}">
+    <span class="stat-label">{{ icon('file-check', 'icon-sm') }} GST on the margin this month</span>
+    <strong class="stat-value">Rs. {{ month.tax|inr }}</strong>
+    <small class="stat-sub">No GST on Rs. {{ month.no_gst|inr }} (the cost inside the price)</small>
+  </a>
+</section>
+
+<div class="card mb-20">
+  <h2 class="mt-0">How it works</h2>
+  <ol class="step-list">
+    <li><a href="{{ url_for('margin.buy_new') }}"><strong>Buy</strong></a> - from a person (no invoice: your own purchase voucher, with their ID proof) or from a dealer (their invoice). No input tax credit is ever taken on these goods.</li>
+    <li><a href="{{ url_for('margin.stock') }}"><strong>Used stock</strong></a> - every unit with what you paid, when, and from whom.</li>
+    <li><a href="{{ url_for('margin.sell_new') }}"><strong>Sell</strong></a> - pick the unit (IMEI), enter the price: you see the margin and its GST before you save. A margin-scheme invoice (MSI) is made; GST is never added on top.</li>
+    <li><a href="{{ url_for('margin.eway') }}"><strong>e-Way bills</strong></a> - for goods going out to a buyer or coming in from a seller{% if not eway_on %} (switch on the e-Way Bill module to make them here){% endif %}.</li>
+    <li><a href="{{ url_for('reports.margin_register') }}"><strong>Register &amp; returns</strong></a> - the margin register; GSTR-1 and GSTR-3B pick the sales up on their own.</li>
+  </ol>
+</div>
+
+<div class="grid-2 gap-16">
+  <div class="card">
+    <div class="card-head"><h2 class="m-0">Latest purchases</h2><a href="{{ url_for('margin.buy_list') }}" class="btn btn-quiet btn-sm">All</a></div>
+    <ul class="plain-list">
+      {% for b in vouchers %}
+      <li><a href="{{ url_for('margin.voucher', bill_id=b.id) }}">{{ b.number }}</a> · {{ b.supplier_snapshot.name }} · Rs. {{ b.grand_total|inr }}
+        <small class="text-muted">{{ b.bill_date.strftime('%d %b') }}{% if b.status.value == 'voided' %} · voided{% endif %}</small></li>
+      {% else %}<li class="text-muted">Nothing bought yet.</li>{% endfor %}
+    </ul>
+  </div>
+  <div class="card">
+    <div class="card-head"><h2 class="m-0">Latest sales</h2><a href="{{ url_for('margin.sell_list') }}" class="btn btn-quiet btn-sm">All</a></div>
+    <ul class="plain-list">
+      {% for i in sales %}
+      <li><a href="{{ url_for('invoicing.view_invoice', invoice_id=i.id) }}">{{ i.invoice_number }}</a> · {{ i.customer_snapshot.name }} · Rs. {{ i.grand_total|inr }}
+        <small class="text-muted">{{ i.invoice_date.strftime('%d %b') }}{% if i.status.value == 'void' %} · void{% endif %}</small></li>
+      {% else %}<li class="text-muted">Nothing sold yet.</li>{% endfor %}
+    </ul>
+  </div>
+</div>
+{% endblock %}

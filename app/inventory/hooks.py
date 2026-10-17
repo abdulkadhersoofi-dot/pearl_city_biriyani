@@ -8,7 +8,7 @@ from decimal import Decimal
 
 from app.extensions import db
 from app.inventory import ledger
-from app.models.inventory import MovementType, ProductSerial, SerialStatus
+from app.models.inventory import MovementType, ProductSerial, SerialStatus, StockMovement
 from app.models.mixins import utcnow
 from app.models.product import Product
 
@@ -134,6 +134,15 @@ def undo_sale(tenant_id: int, source_type: str, source_id: int, user_id: int | N
     """A voided (or fully refunded) sale: its goods go back where they
     came from, and its serial numbers back into stock."""
     ledger.reverse_source(tenant_id, source_type, source_id, user_id, note)
+    # Serial/IMEI units an invoice sold (second-hand goods) go back in stock too.
+    if source_type == "invoice":
+        sold_ids = {m.serial_id for m in StockMovement.query.filter_by(
+            tenant_id=tenant_id, source_type=source_type, source_id=source_id, reversal_of_id=None)
+            if m.serial_id and m.qty < 0}
+        for unit in ProductSerial.query.filter(ProductSerial.id.in_(sold_ids)).all() if sold_ids else []:
+            if unit.status == SerialStatus.SOLD:
+                unit.status = SerialStatus.IN_STOCK
+                unit.sold_at = None
     if source_type == "pos_bill":
         for unit in ProductSerial.query.filter_by(tenant_id=tenant_id, sold_pos_bill_id=source_id).all():
             unit.status = SerialStatus.IN_STOCK
@@ -189,13 +198,14 @@ def pos_lines(bill) -> list[SaleLine]:
     return [SaleLine(l.product_id, l.qty, l.id, getattr(l, "_serials", None)) for l in bill.lines if l.product_id]
 
 
-def post_invoice(tenant, invoice, user_id: int | None) -> None:
+def post_invoice(tenant, invoice, user_id: int | None, serials_by_line=None) -> None:
     """A customer invoice sells from the main store. An invoice billed to
     a branch is how stock reaches that branch: a transfer from the main
     store into the branch's location (the daily branch counter is fed
     separately, as before)."""
     store = ledger.default_location(tenant.id)
-    lines = [SaleLine(l.product_id, l.qty, l.id) for l in invoice.lines if l.product_id]
+    serials_by_line = serials_by_line or {}
+    lines = [SaleLine(l.product_id, l.qty, l.id, serials_by_line.get(l.id)) for l in invoice.lines if l.product_id]
     if invoice.branch_user_id:
         from app.models.user import User
 

@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Buy used goods - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <a href="{{ url_for('margin.buy_list') }}" class="back-link">{{ icon('chevron-right', 'icon-sm icon-flip') }}Purchases</a>
+    <h1>Buy used goods</h1>
+  </div>
+</div>
+{% include "secondhand/_nav.html" %}
+{% set kind = form.get('seller_kind', 'person') %}
+<form method="post" class="stack" novalidate
+      x-data='{ kind: {{ kind|tojson }},
+                lines: [{ pid: "", name: "", hsn: "", rate: "18", qty: "1", price: "", sgst: "0", serials: "" }],
+                add() { this.lines.push({ pid: "", name: "", hsn: "", rate: "18", qty: "1", price: "", sgst: "0", serials: "" }); },
+                count(l) { const n = (l.serials || "").split(/[\n,]+/).filter(s => s.trim()).length; return n || (parseFloat(l.qty) || 0); },
+                total() { return this.lines.reduce((t, l) => t + this.count(l) * (parseFloat(l.price) || 0) * (1 + (this.kind === "dealer" ? (parseFloat(l.sgst) || 0) : 0) / 100), 0); } }'>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+  <section class="card">
+    <h2 class="mt-0">1. Who sold it</h2>
+    <div class="seller-kind" role="radiogroup" aria-label="Seller">
+      <label class="role-option"><input type="radio" name="seller_kind" value="person" x-model="kind">
+        <span><strong>A person</strong><small>No GST registration - your voucher is the document. No GST.</small></span></label>
+      <label class="role-option"><input type="radio" name="seller_kind" value="dealer" x-model="kind">
+        <span><strong>A registered dealer</strong><small>With their invoice. Its GST is part of your cost - no credit is taken.</small></span></label>
+    </div>
+    <div class="form-grid">
+      <label class="field"><span class="field-label">Name</span><input type="text" name="seller_name" class="field-input" required maxlength="255" value="{{ form.get('seller_name', '') }}"></label>
+      <label class="field"><span class="field-label">Phone</span><input type="tel" name="seller_phone" class="field-input" maxlength="20" value="{{ form.get('seller_phone', '') }}"></label>
+      <label class="field" x-show="kind === 'dealer'"><span class="field-label">Their GSTIN</span><input type="text" name="seller_gstin" class="field-input" maxlength="15" value="{{ form.get('seller_gstin', '') }}"></label>
+      <label class="field" x-show="kind === 'dealer'"><span class="field-label">Their invoice number</span><input type="text" name="invoice_no" class="field-input" maxlength="50" value="{{ form.get('invoice_no', '') }}"></label>
+      <label class="field" x-show="kind === 'dealer'"><span class="field-label">Their invoice date</span><input type="date" name="invoice_date" class="field-input" value="{{ form.get('invoice_date', today) }}"></label>
+      <label class="field" x-show="kind === 'person'"><span class="field-label">ID proof{% if id_required %}{% else %} <small class="text-muted">(optional)</small>{% endif %}</span>
+        <select name="id_type" class="field-input"><option value="">-</option>{% for k, label in id_types.items() %}<option value="{{ k }}" {{ 'selected' if form.get('id_type') == k }}>{{ label }}</option>{% endfor %}</select></label>
+      <label class="field" x-show="kind === 'person'"><span class="field-label">ID number</span><input type="text" name="id_no" class="field-input" maxlength="40" value="{{ form.get('id_no', '') }}"></label>
+      <label class="field" x-show="kind === 'person'"><span class="field-label">State</span>
+        <select name="seller_state" class="field-input">{% for code, name in states %}<option value="{{ code }}" {{ 'selected' if code == form.get('seller_state', home_state) }}>{{ name }}</option>{% endfor %}</select></label>
+    </div>
+    <label class="field"><span class="field-label">Address <small class="text-muted">(with the PIN code - needed for an e-way bill)</small></span><input type="text" name="seller_address" class="field-input" maxlength="255" value="{{ form.get('seller_address', '') }}"></label>
+  </section>
+
+  <section class="card">
+    <h2 class="mt-0">2. What you bought</h2>
+    <p class="field-help mt-0">Pick a used item, or add a new one - it is saved as a second-hand item, sold under the margin scheme.{% if serials_on %} Enter one IMEI / serial number per unit.{% endif %}</p>
+    <template x-for="(l, i) in lines" :key="i">
+      <div class="buy-line">
+        <label class="field m-0"><span class="field-label">Item</span>
+          <select name="line_product_id[]" class="field-input" x-model="l.pid">
+            <option value="">+ New used item</option>
+            {% for p in items %}<option value="{{ p.id }}">{{ p.name }} ({{ '%g'|format(p.gst_rate|float) }}% on the margin)</option>{% endfor %}
+          </select></label>
+        <label class="field m-0"><span class="field-label">Quantity</span><input type="number" name="line_qty[]" class="field-input" min="1" step="1" x-model="l.qty"></label>
+        <label class="field m-0"><span class="field-label">Price paid (each)</span><input type="number" name="line_price[]" class="field-input" min="0" step="0.01" x-model="l.price" required></label>
+        <label class="field m-0" x-show="kind === 'dealer'"><span class="field-label">Their GST %</span>
+          <select name="line_seller_gst[]" class="field-input" x-model="l.sgst">{% for r in rates %}<option value="{{ r }}">{{ r }}%</option>{% endfor %}</select></label>
+        <button type="button" class="btn btn-quiet btn-sm" @click="lines.splice(i, 1)" x-show="lines.length > 1" aria-label="Remove this item">{{ icon('x', 'icon-sm') }}</button>
+        <div class="new-item" x-show="!l.pid">
+          <label class="field m-0"><span class="field-label">New item's name</span><input type="text" name="line_new_name[]" class="field-input" maxlength="255" x-model="l.name" placeholder="e.g. iPhone 12 128GB (used)"></label>
+          <label class="field m-0"><span class="field-label">HSN</span><input type="text" name="line_new_hsn[]" class="field-input" maxlength="8" inputmode="numeric" x-model="l.hsn" placeholder="85171300"></label>
+          <label class="field m-0"><span class="field-label">GST on the margin</span>
+            <select name="line_new_rate[]" class="field-input" x-model="l.rate">{% for r in rates %}<option value="{{ r }}">{{ r }}%</option>{% endfor %}</select></label>
+        </div>
+        {% if serials_on %}
+        <label class="field m-0 serials"><span class="field-label">IMEI / serial numbers <small class="text-muted">(one per unit, comma or new line)</small></span>
+          <textarea name="line_serials[]" class="field-input" rows="1" x-model="l.serials"></textarea></label>
+        {% else %}<input type="hidden" name="line_serials[]" value="">{% endif %}
+      </div>
+    </template>
+    <button type="button" class="btn btn-secondary mt-12" @click="add()">+ Another item</button>
+  </section>
+
+  <section class="card">
+    <h2 class="mt-0">3. Payment</h2>
+    <div class="form-grid">
+      <label class="field"><span class="field-label">Date bought</span><input type="date" name="bill_date" class="field-input" value="{{ form.get('bill_date', today) }}"></label>
+      <label class="field"><span class="field-label">Paid by</span>
+        <select name="paid_by" class="field-input">{% for k, label in paid_by.items() %}<option value="{{ k }}" {{ 'selected' if form.get('paid_by') == k }}>{{ label }}</option>{% endfor %}</select></label>
+    </div>
+    <label class="field"><span class="field-label">Notes</span><textarea name="notes" class="field-input" rows="2" placeholder="Condition, accessories, box...">{{ form.get('notes', '') }}</textarea></label>
+    <p class="m-0"><strong>Total paid: Rs. <span x-text="total().toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })"></span></strong></p>
+  </section>
+
+  <div><button type="submit" class="btn btn-primary btn-lg">Save purchase voucher</button></div>
+</form>
+{% endblock %}

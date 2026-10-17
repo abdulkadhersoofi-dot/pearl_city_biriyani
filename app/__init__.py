@@ -72,6 +72,7 @@ def _register_blueprints(app: Flask) -> None:
     from app.pharmacy import pharmacy_bp
     from app.jewellery import jewellery_bp
     from app.jobs import jobs_bp
+    from app.secondhand import margin_bp
     from app.wholesale import wholesale_bp
     from app.loyalty import loyalty_bp
     from app.subscriptions import subscriptions_bp
@@ -113,6 +114,7 @@ def _register_blueprints(app: Flask) -> None:
     app.register_blueprint(pharmacy_bp)
     app.register_blueprint(jewellery_bp)
     app.register_blueprint(jobs_bp)
+    app.register_blueprint(margin_bp)
     app.register_blueprint(wholesale_bp)
     app.register_blueprint(loyalty_bp)
     app.register_blueprint(subscriptions_bp)

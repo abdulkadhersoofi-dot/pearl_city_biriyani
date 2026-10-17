@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Second-hand settings - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header"><h1>Second-hand goods - settings</h1></div>
+{% include "secondhand/_nav.html" %}
+<form method="post" class="stack">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <section class="card">
+    <h2 class="mt-0">How the returns show the non-margin part</h2>
+    <p class="text-muted mt-0">GST is paid on the margin only. The rest of each sale price (the cost inside it) carries no GST.</p>
+    <label class="role-option mb-12"><input type="radio" name="remainder_as" value="exempt" {{ 'checked' if settings.remainder_as == 'exempt' }}>
+      <span><strong>Show it as exempt</strong><small>GSTR-1 table 8 (exempted) and GSTR-3B 3.1(c), so the returns add up to your full turnover. Also kept as a 0% row in the HSN summary.</small></span></label>
+    <label class="role-option"><input type="radio" name="remainder_as" value="none" {{ 'checked' if settings.remainder_as == 'none' }}>
+      <span><strong>Leave it out of tables 8 and 3.1(c)</strong><small>The value of supply is the margin alone (Rule 32(5)); the rest shows only in the HSN summary's 0% row.</small></span></label>
+    <p class="field-help">Ask your auditor which your firm follows. Showing it as exempt can affect the input tax credit you reverse on common inputs (Rule 42/43).</p>
+  </section>
+  <section class="card">
+    <h2 class="mt-0">Buying from a person</h2>
+    <label class="row items-center gap-8 fw-600"><input type="checkbox" name="id_proof_required" value="y" {{ 'checked' if settings.id_proof_required }}> Ask for the seller's ID proof on every purchase voucher</label>
+  </section>
+  <section class="card">
+    <h2 class="mt-0">Declaration on margin-scheme invoices</h2>
+    {% if locked %}<p class="lock-note">{{ icon('lock-keyhole', 'icon-sm') }}<span>The declaration wording is set by ARFA as part of your package.</span></p>{% endif %}
+    <label class="field"><span class="field-label">Wording <small class="text-muted">(blank for the standard wording)</small></span>
+      <textarea name="declaration" class="field-input" rows="3" {{ 'disabled' if locked }} placeholder="{{ default_declaration }}">{{ declaration }}</textarea></label>
+  </section>
+  <div><button type="submit" class="btn btn-primary">Save</button></div>
+</form>
+{% endblock %}

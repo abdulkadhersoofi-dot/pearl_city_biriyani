@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Buy - Second-hand goods - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Second-hand purchases</h1>
+  <a href="{{ url_for('margin.buy_new') }}" class="btn btn-primary">+ Buy used goods</a>
+</div>
+{% include "secondhand/_nav.html" %}
+<p class="text-muted mt-0">Your purchase vouchers (SHP) for second-hand goods bought for resale. No input tax credit is taken on them - what you paid is the purchase price the margin is worked from.</p>
+<div class="table-wrap card">
+  <table>
+    <thead><tr><th>Voucher</th><th>Bought from</th><th>Date</th><th>Items</th><th class="num">Paid</th><th>Paid by</th><th>Status</th></tr></thead>
+    <tbody>
+    {% for b in vouchers %}
+      <tr>
+        <td><a href="{{ url_for('margin.voucher', bill_id=b.id) }}">{{ b.number }}</a></td>
+        <td>{{ b.supplier_snapshot.name }}{% if b.supplier_snapshot.gstin %}<br><small class="text-muted">{{ b.supplier_snapshot.gstin }} · invoice {{ b.supplier_invoice_no }}</small>{% endif %}</td>
+        <td>{{ b.bill_date.strftime('%d %b %Y') }}</td>
+        <td>{{ b.lines|map(attribute='description')|join(', ')|truncate(60) }}</td>
+        <td class="num">{{ '%.2f'|format(b.grand_total) }}</td>
+        <td>{{ paid_by.get((b.seller_details or {}).get('paid_by'), '-') }}</td>
+        <td><span class="status-badge {{ 'status-void' if b.status.value == 'voided' else 'status-issued' }}">{{ b.status.value|title }}</span></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="7" class="empty-state">Nothing bought yet. <a href="{{ url_for('margin.buy_new') }}">Buy used goods</a>.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

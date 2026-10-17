@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}e-Way bills - Second-hand goods - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>e-Way bills for second-hand goods</h1>
+  <a href="{{ url_for('margin.eway', all='0' if show_all else '1') }}" class="btn btn-quiet">{{ 'Only those that need one' if show_all else 'Show every purchase and sale' }}</a>
+</div>
+{% include "secondhand/_nav.html" %}
+{% if not eway_on %}
+<p class="flash flash-warning">Switch on the e-Way Bill module (Settings &gt; Modules, or ask ARFA) to make e-way bills from here.</p>
+{% endif %}
+<p class="text-muted mt-0">Needed when goods worth more than Rs. {{ threshold|inr(0) }} move by road, rail, air or ship. A margin-scheme sale carries the margin as its taxable value and the rest of the price as "other value", so the bill adds up to the invoice. Goods bought from a person come in on an inward e-way bill (from "URP", unregistered) that you make as the buyer.</p>
+
+{% macro rows(list, kind) %}
+<div class="table-wrap card mb-20">
+  <table>
+    <thead><tr><th>{{ 'Invoice' if kind == 'out' else 'Voucher' }}</th><th>{{ 'Buyer' if kind == 'out' else 'Seller' }}</th><th>Date</th><th class="num">Value</th><th>e-Way bill</th></tr></thead>
+    <tbody>
+    {% for r in list %}
+      {% set s = r.source %}
+      <tr>
+        <td>{% if kind == 'out' %}<a href="{{ url_for('invoicing.view_invoice', invoice_id=s.id) }}">{{ s.invoice_number }}</a>{% else %}<a href="{{ url_for('margin.voucher', bill_id=s.id) }}">{{ s.number }}</a>{% endif %}</td>
+        <td>{{ (s.customer_snapshot if kind == 'out' else s.supplier_snapshot).name }}</td>
+        <td>{{ (s.invoice_date if kind == 'out' else s.bill_date).strftime('%d %b %Y') }}</td>
+        <td class="num">{{ '%.2f'|format(r.value) }}</td>
+        <td>
+          {% if r.bill %}<a href="{{ url_for('einvoice.eway_view', ewb_id=r.bill.id) }}">{{ r.bill.ewb_no or 'Draft' }}</a> <small class="text-muted">{{ r.bill.status.value|title }}</small>
+          {% elif r.new_url and r.needed %}<a href="{{ r.new_url }}" class="btn btn-primary btn-sm">Make e-way bill</a>
+          {% elif r.new_url %}<a href="{{ r.new_url }}" class="btn btn-quiet btn-sm">Make one anyway</a>
+          {% else %}<span class="text-muted">{{ 'Needed' if r.needed else 'Not needed' }}</span>{% endif %}
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="5" class="empty-state">{{ 'No sales' if kind == 'out' else 'No purchases' }} {{ '' if show_all else 'over the limit' }}.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endmacro %}
+
+<h2>Going out - sales</h2>
+{{ rows(sold, 'out') }}
+<h2>Coming in - purchases</h2>
+{{ rows(bought, 'in') }}
+{% endblock %}

@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Sell second-hand goods - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <a href="{{ url_for('margin.sell_list') }}" class="back-link">{{ icon('chevron-right', 'icon-sm icon-flip') }}Sales</a>
+    <h1>Sell second-hand goods</h1>
+  </div>
+</div>
+{% include "secondhand/_nav.html" %}
+<form method="post" novalidate x-data='{ buyer: {{ form.get("buyer_kind", "new")|tojson }} }'
+      hx-post="{{ url_for('margin.sell_preview') }}" hx-trigger="change, input delay:400ms" hx-target="#preview" hx-swap="innerHTML">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="sell-layout">
+    <div class="stack">
+      <section class="card">
+        <h2 class="mt-0">1. Pick from your used stock</h2>
+        {% if rows %}
+        <div class="table-wrap">
+          <table class="sell-table no-stack">
+            <thead><tr><th>Sell</th><th>Item</th><th class="num">Cost (each)</th><th class="num">Qty</th><th class="num">Selling price (each)</th></tr></thead>
+            <tbody>
+            {% for r in rows %}
+              <tr>
+                <td><input type="checkbox" name="pick" value="{{ r.key }}" aria-label="Sell {{ r.product.name }}{{ ' ' ~ r.serial if r.serial }}" {{ 'checked' if r.key in form.getlist('pick') }}></td>
+                <td>{{ r.product.name }}{% if r.serial %}<br><small class="text-muted">IMEI/serial {{ r.serial }}</small>{% endif %}<br><small class="text-muted">held {{ r.days }} day{{ 's' if r.days != 1 }} · GST {{ '%g'|format(r.product.gst_rate|float) }}% on the margin</small></td>
+                <td class="num">{{ '%.2f'|format(r.unit_cost) }}</td>
+                <td class="num">{% if r.serial %}1{% else %}<input type="number" name="qty_{{ r.key }}" class="field-input" min="1" max="{{ r.qty|int }}" step="1" value="{{ form.get('qty_' ~ r.key, 1) }}" aria-label="Quantity"> <small class="text-muted">of {{ r.qty|qty }}</small>{% endif %}</td>
+                <td class="num"><input type="number" name="price_{{ r.key }}" class="field-input" min="0" step="0.01" value="{{ form.get('price_' ~ r.key, '') }}" aria-label="Selling price"></td>
+              </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <p class="text-muted m-0">No used stock to sell. <a href="{{ url_for('margin.buy_new') }}">Buy used goods</a> first - their price sets the margin.</p>
+        {% endif %}
+      </section>
+
+      <section class="card">
+        <h2 class="mt-0">2. Buyer</h2>
+        <div class="seller-kind" role="radiogroup" aria-label="Buyer">
+          <label class="role-option"><input type="radio" name="buyer_kind" value="new" x-model="buyer"><span><strong>New buyer</strong><small>Saved to your customers.</small></span></label>
+          <label class="role-option"><input type="radio" name="buyer_kind" value="existing" x-model="buyer"><span><strong>Existing customer</strong><small>From your list.</small></span></label>
+        </div>
+        <div x-show="buyer === 'existing'">
+          <label class="field"><span class="field-label">Customer</span>
+            <select name="customer_id" class="field-input"><option value="">-</option>{% for c in customers %}<option value="{{ c.id }}" {{ 'selected' if form.get('customer_id')|string == c.id|string }}>{{ c.name }}{% if c.gstin %} ({{ c.gstin }}){% endif %}</option>{% endfor %}</select></label>
+        </div>
+        <div class="form-grid" x-show="buyer === 'new'">
+          <label class="field"><span class="field-label">Name</span><input type="text" name="buyer_name" class="field-input" maxlength="255" value="{{ form.get('buyer_name', '') }}"></label>
+          <label class="field"><span class="field-label">Phone</span><input type="tel" name="buyer_phone" class="field-input" maxlength="20" value="{{ form.get('buyer_phone', '') }}"></label>
+          <label class="field"><span class="field-label">GSTIN <small class="text-muted">(if a business)</small></span><input type="text" name="buyer_gstin" class="field-input" maxlength="15" value="{{ form.get('buyer_gstin', '') }}"></label>
+          <label class="field"><span class="field-label">State</span>
+            <select name="buyer_state" class="field-input">{% for code, name in states %}<option value="{{ code }}" {{ 'selected' if code == form.get('buyer_state', home_state) }}>{{ name }}</option>{% endfor %}</select></label>
+          <label class="field"><span class="field-label">Address</span><input type="text" name="buyer_address" class="field-input" maxlength="255" value="{{ form.get('buyer_address', '') }}"></label>
+        </div>
+        <div class="form-grid">
+          <label class="field"><span class="field-label">Invoice date</span><input type="date" name="invoice_date" class="field-input" value="{{ form.get('invoice_date', today) }}"></label>
+          <label class="field"><span class="field-label">Notes</span><input type="text" name="notes" class="field-input" value="{{ form.get('notes', '') }}"></label>
+        </div>
+      </section>
+      <div><button type="submit" class="btn btn-primary btn-lg">Save margin-scheme invoice</button></div>
+    </div>
+    <aside class="card preview-box" aria-live="polite">
+      <h2 class="mt-0">Margin &amp; GST</h2>
+      <div id="preview" hx-post="{{ url_for('margin.sell_preview') }}" hx-trigger="load" hx-include="closest form"></div>
+      <p class="text-muted law-note mb-0 mt-12">Rule 32(5): GST is on the margin (price less what you paid) at the item's rate; a loss has no GST. The rest of the price carries no GST{% if remainder_exempt %} and is reported as exempt{% endif %}.</p>
+    </aside>
+  </div>
+</form>
+{% endblock %}

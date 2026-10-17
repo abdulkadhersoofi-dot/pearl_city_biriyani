@@ -20,6 +20,7 @@ from app.models.einvoice import EWayBill, EWayBillStatus, GovApiCall
 from app.models.inventory import StockTransfer
 from app.models.invoice import Invoice, InvoiceStatus
 from app.models.note import CreditDebitNote, NoteStatus
+from app.models.purchase import PurchaseBill
 from app.models.sales import SalesDocument
 from app.models.tenant import Gstin
 from app.models.user import UserRole
@@ -32,7 +33,8 @@ from app.utils.tenant_scope import assert_owns, tenant_query
 
 ADMIN = UserRole.CLIENT_ADMIN
 DOC_MODELS = {"invoice": Invoice, "note": CreditDebitNote}
-SOURCE_MODELS = {"invoice": Invoice, "sales_document": SalesDocument, "stock_transfer": StockTransfer}
+SOURCE_MODELS = {"invoice": Invoice, "sales_document": SalesDocument, "stock_transfer": StockTransfer,
+                 "purchase_bill": PurchaseBill}
 
 
 def either_feature(view):
@@ -81,6 +83,8 @@ def source_url(source_type, source_id):
         return url_for("invoicing.view_invoice", invoice_id=source_id)
     if source_type == "sales_document":
         return url_for("sales.view_document", doc_id=source_id)
+    if source_type == "purchase_bill":
+        return url_for("margin.voucher", bill_id=source_id)
     return url_for("inventory.view_transfer", transfer_id=source_id)
 
 
@@ -332,7 +336,7 @@ def eway_drafts_json():
     return _json_download(eway.bulk_json(ready), f"ewaybills_{date.today().isoformat()}.json")
 
 
-@einvoice_bp.route("/eway-bills/new/<any(invoice, sales_document, stock_transfer):source_type>/<int:source_id>",
+@einvoice_bp.route("/eway-bills/new/<any(invoice, sales_document, stock_transfer, purchase_bill):source_type>/<int:source_id>",
                    methods=["GET", "POST"])
 @roles_required(ADMIN)
 @feature_required("eway_bill")

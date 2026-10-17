@@ -26,6 +26,7 @@ from app.models.invoice import Invoice, InvoiceStatus
 from app.models.invoice_series import DocumentType
 from app.models.inventory import StockDocStatus, StockTransfer
 from app.models.mixins import utcnow
+from app.models.purchase import PurchaseBill, PurchaseStatus
 from app.models.sales import ChallanPurpose, SalesDocument, SalesDocumentKind, SalesDocumentStatus
 from app.utils.audit import record_audit
 from app.utils.gst_config import EWAY_BILL_CANCEL_HOURS, EWAY_BILL_MAX_DISTANCE_KM, UQC_CODES
@@ -33,7 +34,7 @@ from app.utils.gst_config import EWAY_BILL_CANCEL_HOURS, EWAY_BILL_MAX_DISTANCE_
 # Bulk-generation tool JSON format version (the e-way bill portal's
 # "Bulk Generation" tool, v1.0.0621 - update if the portal asks for another).
 BULK_VERSION = "1.0.0621"
-SOURCE_TYPES = ("invoice", "sales_document", "stock_transfer")
+SOURCE_TYPES = ("invoice", "sales_document", "stock_transfer", "purchase_bill")
 
 SUB_SUPPLY = {"1": "Supply", "3": "Export", "4": "Job work", "5": "For own use", "6": "Job work returns",
               "7": "Sales return", "8": "Others", "9": "SKD / CKD / lots", "10": "Line sales",
@@ -56,24 +57,32 @@ ZERO = Decimal("0")
 # --- sources --------------------------------------------------------------------------
 
 def source_value(source) -> Decimal:
-    if isinstance(source, (Invoice, SalesDocument)):
+    if isinstance(source, (Invoice, SalesDocument, PurchaseBill)):
         return Decimal(source.grand_total or 0)
     return sum((Decimal(l.qty) * Decimal(l.unit_cost or 0) for l in source.lines), ZERO).quantize(Decimal("0.01"))
 
 
 def source_number(source) -> str:
+    if isinstance(source, PurchaseBill):
+        # Goods coming in: the seller's own invoice when they gave one,
+        # else the dealer's purchase voucher.
+        return source.supplier_invoice_no if (source.seller_details or {}).get("registered") else source.number
     return source.invoice_number if isinstance(source, Invoice) else source.number
 
 
 def source_date(source):
     if isinstance(source, Invoice):
         return source.invoice_date
+    if isinstance(source, PurchaseBill):
+        return source.supplier_invoice_date if (source.seller_details or {}).get("registered") else source.bill_date
     return source.doc_date if isinstance(source, SalesDocument) else source.transfer_date
 
 
 def source_type_of(source) -> str:
     if isinstance(source, Invoice):
         return "invoice"
+    if isinstance(source, PurchaseBill):
+        return "purchase_bill"
     return "sales_document" if isinstance(source, SalesDocument) else "stock_transfer"
 
 
@@ -83,6 +92,10 @@ def eligible(source) -> bool:
         return source.status == InvoiceStatus.ISSUED and source.document_type != DocumentType.POS_BILL
     if isinstance(source, SalesDocument):
         return source.kind == SalesDocumentKind.DELIVERY_CHALLAN and source.status != SalesDocumentStatus.CANCELLED
+    if isinstance(source, PurchaseBill):
+        # Inward: second-hand goods bought from a seller, carried to the
+        # dealer (the dealer, a registered person, makes the e-way bill).
+        return source.status == PurchaseStatus.POSTED and source.kind == "margin_voucher"
     return source.status == StockDocStatus.COMPLETED
 
 
@@ -150,6 +163,9 @@ def draft_from(tenant, source, user) -> EWayBill:
                    source_id=source.id, document_number=source_number(source), document_date=source_date(source),
                    supply_type="O", created_by_id=user.id, status=EWayBillStatus.DRAFT)
     ewb.from_party = _own(tenant, source.gstin)
+    ewb.other_value = ZERO
+    if isinstance(source, PurchaseBill):
+        return _inward_draft(tenant, source, ewb)
     if isinstance(source, StockTransfer):
         ewb.doc_type, ewb.sub_supply_type = "CHL", "5"
         ewb.from_party = _own(tenant, source.gstin, source.from_location.address)
@@ -183,6 +199,46 @@ def draft_from(tenant, source, user) -> EWayBill:
     ewb.total_value, ewb.cgst_value = totals["taxable"], totals["cgst"]
     ewb.sgst_value, ewb.igst_value = totals["sgst"], totals["igst"]
     ewb.total_invoice_value = Decimal(source.grand_total or 0)
+    if getattr(source, "document_type", None) == DocumentType.MARGIN_SCHEME_INVOICE:
+        # Margin scheme: the taxable value is the margin's; the rest of the
+        # price is "other value", so taxable + tax + other = invoice value.
+        ewb.other_value = max(ewb.total_invoice_value - ewb.total_value - ewb.cgst_value - ewb.sgst_value
+                              - ewb.igst_value, ZERO)
+    return ewb
+
+
+def _inward_draft(tenant, bill, ewb: EWayBill) -> EWayBill:
+    """Second-hand goods bought (margin-scheme purchase voucher), coming in
+    from the seller: supply type Inward, from the seller (URP when they
+    have no GSTIN) to the dealer. No GST when bought from a person."""
+    seller = bill.supplier_snapshot or {}
+    details = bill.seller_details or {}
+    registered = bool(details.get("registered"))
+    ewb.supply_type, ewb.sub_supply_type = "I", "1"
+    ewb.doc_type = "INV" if registered else "BIL"
+    address = details.get("address") or seller.get("address") or ""
+    ewb.from_party = {"gstin": (seller.get("gstin") or "URP") if registered else "URP", "name": seller.get("name") or "",
+                      "addr1": address[:120], "addr2": "", "place": seller.get("city") or "",
+                      "pincode": _pin_in(address), "state_code": seller.get("state_code") or bill.gstin.state_code}
+    ewb.to_party = _own(tenant, bill.gstin, bill.location.address if bill.location else None)
+    items, totals = [], {"taxable": ZERO, "cgst": ZERO, "sgst": ZERO, "igst": ZERO}
+    for line in bill.lines:
+        rate = Decimal(line.gst_rate or 0)
+        items.append({"name": line.description[:100], "hsn": (line.hsn_or_sac_code or "").strip(),
+                      "qty": str(Decimal(line.qty)), "unit": _unit(line.unit), "taxable": str(Decimal(line.taxable_value)),
+                      "cgst_rate": str(rate / 2) if line.cgst_amount else "0",
+                      "sgst_rate": str(rate / 2) if line.sgst_amount else "0",
+                      "igst_rate": str(rate) if line.igst_amount else "0"})
+        totals["taxable"] += Decimal(line.taxable_value)
+        totals["cgst"] += Decimal(line.cgst_amount or 0)
+        totals["sgst"] += Decimal(line.sgst_amount or 0)
+        totals["igst"] += Decimal(line.igst_amount or 0)
+    ewb.items = items
+    ewb.total_value, ewb.cgst_value = totals["taxable"], totals["cgst"]
+    ewb.sgst_value, ewb.igst_value = totals["sgst"], totals["igst"]
+    ewb.total_invoice_value = Decimal(bill.grand_total or 0)
+    ewb.other_value = max(ewb.total_invoice_value - totals["taxable"] - totals["cgst"] - totals["sgst"]
+                          - totals["igst"], ZERO)
     return ewb
 
 
@@ -202,6 +258,8 @@ def apply_form(ewb: EWayBill, form) -> None:
         for key in ("name", "addr1", "addr2", "place", "pincode"):
             if f"{side}_{key}" in form:
                 party[key] = (form.get(f"{side}_{key}") or "").strip()[:120]
+        if side == "from" and ewb.supply_type == "I" and "from_state_code" in form:
+            party["state_code"] = (form.get("from_state_code") or "").strip()
         if side == "to":
             if "to_gstin" in form:
                 party["gstin"] = (form.get("to_gstin") or "").strip().upper() or "URP"
@@ -309,7 +367,7 @@ def api_payload(ewb: EWayBill) -> dict:
         "toGstin": t.get("gstin") or "URP", "toTrdName": t["name"], "toAddr1": t["addr1"],
         "toAddr2": t.get("addr2", ""), "toPlace": t["place"], "toPincode": _int(t["pincode"]),
         "actToStateCode": _int(t["state_code"]), "toStateCode": _int(t["state_code"]),
-        "transactionType": 1, "otherValue": 0, "totalValue": _num(ewb.total_value),
+        "transactionType": 1, "otherValue": _num(ewb.other_value or 0), "totalValue": _num(ewb.total_value),
         "cgstValue": _num(ewb.cgst_value), "sgstValue": _num(ewb.sgst_value), "igstValue": _num(ewb.igst_value),
         "cessValue": 0, "cessNonAdvolValue": 0, "totInvValue": _num(ewb.total_invoice_value),
         "itemList": [{"productName": i["name"], "productDesc": i["name"], "hsnCode": _int(i["hsn"]),
@@ -337,7 +395,7 @@ def bulk_entry(ewb: EWayBill) -> dict:
     entry["actualFromStateCode"] = p["actFromStateCode"]
     entry["actualToStateCode"] = p["actToStateCode"]
     entry["TotNonAdvolVal"] = 0
-    entry["OthValue"] = 0
+    entry["OthValue"] = p["otherValue"]
     entry["transMode"] = _int(p["transMode"])
     entry["transDistance"] = _int(p["transDistance"])
     entry["mainHsnCode"] = p["itemList"][0]["hsnCode"] if p["itemList"] else None

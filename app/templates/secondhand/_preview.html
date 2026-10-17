@@ -1,0 +1,20 @@
+{# The live margin and GST box on the sell form (packages: second-hand goods). #}
+{% if error %}<p class="text-danger m-0">{{ error }}</p>
+{% elif not data %}<p class="text-muted m-0">Tick an item and enter its price - the margin and its GST show here before you save.</p>
+{% else %}
+{% for e in data.errors %}<p class="text-danger m-0 mb-6">{{ e }}</p>{% endfor %}
+{% for l in data.lines %}
+<div class="mb-12">
+  <strong>{{ l.product.name }}</strong>{% if l.serials %} <small class="text-muted">{{ l.serials|join(', ') }}</small>{% endif %}
+  <div class="preview-row"><span>Selling price</span><span>{{ '%.2f'|format(l.sale_value) }}</span></div>
+  <div class="preview-row"><span>Bought for</span><span>{{ '%.2f'|format(l.purchase_value) }}</span></div>
+  <div class="preview-row {{ 'is-loss' if l.loss }}"><span>Margin{% if l.loss %} (a loss - no GST){% endif %}</span><span>{{ '%.2f'|format(l.margin) }}</span></div>
+  <div class="preview-row"><span>Taxable value ({{ '%g'|format(l.rate|float) }}% inside the margin)</span><span>{{ '%.2f'|format(l.taxable_value) }}</span></div>
+  <div class="preview-row"><span>GST {% if data.intra %}(CGST {{ '%.2f'|format(l.cgst) }} + SGST {{ '%.2f'|format(l.sgst) }}){% else %}(IGST){% endif %}</span><span>{{ '%.2f'|format(l.tax) }}</span></div>
+</div>
+{% endfor %}
+<div class="preview-row total"><span>Buyer pays</span><span>Rs. {{ '%.2f'|format(data.totals.sale_value) }}</span></div>
+<div class="preview-row"><span>Your margin</span><span>{{ '%.2f'|format(data.totals.margin) }}</span></div>
+<div class="preview-row"><span>GST on the margin</span><span>{{ '%.2f'|format(data.totals.tax) }}</span></div>
+<div class="preview-row"><span>No GST on (cost inside the price)</span><span>{{ '%.2f'|format(data.totals.no_gst) }}</span></div>
+{% endif %}

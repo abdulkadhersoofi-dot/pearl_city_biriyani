@@ -47,6 +47,17 @@ DEFAULTS = {
         # 0 = never (how it always was).
         "idle_minutes": 0,
     },
+    # Second-hand goods (margin scheme) - app/margin.
+    "margin": {
+        # How the part of a margin-scheme sale that isn't margin (sale
+        # price - margin) is reported: "exempt" - GSTR-1 Table 8 and
+        # GSTR-3B 3.1(c), so the returns add up to the turnover; "none" -
+        # only in the HSN summary's 0% row (the value of supply is the
+        # margin alone, Rule 32(5)).
+        "remainder_as": "exempt",
+        # Ask for the seller's ID proof when buying from a person.
+        "id_proof_required": True,
+    },
     "cashier": {
         # Lock a counter with cashier PINs after this many idle minutes
         # (0 = only when a cashier taps Lock / Switch).
