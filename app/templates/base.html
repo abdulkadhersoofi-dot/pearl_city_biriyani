@@ -9,9 +9,9 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
   {% if brand_tenant %}<style>{{ tenant_theme_css(brand_tenant) }}</style>{% endif %}
   {% set menu = menu_groups(current_user) %}
-  {# The counter needs its width, so the side menu starts folded to icons
-     there (remembered separately from every other page). #}
-  {% set rail_key = 'arfa.rail.pos' if request.blueprint == 'pos' else 'arfa.rail' %}
+  {# The counter needs its width: there the side menu is a drawer
+     (app.css, .is-counter) rather than a column or a folded rail. #}
+  {% set rail_key = 'arfa.rail.pos' if request.endpoint == 'pos.terminal' else 'arfa.rail' %}
   {% if menu %}
   <script>
     // Before first paint, so a folded menu never flashes open. Until
@@ -19,8 +19,9 @@
     // narrower than a laptop.
     (function () {
       var key = {{ rail_key|tojson }}, folded;
+      if (key === "arfa.rail.pos") return;  // the counter keeps its menu in a drawer instead
       try { folded = localStorage.getItem(key); } catch (e) { folded = null; }
-      if (folded === "1" || (folded === null && (key === "arfa.rail.pos" || window.innerWidth < 1280))) {
+      if (folded === "1" || (folded === null && window.innerWidth < 1280)) {
         document.documentElement.classList.add("is-rail");
       }
     })();
@@ -45,7 +46,7 @@
 </head>
 {% set new_actions = new_menu(current_user) %}
 {% set tabs = bottom_tabs(current_user) %}
-<body class="{{ 'has-menu' if menu else 'no-menu' }}{{ ' has-tabs' if tabs }}{{ ' is-counter' if request.blueprint == 'pos' }}" x-data="shell" data-rail-key="{{ rail_key }}"
+<body class="{{ 'has-menu' if menu else 'no-menu' }}{{ ' has-tabs' if tabs }}{{ ' is-counter' if request.endpoint == 'pos.terminal' }}" x-data="shell" data-rail-key="{{ rail_key }}"
       @keydown.window="onKey($event)">
   <a class="skip-link" href="#main">Skip to content</a>
   <div class="shell">

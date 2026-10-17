@@ -163,29 +163,36 @@
 </script>
 {% endif %}
 <div x-data="posTerminal()" @keydown.window="onKey($event)">
-  <div class="page-header">
-    <h1>POS billing</h1>
-    <div class="row">
-      {% if last_bill %}
-      <button type="button" class="btn btn-quiet" @click="reprintLast()" title="Prints a DUPLICATE COPY">Reprint last bill</button>
-      {% endif %}
-      {% if day_close and cash_session %}
-      <a href="{{ url_for('pos.day_close') }}" class="btn btn-quiet">Cash in/out &middot; Close day</a>
-      {% endif %}
-      {% if has_feature('job_cards') %}<a href="{{ url_for('jobs.index') }}" class="btn btn-quiet">Jobs</a>{% endif %}
-      {% if has_feature('jewellery') %}<a href="{{ url_for('jewellery.old_gold_new') }}" class="btn btn-quiet">Buy old gold</a>{% endif %}
-      {% if has_feature('restaurant_mode') %}<a href="{{ url_for('restaurant.menu') }}" class="btn btn-quiet">Sold out</a>{% endif %}
-      {% if can('view_reports') %}
-      <a href="{{ url_for('pos.day_book') }}" class="btn btn-quiet">Day-book</a>
-      <a href="{{ url_for('pos.z_report_view') }}" class="btn btn-quiet">Z-report</a>
-      {% endif %}
-      <template x-if="inApp">
-        <span class="row">
-          <button type="button" class="btn btn-quiet" @click="window.AndroidPrint.openDrawer() || window.AndroidPrint.openSettings()">Open drawer</button>
-          <button type="button" class="btn btn-quiet" @click="window.AndroidPrint.openSettings()">Printer</button>
-        </span>
-      </template>
-      <button type="button" class="btn btn-quiet shortcut-hint-btn" @click="showShortcuts = !showShortcuts" title="Keyboard shortcuts">?</button>
+  <div class="pos-bar">
+    <button type="button" class="pos-held-btn{{ ' has-held' if held_bills }}" @click="heldOpen = true" aria-controls="held-drawer">
+      {{ icon('clock') }}<span>Held bills</span><span class="pos-count">{{ held_bills|length }}</span>
+    </button>
+    <h1 class="pos-title">POS billing</h1>
+    <div class="pop-wrap pos-menu-wrap" x-data="{ open: false }" @click.outside="open = false" @keydown.escape="open = false">
+      <button type="button" class="btn btn-secondary" @click="open = !open" :aria-expanded="open" aria-haspopup="menu">{{ icon('layout-grid') }} Counter</button>
+      <div class="pop pop-right pos-menu" role="menu" x-show="open" x-cloak
+           x-transition:enter="pop-enter" x-transition:enter-start="pop-from" x-transition:leave="pop-leave" x-transition:leave-end="pop-from">
+        {% if last_bill %}
+        <button type="button" class="pop-item" role="menuitem" @click="open = false; reprintLast()" title="Prints a DUPLICATE COPY">{{ icon('printer') }}<span>Reprint last bill</span></button>
+        {% endif %}
+        {% if can('view_reports') %}
+        <a href="{{ url_for('pos.day_book') }}" class="pop-item" role="menuitem">{{ icon('list') }}<span>Day-book</span></a>
+        <a href="{{ url_for('pos.z_report_view') }}" class="pop-item" role="menuitem">{{ icon('file-text') }}<span>Z-report</span></a>
+        {% endif %}
+        {% if day_close and cash_session %}
+        <a href="{{ url_for('pos.day_close') }}" class="pop-item" role="menuitem">{{ icon('clock') }}<span>Cash in/out &middot; Close day</span></a>
+        {% endif %}
+        {% if has_feature('job_cards') %}<a href="{{ url_for('jobs.index') }}" class="pop-item" role="menuitem">{{ icon('wrench') }}<span>Jobs</span></a>{% endif %}
+        {% if has_feature('jewellery') %}<a href="{{ url_for('jewellery.old_gold_new') }}" class="pop-item" role="menuitem">{{ icon('coins') }}<span>Buy old gold</span></a>{% endif %}
+        {% if has_feature('restaurant_mode') %}<a href="{{ url_for('restaurant.menu') }}" class="pop-item" role="menuitem">{{ icon('utensils-crossed') }}<span>Sold out</span></a>{% endif %}
+        <template x-if="inApp">
+          <div>
+            <button type="button" class="pop-item" role="menuitem" @click="open = false; window.AndroidPrint.openDrawer() || window.AndroidPrint.openSettings()">{{ icon('banknote') }}<span>Open drawer</span></button>
+            <button type="button" class="pop-item" role="menuitem" @click="open = false; window.AndroidPrint.openSettings()">{{ icon('printer') }}<span>Printer</span></button>
+          </div>
+        </template>
+        <button type="button" class="pop-item shortcut-hint-btn" role="menuitem" @click="open = false; showShortcuts = !showShortcuts" title="Keyboard shortcuts">{{ icon('info') }}<span>Keyboard shortcuts <kbd>?</kbd></span></button>
+      </div>
     </div>
   </div>
   {% if modules.offline %}
@@ -251,50 +258,44 @@
     </table>
   </details>
 
-  <div class="pos-layout">
-    <!-- Always visible, never collapsible - a bill left on hold stays in
-         plain sight here instead of behind a toggle, so it never gets
-         forgotten. -->
-    <div class="held-bills-panel">
-      <h2 class="m-0 mb-4">Held bills ({{ held_bills|length }})</h2>
-      {% for hb in held_bills %}
-      <div class="held-bill-card">
-        <div class="held-bill-label">{{ hb.hold_label or ('Bill #' ~ hb.id) }}</div>
-        <div class="held-bill-meta">{{ hb.lines|length }} item(s) &middot; Rs. {{ '%.2f'|format(hb.grand_total) }}</div>
-        <div class="held-bill-meta">Held at {{ hb.created_at.strftime('%H:%M') }}</div>
-        <div class="row">
-          <a href="{{ url_for('pos.terminal', resume=hb.id) }}" class="btn btn-quiet btn-sm"
-             @click="resumeHeld($event, {{ hb.id }})">Resume</a>
-          <form method="post" action="{{ url_for('pos.discard_held', bill_id=hb.id) }}"
-                onsubmit="return confirm('Discard this held bill?');">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button class="btn btn-quiet btn-sm">Discard</button>
-          </form>
-        </div>
-      </div>
-      {% else %}
-      <p class="text-muted m-0">No bills held right now.</p>
-      {% endfor %}
-    </div>
-
-    <div>
-      <div class="row items-center gap-10">
-        <input type="text" class="field-input pos-search grow mb-0" placeholder="Search / scan"
+  <div class="pos-main">
+    <section class="pos-catalog" aria-label="Items">
+      <label class="pos-search-wrap">
+        {{ icon('search') }}
+        <input type="text" class="field-input pos-search" placeholder="Search or scan an item"
                x-model="search" x-ref="search" autofocus
                @keydown.enter.prevent="searchEnter()">
-        <template x-if="categoryWise && !search">
-          <div class="row gap-8 shrink-0">
-            <button type="button" class="btn btn-quiet btn-sm" @click="expandAllCategories()">Expand all</button>
-            <button type="button" class="btn btn-quiet btn-sm" @click="collapseAllCategories()">Collapse all</button>
-          </div>
-        </template>
-      </div>
+        <kbd>F2</kbd>
+      </label>
       <p class="scan-note" x-show="scanMessage" x-text="scanMessage" x-cloak></p>
+
+      <!-- Categories as one row of chips (only for a client with
+           categories on, and not while searching - a search always looks
+           through every item). -->
+      <template x-if="categoryWise && !search">
+        <div class="chip-row" role="tablist" aria-label="Categories">
+          <button type="button" class="cat-chip" role="tab" :aria-selected="activeCat === null" :class="{ 'is-active': activeCat === null }" @click="pickCat(null)">All</button>
+          <template x-for="cat in categoryTree" :key="'chip-'+cat.id">
+            <button type="button" class="cat-chip" role="tab" :aria-selected="activeCat === cat.id" :class="{ 'is-active': activeCat === cat.id }" @click="pickCat(cat.id)" x-text="cat.name"></button>
+          </template>
+          <template x-if="uncategorizedProducts.length">
+            <button type="button" class="cat-chip" role="tab" :aria-selected="activeCat === 'uncat'" :class="{ 'is-active': activeCat === 'uncat' }" @click="pickCat('uncat')">Other</button>
+          </template>
+        </div>
+      </template>
+      <template x-if="categoryWise && !search && activeSubs().length">
+        <div class="chip-row chip-row-sub" aria-label="Sub-categories">
+          <button type="button" class="cat-chip cat-chip-sub" :class="{ 'is-active': activeSub === null }" @click="activeSub = null">All</button>
+          <template x-for="sub in activeSubs()" :key="'subchip-'+sub.id">
+            <button type="button" class="cat-chip cat-chip-sub" :class="{ 'is-active': activeSub === sub.id }" @click="activeSub = sub.id" x-text="sub.name"></button>
+          </template>
+        </div>
+      </template>
 
       <template x-if="favourites.length && !search">
         <div class="favourites-row">
           <template x-for="p in favourites" :key="'fav-'+p.id">
-            <button type="button" class="favourite-chip" @click="addToCart(p)">
+            <button type="button" class="favourite-chip" @click="addToCart(p); if (!p.sold_out) flyFrom($event)">
               <span x-text="p.name"></span>
               <span class="text-muted" x-text="'Rs. ' + priceFor(p).toFixed(2)"></span>
             </button>
@@ -302,110 +303,29 @@
         </div>
       </template>
 
-      <!-- Category/sub-category tree - only when the tenant has turned
-           this on, and only while not searching (a search result is
-           always the flat filtered grid below, same as non-category
-           tenants always see). -->
-      <template x-if="categoryWise && !search">
-        <div class="category-tree mt-16">
-          <template x-for="cat in categoryTree" :key="'cat-'+cat.id">
-            <div class="category-group">
-              <button type="button" class="category-header" @click="toggleGroup('cat-'+cat.id)">
-                <span x-text="cat.name"></span>
-                <span x-text="isExpanded('cat-'+cat.id) ? '−' : '+'"></span>
-              </button>
-              <div class="category-body" x-show="isExpanded('cat-'+cat.id)" x-cloak>
-                <template x-if="cat.loose_products.length">
-                  <div class="product-grid mb-12">
-                    <template x-for="p in cat.loose_products" :key="p.id">
-                      <button type="button" class="product-tile" :class="p.sold_out ? 'sold-out' : ''" @click="addToCart(p)">
-                        <div class="tile-image">
-                          <template x-if="p.image"><img :src="p.image" :alt="p.name"></template>
-                          <template x-if="!p.image"><span class="tile-image-placeholder" x-text="p.name.charAt(0)"></span></template>
-                        </div>
-                        <span class="tile-name" x-text="p.name"></span>
-                        <span class="tile-price" x-text="p.jewel ? 'by weight' : 'Rs. ' + priceFor(p).toFixed(2) + (p.loose ? ' / ' + p.unit : '')"></span>
-                        <span class="tile-badge" x-show="p.sold_out">Sold out</span>
-                      </button>
-                    </template>
-                  </div>
-                </template>
-                <template x-for="sub in cat.subcategories" :key="'sub-'+sub.id">
-                  <div class="subcategory-group">
-                    <button type="button" class="subcategory-header" @click="toggleGroup('sub-'+sub.id)">
-                      <span x-text="sub.name"></span>
-                      <span x-text="isExpanded('sub-'+sub.id) ? '−' : '+'"></span>
-                    </button>
-                    <div class="product-grid mt-10" x-show="isExpanded('sub-'+sub.id)" x-cloak>
-                      <template x-for="p in sub.products" :key="p.id">
-                        <button type="button" class="product-tile" :class="p.sold_out ? 'sold-out' : ''" @click="addToCart(p)">
-                          <div class="tile-image">
-                            <template x-if="p.image"><img :src="p.image" :alt="p.name"></template>
-                            <template x-if="!p.image"><span class="tile-image-placeholder" x-text="p.name.charAt(0)"></span></template>
-                          </div>
-                          <span class="tile-name" x-text="p.name"></span>
-                          <span class="tile-price" x-text="p.jewel ? 'by weight' : 'Rs. ' + priceFor(p).toFixed(2) + (p.loose ? ' / ' + p.unit : '')"></span>
-                        <span class="tile-badge" x-show="p.sold_out">Sold out</span>
-                        </button>
-                      </template>
-                    </div>
-                  </div>
-                </template>
-              </div>
-            </div>
-          </template>
-          <template x-if="uncategorizedProducts.length">
-            <div class="category-group">
-              <button type="button" class="category-header" @click="toggleGroup('uncat')">
-                <span>Uncategorized</span>
-                <span x-text="isExpanded('uncat') ? '−' : '+'"></span>
-              </button>
-              <div class="category-body" x-show="isExpanded('uncat')" x-cloak>
-                <div class="product-grid">
-                  <template x-for="p in uncategorizedProducts" :key="p.id">
-                    <button type="button" class="product-tile" :class="p.sold_out ? 'sold-out' : ''" @click="addToCart(p)">
-                      <div class="tile-image">
-                        <template x-if="p.image"><img :src="p.image" :alt="p.name"></template>
-                        <template x-if="!p.image"><span class="tile-image-placeholder" x-text="p.name.charAt(0)"></span></template>
-                      </div>
-                      <span class="tile-name" x-text="p.name"></span>
-                      <span class="tile-price" x-text="p.jewel ? 'by weight' : 'Rs. ' + priceFor(p).toFixed(2) + (p.loose ? ' / ' + p.unit : '')"></span>
-                        <span class="tile-badge" x-show="p.sold_out">Sold out</span>
-                    </button>
-                  </template>
-                </div>
-              </div>
-            </div>
-          </template>
-        </div>
-      </template>
-
-      <template x-if="!categoryWise || search">
-        <div class="mt-16">
-          <div class="product-grid">
-            <template x-for="p in filteredProducts()" :key="p.id">
-              <button type="button" class="product-tile" :class="p.sold_out ? 'sold-out' : ''" @click="addToCart(p)">
+      <div class="product-grid pos-grid">
+        <template x-for="p in shownProducts()" :key="'tile-'+p.id">
+          <button type="button" class="product-tile" :class="p.sold_out ? 'sold-out' : ''" @click="addToCart(p); if (!p.sold_out) flyFrom($event)">
                 <div class="tile-image">
-                  <template x-if="p.image"><img :src="p.image" :alt="p.name"></template>
+                  <template x-if="p.image"><img :src="p.image" :alt="p.name" loading="lazy"></template>
                   <template x-if="!p.image"><span class="tile-image-placeholder" x-text="p.name.charAt(0)"></span></template>
                 </div>
                 <span class="tile-name" x-text="p.name"></span>
                 <span class="tile-price" x-text="p.jewel ? 'by weight' : 'Rs. ' + priceFor(p).toFixed(2) + (p.loose ? ' / ' + p.unit : '')"></span>
-                        <span class="tile-badge" x-show="p.sold_out">Sold out</span>
+                <span class="tile-badge" x-show="p.sold_out">Sold out</span>
               </button>
-            </template>
-          </div>
-          <p class="text-muted mt-20" x-show="filteredProducts().length === 0">
-            No items match "<span x-text="search"></span>".
-          </p>
-        </div>
-      </template>
-    </div>
+        </template>
+      </div>
+      <p class="text-muted mt-20" x-show="shownProducts().length === 0">
+        <span x-show="search">No items match "<span x-text="search"></span>".</span>
+        <span x-show="!search">No items here yet.</span>
+      </p>
+    </section>
 
-    <div class="cart-panel">
+    <div class="cart-panel" x-ref="cartPanel">
       <div class="row justify-between items-center">
-        <h2 class="m-0">Cart</h2>
-        <button type="button" class="btn btn-quiet" x-show="cart.length > 0" @click="clearCart()">Clear all</button>
+        <h2 class="m-0">Bill <span class="cart-count" x-show="cart.length" x-text="cart.length"></span></h2>
+        <button type="button" class="btn btn-quiet btn-sm" x-show="cart.length > 0" @click="clearCart()">Clear all</button>
       </div>
 
       <template x-if="MODULES.restaurant">
@@ -496,15 +416,23 @@
       <p class="text-muted text-danger m-0 mt-4 mb-4" x-show="quoteError" x-text="quoteError"></p>
       <div class="cart-total-row">
         <span>Total</span>
-        <span x-text="'Rs. ' + cartTotal().toFixed(2)"></span>
+        <span class="cart-total-value" x-ref="cartTotal" x-text="'Rs. ' + cartTotal().toFixed(2)"></span>
       </div>
 
       <template x-if="MODULES.restaurant && MODULES.restaurant.table">
         <button type="button" class="btn btn-secondary btn-lg btn-block mb-8" :disabled="cart.length === 0 || submitting"
                 @click="sendKot()">Send KOT &amp; save order</button>
       </template>
-      <button type="button" class="btn btn-primary btn-lg btn-block" :disabled="cart.length === 0"
-              @click="startCheckout()" x-text="MODULES.restaurant && MODULES.restaurant.table ? 'Bill this table' : 'Checkout'"></button>
+      <!-- One tap: the counter's usual ways to pay go straight to the confirm step. -->
+      <div class="pay-row" :class="'pay-' + Math.min(paymentModes.length, 3)">
+        <template x-for="(m, mi) in paymentModes.slice(0, 3)" :key="'qp-'+m.value">
+          <button type="button" class="pay-btn" :class="mi === 0 ? 'is-main' : ''" :disabled="cart.length === 0"
+                  @click="quickPay(m.value)" x-text="m.label"></button>
+        </template>
+      </div>
+      <div class="cart-actions">
+        <button type="button" class="btn btn-secondary" :disabled="cart.length === 0" @click="startCheckout()"
+                x-text="MODULES.restaurant && MODULES.restaurant.table ? 'Bill this table' : 'Checkout'" title="More ways to pay: split, credits (F4)"></button>
 
       <form method="post" :action="holdUrl" x-ref="holdForm">
         <input type="hidden" name="then_resume" x-ref="thenResume" value="">
@@ -532,10 +460,50 @@
             <input type="hidden" name="line_net_weight[]" :value="line.net_weight || ''">
           </span>
         </template>
-        <button type="submit" class="btn btn-secondary btn-block" :disabled="cart.length === 0" x-show="!(MODULES.restaurant && MODULES.restaurant.table)">Hold bill</button>
+        <button type="submit" class="btn btn-secondary btn-block" :disabled="cart.length === 0" x-show="!(MODULES.restaurant && MODULES.restaurant.table)" title="Hold bill (F8)">Hold bill</button>
       </form>
+      </div>
     </div>
   </div>
+
+  <!-- Phones: the bill's count and total stay in reach at the bottom. -->
+  <div class="pos-mini-bill" x-show="cart.length" x-cloak>
+    <button type="button" class="pos-mini-view" @click="$refs.cartPanel.scrollIntoView({behavior: 'smooth', block: 'start'})">
+      <span x-text="cart.length + ' item' + (cart.length === 1 ? '' : 's') + ' - view bill'"></span>
+      <strong x-text="'Rs. ' + cartTotal().toFixed(2)"></strong>
+    </button>
+    <button type="button" class="btn btn-primary" x-show="paymentModes.length" @click="quickPay(paymentModes[0].value)"
+            x-text="'Pay ' + (paymentModes.length ? paymentModes[0].label : '')"></button>
+  </div>
+
+  <!-- Held bills: a drawer from the left, its count always on the bar. -->
+  <div class="drawer-scrim" x-show="heldOpen" x-transition.opacity @click="heldOpen = false" x-cloak></div>
+  <aside class="held-drawer" id="held-drawer" :class="{ 'is-open': heldOpen }" aria-label="Held bills">
+    <div class="held-drawer-head">
+      <h2 class="m-0">Held bills ({{ held_bills|length }})</h2>
+      <button type="button" class="icon-btn" @click="heldOpen = false" aria-label="Close">{{ icon('x') }}</button>
+    </div>
+    <div class="held-drawer-list">
+      {% for hb in held_bills %}
+      <div class="held-bill-card">
+        <div class="held-bill-label">{{ hb.hold_label or ('Bill #' ~ hb.id) }}</div>
+        <div class="held-bill-meta">{{ hb.lines|length }} item(s) &middot; Rs. {{ '%.2f'|format(hb.grand_total) }}</div>
+        <div class="held-bill-meta">Held at {{ hb.created_at.strftime('%H:%M') }}</div>
+        <div class="row">
+          <a href="{{ url_for('pos.terminal', resume=hb.id) }}" class="btn btn-quiet btn-sm"
+             @click="resumeHeld($event, {{ hb.id }})">Resume</a>
+          <form method="post" action="{{ url_for('pos.discard_held', bill_id=hb.id) }}"
+                onsubmit="return confirm('Discard this held bill?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-quiet btn-sm">Discard</button>
+          </form>
+        </div>
+      </div>
+      {% else %}
+      <p class="text-muted m-0">No bills held right now.</p>
+      {% endfor %}
+    </div>
+  </aside>
 
   <!-- 3-tap checkout: Checkout (above) -> pick payment mode -> Confirm -> prints immediately at the tenant's default paper size, no size prompt -->
   <div class="checkout-overlay" x-show="checkoutStep !== 'idle'" x-cloak>
@@ -663,10 +631,13 @@
 
       <template x-if="checkoutStep === 'done'">
         <div>
+          <div class="paid-tick" :class="offlineQueued ? 'is-queued' : ''" aria-hidden="true">
+            <svg viewBox="0 0 52 52"><circle cx="26" cy="26" r="23"/><path d="M15.5 27.5l7 7 14-15"/></svg>
+          </div>
           <h2 x-text="offlineQueued ? 'Offline - bill queued' : 'Printed'"></h2>
           <p class="offline-banner" x-show="offlineQueued">No connection: bill <strong x-text="completedBillNumber"></strong> is saved on this device and printed. It goes to the books by itself when the connection is back.</p>
           <p class="text-muted mt-0" x-show="!offlineQueued">Bill <strong x-text="completedBillNumber"></strong> sent to the printer.</p>
-          <p class="change-due" x-show="completedChange !== null && completedChange > 0" x-text="'Give change: Rs. ' + (completedChange || 0).toFixed(2)"></p>
+          <p class="change-due change-done" x-show="completedChange !== null && completedChange > 0" x-text="'Give change: Rs. ' + (completedChange || 0).toFixed(2)"></p>
           <p class="text-muted" x-show="creditWarning" x-text="creditWarning" style="color:#8a5a00; font-weight:600;"></p>
           <button type="button" class="btn btn-secondary btn-block" @click="printReceipt(DEFAULT_RECEIPT_FORMAT, false)">Reprint</button>
           <button type="button" class="btn btn-secondary btn-block mt-10" @click="shareBill()" x-show="!offlineQueued">Share on WhatsApp</button>
@@ -856,6 +827,12 @@ function posTerminal() {
     customer: null,
     billDisc: {kind: "percent", value: 0},
     expandedGroups: {},
+    // Counter layout (redesign stage 5): the category chip picked, the
+    // held-bills drawer, and a payment mode tapped before a prescription.
+    activeCat: null,
+    activeSub: null,
+    heldOpen: false,
+    afterRx: null,
     checkoutStep: "idle",
     paymentMode: "",
     splitRows: [],
@@ -1010,6 +987,7 @@ function posTerminal() {
       }
       this.checkoutError = "";
       this.checkoutStep = "payment";
+      if (this.afterRx) { const mode = this.afterRx; this.afterRx = null; this.selectPayment(mode); }
     },
     creditsTotal() { return this.credits.reduce((s, c) => s + Number(c.amount), 0); },
     creditRoom() { return GstCalc.round2(this.cartTotal() - this.creditsTotal() - (this.exchange ? Math.min(this.exchange.balance, this.cartTotal()) : 0)); },
@@ -1145,6 +1123,54 @@ function posTerminal() {
     // Category/sub-category tree expand-collapse state. Keyed by
     // "cat-<id>" / "sub-<id>" / "uncat" - nothing persists across a
     // reload, "Expand all"/"Collapse all" just set every key at once.
+    // --- category chips and quick pay (redesign stage 5) ----------------
+    pickCat(id) { this.activeCat = id; this.activeSub = null; },
+    activeSubs() {
+      if (!this.categoryWise || this.activeCat === null || this.activeCat === "uncat") return [];
+      const cat = this.categoryTree.find(c => c.id === this.activeCat);
+      return cat ? cat.subcategories : [];
+    },
+    shownProducts() {
+      if (this.search.trim() || !this.categoryWise || this.activeCat === null) return this.filteredProducts();
+      if (this.activeCat === "uncat") return this.uncategorizedProducts;
+      const cat = this.categoryTree.find(c => c.id === this.activeCat);
+      if (!cat) return [];
+      if (this.activeSub !== null) {
+        const sub = cat.subcategories.find(x => x.id === this.activeSub);
+        return sub ? sub.products : [];
+      }
+      return cat.loose_products.concat(...cat.subcategories.map(x => x.products));
+    },
+    // Cash / UPI / Card on the bill: straight to the confirm step (a
+    // prescription first, when the bill needs one).
+    quickPay(mode) {
+      if (!this.cart.length) return;
+      this.startCheckout();
+      if (this.checkoutStep === "rx") { this.afterRx = mode; return; }
+      this.selectPayment(mode);
+    },
+    // A tapped item flies to the bill total, which gives a small bump.
+    flyFrom(ev) {
+      const target = this.$refs.cartTotal;
+      if (!ev || !ev.currentTarget || !target || !Element.prototype.animate) return;
+      if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+      const a = ev.currentTarget.getBoundingClientRect(), b = target.getBoundingClientRect();
+      const dx = b.left + b.width / 2 - (a.left + a.width / 2), dy = b.top + b.height / 2 - (a.top + a.height / 2);
+      const dot = document.createElement("span");
+      dot.className = "fly-dot";
+      dot.style.left = (a.left + a.width / 2) + "px";
+      dot.style.top = (a.top + a.height / 2) + "px";
+      document.body.appendChild(dot);
+      const fly = dot.animate([
+        {transform: "translate(-50%, -50%) scale(1)", opacity: 1},
+        {transform: `translate(calc(-50% + ${dx / 2}px), calc(-50% + ${dy / 2 - 90}px)) scale(0.8)`, opacity: 1, offset: 0.5},
+        {transform: `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) scale(0.35)`, opacity: 0.4},
+      ], {duration: 450, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)"});
+      fly.onfinish = () => {
+        dot.remove();
+        target.animate([{transform: "scale(1)"}, {transform: "scale(1.1)"}, {transform: "scale(1)"}], {duration: 260, easing: "ease-out"});
+      };
+    },
     isExpanded(key) { return !!this.expandedGroups[key]; },
     toggleGroup(key) { this.expandedGroups[key] = !this.expandedGroups[key]; },
     expandAllCategories() {
@@ -1360,6 +1386,7 @@ function posTerminal() {
     },
     startCheckout() {
       if (!this.cart.length) return;
+      this.afterRx = null;
       this.checkoutError = "";
       this.cashTendered = "";
       this.checkoutStep = this.scheduledItems().length ? "rx" : "payment";
@@ -1604,7 +1631,7 @@ function posTerminal() {
     },
     // --- keyboard + barcode scanner ----------------------------------------
     anySheetOpen() {
-      return this.checkoutStep !== "idle" || this.lineEditor.open || this.billDiscEditor.open || this.customerEditor.open;
+      return this.checkoutStep !== "idle" || this.heldOpen || this.lineEditor.open || this.billDiscEditor.open || this.customerEditor.open;
     },
     onKey(ev) {
       const typing = ["INPUT", "TEXTAREA", "SELECT"].includes(ev.target.tagName);
@@ -1612,7 +1639,8 @@ function posTerminal() {
       if (ev.key === "F4") { ev.preventDefault(); if (!this.anySheetOpen()) this.startCheckout(); return; }
       if (ev.key === "F8") { ev.preventDefault(); if (this.cart.length && !this.anySheetOpen()) this.$refs.holdForm.submit(); return; }
       if (ev.key === "Escape") {
-        if (this.lineEditor.open) this.lineEditor.open = false;
+        if (this.heldOpen) this.heldOpen = false;
+        else if (this.lineEditor.open) this.lineEditor.open = false;
         else if (this.billDiscEditor.open) this.billDiscEditor.open = false;
         else if (this.customerEditor.open) this.customerEditor.open = false;
         else if (this.checkoutStep === "done") this.newSale();

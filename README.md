@@ -1969,6 +1969,50 @@ trend days add up to the sales figure, another client's sales never
 counted, dashboard shows the trend / screen-reader table / Needs you,
 hub shows only reports whose modules are on and every tile opens).
 
+### Interface redesign - stage 5 (the counter)
+
+The billing screen (`pos/terminal.html`) was rebuilt around its existing
+logic - cart, prices, checkout, offline queue, PINs, printing and every
+keyboard shortcut work exactly as before; only the layout and a few small
+helpers in `posTerminal()` are new.
+
+- **Full screen**: on the billing screen the site menu steps aside into a
+  drawer (the menu button opens it), so the items and the bill get the
+  whole width. Day-book, Z-report and the other counter pages keep the
+  normal frame.
+- **One bar on top**: "Held bills" with its count (saffron and pulsing
+  while any are waiting), the screen's name, and one **Counter** menu
+  holding the occasional jobs - Reprint last bill, Day-book, Z-report,
+  Cash in/out & close day, Jobs, Buy old gold, Sold out, the Android
+  app's Open drawer / Printer, Keyboard shortcuts. Each only with its
+  module or permission, as before.
+- **Held bills in a drawer** from the left (Esc closes it) - the same
+  Resume / Discard as the old column, which gave the items its width.
+- **Items**: a big search box (F2), categories as one row of chips (All,
+  each category, "Other" for items without one) with sub-category chips
+  under a picked category, the favourites row, then larger tiles. A
+  search always looks through every item. The chips replace the
+  expand/collapse tree.
+- **The bill**: a count badge, a big total, and the first three payment
+  modes as **one-tap buttons** - Cash, UPI, Card go straight to the
+  confirm step (cash tendered, UPI QR); "Checkout" (F4) still opens every
+  way to pay - split, credits, old gold, points. A prescription, when the
+  bill needs one, is still asked first. Hold bill (F8) sits beside it.
+- **Phones**: a bar at the bottom keeps the bill's count and total in
+  reach with a Pay button; tapping it scrolls to the bill.
+- **Motion**: a tapped item flies to the bill total, which bumps; the
+  confirm sheet rises in; on "Printed" a tick draws itself (saffron when
+  the bill was queued offline) and the change to give rises in large.
+  All off for reduced motion.
+- **Restaurant tables** as cards with a green (free) or saffron (busy)
+  edge; the **PIN pad** with large round keys over a blurred counter.
+- Tests: `tests/test_redesign_counter.py` - full-screen frame only on the
+  billing screen, the bar and Counter menu, held bills in the drawer with
+  their count, chips only with categories on, branch logins get the same
+  counter, and the page's own script run in Node: chips filter by
+  category / sub-category / "Other", search overrides them, and a one-tap
+  payment lands on the confirm step with the right mode.
+
 ## Roadmap
 
 - **Platform build (ARFA general-purpose POS), phase by phase.**
@@ -2030,9 +2074,10 @@ hub shows only reports whose modules are on and every tile opens).
   - Stage 4 (done): Home dashboard (trend, comparisons, Needs you,
     count-up figures, Indian money format) and the Reports hub (grouped,
     searchable).
-  - Stage 5: the counter - full screen, category chips, larger tiles,
-    held bills in a drawer, Counter menu, one-tap payment buttons, paid
-    animation; restaurant tables, KOT and the PIN pad to match.
+  - Stage 5 (done): the counter - full screen, category chips, larger
+    tiles, held bills in a drawer, Counter menu, one-tap payment buttons,
+    fly-to-bill and paid animations, phone bill bar; restaurant tables and
+    the PIN pad to match (KOT slips print as before).
   - Stage 6: firm console, sign-in pages, dark mode, accessibility pass.
 
   Stage 1 limits:

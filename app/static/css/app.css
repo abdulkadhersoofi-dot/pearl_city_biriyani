@@ -472,12 +472,10 @@ tr:last-child td { border-bottom: none; }
 .totals-row.grand { font-size: 1.3rem; font-weight: 800; border-top: 1px solid var(--color-border); margin-top: 8px; padding-top: 10px; }
 
 /* --- POS terminal --- */
-.pos-layout { display: grid; grid-template-columns: 260px 1fr 360px; gap: 20px; align-items: start; }
 .pos-search { min-height: 56px; font-size: 1.1rem; margin-bottom: 16px; }
 
-/* Always visible, never collapsible - held bills sit in their own
-   left-hand column so a bill left on hold is never out of sight. */
-.held-bills-panel { position: sticky; top: 20px; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius); padding: 16px; display: flex; flex-direction: column; gap: 10px; max-height: calc(100vh - 100px); overflow-y: auto; }
+/* Held bills live in a drawer (see "The counter" below), their count
+   always on the counter's bar. */
 .held-bill-card { border: 1px solid var(--color-border); border-radius: 8px; padding: 10px; }
 .held-bill-card .held-bill-label { font-weight: 700; }
 .held-bill-card .held-bill-meta { color: var(--color-text-muted); font-size: 0.85rem; margin-top: 2px; }
@@ -597,14 +595,8 @@ tr:last-child td { border-bottom: none; }
 .payment-mode-btn { min-height: 88px; border-radius: var(--radius); border: 2px solid var(--color-border); background: var(--color-bg); font-size: 1.1rem; font-weight: 700; cursor: pointer; }
 .payment-mode-btn.selected { border-color: var(--color-primary); background: var(--color-success-bg); color: var(--color-primary-dark); }
 
-@media (max-width: 1200px) {
-  .pos-layout { grid-template-columns: 220px 1fr 340px; }
-}
-
 @media (max-width: 900px) {
-  .pos-layout { grid-template-columns: 1fr; }
   .cart-panel { position: static; max-height: none; }
-  .held-bills-panel { position: static; max-height: none; }
 }
 
 /* --- Empty / coming soon --- */
@@ -728,9 +720,9 @@ tr:last-child td { border-bottom: none; }
 .checkbox-grid ul { display: contents; }
 .price-list-table .list-price-input { max-width: 160px; margin: 0; }
 /* Grid items default to min-width:auto, so a long favourites row (which
-   scrolls sideways on its own) would otherwise widen the middle column
-   and push the cart off the right edge of the screen. */
-.pos-layout > * { min-width: 0; }
+   scrolls sideways on its own) would otherwise widen the items column
+   and push the bill off the right edge of the screen. */
+.pos-main > * { min-width: 0; }
 .daybook-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .daybook-actions form { margin: 0; }
 .discount-row { display: grid; grid-template-columns: 90px minmax(0, 1fr); gap: 8px; }
@@ -1214,6 +1206,179 @@ a.report-tile:hover .report-go { transform: translateX(3px); color: var(--color-
 .report-inline-form .field { min-width: 180px; }
 .report-inline-form .field-input { min-height: 44px; }
 @media (max-width: 640px) { .report-grid { grid-template-columns: 1fr; } .report-search { flex: 1 1 100%; } }
+
+/* --- The counter (redesign stage 5) ------------------------------------ */
+/* Full screen: the site menu steps aside into a drawer (the menu button
+   opens it), so the items and the bill get the whole width. */
+.is-counter .sidenav {
+  position: fixed; left: 0; top: 0; bottom: 0; height: auto; width: min(300px, 86vw); z-index: 40;
+  transform: translateX(-102%); visibility: hidden; transition: transform 0.26s var(--ease-out), visibility 0s linear 0.26s;
+}
+.is-counter .sidenav.is-open { transform: none; visibility: visible; box-shadow: var(--shadow-3); transition: transform 0.26s var(--ease-out); }
+.is-counter .sidenav .brand, .is-counter .sidenav .nav-label { display: revert; }
+.is-counter .sidenav .nav-link { justify-content: flex-start; padding: 8px 12px; }
+.is-counter .sidenav .nav-group-label { font-size: 0.68rem; height: auto; margin: 16px 12px 6px; background: none; }
+.is-counter .sidenav .nav-group:first-child .nav-group-label { display: block; }
+.is-counter .rail-toggle { display: none; }
+.is-counter .drawer-close, .is-counter .menu-btn { display: inline-grid; }
+.is-counter .scrim { display: block; position: fixed; inset: 0; z-index: 39; background: rgba(15, 24, 19, 0.42); }
+.is-counter .app-main { padding-top: 18px; }
+
+.pos-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+.pos-title { flex: 1 1 auto; margin: 0; font-size: 1.35rem; }
+.pos-held-btn {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 8px 10px 8px 14px; border-radius: 999px;
+  border: 1px solid var(--color-border); background: var(--color-surface); color: var(--color-text); font-weight: 700; cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.pos-held-btn:hover { border-color: var(--color-border-strong); box-shadow: var(--shadow-1); }
+.pos-count {
+  min-width: 26px; height: 26px; padding: 0 8px; display: inline-grid; place-items: center; border-radius: 999px;
+  background: var(--color-surface-2); color: var(--color-text-muted); font-size: 0.85rem;
+}
+.pos-held-btn.has-held { border-color: var(--color-accent); }
+.pos-held-btn.has-held .pos-count { background: var(--color-accent); color: #fff; animation: pulse 2.4s ease-out infinite; }
+.pos-menu { min-width: 260px; }
+.pos-menu .pop-item { width: 100%; border: none; background: none; text-align: left; cursor: pointer; font: inherit; font-weight: 600; }
+.pos-menu kbd { margin-left: 6px; }
+
+.pos-main { display: grid; grid-template-columns: minmax(0, 1fr) 390px; gap: 20px; align-items: start; }
+.pos-catalog { min-width: 0; }
+.pos-search-wrap {
+  display: flex; align-items: center; gap: 10px; padding: 0 12px 0 16px; border-radius: var(--radius-lg);
+  background: var(--color-surface); border: 1px solid var(--color-border); box-shadow: var(--shadow-1); color: var(--color-text-muted);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.pos-search-wrap:focus-within { border-color: var(--color-primary); box-shadow: 0 0 0 3px var(--color-primary-soft); }
+.pos-search-wrap .pos-search, .pos-search-wrap .pos-search:focus { flex: 1; margin: 0; min-height: 56px; border: none; padding: 0; background: transparent; box-shadow: none; font-size: 1.1rem; }
+
+.chip-row { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding: 14px 0 2px; }
+.chip-row-sub { padding-top: 8px; }
+.cat-chip {
+  flex-shrink: 0; min-height: 42px; padding: 8px 18px; border-radius: 999px; border: 1px solid var(--color-border);
+  background: var(--color-surface); color: var(--color-text); font: inherit; font-weight: 700; cursor: pointer;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s, transform 0.12s var(--ease-out);
+}
+.cat-chip:hover { border-color: var(--color-border-strong); }
+.cat-chip:active { transform: scale(0.96); }
+.cat-chip.is-active { background: var(--color-text); border-color: var(--color-text); color: #fff; }
+.cat-chip-sub { min-height: 36px; padding: 6px 14px; font-weight: 600; font-size: 0.9rem; }
+.cat-chip-sub.is-active { background: var(--color-primary-soft); border-color: var(--color-primary); color: var(--color-primary-dark); }
+
+.pos-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin-top: 14px; }
+.pos-grid .product-tile, .is-counter .product-tile {
+  aspect-ratio: auto; min-height: 168px; padding: 10px; border-radius: var(--radius-lg); box-shadow: var(--shadow-1);
+  transition: transform 0.12s var(--ease-out), box-shadow 0.15s, border-color 0.15s;
+}
+.is-counter .product-tile:hover { background: var(--color-surface); border-color: color-mix(in srgb, var(--color-primary) 45%, var(--color-border)); box-shadow: var(--shadow-2); transform: translateY(-2px); }
+.is-counter .product-tile:active { transform: scale(0.97); background: var(--color-primary-soft); }
+.is-counter .product-tile .tile-image { min-height: 92px; border-radius: 10px; }
+.is-counter .tile-image-placeholder { font-family: var(--font-display); font-size: 2rem; color: color-mix(in srgb, var(--color-primary) 55%, var(--color-text-muted)); }
+.is-counter .product-tile .tile-name { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 0.95rem; }
+.is-counter .product-tile .tile-price { color: var(--color-text); font-weight: 700; font-variant-numeric: tabular-nums; }
+
+.is-counter .cart-panel {
+  top: calc(var(--topbar-h) + 16px); max-height: calc(100vh - var(--topbar-h) - 32px); padding: 18px;
+  border-radius: var(--radius-lg); box-shadow: var(--shadow-2);
+}
+.cart-count { display: inline-grid; place-items: center; min-width: 24px; height: 24px; padding: 0 7px; margin-left: 4px; border-radius: 999px; background: var(--color-primary); color: #fff; font-size: 0.8rem; vertical-align: 3px; }
+.is-counter .cart-total-row { align-items: baseline; font-size: 1.05rem; }
+.cart-total-value { display: inline-block; font-size: 1.9rem; font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; transform-origin: right center; }
+.pay-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.pay-row.pay-1 { grid-template-columns: 1fr; }
+.pay-row.pay-2 { grid-template-columns: repeat(2, 1fr); }
+.pay-btn {
+  min-height: 62px; border-radius: var(--radius-lg); border: 2px solid var(--color-border); background: var(--color-surface);
+  color: var(--color-text); font: inherit; font-size: 1.1rem; font-weight: 800; cursor: pointer;
+  transition: transform 0.12s var(--ease-out), border-color 0.15s, background-color 0.15s, box-shadow 0.15s;
+}
+.pay-btn:hover:not(:disabled) { border-color: var(--color-primary); box-shadow: var(--shadow-1); }
+.pay-btn:active:not(:disabled) { transform: scale(0.97); }
+.pay-btn.is-main { background: var(--color-primary); border-color: var(--color-primary); color: #fff; }
+.pay-btn.is-main:hover:not(:disabled) { background: var(--color-primary-dark); }
+.pay-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.cart-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.cart-actions form { margin: 0; }
+.cart-actions .btn { width: 100%; min-height: 44px; }
+.cart-actions > .btn:only-child, .cart-actions form:only-child { grid-column: 1 / -1; }
+
+.drawer-scrim { position: fixed; inset: 0; z-index: 60; background: rgba(15, 24, 19, 0.42); }
+.held-drawer {
+  position: fixed; left: 0; top: 0; bottom: 0; z-index: 61; width: min(380px, 92vw); display: flex; flex-direction: column;
+  background: var(--color-bg); box-shadow: var(--shadow-3); color: var(--color-text);
+  transform: translateX(-102%); visibility: hidden; transition: transform 0.28s var(--ease-out), visibility 0s linear 0.28s;
+}
+.held-drawer.is-open { transform: none; visibility: visible; transition: transform 0.28s var(--ease-out); }
+.held-drawer-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 16px 16px 12px 20px; border-bottom: 1px solid var(--color-border); background: var(--color-surface); }
+.held-drawer-list { flex: 1 1 auto; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.held-drawer .held-bill-card { background: var(--color-surface); border-radius: 12px; padding: 12px 14px; box-shadow: var(--shadow-1); }
+
+.fly-dot { position: fixed; z-index: 300; width: 18px; height: 18px; border-radius: 50%; background: var(--color-primary); box-shadow: 0 0 0 4px var(--color-primary-soft); pointer-events: none; }
+
+/* Paid: the circle draws itself, then the tick. */
+.paid-tick { width: 76px; height: 76px; margin: 0 auto 8px; }
+.paid-tick svg { width: 100%; height: 100%; fill: none; stroke: var(--color-primary); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.paid-tick circle { stroke-dasharray: 145; stroke-dashoffset: 145; animation: draw 0.5s var(--ease-out) forwards; fill: var(--color-primary-soft); }
+.paid-tick path { stroke-width: 4; stroke-dasharray: 40; stroke-dashoffset: 40; animation: draw 0.3s var(--ease-out) 0.42s forwards; }
+.paid-tick.is-queued svg { stroke: var(--color-accent); }
+.paid-tick.is-queued circle { fill: var(--color-accent-soft); }
+@keyframes draw { to { stroke-dashoffset: 0; } }
+.change-done { font-size: 1.8rem; animation: rise 0.4s var(--ease-out) 0.5s backwards; }
+.checkout-sheet { border-radius: 20px; box-shadow: var(--shadow-3); animation: sheet-up 0.24s var(--ease-out); }
+@keyframes sheet-up { from { opacity: 0; transform: translateY(16px) scale(0.98); } }
+.payment-mode-btn { border-radius: var(--radius-lg); transition: border-color 0.15s, background-color 0.15s, transform 0.12s var(--ease-out); }
+.payment-mode-btn:hover { border-color: var(--color-primary); }
+.payment-mode-btn:active { transform: scale(0.97); }
+
+/* PIN pad. */
+.cashier-overlay { backdrop-filter: blur(6px); }
+.cashier-pad { border-radius: 22px; padding: 26px 24px; box-shadow: var(--shadow-3); animation: sheet-up 0.26s var(--ease-out); }
+.pin-dots { font-size: 1.6rem; letter-spacing: 0.5em; color: var(--color-primary); }
+.pin-keys { gap: 12px; }
+.pin-key { min-height: 64px; border-radius: 18px; font-size: 1.5rem; font-weight: 700; }
+.cashier-chip { justify-content: flex-start; margin-bottom: 10px; color: var(--color-text-muted); }
+
+/* Restaurant tables. */
+.table-grid { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 14px; }
+.table-tile {
+  border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface); box-shadow: var(--shadow-1);
+  transition: transform 0.15s var(--ease-out), box-shadow 0.2s, border-color 0.15s; overflow: hidden;
+}
+.table-tile:hover { transform: translateY(-2px); box-shadow: var(--shadow-2); }
+.table-tile.free { border-top: 4px solid color-mix(in srgb, var(--color-primary) 55%, var(--color-surface)); }
+.table-tile.busy { border-color: color-mix(in srgb, var(--color-accent) 60%, var(--color-border)); border-top: 4px solid var(--color-accent); background: color-mix(in srgb, var(--color-accent) 6%, var(--color-surface)); }
+.table-tile-main { min-height: 110px; padding: 16px 14px; }
+.table-name { font-family: var(--font-display); font-size: 1.5rem; }
+.table-amount { color: #8a5300; font-size: 1.05rem; }
+.table-actions summary { cursor: pointer; color: var(--color-text-muted); font-weight: 600; padding: 4px 0; }
+
+.pos-mini-bill { display: none; }
+@media (max-width: 900px) {
+  .pos-mini-bill {
+    position: fixed; left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom)); z-index: 34;
+    display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 16px; border-radius: 16px;
+    background: var(--color-text); color: #fff; box-shadow: var(--shadow-3); animation: toast-in 0.25s var(--ease-out);
+  }
+  .has-tabs .pos-mini-bill { bottom: calc(76px + env(safe-area-inset-bottom)); }
+  .pos-mini-view { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; border: none; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+  .pos-mini-view span { font-size: 0.78rem; opacity: 0.75; }
+  .pos-mini-view strong { font-size: 1.15rem; }
+  .pos-mini-bill .btn { min-height: 46px; }
+  .is-counter .app-main { padding-bottom: 120px; }
+  .has-tabs.is-counter .app-main { padding-bottom: 180px; }
+}
+@media (max-width: 1100px) { .pos-main { grid-template-columns: minmax(0, 1fr) 340px; } }
+@media (max-width: 900px) {
+  .pos-main { grid-template-columns: 1fr; }
+  .is-counter .cart-panel { position: static; max-height: none; }
+}
+@media (max-width: 640px) {
+  .pos-title { display: none; }
+  .pos-bar { justify-content: space-between; }
+  .pos-grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; }
+  .is-counter .product-tile { min-height: 150px; }
+  .pay-btn { min-height: 56px; }
+}
 
 /* --- Utilities (redesign stage 3) ---------------------------------------
    What used to be one-off inline style="..." attributes, now named and

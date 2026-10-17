@@ -425,6 +425,14 @@ this list is just the index.
   rule as `_sales`); `inr` / `inr_compact` filters (`app/utils/money.py`);
   the hub's groups in `app/reports/hub.py` (add a report there, with its
   feature flags, and it appears in the hub).
+- **Interface redesign, stage 5: the counter.** `pos/terminal.html`
+  markup rebuilt (bar + Counter menu, chips, held drawer, quick pay,
+  phone bill bar); new `posTerminal()` members: `activeCat`, `activeSub`,
+  `heldOpen`, `afterRx`, `pickCat()`, `activeSubs()`, `shownProducts()`,
+  `quickPay()`, `flyFrom()`. The old category tree helpers are still
+  there but unused. `base.html` marks only `pos.terminal` as
+  `is-counter` (menu as a drawer there). `tests/test_redesign_counter.py`
+  runs the page's scripts in Node to drive `posTerminal()`.
 
 ## 5. Chronological development history (this session)
 
