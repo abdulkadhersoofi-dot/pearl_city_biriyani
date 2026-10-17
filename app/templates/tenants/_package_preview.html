@@ -1,0 +1,24 @@
+{# What moving to a package would change for this client (HTMX, from _client_package.html). #}
+<div class="preview-head">
+  <span class="pill pill-ok">{{ summary['inc'] }} included</span>
+  <span class="pill pill-choice">{{ summary['choice'] }} client's choice</span>
+  <span class="pill pill-muted">{{ summary['off'] }} off</span>
+  {% set limits = package.limits or {} %}
+  <span class="text-muted">
+    {{ ('%s branch%s' % (limits.branches, '' if limits.branches == 1 else 'es')) if limits.branches is defined else 'Any number of branches' }} ·
+    {{ ('%s login%s' % (limits.logins, '' if limits.logins == 1 else 's')) if limits.logins is defined else 'any number of logins' }} ·
+    {{ 'own branding' if package.own_branding else 'ARFA branding' }}{% if price is not none %} · Rs. {{ price|inr }} a {{ tenant.billing_cycle.value[:-2] if tenant.billing_cycle else 'month' }}{% endif %}
+  </span>
+</div>
+{% if changes %}
+<p class="m-0 mt-8"><strong>For {{ tenant.display_name }} this would:</strong></p>
+<ul class="preview-changes">
+  {% for c in changes %}
+  <li class="{{ 'turns-on' if c.after else 'turns-off' }}">{{ icon('plus' if c.after else 'minus', 'icon-sm') }}
+    {{ 'Switch on' if c.after else 'Switch off' }} <strong>{{ c.label }}</strong></li>
+  {% endfor %}
+</ul>
+<p class="text-muted m-0">A module switched off keeps its records; they come back if it's switched on again.</p>
+{% else %}
+<p class="m-0 mt-8 text-muted">No module would change for {{ tenant.display_name }}.</p>
+{% endif %}

@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Packages - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Packages</h1>
+    <p class="text-muted mt-0">What each client may use: modules, settings, limits, branding and price. Give a client a package from their page.</p>
+  </div>
+  <a href="{{ url_for('tenants.package_new') }}" class="btn btn-primary">{{ icon('plus') }}New package</a>
+</div>
+
+<div class="package-grid">
+  {% for p in packages %}
+  {% set s = summaries[p.id] %}
+  <article class="package-card{{ ' is-retired' if not p.is_active }}">
+    <div class="package-card-head">
+      <h2 class="m-0"><a href="{{ url_for('tenants.package_edit', package_id=p.id) }}">{{ p.name }}</a></h2>
+      {% if not p.is_active %}<span class="status-badge status-draft">Retired</span>{% endif %}
+    </div>
+    <p class="text-muted m-0">{{ p.description or '' }}</p>
+    <div class="package-meter" role="img" aria-label="{{ s['inc'] }} included, {{ s['choice'] }} client's choice, {{ s['off'] }} off">
+      {% set total = s['inc'] + s['choice'] + s['off'] %}
+      <span class="seg-inc" style="--w: {{ (s['inc'] / total * 100)|round(1) }}%"></span>
+      <span class="seg-choice" style="--w: {{ (s['choice'] / total * 100)|round(1) }}%"></span>
+    </div>
+    <dl class="package-facts">
+      <div><dt>Included</dt><dd>{{ s['inc'] }}</dd></div>
+      <div><dt>Client's choice</dt><dd>{{ s['choice'] }}</dd></div>
+      <div><dt>Off</dt><dd>{{ s['off'] }}</dd></div>
+      <div><dt>Clients</dt><dd>{{ counts.get(p.id, 0) }}</dd></div>
+    </dl>
+    <p class="m-0 package-line">
+      {% for key, label in limits.items() %}{% set v = (p.limits or {}).get(key) %}{{ label }}: <strong>{{ v if v is not none else 'any' }}</strong>{{ ' · ' if not loop.last }}{% endfor %}
+    </p>
+    <p class="m-0 package-line">
+      {% if p.price_monthly or p.price_yearly %}
+        {% if p.price_monthly %}<strong>Rs. {{ p.price_monthly|inr(0) }}</strong> a month{% endif %}{% if p.price_monthly and p.price_yearly %} · {% endif %}{% if p.price_yearly %}<strong>Rs. {{ p.price_yearly|inr(0) }}</strong> a year{% endif %}
+      {% else %}<span class="text-muted">No price set</span>{% endif %}
+      · {{ 'Own branding' if p.own_branding else 'ARFA branding' }}
+    </p>
+    <div class="row mt-8">
+      <a href="{{ url_for('tenants.package_edit', package_id=p.id) }}" class="btn btn-secondary btn-sm">Edit</a>
+      <a href="{{ url_for('tenants.package_new', copy=p.id) }}" class="btn btn-quiet btn-sm">Copy</a>
+    </div>
+  </article>
+  {% endfor %}
+</div>
+{% endblock %}

@@ -33,6 +33,7 @@
 {# Jump to a section - this page holds everything about one client. #}
 <nav class="report-jump" aria-label="Sections of this page">
   {% if current_user.is_super_admin %}<a href="#sec-access">{{ icon('banknote', 'icon-sm') }}Access &amp; billing</a>{% endif %}
+  {% if pkg %}<a href="#sec-package">{{ icon('layout-grid', 'icon-sm') }}Package &amp; modules</a>{% endif %}
   {% for id_, label, ic in [('allocation', 'Allocation', 'user-cog'), ('sub-auditor', 'Sub-Auditor', 'user-cog'), ('branding', 'Branding', 'sparkles'), ('locations', 'Locations', 'store'), ('users', 'Users', 'users'), ('month-end', 'Month-end', 'calendar-clock'), ('activity', 'Recent activity', 'receipt-text')] %}
   <a href="#sec-{{ id_ }}" data-jump="sec-{{ id_ }}">{{ icon(ic, 'icon-sm') }}{{ label }}</a>
   {% endfor %}
@@ -111,6 +112,8 @@
     </div>
   </div>
 </div>
+
+{% if pkg %}{% include "tenants/_client_package.html" %}{% endif %}
 
 <div class="card mb-20" id="sec-allocation">
   <h2 class="mt-0">Allocation</h2>

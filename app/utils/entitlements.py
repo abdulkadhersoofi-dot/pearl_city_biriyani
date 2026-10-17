@@ -272,6 +272,39 @@ def set_setting_exception(tenant, key: str, state, actor):
     return grant
 
 
+AS_PACKAGE = "package"   # "no exception - use what the package says"
+
+
+def set_limit_exception(tenant, key: str, value, actor):
+    """One limit for this client only: a number, None for no limit, or
+    AS_PACKAGE to go back to the package's."""
+    if key not in LIMITS:
+        raise ValueError(f"Unknown limit: {key}")
+    if value is not None and value != AS_PACKAGE and (not isinstance(value, int) or value < 0):
+        raise ValueError("A limit is a whole number of 0 or more.")
+    grant = _ensure_grant(tenant, actor)
+    overrides = dict(grant.limit_overrides or {})
+    before = overrides.get(key, AS_PACKAGE)
+    if value == AS_PACKAGE:
+        overrides.pop(key, None)
+    else:
+        overrides[key] = value
+    grant.limit_overrides = overrides
+    record_audit(actor, "limit_exception_set", tenant_id=tenant.id, entity_type="tenant", entity_id=tenant.id,
+                 details={"limit": key, "from": before, "to": overrides.get(key, AS_PACKAGE)})
+    return grant
+
+
+def set_branding_exception(tenant, allowed, actor):
+    """Own branding for this client only: True, False, or None for the package's."""
+    grant = _ensure_grant(tenant, actor)
+    before = grant.own_branding_override
+    grant.own_branding_override = allowed
+    record_audit(actor, "branding_exception_set", tenant_id=tenant.id, entity_type="tenant", entity_id=tenant.id,
+                 details={"from": before, "to": allowed})
+    return grant
+
+
 def set_auditor_powers(user, powers: dict, actor, allowed_package_ids=None, max_clients=None,
                        max_sub_auditors=None):
     """Set an auditor's powers (only known keys are kept)."""
@@ -294,6 +327,52 @@ def set_auditor_powers(user, powers: dict, actor, allowed_package_ids=None, max_
     record_audit(actor, "auditor_powers_set", entity_type="user", entity_id=user.id,
                  details={"before": before, "after": grant.powers})
     return grant
+
+
+# --- previews and summaries (the console) ------------------------------------------------------------
+
+def preview_package(tenant, package, keep_exceptions: bool = False) -> list[dict]:
+    """What changes for this client if they move to `package`: each module
+    whose on/off would differ, given the client's own switches. Their
+    records are never touched either way."""
+    from app.utils.features import AVAILABLE_FEATURES
+
+    grant = grant_of(tenant)
+    overrides = dict(grant.module_overrides or {}) if (grant is not None and keep_exceptions) else {}
+    changes = []
+    for feature in AVAILABLE_FEATURES:
+        key = feature.key
+        state = overrides.get(key) if overrides.get(key) in MODULE_STATES else package_module_state(package, key)
+        after = state == INCLUDED or (state == CHOICE and bool((tenant.features or {}).get(key)))
+        before = tenant.has_feature(key)
+        if before != after:
+            changes.append({"key": key, "label": feature.label, "before": before, "after": after, "state": state})
+    return changes
+
+
+def package_summary(package) -> dict:
+    """How many modules are Included / Client's choice / Off in a package."""
+    from app.utils.features import AVAILABLE_FEATURES
+
+    counts = {INCLUDED: 0, CHOICE: 0, OFF: 0}
+    for feature in AVAILABLE_FEATURES:
+        counts[package_module_state(package, feature.key)] += 1
+    return counts
+
+
+def package_price_for(package, billing_cycle):
+    """The package's price for a client's billing cycle (monthly unless
+    they're on a yearly one), or None if it has none."""
+    cycle = getattr(billing_cycle, "value", billing_cycle)
+    return package.price_yearly if cycle == "yearly" else package.price_monthly
+
+
+# Which starting package a new client of each type is offered first.
+BUSINESS_TYPE_PACKAGE = {
+    "retail": "retail", "wholesale": "wholesale", "restaurant": "restaurant", "mobile_electronics": "electronics",
+    "pharmacy": "pharmacy", "apparel": "retail", "hardware": "wholesale", "jewellery": "retail", "bakery": "retail",
+    "services": "billing", "other": "current",
+}
 
 
 # --- the packages ARFA ships -------------------------------------------------------------------------

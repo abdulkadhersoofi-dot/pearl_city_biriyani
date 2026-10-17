@@ -14,6 +14,17 @@
     {{ field(form.business_type, help="Pre-switches the modules this client is likely to need. They can change any of it later in Settings.") }}
     {{ field(form.aato, help="Aggregate annual turnover of the last financial year - drives compliance rules like HSN digits.") }}
   </div>
+  {% if packages %}
+  {# Ultra Admin only: the package this client starts on (suggested from the type of business). #}
+  <label class="field" x-data='{ suggest: {{ package_suggest|tojson }} }'
+         x-init="const bt = document.getElementById('business_type'); if (bt) bt.addEventListener('change', () => { if (suggest[bt.value]) $refs.pkg.value = suggest[bt.value]; })">
+    <span class="field-label">Package</span>
+    <select name="package_id" class="field-input" x-ref="pkg">
+      {% for p in packages %}<option value="{{ p.id }}" {% if p.id == package_default %}selected{% endif %}>{{ p.name }}{% if p.price_monthly %} - Rs. {{ p.price_monthly|inr(0) }}/month{% endif %}</option>{% endfor %}
+    </select>
+    <p class="field-help">Which modules and settings the client gets. The type of business above still decides which of their own choices start switched on.</p>
+  </label>
+  {% endif %}
   {{ field(form.registered_address) }}
   {{ field(form.logo, help="Shown to this client's own users instead of the platform logo, and on their printed invoices/receipts.") }}
   <p class="flash flash-info">This client will be created pending verification - it cannot sign in until the

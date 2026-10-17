@@ -158,6 +158,9 @@ def _admin_groups(user) -> list[Group]:
                 Link("GST exports", "tenants.gst_exports", "file-spreadsheet", endpoints=("tenants.gst_exports",)),
             )),
             Group("platform", "Platform", (
+                Link("Packages", "tenants.packages", "layout-grid",
+                     endpoints=("tenants.packages", "tenants.package_new", "tenants.package_edit"),
+                     keywords="plans modules subscription tiers"),
                 Link("Subscriptions", "subscriptions.index", "banknote", blueprints=("subscriptions",)),
                 Link("Audit log", "tenants.audit_log", "list", endpoints=("tenants.audit_log",)),
             )),

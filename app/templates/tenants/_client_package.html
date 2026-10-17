@@ -1,0 +1,115 @@
+{# A client's package and the Ultra Admin's exceptions for this client
+   (packages and powers, stage 2). Context: pkg = client_package_context(). #}
+{% set state_pill = {'inc': 'pill-ok', 'choice': 'pill-choice', 'off': 'pill-muted'} %}
+<div class="card mb-20" id="sec-package">
+  <div class="card-head">
+    <div>
+      <h2 class="m-0">Package &amp; modules</h2>
+      <p class="text-muted m-0">
+        {% if pkg.current_package %}On <strong>{{ pkg.current_package.name }}</strong>{% else %}No package yet - every module is the client's own choice, as before packages{% endif %}
+        {% if pkg.exception_count %} · <span class="text-warn">{{ pkg.exception_count }} change{{ 's' if pkg.exception_count != 1 }} for this client only</span>{% endif %}
+      </p>
+    </div>
+    <a href="{{ url_for('tenants.packages') }}" class="btn btn-quiet btn-sm">{{ icon('layout-grid', 'icon-sm') }}All packages</a>
+  </div>
+
+  {# Change the package: pick one, see what changes for this client, then confirm. #}
+  <form method="post" action="{{ url_for('tenants.assign_client_package', tenant_id=tenant.id) }}" class="package-assign"
+        hx-get="{{ url_for('tenants.package_preview', tenant_id=tenant.id) }}" hx-trigger="change from:select[name=package_id], change from:input[name=keep_exceptions], load"
+        hx-target="#package-preview" hx-include="this" hx-swap="innerHTML">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="field m-0"><span class="field-label">Package</span>
+      <select name="package_id" class="field-input">
+        {% for p in pkg.package_choices %}
+        <option value="{{ p.id }}" {% if pkg.current_package and p.id == pkg.current_package.id %}selected{% endif %}>{{ p.name }}{% if p.price_monthly %} - Rs. {{ p.price_monthly|inr(0) }}/month{% endif %}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <div class="package-assign-opts">
+      <label class="row gap-6"><input type="checkbox" name="keep_exceptions" value="y"> Keep this client's own changes</label>
+      <label class="row gap-6"><input type="checkbox" name="use_price" value="y" checked> Set the subscription fee to the package price</label>
+    </div>
+    <div id="package-preview" class="package-preview" aria-live="polite"></div>
+    <div><button type="submit" class="btn btn-primary">Put {{ tenant.display_name }} on this package</button></div>
+  </form>
+
+  {# Exceptions: single modules, settings, limits and branding for this client only. #}
+  <form method="post" action="{{ url_for('tenants.save_client_exceptions', tenant_id=tenant.id) }}" class="mt-20">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <details class="exceptions" {% if pkg.exception_count %}open{% endif %}>
+      <summary><strong>Change single modules or settings for this client</strong>
+        <span class="text-muted">- the package stays as it is for other clients</span></summary>
+
+      <div class="table-wrap mt-12">
+        <table class="exceptions-table no-stack">
+          <thead><tr><th>Module</th><th>Package says</th><th>For {{ tenant.display_name }}</th><th>Now</th></tr></thead>
+          {% for group, items in pkg.module_rows %}
+          <tbody>
+            <tr class="group-row"><th colspan="4" scope="colgroup">{{ group }}</th></tr>
+            {% for row in items %}
+            <tr class="{{ 'has-exception' if row.exception }}">
+              <td><label for="mod_{{ row.feature.key }}">{{ row.feature.label }}</label></td>
+              <td><span class="pill {{ state_pill[row.package_state] }}">{{ pkg.module_states[row.package_state] }}</span></td>
+              <td>
+                <select name="mod_{{ row.feature.key }}" id="mod_{{ row.feature.key }}" class="field-input">
+                  <option value="package" {% if not row.exception %}selected{% endif %}>As the package</option>
+                  {% for value, label in pkg.module_states.items() %}
+                  <option value="{{ value }}" {% if row.exception == value %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </td>
+              <td>{% if row.on %}<span class="status-badge status-issued">On</span>{% else %}<span class="status-badge status-draft">Off</span>{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+          {% endfor %}
+        </table>
+      </div>
+
+      <div class="table-wrap mt-16">
+        <table class="exceptions-table no-stack">
+          <thead><tr><th>Setting</th><th>Package says</th><th>For {{ tenant.display_name }}</th></tr></thead>
+          <tbody>
+            {% for row in pkg.setting_rows %}
+            <tr class="{{ 'has-exception' if row.exception }}">
+              <td><label for="set_{{ row.key }}">{{ row.label }}</label></td>
+              <td>{{ pkg.setting_states[row.package_state] }}</td>
+              <td>
+                <select name="set_{{ row.key }}" id="set_{{ row.key }}" class="field-input">
+                  <option value="package" {% if not row.exception %}selected{% endif %}>As the package</option>
+                  {% for value, label in pkg.setting_states.items() %}
+                  <option value="{{ value }}" {% if row.exception == value %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="form-grid mt-16">
+        {% for row in pkg.limit_rows %}
+        <fieldset class="limit-field" x-data="{ mode: '{{ 'number' if row.has_exception and row.exception is not none else ('none' if row.has_exception else 'package') }}' }">
+          <legend class="field-label">{{ row.label }} <span class="text-muted">(package: {{ row.package_value if row.package_value is not none else 'no limit' }})</span></legend>
+          <select name="limitmode_{{ row.key }}" class="field-input" x-model="mode" aria-label="{{ row.label }}: limit">
+            <option value="package">As the package</option>
+            <option value="number">Own limit</option>
+            <option value="none">No limit</option>
+          </select>
+          <input type="number" min="0" step="1" name="limit_{{ row.key }}" class="field-input mt-6" x-show="mode === 'number'"
+                 aria-label="{{ row.label }}: own limit" value="{{ row.exception if row.exception is not none else '' }}">
+        </fieldset>
+        {% endfor %}
+        <label class="field"><span class="field-label">Own branding <span class="text-muted">(package: {{ 'allowed' if pkg.branding_package else 'not allowed' }})</span></span>
+          <select name="own_branding" class="field-input">
+            <option value="package" {% if pkg.branding_exception is none %}selected{% endif %}>As the package</option>
+            <option value="yes" {% if pkg.branding_exception == true %}selected{% endif %}>Allowed</option>
+            <option value="no" {% if pkg.branding_exception == false %}selected{% endif %}>Not allowed</option>
+          </select>
+        </label>
+      </div>
+      <button type="submit" class="btn btn-primary mt-12">Save changes for this client</button>
+    </details>
+  </form>
+</div>

@@ -39,6 +39,9 @@ from app.utils.billing import (
     tenant_access_status,
 )
 from app.utils.features import apply_business_type_preset
+from app.models.package import Package
+from app.tenants.packages import client_package_context
+from app.utils.entitlements import BUSINESS_TYPE_PACKAGE, assign_package, ensure_starting_packages, grant_of, package_price_for
 from app.utils.indian_states import STATE_NAME_BY_CODE
 from app.utils.uploads import UploadError, delete_uploaded_image, save_uploaded_image
 
@@ -72,7 +75,7 @@ def onboard():
         existing = User.query.filter_by(email=form.admin_email.data.strip().lower()).first()
         if existing:
             flash("A user with that email already exists.", "error")
-            return render_template("tenants/onboard.html", form=form)
+            return render_template("tenants/onboard.html", form=form, **_onboarding_packages(form))
 
         tenant = Tenant(
             legal_name=form.legal_name.data.strip(),
@@ -101,7 +104,7 @@ def onboard():
             tenant.logo_image_id = save_uploaded_image(form.logo.data)
         except UploadError as exc:
             flash(exc.message, "error")
-            return render_template("tenants/onboard.html", form=form)
+            return render_template("tenants/onboard.html", form=form, **_onboarding_packages(form))
 
         # Always create a business-location row, GSTIN or not - an
         # unregistered client still has a state/address, it just has no
@@ -129,6 +132,13 @@ def onboard():
         db.session.add(admin_user)
         db.session.flush()
 
+        # The Ultra Admin picks the client's package here; a client an
+        # auditor onboards starts as before packages (stage 4 lets
+        # auditors choose from packages allowed to them).
+        if current_user.is_super_admin:
+            package = Package.query.get(request.form.get("package_id", type=int) or 0)
+            if package is not None and package.is_active:
+                assign_package(tenant, package, current_user)
         record_audit(
             current_user,
             "client_onboarded",
@@ -147,7 +157,20 @@ def onboard():
         )
         return redirect(url_for("tenants.directory"))
 
-    return render_template("tenants/onboard.html", form=form)
+    return render_template("tenants/onboard.html", form=form, **_onboarding_packages(form))
+
+
+def _onboarding_packages(form):
+    """The package picker on the onboarding form - Ultra Admin only."""
+    if not current_user.is_super_admin:
+        return {"packages": []}
+    ensure_starting_packages()
+    db.session.commit()
+    packages = Package.query.filter_by(is_active=True).order_by(Package.sort_order, Package.name).all()
+    by_key = {p.key: p.id for p in packages if p.key}
+    suggest = {bt: by_key[key] for bt, key in BUSINESS_TYPE_PACKAGE.items() if key in by_key}
+    chosen = request.form.get("package_id", type=int) or suggest.get(form.business_type.data or "retail")
+    return {"packages": packages, "package_suggest": suggest, "package_default": chosen}
 
 
 @tenants_bp.route("/clients/<int:tenant_id>")
@@ -199,6 +222,7 @@ def detail(tenant_id):
         auditors=auditors,
         access_status=tenant_access_status(tenant),
         default_period=_current_period(),
+        pkg=client_package_context(tenant) if current_user.is_super_admin else None,
     )
 
 
@@ -299,6 +323,15 @@ def set_billing_cycle(tenant_id):
     if form.validate_on_submit():
         was_pending = tenant.billing_cycle is None
         tenant.billing_cycle = BillingCycle(form.billing_cycle.data)
+        # A client on a priced package gets that price as their fee, unless
+        # the Ultra Admin already set one by hand.
+        grant = grant_of(tenant)
+        package_fee = package_price_for(grant.package, tenant.billing_cycle) if grant is not None else None
+        fee_from_package = tenant.subscription_fee is None and package_fee is not None
+        if fee_from_package:
+            tenant.subscription_fee = package_fee
+            record_audit(current_user, "subscription_fee_set", tenant_id=tenant.id, entity_type="tenant",
+                         entity_id=tenant.id, details={"fee": str(package_fee), "from_package": grant.package.name})
         # cycle_anchor_date is never touched here - the recurring cycle
         # only starts on the Client Admin's first successful login after
         # changing their initial password (see app.auth.routes.
@@ -330,6 +363,8 @@ def set_billing_cycle(tenant_id):
             message += f" - next renewal is now {tenant.next_billing_due.strftime('%d %b %Y')}."
         else:
             message += "."
+        if fee_from_package:
+            message += f" Fee set to Rs. {package_fee} from the {grant.package.name} package."
         flash(message, "success")
     else:
         flash("Pick a billing cycle.", "error")

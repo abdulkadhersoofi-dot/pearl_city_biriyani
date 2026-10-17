@@ -457,6 +457,15 @@ this list is just the index.
   `AUDITOR_POWERS` with its role defaults. Migration `a7c3f9d21b40`
   carries a frozen copy of `STARTING_PACKAGES` (a test keeps the two
   equal) and puts every existing client on "Current setup".
+- **Packages and powers, stage 2: the console.** Routes in
+  `app/tenants/packages.py` (registered on `tenants_bp`): `/admin/packages`,
+  `/admin/packages/new[?copy=]`, `/admin/packages/<id>` (+ `/active`),
+  `/admin/clients/<id>/package` (+ `/preview`, HTMX) and
+  `/admin/clients/<id>/exceptions`, all Ultra Admin only. The client page
+  section is `tenants/_client_package.html`, fed by
+  `client_package_context()`. `preview_package()`, `package_summary()`,
+  `package_price_for()`, `BUSINESS_TYPE_PACKAGE`, `set_limit_exception()`
+  and `set_branding_exception()` are in `app/utils/entitlements.py`.
 
 ## 5. Chronological development history (this session)
 

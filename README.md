@@ -2118,6 +2118,52 @@ anyone sees.
   package never touching another's, auditor power defaults and per-
   auditor powers.
 
+### Packages and powers - stage 2 (packages in the console)
+
+Everything here is for the Ultra Admin only; auditors and clients see no
+change yet.
+
+- **Packages** (side menu, Platform > Packages): every package as a card
+  with its modules split Included / Client's choice / Off, its limits,
+  price, branding and how many clients are on it. **New package** or
+  **Copy** an existing one.
+- **The package editor**: name, description, monthly and yearly price
+  (before GST), limits on branches, branch logins and GSTINs (blank = no
+  limit), own branding, then every module as Off / Included / Client's
+  choice (grouped like Settings > Modules, with "Set all" and live
+  counts), what modules added to the app later start as, and each
+  setting as "Client can change" or "Only ARFA". Saving a package that
+  clients are on changes it for all of them (the page says how many).
+  A package is never deleted - **Retire** it: its clients keep it,
+  nobody new can be given it.
+- **A client's page > Package & modules**: the client's package, a
+  picker that previews what would switch on or off *for this client*
+  (their own switches taken into account) before you confirm, "Keep this
+  client's own changes", and "Set the subscription fee to the package
+  price" (monthly or yearly to match their billing cycle). Below it,
+  **Change single modules or settings for this client**: every module,
+  setting, limit and own branding with what the package says, "As the
+  package" or this client's own value, and what is on for them now.
+  Rows changed for this client are marked.
+- **Onboarding**: the Ultra Admin picks the package, suggested from the
+  type of business (Pharmacy suggests Pharmacy, and so on). A client an
+  auditor onboards starts as before packages (stage 4 lets auditors pick
+  from packages allowed to them).
+- **Fee from the package**: verifying a client on a priced package
+  fills their subscription fee with the price for the cycle chosen,
+  unless a fee was already set by hand.
+- **Clients list**: a Package column for the Ultra Admin.
+- Every change is audit-logged (`package_created`, `package_edited`,
+  `package_retired`, `package_assigned`, `module_exception_set`, and the
+  setting / limit / branding ones).
+- Tests: `tests/test_packages_console.py` - only the Ultra Admin reaches
+  any of it, the list and client counts, creating / validating /
+  copying / editing (and the edit reaching the package's clients),
+  retiring, the preview, assigning with the price, exceptions and back
+  to the package, one client's exceptions staying with them, onboarding
+  by package (Ultra Admin) and as before (auditor), and the fee at
+  verification.
+
 ## Roadmap
 
 - **Platform build (ARFA general-purpose POS), phase by phase.**
@@ -2196,7 +2242,7 @@ anyone sees.
   - Stage 1 (done): packages, each client's package and exceptions,
     auditor powers, and the one set of rules every check uses; every
     existing client on "Current setup" - no change for anyone.
-  - Stage 2: packages in the console - the package editor, a client's
+  - Stage 2 (done): packages in the console - the package editor, a client's
     "Package & modules" with exceptions, onboarding by package, price
     into the subscription fee.
   - Stage 3: clients see their package - locked modules and settings,

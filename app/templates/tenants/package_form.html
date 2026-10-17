@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+{% block title %}{{ 'New package' if is_new else package.name }} - {{ firm_name }}{% endblock %}
+{% block content %}
+{# The package editor (packages and powers, stage 2). Each module is Off,
+   Included or Client's choice; each setting "Client can change" or "Only
+   ARFA"; limits blank = no limit. #}
+<form method="post" x-data="packageEditor()" @change="count()">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="page-header" data-no-more>
+    <div>
+      <a href="{{ url_for('tenants.packages') }}" class="back-link">{{ icon('chevron-right', 'icon-sm icon-flip') }}Packages</a>
+      <h1>{{ 'New package' if is_new else package.name }}</h1>
+      {% if not is_new %}
+      <p class="text-muted mt-0">{% if clients %}Used by {{ clients }} client{{ 's' if clients != 1 }} - saving changes what they get.{% else %}No client is on this package yet.{% endif %}
+        {% if not package.is_active %}<span class="status-badge status-draft">Retired</span>{% endif %}</p>
+      {% endif %}
+    </div>
+    <div class="row">
+      {% if not is_new %}<a href="{{ url_for('tenants.package_new', copy=package.id) }}" class="btn btn-quiet">Copy</a>{% endif %}
+      <button type="submit" class="btn btn-primary">{{ 'Create package' if is_new else 'Save package' }}</button>
+    </div>
+  </div>
+
+  {% if clients %}
+  <p class="flash flash-warning">{{ clients }} client{{ 's are' if clients != 1 else ' is' }} on this package. Switching a module Off here
+    switches it off for all of them; their records stay and come back if it's switched on again.</p>
+  {% endif %}
+
+  <div class="card mb-20">
+    <h2 class="mt-0">Details</h2>
+    <div class="form-grid">
+      <label class="field"><span class="field-label">Name</span>
+        <input type="text" name="name" class="field-input" value="{{ package.name or '' }}" required maxlength="80"></label>
+      <label class="field"><span class="field-label">Price a month (Rs., before GST)</span>
+        <input type="number" name="price_monthly" class="field-input" step="0.01" min="0" value="{{ package.price_monthly if package.price_monthly is not none else '' }}" placeholder="No price"></label>
+      <label class="field"><span class="field-label">Price a year (Rs., before GST)</span>
+        <input type="number" name="price_yearly" class="field-input" step="0.01" min="0" value="{{ package.price_yearly if package.price_yearly is not none else '' }}" placeholder="No price"></label>
+    </div>
+    <label class="field"><span class="field-label">Description</span>
+      <textarea name="description" class="field-input" rows="2" placeholder="Who this package is for">{{ package.description or '' }}</textarea></label>
+    <div class="form-grid">
+      {% for key, label in limits.items() %}
+      <label class="field"><span class="field-label">{{ label }}</span>
+        <input type="number" name="limit_{{ key }}" class="field-input" min="0" step="1" value="{{ (package.limits or {}).get(key, '') }}" placeholder="No limit"></label>
+      {% endfor %}
+    </div>
+    <label class="switch-row">
+      <span class="switch"><input type="checkbox" name="own_branding" value="y" {% if package.own_branding %}checked{% endif %}><span class="switch-track"></span></span>
+      <span><strong>Own branding</strong><small>The client's own logo, colours and sign-in link. Off: ARFA's look.</small></span>
+    </label>
+  </div>
+
+  <div class="card mb-20">
+    <div class="card-head">
+      <div>
+        <h2 class="m-0">Modules</h2>
+        <p class="text-muted m-0" aria-live="polite"><span x-text="n.inc"></span> included · <span x-text="n.choice"></span> client's choice · <span x-text="n.off"></span> off</p>
+      </div>
+      <div class="row" role="group" aria-label="Set every module">
+        <span class="text-muted">Set all:</span>
+        {% for value, label in states.items() %}<button type="button" class="btn btn-quiet btn-sm" @click="setAll('{{ value }}')">{{ label }}</button>{% endfor %}
+      </div>
+    </div>
+    {% for group, features in groups %}
+    <h3 class="module-group-title">{{ group }}</h3>
+    <div class="state-list">
+      {% for f in features %}
+      {% set current = state_of(package, f.key) %}
+      <div class="state-row">
+        <div class="state-name"><strong id="lbl_{{ f.key }}">{{ f.label }}</strong><small>{{ f.description }}</small></div>
+        <div class="state-seg" role="radiogroup" aria-labelledby="lbl_{{ f.key }}">
+          {% for value, label in states.items() %}
+          <input type="radio" name="mod_{{ f.key }}" value="{{ value }}" id="mod_{{ f.key }}_{{ value }}" {% if current == value %}checked{% endif %}>
+          <label for="mod_{{ f.key }}_{{ value }}" class="state-{{ value }}">{{ label }}</label>
+          {% endfor %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endfor %}
+    <label class="field mt-16"><span class="field-label">Modules added to the app later start as</span>
+      <select name="unlisted_modules" class="field-input maxw-260">
+        {% for value, label in states.items() %}<option value="{{ value }}" {% if package.unlisted_modules == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select></label>
+  </div>
+
+  <div class="card mb-20">
+    <h2 class="mt-0">Settings</h2>
+    <p class="text-muted mt-0">A locked setting still shows on the client's screen with a lock; you change it from their page here.</p>
+    <div class="state-list">
+      {% for key, label in settings.items() %}
+      {% set current = (package.settings or {}).get(key, 'client') %}
+      <div class="state-row">
+        <div class="state-name"><strong id="lbl_set_{{ key }}">{{ label }}</strong></div>
+        <div class="state-seg two" role="radiogroup" aria-labelledby="lbl_set_{{ key }}">
+          <input type="radio" name="set_{{ key }}" value="client" id="set_{{ key }}_client" {% if current != 'arfa' %}checked{% endif %}>
+          <label for="set_{{ key }}_client" class="state-choice">Client can change</label>
+          <input type="radio" name="set_{{ key }}" value="arfa" id="set_{{ key }}_arfa" {% if current == 'arfa' %}checked{% endif %}>
+          <label for="set_{{ key }}_arfa" class="state-inc">Only ARFA</label>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="row">
+    <button type="submit" class="btn btn-primary">{{ 'Create package' if is_new else 'Save package' }}</button>
+  </div>
+</form>
+
+{% if not is_new %}
+<form method="post" action="{{ url_for('tenants.package_active', package_id=package.id) }}" class="card mt-20">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  {% if package.is_active %}
+  <input type="hidden" name="active" value="0">
+  <p class="m-0"><strong>Retire this package</strong> - clients on it keep it; nobody new can be given it.</p>
+  <div><button type="submit" class="btn btn-danger mt-8">Retire</button></div>
+  {% else %}
+  <input type="hidden" name="active" value="1">
+  <p class="m-0"><strong>Bring this package back</strong> so it can be given to clients again.</p>
+  <div><button type="submit" class="btn btn-secondary mt-8">Make available</button></div>
+  {% endif %}
+</form>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+function packageEditor() {
+  return {
+    n: { inc: 0, choice: 0, off: 0 },
+    init() { this.count(); },
+    count() {
+      const n = { inc: 0, choice: 0, off: 0 };
+      this.$root.querySelectorAll('input[type=radio][name^="mod_"]:checked').forEach(r => { n[r.value]++; });
+      this.n = n;
+    },
+    setAll(value) {
+      this.$root.querySelectorAll('input[type=radio][name^="mod_"][value="' + value + '"]').forEach(r => { r.checked = true; });
+      this.count();
+    }
+  };
+}
+</script>
+{% endblock %}

@@ -61,7 +61,7 @@
   <div class="table-wrap card console-card">
     <table class="console-table">
       <thead>
-        <tr><th>Business</th><th>GSTIN</th><th>Registration</th><th>Status</th><th>Onboarded</th><th><span class="sr-only">Open</span></th></tr>
+        <tr><th>Business</th><th>GSTIN</th><th>Registration</th>{% if current_user.is_super_admin %}<th>Package</th>{% endif %}<th>Status</th><th>Onboarded</th><th><span class="sr-only">Open</span></th></tr>
       </thead>
       <tbody>
         {% for r in rows %}
@@ -77,6 +77,7 @@
           </td>
           <td class="mono-cell">{{ r.gstin or '-' }}</td>
           <td>{{ tenant.registration_type.value|title }}</td>
+          {% if current_user.is_super_admin %}<td>{{ tenant.package_grant.package.name if tenant.package_grant else 'No package' }}</td>{% endif %}
           <td>
             {% if r.state == 'active' %}<span class="status-badge status-issued">Active</span>
             {% elif r.state == 'renewal' %}<span class="status-badge status-warn">Renewal due</span>
@@ -86,7 +87,7 @@
           <td class="num"><a href="{{ url_for('tenants.detail', tenant_id=tenant.id) }}" class="row-go" aria-label="Open {{ tenant.legal_name }}">{{ icon('chevron-right') }}</a></td>
         </tr>
         {% else %}
-        <tr><td colspan="6" class="empty-state">No clients onboarded yet.</td></tr>
+        <tr><td colspan="{{ 7 if current_user.is_super_admin else 6 }}" class="empty-state">No clients onboarded yet.</td></tr>
         {% endfor %}
       </tbody>
     </table>
