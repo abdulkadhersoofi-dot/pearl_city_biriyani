@@ -1,128 +1,89 @@
 {% extends "base.html" %}
 {% block title %}Reports - {{ firm_name }}{% endblock %}
 {% block content %}
-<div class="page-header">
-  <h1>Reports &amp; GST exports</h1>
-</div>
-{% if has_feature('pharmacy') or has_feature('wholesale') or has_feature('loyalty') or has_feature('jewellery') or has_feature('electronics') %}
-<div class="row gap-8 flex-wrap mb-16">
-  {% if has_feature('pharmacy') %}<a href="{{ url_for('pharmacy.register') }}" class="btn btn-secondary">Scheduled drug register</a>{% endif %}
-  {% if has_feature('wholesale') %}<a href="{{ url_for('wholesale.salesmen_report') }}" class="btn btn-secondary">Sales by salesman</a>{% endif %}
-  {% if has_feature('loyalty') %}<a href="{{ url_for('loyalty.index') }}" class="btn btn-secondary">Loyalty points</a>{% endif %}
-  {% if has_feature('jewellery') %}<a href="{{ url_for('jewellery.old_gold_list') }}" class="btn btn-secondary">Old gold vouchers</a>{% endif %}
-  {% if has_feature('electronics') %}<a href="{{ url_for('jobs.warranty') }}" class="btn btn-secondary">Warranty check</a>{% endif %}
-</div>
-{% endif %}
-
-{% if has_feature('business_reports') %}
-<div class="form-grid mb-20">
-  <div class="card">
-    <h2 class="mt-0">Profit &amp; loss</h2>
-    <p class="text-muted">Revenue, cost of goods sold, gross profit and expenses for any period - all locations or one - with last period or last year beside it. Excel or PDF.</p>
-    <a href="{{ url_for('reports.profit_loss') }}" class="btn btn-primary">View profit &amp; loss</a>
-  </div>
-  <div class="card">
-    <h2 class="mt-0">Gross profit by item</h2>
-    <p class="text-muted">What each item and category sold for against what it cost you.</p>
-    <a href="{{ url_for('reports.item_profit') }}" class="btn btn-primary">View gross profit</a>
-  </div>
-  <div class="card">
-    <h2 class="mt-0">GST filing</h2>
-    <p class="text-muted">Tell your accountant a month's data is complete, and see when GSTR-1 and GSTR-3B were filed.</p>
-    <a href="{{ url_for('reports.filing_status') }}" class="btn btn-primary">Filing status</a>
-  </div>
-  <div class="card">
-    <h2 class="mt-0">Daily sales summary</h2>
-    <p class="text-muted">Payment modes, sales by hour and by cashier, discounts, voids and returns.</p>
-    <a href="{{ url_for('reports.daily_summary_view') }}" class="btn btn-primary">View daily summary</a>
-  </div>
-</div>
-{% endif %}
-{% if has_feature('purchases') or has_feature('expenses') %}
-<form method="get" class="card row gap-12 items-end mb-20">
-  <div><h2 class="m-0 mb-6">Registers for your auditor</h2><p class="text-muted mt-0 mb-0">Excel, one month.</p></div>
-  <input type="hidden" name="mode" value="month">
-  <label class="field m-0"><span class="field-label">Month</span><input type="month" name="month" value="{{ period }}" class="field-input"></label>
-  {% if has_feature('purchases') %}<button formaction="{{ url_for('reports.register_xlsx', kind='purchase') }}" class="btn btn-secondary">Purchase register</button>{% endif %}
-  {% if has_feature('expenses') %}<button formaction="{{ url_for('reports.register_xlsx', kind='expense') }}" class="btn btn-secondary">Expense register</button>{% endif %}
-</form>
-{% endif %}
-
-<div class="form-grid mb-20">
-  <div class="card">
-    <h2 class="mt-0">Sales report</h2>
-    <p class="text-muted">
-      Every invoice and POS bill, across all your GSTINs - downloadable as Excel or PDF. Filter by
-      day, month or any date range, and by one or more branches.
-    </p>
-    <a href="{{ url_for('reports.sales_view') }}" class="btn btn-primary">View sales report</a>
-  </div>
-  {% if has_feature('margin_scheme') %}
-  <div class="card">
-    <h2 class="mt-0">Margin register</h2>
-    <p class="text-muted">
-      Every second-hand unit sold under the margin scheme (Rule 32(5)): purchase date and price,
-      sale date and price, margin, taxable margin and GST - Excel or PDF.
-    </p>
-    <a href="{{ url_for('reports.margin_register') }}" class="btn btn-primary">View margin register</a>
-  </div>
-  {% endif %}
-  <div class="card">
-    <h2 class="mt-0">Stock report</h2>
-    <p class="text-muted">
-      How much stock was allocated to each branch and how much it actually sold, over any period
-      and any branch selection.
-    </p>
-    <a href="{{ url_for('reports.stock_view') }}" class="btn btn-primary">View stock report</a>
-  </div>
-  <div class="card">
-    <h2 class="mt-0">Sales by item</h2>
-    <p class="text-muted">
-      Which items sold, how many, and for how much - the same period and branch filters as the
-      other two reports.
-    </p>
-    <a href="{{ url_for('reports.items_view') }}" class="btn btn-primary">View sales by item</a>
-  </div>
-</div>
-
-{% if not_regular %}
-<div class="card mb-20">
-  <p class="text-muted mt-0 mb-0">
-    GSTR-1 and GSTR-3B apply to Regular scheme GSTINs. {{ tenant.legal_name }} is registered as
-    <strong>{{ tenant.registration_type.value|title }}</strong>, which doesn't file these returns.
-  </p>
-</div>
-{% elif not gstins %}
-<div class="card mb-20">
-  <p class="text-muted mt-0 mb-0">No active GSTIN on file yet - ask the firm to add one before running a GST report.</p>
-</div>
-{% else %}
-<div class="card maxw-480">
-  <h2 class="mt-0">GST return working papers</h2>
-  <p class="text-muted">
-    Taxable value, tax and HSN figures below come straight from your own invoices, POS bills and
-    notes. They're a working paper to make filing easier, not an auto-filer - always check the
-    numbers before submitting on the GST portal. {% if has_feature('purchases') or has_feature('expenses') %}GSTR-3B
-    includes the input tax credit from your purchase bills and expenses, and the tax left to pay in
-    cash after setting it off.{% else %}Input Tax Credit isn't tracked here (this app
-    records sales only), so GSTR-3B shows gross output tax, not the net amount payable.{% endif %}
-  </p>
-  <form method="get" action="{{ url_for('reports.gstr1_view') }}" class="stack" id="report-form">
-    <div class="field">
-      <label class="field-label" for="gstin_id">GSTIN</label>
-      <select name="gstin_id" id="gstin_id" class="field-input" form="report-form">
-        {% for g in gstins %}<option value="{{ g.id }}">{{ g.display_label }}</option>{% endfor %}
-      </select>
+<div x-data="{ q: '' }">
+  <div class="page-header">
+    <div>
+      <h1>Reports &amp; GST exports</h1>
+      <p class="text-muted mt-0">Every report in one place, grouped by what it answers.</p>
     </div>
-    <div class="field">
-      <label class="field-label" for="period">Month</label>
-      <input type="month" name="period" id="period" value="{{ period }}" class="field-input" form="report-form">
+    <label class="module-search report-search">
+      {{ icon('search') }}
+      <input type="search" placeholder="Find a report" aria-label="Find a report" x-model="q">
+    </label>
+  </div>
+
+  <nav class="report-jump" aria-label="Report groups">
+    {% for g in groups %}<a href="#group-{{ g.key }}">{{ icon(g.icon, 'icon-sm') }}{{ g.label }}</a>{% endfor %}
+  </nav>
+
+  {% for g in groups %}
+  <section class="report-group" id="group-{{ g.key }}"
+           x-show="!q || [...$el.querySelectorAll('[data-hay]')].some(c => c.dataset.hay.includes(q.toLowerCase()))">
+    <h2 class="report-group-title">{{ icon(g.icon) }}{{ g.label }}</h2>
+    <div class="report-grid">
+      {% for r in g.reports %}
+      <a href="{{ r.url }}" class="report-tile" data-hay="{{ (r.title ~ ' ' ~ r.description ~ ' ' ~ g.label)|lower }}"
+         x-show="!q || $el.dataset.hay.includes(q.toLowerCase())">
+        <span class="report-icon">{{ icon(r.icon) }}</span>
+        <span class="report-text"><strong>{{ r.title }}</strong><small>{{ r.description }}</small></span>
+        {{ icon('chevron-right', 'report-go') }}
+      </a>
+      {% endfor %}
+
+      {% if g.key == 'gst' %}
+      <div class="report-tile report-form" data-hay="gstr-1 gstr-3b gstr1 gstr3b gst return working papers json excel">
+        <span class="report-icon">{{ icon('file-check') }}</span>
+        <div class="report-text">
+          <strong>GSTR-1 and GSTR-3B working papers</strong>
+          {% if not_regular %}
+          <small>GSTR-1 and GSTR-3B apply to Regular scheme GSTINs. {{ tenant.legal_name }} is registered as
+            <strong>{{ tenant.registration_type.value|title }}</strong>, which doesn't file these returns.</small>
+          {% elif not gstins %}
+          <small>No active GSTIN on file yet - ask the firm to add one before running a GST report.</small>
+          {% else %}
+          <small>Taxable value, tax and HSN figures straight from your own invoices, bills and notes - a working paper
+            to make filing easier, not an auto-filer; always check before submitting on the GST portal.
+            {% if has_feature('purchases') or has_feature('expenses') %}GSTR-3B includes the input tax credit from your
+            purchase bills and expenses, and the tax left to pay in cash after setting it off.{% else %}Input tax credit
+            isn't tracked here, so GSTR-3B shows gross output tax, not the net amount payable.{% endif %}</small>
+          <form method="get" action="{{ url_for('reports.gstr1_view') }}" class="report-inline-form" id="report-form">
+            <label class="field m-0"><span class="field-label">GSTIN</span>
+              <select name="gstin_id" id="gstin_id" class="field-input">
+                {% for gs in gstins %}<option value="{{ gs.id }}">{{ gs.display_label }}</option>{% endfor %}
+              </select></label>
+            <label class="field m-0"><span class="field-label">Month</span>
+              <input type="month" name="period" id="period" value="{{ period }}" class="field-input"></label>
+            <div class="row">
+              <button type="submit" formaction="{{ url_for('reports.gstr1_view') }}" class="btn btn-primary">View GSTR-1</button>
+              <button type="submit" formaction="{{ url_for('reports.gstr3b_view') }}" class="btn btn-secondary">View GSTR-3B</button>
+            </div>
+          </form>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+
+      {% if g.key == 'accounts' and (has_feature('purchases') or has_feature('expenses')) %}
+      <div class="report-tile report-form" data-hay="purchase register expense register auditor excel month">
+        <span class="report-icon">{{ icon('file-spreadsheet') }}</span>
+        <div class="report-text">
+          <strong>Registers for your auditor</strong>
+          <small>Every purchase bill or expense of a month, in Excel.</small>
+          <form method="get" class="report-inline-form">
+            <input type="hidden" name="mode" value="month">
+            <label class="field m-0"><span class="field-label">Month</span><input type="month" name="month" value="{{ period }}" class="field-input"></label>
+            <div class="row">
+              {% if has_feature('purchases') %}<button formaction="{{ url_for('reports.register_xlsx', kind='purchase') }}" class="btn btn-secondary">Purchase register</button>{% endif %}
+              {% if has_feature('expenses') %}<button formaction="{{ url_for('reports.register_xlsx', kind='expense') }}" class="btn btn-secondary">Expense register</button>{% endif %}
+            </div>
+          </form>
+        </div>
+      </div>
+      {% endif %}
     </div>
-    <div class="row">
-      <button type="submit" formaction="{{ url_for('reports.gstr1_view') }}" class="btn btn-primary">View GSTR-1</button>
-      <button type="submit" formaction="{{ url_for('reports.gstr3b_view') }}" class="btn btn-secondary">View GSTR-3B</button>
-    </div>
-  </form>
+  </section>
+  {% endfor %}
+  <p class="empty-state" x-show="q && ![...$root.querySelectorAll('[data-hay]')].some(c => c.dataset.hay.includes(q.toLowerCase()))" x-cloak>No report matches that.</p>
 </div>
-{% endif %}
 {% endblock %}

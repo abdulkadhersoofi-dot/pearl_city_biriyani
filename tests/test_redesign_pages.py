@@ -27,7 +27,9 @@ def _login(client, email, password):
 
 
 def test_inline_styles_stay_retired():
-    count = sum(len(re.findall(r'\sstyle="', f.read_text())) for f in _screen_templates())
+    # A style that only sets CSS custom properties (a bar's height from the
+    # data) is data, not layout, and doesn't count.
+    count = sum(len(re.findall(r'\sstyle="(?!--)', f.read_text())) for f in _screen_templates())
     # 775 before stage 3; the few left are one-offs (an image box, a grid).
     assert count <= 46, count
 

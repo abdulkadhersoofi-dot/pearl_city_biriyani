@@ -1,5 +1,21 @@
 {% extends "base.html" %}
 {% block title %}Dashboard - {{ firm_name }}{% endblock %}
+
+{% macro delta(c, label) -%}
+  {%- if c -%}
+  <span class="delta {{ 'is-same' if c.same else ('is-up' if c.up else 'is-down') }}">
+    {{ icon('minus' if c.same else ('trending-up' if c.up else 'trending-down'), 'icon-sm') }}{{ c.pct }}%
+    <span class="delta-vs">{{ label }}</span>
+  </span>
+  {%- endif -%}
+{%- endmacro %}
+
+{% macro money(value, link=None) -%}
+  {%- if link %}<a href="{{ link }}" class="stat-value">{% else %}<span class="stat-value">{% endif -%}
+  <span class="stat-rs">Rs.</span> <span data-count-up="{{ '%.2f'|format(value) }}">{{ value|inr }}</span>
+  {%- if link %}</a>{% else %}</span>{% endif -%}
+{%- endmacro %}
+
 {% block content %}
 <div class="page-header">
   <div>
@@ -12,54 +28,151 @@
   </div>
 </div>
 {% include "_first_run.html" %}
-<div class="form-grid dash-tiles mb-16">
-  <div class="card"><span class="text-muted">Sales today</span><h2 class="mt-0">Rs. {{ '{:,.2f}'.format(d.sales_today) }}</h2><small class="text-muted">This month Rs. {{ '{:,.2f}'.format(d.sales_month) }}</small></div>
-  <div class="card"><span class="text-muted">Money received today</span><h2 class="mt-0">Rs. {{ '{:,.2f}'.format(d.collections_today) }}</h2><small class="text-muted">This month Rs. {{ '{:,.2f}'.format(d.collections_month) }}</small></div>
-  <div class="card"><span class="text-muted">{{ d.cash_label }}</span><h2 class="mt-0">Rs. {{ '{:,.2f}'.format(d.cash_in_hand) }}</h2></div>
-  {% if d.receivable is defined %}<div class="card"><span class="text-muted">Customers owe you</span><h2 class="mt-0"><a href="{{ url_for('accounts.receivables_index') }}">Rs. {{ '{:,.2f}'.format(d.receivable) }}</a></h2>{% if d.overdue %}<small class="text-muted">Overdue Rs. {{ '{:,.2f}'.format(d.overdue) }}</small>{% endif %}</div>{% endif %}
-  {% if d.payable is defined %}<div class="card"><span class="text-muted">You owe suppliers</span><h2 class="mt-0"><a href="{{ url_for('accounts.payables_index') }}">Rs. {{ '{:,.2f}'.format(d.payable) }}</a></h2></div>{% endif %}
+
+{% set values = d.series|map(attribute=1)|list %}
+<section class="stat-grid-lg" aria-label="Today's figures">
+  <div class="stat-tile stat-lead">
+    <span class="stat-label">{{ icon('receipt-text', 'icon-sm') }} Sales today</span>
+    {{ money(d.sales_today) }}
+    {{ delta(d.sales_vs_week, 'vs last ' ~ d.week_ago.strftime('%A')) }}
+    <div class="spark" aria-hidden="true">
+      {% for day, v in d.series %}<i class="{{ 'is-today' if loop.last }}" style="--h: {{ ((v / peak * 100) if peak and v > 0 else 0)|round(1) }}%"></i>{% endfor %}
+    </div>
+    <small class="stat-sub">This month Rs. {{ d.sales_month|inr }} {{ delta(d.sales_vs_last_month, 'vs the same days last month') }}</small>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-label">{{ icon('banknote', 'icon-sm') }} Money received today</span>
+    {{ money(d.collections_today) }}
+    {{ delta(d.collections_vs_week, 'vs last ' ~ d.week_ago.strftime('%A')) }}
+    <small class="stat-sub">This month Rs. {{ d.collections_month|inr }}</small>
+  </div>
+  <div class="stat-tile">
+    <span class="stat-label">{{ icon('wallet', 'icon-sm') }} {{ d.cash_label }}</span>
+    {{ money(d.cash_in_hand) }}
+  </div>
+  {% if d.receivable is defined %}
+  <div class="stat-tile">
+    <span class="stat-label">{{ icon('users', 'icon-sm') }} Customers owe you</span>
+    {{ money(d.receivable, url_for('accounts.receivables_index')) }}
+    {% if d.overdue %}<small class="stat-sub stat-warn">{{ icon('triangle-alert', 'icon-sm') }} Overdue Rs. {{ d.overdue|inr }}</small>{% endif %}
+  </div>
+  {% endif %}
+  {% if d.payable is defined %}
+  <div class="stat-tile">
+    <span class="stat-label">{{ icon('truck', 'icon-sm') }} You owe suppliers</span>
+    {{ money(d.payable, url_for('accounts.payables_index')) }}
+  </div>
+  {% endif %}
+</section>
+
+<div class="dash-row">
+  <section class="card chart-card" aria-labelledby="trend-title">
+    <div class="chart-head">
+      <div>
+        <h2 id="trend-title">Sales, last 14 days</h2>
+        <p class="text-muted m-0">Rs. {{ values|sum|inr(0) }} in all &middot; Rs. {{ ((values|sum) / 14)|inr(0) }} a day on average</p>
+      </div>
+    </div>
+    <div class="bars" role="img" aria-label="Daily sales for the last 14 days, highest Rs. {{ peak|inr(0) }}">
+      {% for day, v in d.series %}
+      {% set h = ((v / peak * 100) if peak and v > 0 else 0) %}
+      <div class="bar-slot{{ ' is-today' if loop.last }}{{ ' is-peak' if v == peak and peak > 0 }}" tabindex="0"
+           data-tip="{{ day.strftime('%a %d %b') }} &middot; Rs. {{ v|inr(0) }}">
+        {% if (loop.last or (v == peak and peak > 0)) and v > 0 %}<span class="bar-cap">{{ v|inr_compact }}</span>{% endif %}
+        <span class="bar" style="--h: {{ h|round(1) }}%"></span>
+        <span class="bar-day">{{ 'Today' if loop.last else day.strftime('%d') }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    <table class="sr-only no-stack">
+      <caption>Sales by day</caption>
+      <thead><tr><th>Day</th><th>Sales (Rs.)</th></tr></thead>
+      <tbody>{% for day, v in d.series %}<tr><td>{{ day.strftime('%d %b %Y') }}</td><td>{{ v|inr }}</td></tr>{% endfor %}</tbody>
+    </table>
+  </section>
+
+  <section class="card needs-card" aria-labelledby="needs-title">
+    <h2 id="needs-title">Needs you</h2>
+    {% if needs %}
+    <ul class="needs-list">
+      {% for item in needs %}
+      <li><a href="{{ item.url }}" class="needs-item tone-{{ item.tone }}">
+        <span class="needs-icon">{{ icon(item.icon) }}</span>
+        <span><strong>{{ item.label }}</strong><small>{{ item.detail }}</small></span>
+      </a></li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <div class="all-clear">
+      <span class="all-clear-tick">{{ icon('check') }}</span>
+      <p><strong>All clear</strong><br><span class="text-muted">Nothing is waiting on you right now.</span></p>
+    </div>
+    {% endif %}
+  </section>
 </div>
-<div class="form-grid">
-  <div class="card">
-    <h3 class="mt-0">Top items this month</h3>
-    <table class="dash-list"><tbody>
-    {% for r in d.top_items %}<tr><td>{{ r.name }}</td><td class="num">{{ r.qty|qty }}</td><td class="num">Rs. {{ '{:,.2f}'.format(r.sales) }}</td></tr>
-    {% else %}<tr><td class="empty-state">No sales yet this month.</td></tr>{% endfor %}
-    </tbody></table>
-    <a href="{{ url_for('reports.item_profit') }}">Gross profit by item &rarr;</a>
-  </div>
+
+<div class="dash-grid">
+  <section class="card">
+    <h2>Top items this month</h2>
+    {% set top = d.top_items %}
+    {% if top %}
+    {% set best = top[0].sales or 1 %}
+    <ol class="rank-list">
+      {% for r in top %}
+      <li>
+        <div class="rank-row"><span class="rank-name">{{ r.name }}</span><span class="rank-value">Rs. {{ r.sales|inr }}</span></div>
+        <div class="rank-meta"><span class="rank-bar" style="--w: {{ (r.sales / best * 100)|round(1) }}%"></span><small>{{ r.qty|qty }} sold</small></div>
+      </li>
+      {% endfor %}
+    </ol>
+    {% else %}<p class="empty-state">No sales yet this month.</p>{% endif %}
+    <a href="{{ url_for('reports.item_profit') }}" class="card-link">Gross profit by item {{ icon('arrow-right', 'icon-sm') }}</a>
+  </section>
   {% if d.top_debtors is defined %}
-  <div class="card">
-    <h3 class="mt-0">Biggest dues</h3>
-    <table class="dash-list"><tbody>
-    {% for r in d.top_debtors %}<tr><td><a href="{{ url_for('accounts.customer_ledger', customer_id=r.customer.id) }}">{{ r.customer.name }}</a>{% if r.over_limit %} <span class="tag tag-warn">over limit</span>{% endif %}</td><td class="num">Rs. {{ '{:,.2f}'.format(r.balance) }}</td></tr>
-    {% else %}<tr><td class="empty-state">Nobody owes you anything.</td></tr>{% endfor %}
-    </tbody></table>
-  </div>
+  <section class="card">
+    <h2>Biggest dues</h2>
+    {% if d.top_debtors %}
+    <ul class="kv-list">
+      {% for r in d.top_debtors %}
+      <li><a href="{{ url_for('accounts.customer_ledger', customer_id=r.customer.id) }}">{{ r.customer.name }}</a>{% if r.over_limit %} <span class="tag tag-warn">over limit</span>{% endif %}
+        <span>Rs. {{ r.balance|inr }}</span></li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="empty-state">Nobody owes you anything.</p>{% endif %}
+    <a href="{{ url_for('accounts.receivables_index') }}" class="card-link">All customer accounts {{ icon('arrow-right', 'icon-sm') }}</a>
+  </section>
   {% endif %}
   {% if d.low_stock is defined %}
-  <div class="card">
-    <h3 class="mt-0">Low stock</h3>
-    <table class="dash-list"><tbody>
-    {% for r in d.low_stock %}<tr><td>{{ r.product.name }}</td><td class="num"><span class="tag tag-low">{{ r.qty|qty }}</span> <small class="text-muted">min {{ r.product.min_stock_level|qty }}</small></td></tr>
-    {% else %}<tr><td class="empty-state">Nothing below its minimum.</td></tr>{% endfor %}
-    </tbody></table>
-    <a href="{{ url_for('inventory.reorder') }}">Reorder list &rarr;</a>
-  </div>
+  <section class="card">
+    <h2>Low stock</h2>
+    {% if d.low_stock %}
+    <ul class="kv-list">
+      {% for r in d.low_stock %}
+      <li><span>{{ r.product.name }}</span><span><span class="tag tag-low">{{ r.qty|qty }}</span> <small class="text-muted">min {{ r.product.min_stock_level|qty }}</small></span></li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="empty-state">Nothing below its minimum.</p>{% endif %}
+    <a href="{{ url_for('inventory.reorder') }}" class="card-link">Reorder list {{ icon('arrow-right', 'icon-sm') }}</a>
+  </section>
   {% endif %}
   {% if d.expiring is defined %}
-  <div class="card">
-    <h3 class="mt-0">Expiring batches (30 days)</h3>
-    <table class="dash-list"><tbody>
-    {% for r in d.expiring %}<tr><td>{{ r.batch.product.name }} <small class="text-muted">{{ r.batch.batch_no }}</small></td><td>{{ r.batch.expiry_date.strftime('%d %b %Y') }}</td><td class="num">{% if r.days_left < 0 %}<span class="tag tag-expired">expired</span>{% else %}{{ r.days_left }} days{% endif %}</td></tr>
-    {% else %}<tr><td class="empty-state">Nothing expiring soon.</td></tr>{% endfor %}
-    </tbody></table>
-  </div>
+  <section class="card">
+    <h2>Expiring batches (30 days)</h2>
+    {% if d.expiring %}
+    <ul class="kv-list">
+      {% for r in d.expiring %}
+      <li><span>{{ r.batch.product.name }} <small class="text-muted">{{ r.batch.batch_no }} &middot; {{ r.batch.expiry_date.strftime('%d %b %Y') }}</small></span>
+        <span>{% if r.days_left < 0 %}<span class="tag tag-expired">expired</span>{% else %}{{ r.days_left }} days{% endif %}</span></li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="empty-state">Nothing expiring soon.</p>{% endif %}
+  </section>
   {% endif %}
 </div>
+
 {% if summary %}
-<div class="card mt-16">
-  <div class="page-header mb-8">
+<section class="card mt-16">
+  <div class="page-header mb-8" data-no-more>
     <h2 class="mt-0">End of the day</h2>
     <div class="row">
       <a href="{{ summary_whatsapp }}" target="_blank" rel="noopener" class="btn btn-primary" onclick="openShare(this.href); return false;">Share on WhatsApp</a>
@@ -67,6 +180,6 @@
     </div>
   </div>
   {% with data=summary %}{% include "reports/_owner_summary_body.html" %}{% endwith %}
-</div>
+</section>
 {% endif %}
 {% endblock %}

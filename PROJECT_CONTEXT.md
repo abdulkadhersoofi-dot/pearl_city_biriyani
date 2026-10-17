@@ -420,6 +420,11 @@ this list is just the index.
   checks every utility class exists. Notes are a tab in Invoices
   (`invoicing/_tabs.html`). GSTR-1/3B views default to the primary
   active GSTIN when no `gstin_id` is given (`reports.routes._resolve_gstin`).
+- **Interface redesign, stage 4: Home and Reports.** `daily_sales()` and
+  `change()` in `app/finance/dashboard.py` (trend and comparisons, same
+  rule as `_sales`); `inr` / `inr_compact` filters (`app/utils/money.py`);
+  the hub's groups in `app/reports/hub.py` (add a report there, with its
+  feature flags, and it appears in the hub).
 
 ## 5. Chronological development history (this session)
 

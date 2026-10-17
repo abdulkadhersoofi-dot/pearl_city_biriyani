@@ -51,12 +51,15 @@ def index():
     gstins = tenant.gstins.filter_by(is_active=True).all()
     period = request.args.get("period", _current_period())
     not_regular = tenant.registration_type != RegistrationType.REGULAR
+    from app.reports.hub import hub_groups
+
     return render_template(
         "reports/index.html",
         tenant=tenant,
         gstins=gstins,
         period=period,
         not_regular=not_regular,
+        groups=hub_groups(),
     )
 
 
@@ -288,8 +291,12 @@ def dashboard():
 
         summary = build(tenant)
         summary_link = whatsapp_link(summary_text(tenant, summary), current_user.phone)
-    return render_template("reports/dashboard.html", d=dashboard_data(tenant), summary=summary,
-                           summary_whatsapp=summary_link)
+    from app.navigation import needs_you
+
+    d = dashboard_data(tenant)
+    peak = max([v for _, v in d["series"]] + [0])
+    return render_template("reports/dashboard.html", d=d, summary=summary, summary_whatsapp=summary_link,
+                           needs=needs_you(tenant), peak=peak)
 
 
 @reports_bp.route("/profit-loss")

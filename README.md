@@ -1927,6 +1927,48 @@ screens changed without rewriting each one:
   action, GST returns opens the primary GSTIN and still refuses another
   client's, every menu and search link opens with all modules on).
 
+### Interface redesign - stage 4 (Home dashboard and Reports hub)
+
+**Home** (`reports/dashboard.html`, data from `app/finance/dashboard.py`):
+- Headline tiles - sales today (the lead, with a 14-day sparkline), money
+  received, cash in hand, what customers owe (with overdue) and what you
+  owe suppliers - each figure counting up once as the page opens, with a
+  comparison where there is one: today against the same weekday last
+  week, and this month against the same days of last month.
+- **Sales, last 14 days**: a bar per day, today in the accent, the
+  highest and today labelled, the exact figure on hover or keyboard focus,
+  and a hidden table of the same figures for screen readers. One series,
+  so no legend - the title names it. The days come from
+  `daily_sales()`, which applies exactly the rule behind "Sales today"
+  (`_sales`: counter bills less refunds and returns, plus issued sales
+  invoices) in four queries for the whole fortnight; a test checks every
+  day against `_sales` and the fortnight against its total.
+- **Needs you** (the bell's list, `app.navigation.needs_you`), or "All
+  clear" when nothing is waiting.
+- Top items with bars in proportion to the best seller; biggest dues, low
+  stock and expiring batches as tidy lists with a link to the full screen;
+  the end-of-day card unchanged.
+- Money on Home reads the Indian way - 1,64,944.00, and 1.6L on chart
+  labels - from new template filters `inr` / `inr_compact`
+  (`app/utils/money.py`, display only; figures are still computed in
+  Decimal by the module that owns them).
+
+**Reports hub** (`app/reports/hub.py`, `reports/index.html`): every report
+in one place, grouped by what it answers - Sales, Profit, Stock, GST,
+Accounts & registers, Your industry - with a "Find a report" box and
+jump links to each group. Each report sits behind the same feature flag as
+its route, so a switched-off module's report never shows; the GST group
+keeps the GSTR-1 / GSTR-3B working-paper form, and Accounts & registers
+the monthly purchase / expense registers. Reports that used to hide
+behind a module's own screen (fast/slow/dead stock, reorder, expiry,
+expense report, e-invoice log, cash and bank books) are now listed here
+too.
+
+Tests: `tests/test_redesign_home.py` (Indian formatting, comparisons,
+trend days add up to the sales figure, another client's sales never
+counted, dashboard shows the trend / screen-reader table / Needs you,
+hub shows only reports whose modules are on and every tile opens).
+
 ## Roadmap
 
 - **Platform build (ARFA general-purpose POS), phase by phase.**
@@ -1985,7 +2027,9 @@ screens changed without rewriting each one:
     primary action per page with the rest under More, the inline styles
     replaced by shared classes, empty states, phone-friendly tables,
     notes as a tab inside Invoices.
-  - Stage 4: Home dashboard and the Reports hub (grouped, searchable).
+  - Stage 4 (done): Home dashboard (trend, comparisons, Needs you,
+    count-up figures, Indian money format) and the Reports hub (grouped,
+    searchable).
   - Stage 5: the counter - full screen, category chips, larger tiles,
     held bills in a drawer, Counter menu, one-tap payment buttons, paid
     animation; restaurant tables, KOT and the PIN pad to match.

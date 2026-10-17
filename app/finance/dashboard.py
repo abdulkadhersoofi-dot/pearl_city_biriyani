@@ -31,6 +31,47 @@ def _sales(tenant, start: date, end: date) -> Decimal:
     return pos - refunds - returns + invoices
 
 
+def daily_sales(tenant, start: date, end: date) -> list[tuple[date, Decimal]]:
+    """Sales for each day from start to end - the same rule as _sales
+    (counter bills less refunds and returns, plus issued sales invoices),
+    split by local day, read in four queries instead of four per day. The
+    days add up to _sales over the same range."""
+    lo, hi = day_start(start), day_start(end + timedelta(days=1))
+    days = {start + timedelta(days=i): ZERO for i in range((end - start).days + 1)}
+
+    def add(when, amount):
+        day = when.astimezone().date() if hasattr(when, "astimezone") else when
+        if day in days:
+            days[day] += Decimal(amount or 0)
+
+    for bill in POSBill.query.filter(
+            POSBill.tenant_id == tenant.id, POSBill.status.in_([POSBillStatus.COMPLETED, POSBillStatus.REFUNDED]),
+            POSBill.completed_at >= lo, POSBill.completed_at < hi):
+        add(bill.completed_at, bill.grand_total)
+    for bill in POSBill.query.filter(
+            POSBill.tenant_id == tenant.id, POSBill.status == POSBillStatus.REFUNDED,
+            POSBill.refunded_at >= lo, POSBill.refunded_at < hi):
+        add(bill.refunded_at, -Decimal(bill.refunded_amount or 0))
+    for ret in POSReturn.query.filter(
+            POSReturn.tenant_id == tenant.id, POSReturn.status == POSReturnStatus.COMPLETED,
+            POSReturn.returned_at >= lo, POSReturn.returned_at < hi):
+        add(ret.returned_at, -Decimal(ret.grand_total))
+    for inv in Invoice.query.filter(
+            Invoice.tenant_id == tenant.id, Invoice.status == InvoiceStatus.ISSUED,
+            Invoice.document_type.notin_(NOT_SALES), Invoice.invoice_date >= start, Invoice.invoice_date <= end):
+        add(inv.invoice_date, inv.grand_total)
+    return sorted(days.items())
+
+
+def change(now: Decimal, before: Decimal) -> dict | None:
+    """How `now` compares with `before`: percent (rounded), direction. None
+    when there's nothing to compare with."""
+    if not before:
+        return None
+    pct = ((now - before) / abs(before) * 100).quantize(Decimal("1"))
+    return {"pct": abs(pct), "up": now >= before, "same": pct == 0}
+
+
 def _collections(tenant, start: date, end: date) -> Decimal:
     """Money actually received: counter payments (not credit / exchange)
     and receipts from customers (a bounced cheque isn't money)."""
@@ -57,6 +98,18 @@ def dashboard(tenant, today: date | None = None) -> dict:
         "collections_today": _collections(tenant, today, today),
         "collections_month": _collections(tenant, month_start, today),
     }
+    # The last 14 days for the trend, and what each headline figure is
+    # compared with: the same weekday last week, and the same days of last
+    # month.
+    data["series"] = daily_sales(tenant, today - timedelta(days=13), today)
+    week_ago = today - timedelta(days=7)
+    data["week_ago"] = week_ago
+    data["sales_vs_week"] = change(data["sales_today"], dict(data["series"])[week_ago])
+    data["collections_vs_week"] = change(data["collections_today"], _collections(tenant, week_ago, week_ago))
+    prev_end = month_start - timedelta(days=1)
+    prev_start = prev_end.replace(day=1)
+    prev_same = prev_start.replace(day=min(today.day, prev_end.day))
+    data["sales_vs_last_month"] = change(data["sales_month"], _sales(tenant, prev_start, prev_same))
     if tenant.has_feature("receivables"):
         from app.accounts.receivables import customer_balances
 

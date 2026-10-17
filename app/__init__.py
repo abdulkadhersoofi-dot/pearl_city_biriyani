@@ -306,6 +306,12 @@ def _register_context_processors(app: Flask) -> None:
         text = f"{Decimal(value).normalize():f}"
         return text
 
+    from app.utils.money import inr, inr_compact
+
+    # {{ amount|inr }} -> 1,64,944.00; {{ amount|inr_compact }} -> 1.6L
+    app.jinja_env.filters["inr"] = inr
+    app.jinja_env.filters["inr_compact"] = inr_compact
+
     @app.template_filter("state_name")
     def state_name_filter(state_code: str) -> str:
         from app.utils.indian_states import STATE_NAME_BY_CODE
