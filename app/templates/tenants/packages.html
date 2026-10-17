@@ -6,7 +6,10 @@
     <h1>Packages</h1>
     <p class="text-muted mt-0">What each client may use: modules, settings, limits, branding and price. Give a client a package from their page.</p>
   </div>
-  <a href="{{ url_for('tenants.package_new') }}" class="btn btn-primary">{{ icon('plus') }}New package</a>
+  <div class="row">
+    <a href="{{ url_for('tenants.packages_compare') }}" class="btn btn-secondary">{{ icon('layout-grid') }}Compare</a>
+    <a href="{{ url_for('tenants.package_new') }}" class="btn btn-primary">{{ icon('plus') }}New package</a>
+  </div>
 </div>
 
 <div class="package-grid">
@@ -17,6 +20,7 @@
       <h2 class="m-0"><a href="{{ url_for('tenants.package_edit', package_id=p.id) }}">{{ p.name }}</a></h2>
       {% if not p.is_active %}<span class="status-badge status-draft">Retired</span>{% endif %}
     </div>
+    <p class="m-0 package-for">{{ icon('store', 'icon-sm') }}{{ types.get(p.business_type, 'Any business') if p.business_type else 'Any business' }}</p>
     <p class="text-muted m-0">{{ p.description or '' }}</p>
     <div class="package-meter" role="img" aria-label="{{ s['inc'] }} included, {{ s['choice'] }} client's choice, {{ s['off'] }} off">
       {% set total = s['inc'] + s['choice'] + s['off'] %}

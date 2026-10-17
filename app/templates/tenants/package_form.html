@@ -1,23 +1,67 @@
 {% extends "base.html" %}
 {% block title %}{{ 'New package' if is_new else package.name }} - {{ firm_name }}{% endblock %}
+{% macro state_rows(group) %}
+{# One switch per row: Off / Included / Client's choice. An add-on sits under
+   the module it needs and warns when that one is Off. #}
+<div class="state-list">
+  {% for row in group['items'] %}
+  {% set f = row.feature %}
+  {% set current = state_of(package, f.key) %}
+  <div class="state-row{{ ' is-addon' if row.depth }}">
+    <div class="state-name"><strong id="lbl_{{ f.key }}">{{ f.label }}</strong><small>{{ f.description }}</small>
+      {% if row.entry.needs %}
+      {% set needs_js = "['" ~ row.entry.needs|join("','") ~ "']" %}
+      <span class="needs-note" :class="{ 'is-off': {{ needs_js }}.some(k => s[k] === 'off') && s['{{ f.key }}'] !== 'off' }">
+        {{ icon('triangle-alert', 'icon-sm') }}Works with {{ row.needs|join(', ') }}<span x-show="{{ needs_js }}.some(k => s[k] === 'off') && s['{{ f.key }}'] !== 'off'" x-cloak> - which is Off in this package</span></span>
+      {% endif %}
+    </div>
+    <div class="state-seg" role="radiogroup" aria-labelledby="lbl_{{ f.key }}">
+      {% for value, label in states.items() %}
+      <input type="radio" name="mod_{{ f.key }}" value="{{ value }}" id="mod_{{ f.key }}_{{ value }}" {% if current == value %}checked{% endif %}>
+      <label for="mod_{{ f.key }}_{{ value }}" class="state-{{ value }}">{{ label }}</label>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endmacro %}
+{% macro set_all(kind) %}
+<div class="row set-all" role="group" aria-label="Set every switch on this tab">
+  <span class="text-muted">Set all:</span>
+  {% for value, label in states.items() %}<button type="button" class="btn btn-quiet btn-sm" @click="setAll('{{ value }}', '{{ kind }}')">{{ label }}</button>{% endfor %}
+</div>
+{% endmacro %}
+{% macro panel_open(key) %}<section id="ptab-{{ key }}" role="tabpanel" aria-labelledby="ptabbtn-{{ key }}" class="client-panel"
+         x-show="tab === '{{ key }}'" {% if tab != key %}x-cloak{% endif %}>{% endmacro %}
 {% block content %}
-{# The package editor (packages and powers, stage 2). Each module is Off,
-   Included or Client's choice; each setting "Client can change" or "Only
-   ARFA"; limits blank = no limit. #}
-<form method="post" x-data="packageEditor()" @change="count()">
+{# The package editor in tabs (console cleanup, stage 4): Business type,
+   Trade packs, Modules, Counter options, Settings & locks, Logins &
+   limits, Name & price - one form, one Save at the bottom of every tab.
+   Each switch is Off, Included or Client's choice; each setting "Client
+   can change" or "Only ARFA"; limits blank = no limit. #}
+{% set kind_of = {} %}
+{% for group in groups %}{% for row in group['items'] %}{% set _ = kind_of.update({row.feature.key: group.kind}) %}{% endfor %}{% endfor %}
+{% set type_data = {} %}
+{% for b in business_types %}{% set _ = type_data.update({b.value: {'packs': b.pack_keys, 'presets': b.presets, 'label': b.label, 'pack_names': b.packs}}) %}{% endfor %}
+
+<div x-data="packageEditor('{{ tab }}', {{ kind_of|tojson|forceescape }}, {{ type_data|tojson|forceescape }}, {{ 'true' if is_new else 'false' }})">
+<form method="post" @change="count()" id="package-form" novalidate>
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="tab" :value="tab" value="{{ tab }}">
   <div class="page-header" data-no-more>
     <div>
       <a href="{{ url_for('tenants.packages') }}" class="back-link">{{ icon('chevron-right', 'icon-sm icon-flip') }}Packages</a>
       <h1>{{ 'New package' if is_new else package.name }}</h1>
-      {% if not is_new %}
-      <p class="text-muted mt-0">{% if clients %}Used by {{ clients }} client{{ 's' if clients != 1 }} - saving changes what they get.{% else %}No client is on this package yet.{% endif %}
-        {% if not package.is_active %}<span class="status-badge status-draft">Retired</span>{% endif %}</p>
-      {% endif %}
+      <p class="text-muted mt-0 editor-summary" aria-live="polite">
+        <span x-text="typeLabel()">{{ type_data[package.business_type].label if package.business_type in type_data else 'Any business' }}</span>
+        · <span x-text="n.inc"></span> included · <span x-text="n.choice"></span> client's choice · <span x-text="n.off"></span> off
+        {% if not is_new %}· {% if clients %}Used by {{ clients }} client{{ 's' if clients != 1 }}{% else %}No client yet{% endif %}{% endif %}
+        {% if not package.is_active %}<span class="status-badge status-draft">Retired</span>{% endif %}
+      </p>
     </div>
     <div class="row">
       {% if not is_new %}<a href="{{ url_for('tenants.package_new', copy=package.id) }}" class="btn btn-quiet">Copy</a>{% endif %}
-      <button type="submit" class="btn btn-primary">{{ 'Create package' if is_new else 'Save package' }}</button>
+      <a href="{{ url_for('tenants.packages_compare') }}" class="btn btn-quiet">Compare</a>
     </div>
   </div>
 
@@ -26,136 +70,167 @@
     switches it off for all of them; their records stay and come back if it's switched on again.</p>
   {% endif %}
 
-  <div class="card mb-20">
-    <h2 class="mt-0">Details</h2>
-    <div class="form-grid">
-      <label class="field"><span class="field-label">Name</span>
-        <input type="text" name="name" class="field-input" value="{{ package.name or '' }}" required maxlength="80"></label>
-      <label class="field"><span class="field-label">Price a month (Rs., before GST)</span>
-        <input type="number" name="price_monthly" class="field-input" step="0.01" min="0" value="{{ package.price_monthly if package.price_monthly is not none else '' }}" placeholder="No price"></label>
-      <label class="field"><span class="field-label">Price a year (Rs., before GST)</span>
-        <input type="number" name="price_yearly" class="field-input" step="0.01" min="0" value="{{ package.price_yearly if package.price_yearly is not none else '' }}" placeholder="No price"></label>
-    </div>
-    <label class="field"><span class="field-label">Description</span>
-      <textarea name="description" class="field-input" rows="2" placeholder="Who this package is for">{{ package.description or '' }}</textarea></label>
-    <div class="form-grid">
-      {% for key, label in limits.items() %}
-      <label class="field"><span class="field-label">{{ label }}</span>
-        <input type="number" name="limit_{{ key }}" class="field-input" min="0" step="1" value="{{ (package.limits or {}).get(key, '') }}" placeholder="No limit"></label>
-      {% endfor %}
-    </div>
-    <label class="switch-row">
-      <span class="switch"><input type="checkbox" name="own_branding" value="y" {% if package.own_branding %}checked{% endif %}><span class="switch-track"></span></span>
-      <span><strong>Own branding</strong><small>The client's own logo, colours and sign-in link. Off: ARFA's look.</small></span>
-    </label>
-  </div>
-
-  <div class="card mb-20">
-    <div class="card-head">
-      <div>
-        <h2 class="m-0">Modules</h2>
-        <p class="text-muted m-0" aria-live="polite"><span x-text="n.inc"></span> included · <span x-text="n.choice"></span> client's choice · <span x-text="n.off"></span> off</p>
-      </div>
-      <div class="row" role="group" aria-label="Set every module">
-        <span class="text-muted">Set all:</span>
-        {% for value, label in states.items() %}<button type="button" class="btn btn-quiet btn-sm" @click="setAll('{{ value }}')">{{ label }}</button>{% endfor %}
-      </div>
-    </div>
-    {# Sorted as the one catalogue sorts it (app/utils/catalogue.py): trade
-       packs, modules in six areas, counter options. An add-on sits under the
-       module it needs and warns when that one is Off. #}
-    {% for group in groups %}
-    {% if group.first %}
-    <h3 class="kind-heading">{{ group.kind_title }}<small>{{ group.kind_hint }}</small></h3>
-    {% endif %}
-    {% if group.kind == 'module' %}<h4 class="module-group-title">{{ group.title }}</h4>{% endif %}
-    <div class="state-list">
-      {% for row in group['items'] %}
-      {% set f = row.feature %}
-      {% set current = state_of(package, f.key) %}
-      <div class="state-row{{ ' is-addon' if row.depth }}">
-        <div class="state-name"><strong id="lbl_{{ f.key }}">{{ f.label }}</strong><small>{{ f.description }}</small>
-          {% if row.entry.needs %}
-          {% set needs_js = "['" ~ row.entry.needs|join("','") ~ "']" %}
-          <span class="needs-note" :class="{ 'is-off': {{ needs_js }}.some(k => s[k] === 'off') && s['{{ f.key }}'] !== 'off' }">
-            {{ icon('triangle-alert', 'icon-sm') }}Works with {{ row.needs|join(', ') }}<span x-show="{{ needs_js }}.some(k => s[k] === 'off') && s['{{ f.key }}'] !== 'off'" x-cloak> - which is Off in this package</span></span>
-          {% endif %}
-        </div>
-        <div class="state-seg" role="radiogroup" aria-labelledby="lbl_{{ f.key }}">
-          {% for value, label in states.items() %}
-          <input type="radio" name="mod_{{ f.key }}" value="{{ value }}" id="mod_{{ f.key }}_{{ value }}" {% if current == value %}checked{% endif %}>
-          <label for="mod_{{ f.key }}_{{ value }}" class="state-{{ value }}">{{ label }}</label>
-          {% endfor %}
-        </div>
-      </div>
-      {% endfor %}
-    </div>
+  <nav class="subnav client-tabs" role="tablist" aria-label="Parts of this package">
+    {% for key, label in editor_tabs %}
+    <button type="button" role="tab" id="ptabbtn-{{ key }}" aria-controls="ptab-{{ key }}"
+            class="tab-btn{{ ' active' if tab == key }}" :class="{ active: tab === '{{ key }}' }"
+            aria-selected="{{ 'true' if tab == key else 'false' }}" :aria-selected="(tab === '{{ key }}').toString()"
+            @click="go('{{ key }}')">{{ label }}
+      {% if key in ('trade', 'modules', 'counter') %}<span class="tab-count" x-text="on['{{ {'trade': 'trade', 'modules': 'module', 'counter': 'counter'}[key] }}'] + '/' + total['{{ {'trade': 'trade', 'modules': 'module', 'counter': 'counter'}[key] }}']"></span>{% endif %}
+    </button>
     {% endfor %}
-    <label class="field mt-16"><span class="field-label">Modules added to the app later start as</span>
-      <select name="unlisted_modules" class="field-input maxw-260">
-        {% for value, label in states.items() %}<option value="{{ value }}" {% if package.unlisted_modules == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
-      </select></label>
-  </div>
+  </nav>
 
-  <div class="card mb-20">
-    <h2 class="mt-0">Settings</h2>
-    <p class="text-muted mt-0">A locked setting still shows on the client's screen with a lock; you change it from their page here.</p>
-    <div class="state-list">
-      {% for key, label in settings.items() %}
-      {% set current = (package.settings or {}).get(key, 'client') %}
-      <div class="state-row">
-        <div class="state-name"><strong id="lbl_set_{{ key }}">{{ label }}</strong></div>
-        <div class="state-seg two" role="radiogroup" aria-labelledby="lbl_set_{{ key }}">
-          <input type="radio" name="set_{{ key }}" value="client" id="set_{{ key }}_client" {% if current != 'arfa' %}checked{% endif %}>
-          <label for="set_{{ key }}_client" class="state-choice">Client can change</label>
-          <input type="radio" name="set_{{ key }}" value="arfa" id="set_{{ key }}_arfa" {% if current == 'arfa' %}checked{% endif %}>
-          <label for="set_{{ key }}_arfa" class="state-inc">Only ARFA</label>
-        </div>
-      </div>
-      {% endfor %}
-    </div>
-  </div>
-
-  <div class="card mb-20">
-    <h2 class="mt-0">Branch logins and sign-in</h2>
-    <input type="hidden" name="counter_form" value="1">
-    <fieldset class="plain-fieldset">
-      <legend class="field-label">Counter permissions the client may give branch logins</legend>
-      <p class="field-help mt-0">A permission left unticked shows "Not in your package" on the client's Branches page, and the client can't give it - only your own switches for one login can.</p>
-      <div class="chip-checks">
-        {% for key, label in permission_labels.items() %}
-        <label class="chip-check"><input type="checkbox" name="counter_permission" value="{{ key }}" {% if package.counter_permissions is none or key in package.counter_permissions %}checked{% endif %}>
-          <span>{{ icon('check', 'icon-sm') }}{{ label }}</span></label>
+  {# --- Business type ------------------------------------------------------------------------- #}
+  {{ panel_open('type') }}
+    <div class="card mb-20">
+      <h2 class="mt-0">Who this package is for</h2>
+      <p class="text-muted mt-0">Picking a business type pre-sets its trade pack and the modules that trade usually needs
+        {%- if not is_new %} (press "Pre-set" - an existing package isn't changed until you do){% endif %}. Every choice stays
+        editable, and onboarding offers this package first to clients of that type.</p>
+      <div class="type-grid" role="radiogroup" aria-label="Business type">
+        <label class="type-card">
+          <input type="radio" name="business_type" value="" x-model="bt" {% if not package.business_type %}checked{% endif %}>
+          <span><strong>Any business</strong><small>No trade pack of its own</small></span>
+        </label>
+        {% for b in business_types if b.value != 'other' %}
+        <label class="type-card">
+          <input type="radio" name="business_type" value="{{ b.value }}" x-model="bt" @change="picked()" {% if package.business_type == b.value %}checked{% endif %}>
+          <span><strong>{{ b.label }}</strong>
+            <small>{% if b.packs %}{{ b.packs|join(', ') }} pack{{ 's' if b.packs|length > 1 }}{% else %}No trade pack{% endif %} · {{ b.presets|length }} usual modules</small></span>
+        </label>
         {% endfor %}
       </div>
-    </fieldset>
-    {% set sec = package.security or {} %}
-    <p class="field-label mt-16 mb-0">Sign-in minimums - the client may be stricter, never looser</p>
-    <div class="form-grid">
-      <label class="field"><span class="field-label">{{ security_minimums.idle_minutes }}</span>
-        <select name="sec_idle_minutes" class="field-input">
-          <option value="">No minimum</option>
-          {% for m in idle_choices %}<option value="{{ m }}" {% if sec.get('idle_minutes') == m %}selected{% endif %}>{{ m }} minutes</option>{% endfor %}
-        </select></label>
-      <label class="field"><span class="field-label">{{ security_minimums.lock_minutes }}</span>
-        <select name="sec_lock_minutes" class="field-input">
-          <option value="">No minimum</option>
-          {% for m in lock_choices %}<option value="{{ m }}" {% if sec.get('lock_minutes') == m %}selected{% endif %}>{{ m }} minutes</option>{% endfor %}
-        </select></label>
+      <div class="row mt-16" x-show="bt" x-cloak>
+        <button type="button" class="btn btn-secondary" @click="applyType()">{{ icon('sparkles', 'icon-sm') }}<span x-text="'Pre-set ' + typeLabel() + '\'s pack and modules'">Pre-set its pack and modules</span></button>
+        <span class="text-muted" x-text="applied" aria-live="polite"></span>
+      </div>
     </div>
-    <label class="switch-row">
-      <span class="switch"><input type="checkbox" name="sec_owner_two_step" value="y" {% if sec.get('owner_two_step') %}checked{% endif %}><span class="switch-track"></span></span>
-      <span><strong>{{ security_minimums.owner_two_step }}</strong><small>The owner sets up a code from their phone at their next sign-in.</small></span>
-    </label>
-  </div>
+  </section>
 
-  <div class="row">
+  {# --- Trade packs / Modules / Counter options ------------------------------------------------- #}
+  {% for key, kind, title, hint in [('trade', 'trade', 'Trade packs', 'Tools for one trade. Any number can be in one package.'), ('modules', 'module', 'Modules', 'Tools any business can use, in six areas. An add-on sits under the module it needs.'), ('counter', 'counter', 'Counter options', 'How the counter behaves.')] %}
+  {{ panel_open(key) }}
+    <div class="card mb-20">
+      <div class="card-head">
+        <div><h2 class="m-0">{{ title }}</h2><p class="text-muted m-0">{{ hint }}</p></div>
+        {{ set_all(kind) }}
+      </div>
+      {% for group in groups if group.kind == kind %}
+      {% if kind == 'module' %}<h4 class="module-group-title">{{ group.title }}</h4>{% endif %}
+      {{ state_rows(group) }}
+      {% endfor %}
+      {% if kind == 'module' %}
+      <label class="field mt-16"><span class="field-label">Modules added to the app later start as</span>
+        <select name="unlisted_modules" class="field-input maxw-260">
+          {% for value, label in states.items() %}<option value="{{ value }}" {% if package.unlisted_modules == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select></label>
+      {% endif %}
+    </div>
+  </section>
+  {% endfor %}
+
+  {# --- Settings & locks ------------------------------------------------------------------------ #}
+  {{ panel_open('settings') }}
+    <div class="card mb-20">
+      <h2 class="mt-0">Settings &amp; locks</h2>
+      <p class="text-muted mt-0">A locked setting still shows on the client's screen with a lock; you change it from their page.</p>
+      {% for group_label, items in setting_groups %}
+      <h4 class="module-group-title">{{ group_label }}</h4>
+      <div class="state-list">
+        {% for key, label in items %}
+        {% set current = (package.settings or {}).get(key, 'client') %}
+        <div class="state-row">
+          <div class="state-name"><strong id="lbl_set_{{ key }}">{{ label }}</strong></div>
+          <div class="state-seg two" role="radiogroup" aria-labelledby="lbl_set_{{ key }}">
+            <input type="radio" name="set_{{ key }}" value="client" id="set_{{ key }}_client" {% if current != 'arfa' %}checked{% endif %}>
+            <label for="set_{{ key }}_client" class="state-choice">Client can change</label>
+            <input type="radio" name="set_{{ key }}" value="arfa" id="set_{{ key }}_arfa" {% if current == 'arfa' %}checked{% endif %}>
+            <label for="set_{{ key }}_arfa" class="state-inc">Only ARFA</label>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  {# --- Logins & limits ------------------------------------------------------------------------- #}
+  {{ panel_open('logins') }}
+    <div class="card mb-20">
+      <h2 class="mt-0">Limits</h2>
+      <div class="form-grid">
+        {% for key, label in limits.items() %}
+        <label class="field"><span class="field-label">{{ label }}</span>
+          <input type="number" name="limit_{{ key }}" class="field-input" min="0" step="1" value="{{ (package.limits or {}).get(key, '') }}" placeholder="No limit"></label>
+        {% endfor %}
+      </div>
+      <label class="switch-row">
+        <span class="switch"><input type="checkbox" name="own_branding" value="y" {% if package.own_branding %}checked{% endif %}><span class="switch-track"></span></span>
+        <span><strong>Own branding</strong><small>The client's own logo, colours and sign-in link. Off: ARFA's look.</small></span>
+      </label>
+    </div>
+    <div class="card mb-20">
+      <h2 class="mt-0">Branch logins and sign-in</h2>
+      <input type="hidden" name="counter_form" value="1">
+      <fieldset class="plain-fieldset">
+        <legend class="field-label">Counter permissions the client may give branch logins</legend>
+        <p class="field-help mt-0">A permission left unticked shows "Not in your package" on the client's Branches page, and the client can't give it - only your own switches for one login can.</p>
+        <div class="chip-checks">
+          {% for key, label in permission_labels.items() %}
+          <label class="chip-check"><input type="checkbox" name="counter_permission" value="{{ key }}" {% if package.counter_permissions is none or key in package.counter_permissions %}checked{% endif %}>
+            <span>{{ icon('check', 'icon-sm') }}{{ label }}</span></label>
+          {% endfor %}
+        </div>
+      </fieldset>
+      {% set sec = package.security or {} %}
+      <p class="field-label mt-16 mb-0">Sign-in minimums - the client may be stricter, never looser</p>
+      <div class="form-grid">
+        <label class="field"><span class="field-label">{{ security_minimums.idle_minutes }}</span>
+          <select name="sec_idle_minutes" class="field-input">
+            <option value="">No minimum</option>
+            {% for m in idle_choices %}<option value="{{ m }}" {% if sec.get('idle_minutes') == m %}selected{% endif %}>{{ m }} minutes</option>{% endfor %}
+          </select></label>
+        <label class="field"><span class="field-label">{{ security_minimums.lock_minutes }}</span>
+          <select name="sec_lock_minutes" class="field-input">
+            <option value="">No minimum</option>
+            {% for m in lock_choices %}<option value="{{ m }}" {% if sec.get('lock_minutes') == m %}selected{% endif %}>{{ m }} minutes</option>{% endfor %}
+          </select></label>
+      </div>
+      <label class="switch-row">
+        <span class="switch"><input type="checkbox" name="sec_owner_two_step" value="y" {% if sec.get('owner_two_step') %}checked{% endif %}><span class="switch-track"></span></span>
+        <span><strong>{{ security_minimums.owner_two_step }}</strong><small>The owner sets up a code from their phone at their next sign-in.</small></span>
+      </label>
+    </div>
+  </section>
+
+  {# --- Name & price ---------------------------------------------------------------------------- #}
+  {{ panel_open('name') }}
+    <div class="card mb-20">
+      <h2 class="mt-0">Name &amp; price</h2>
+      <div class="form-grid">
+        <label class="field"><span class="field-label">Name</span>
+          <input type="text" name="name" class="field-input" value="{{ package.name or '' }}" required maxlength="80"></label>
+        <label class="field"><span class="field-label">Price a month (Rs., before GST)</span>
+          <input type="number" name="price_monthly" class="field-input" step="0.01" min="0" value="{{ package.price_monthly if package.price_monthly is not none else '' }}" placeholder="No price"></label>
+        <label class="field"><span class="field-label">Price a year (Rs., before GST)</span>
+          <input type="number" name="price_yearly" class="field-input" step="0.01" min="0" value="{{ package.price_yearly if package.price_yearly is not none else '' }}" placeholder="No price"></label>
+      </div>
+      <label class="field"><span class="field-label">Description</span>
+        <textarea name="description" class="field-input" rows="2" placeholder="Who this package is for">{{ package.description or '' }}</textarea></label>
+    </div>
+  </section>
+
+  {# One save, at the bottom of every tab. #}
+  <div class="editor-save">
+    <span class="text-muted" aria-hidden="true"><span x-text="n.inc"></span> included · <span x-text="n.choice"></span> client's choice · <span x-text="n.off"></span> off</span>
     <button type="submit" class="btn btn-primary">{{ 'Create package' if is_new else 'Save package' }}</button>
   </div>
 </form>
 
 {% if not is_new %}
-<form method="post" action="{{ url_for('tenants.package_active', package_id=package.id) }}" class="card mt-20">
+<form method="post" action="{{ url_for('tenants.package_active', package_id=package.id) }}" class="card mt-20"
+      x-show="tab === 'name'" {% if tab != 'name' %}x-cloak{% endif %}>
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   {% if package.is_active %}
   <input type="hidden" name="active" value="0">
@@ -168,25 +243,62 @@
   {% endif %}
 </form>
 {% endif %}
+</div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-function packageEditor() {
+// The package editor: which tab shows, live counts per kind, "Set all" for
+// one tab, and the business type's pre-set (its trade pack(s) Included and
+// its usual modules switched on). Nothing is saved until "Save package".
+function packageEditor(initial, kindOf, types, isNew) {
   return {
+    tab: initial,
+    bt: "{{ package.business_type or '' }}",
+    applied: "",
     n: { inc: 0, choice: 0, off: 0 },
+    on: { trade: 0, module: 0, counter: 0 },
+    total: { trade: 0, module: 0, counter: 0 },
     s: {},
     init() { this.count(); },
+    radios(selector) { return this.$root.querySelectorAll('input[type=radio][name^="mod_"]' + (selector || "")); },
     count() {
-      const n = { inc: 0, choice: 0, off: 0 }, s = {};
-      this.$root.querySelectorAll('input[type=radio][name^="mod_"]:checked').forEach(r => {
-        n[r.value]++; s[r.name.slice(4)] = r.value;
+      const n = { inc: 0, choice: 0, off: 0 }, on = { trade: 0, module: 0, counter: 0 },
+            total = { trade: 0, module: 0, counter: 0 }, s = {};
+      this.radios(":checked").forEach(r => {
+        const key = r.name.slice(4), kind = kindOf[key] || "module";
+        n[r.value]++; s[key] = r.value; total[kind]++;
+        if (r.value !== "off") on[kind]++;
       });
-      this.n = n; this.s = s;
+      Object.assign(this, { n, on, total, s });
     },
-    setAll(value) {
-      this.$root.querySelectorAll('input[type=radio][name^="mod_"][value="' + value + '"]').forEach(r => { r.checked = true; });
+    go(key) {
+      this.tab = key;
+      const url = new URL(location.href);
+      url.searchParams.set("tab", key);
+      history.replaceState(null, "", url);
+    },
+    setAll(value, kind) {
+      this.radios('[value="' + value + '"]').forEach(r => { if ((kindOf[r.name.slice(4)] || "module") === kind) r.checked = true; });
       this.count();
+    },
+    typeLabel() { return this.bt && types[this.bt] ? types[this.bt].label : "Any business"; },
+    picked() { if (isNew) this.applyType(); else this.applied = ""; },
+    applyType() {
+      const t = types[this.bt];
+      if (!t) return;
+      let changed = 0;
+      const set = (key, value, onlyIfOff) => {
+        const current = this.$root.querySelector('input[name="mod_' + key + '"]:checked');
+        if (onlyIfOff && current && current.value !== "off") return;
+        const radio = this.$root.querySelector('input[name="mod_' + key + '"][value="' + value + '"]');
+        if (radio && !radio.checked) { radio.checked = true; changed++; }
+      };
+      t.packs.forEach(k => set(k, "inc", false));
+      t.presets.forEach(k => set(k, "inc", true));
+      this.count();
+      this.applied = changed ? changed + " switch" + (changed === 1 ? "" : "es") + " set - check the other tabs, then save."
+                             : "Already set.";
     }
   };
 }

@@ -2559,13 +2559,58 @@ actions to Package & modules, login actions to Users & branches). Who
 sees which tab follows the same powers as before: no Billing tab for an
 auditor, no Package tab without a package power.
 
+### Console cleanup - stage 4 (the package editor in tabs, compare packages)
+
+The package editor was one 4,860 px page with every switch, setting and
+limit on it. It is now one form in seven tabs, with one **Save package**
+in a bar at the bottom of every tab (the longest tab, Modules, is about
+half the old page):
+
+- **Business type** - who the package is for (`packages.business_type`,
+  new; empty = any business). Each type card says which trade pack(s) it
+  brings and how many modules it usually needs. On a new package picking
+  a type pre-sets them (its trade packs Included, its usual modules from
+  Off to Included); on an existing one nothing changes until "Pre-set"
+  is pressed, so a package with clients is never re-switched by a click.
+  Onboarding offers a package marked for a type first to clients of that
+  type (before ARFA's default suggestion). ARFA's starting packages were
+  marked by the migration (Retail, Restaurant, Pharmacy, Mobiles &
+  Electronics, Wholesale).
+- **Trade packs**, **Modules** (six areas, add-ons indented with their
+  live warning, "Modules added later start as") and **Counter options** -
+  each with its own "Set all" for that tab only, and an "on / total"
+  count on the tab itself.
+- **Settings & locks** - the nine settings in three groups: Business;
+  Look & printing; Counter & sign-in.
+- **Logins & limits** - branches, logins, GSTINs, own branding, the
+  counter permissions a client may give and the sign-in minimums.
+- **Name & price** - name, monthly / yearly price, description; Retire /
+  bring back.
+
+The header keeps a running summary (who it's for, included / client's
+choice / off, clients on it). A new package opens on Business type, an
+existing one on Modules; `?tab=` opens any tab and a save returns to the
+tab it was made from. Changing the type is recorded in the package's
+audit entry (before / after).
+
+**Compare packages** (Packages -> Compare, `/admin/packages/compare`,
+Ultra Admin only): every active package across (retired with "Show
+retired"), and down: who it's for, clients on it, prices, limits, own
+branding, then every switch by kind and area (✓ included, "choice", –
+off) and the settings only ARFA changes. Rows where packages differ are
+marked; "Only differences" hides the rest. Each package card on the
+Packages list now says who it's for.
+
 ### Packages and powers - how to run it (hand-over)
 
 For the Ultra Admin. Everything below is in the console, which opens on
 **Today** - what needs you (verifications, module requests, clients with
 no auditor, renewals) with a link to each.
 
-1. **Packages** (Platform -> Packages). Eight to start, all editable:
+1. **Packages** (Platform -> Packages; "Compare" puts them side by side).
+   Eight to start, all editable, each in tabs (who it's for, trade packs,
+   modules, counter options, settings & locks, logins & limits, name &
+   price):
    Current setup (every client that existed before - nothing changed for
    them), Billing, Retail, Restaurant, Pharmacy, Mobiles & Electronics,
    Wholesale, Everything. In a package set each module **Off / Included /
@@ -2706,9 +2751,9 @@ before packages.
     clients-list filters, a plain Auditors list.
   - Stage 3 (done): the client page in tabs (Overview, Package & modules,
     Users & branches, Billing, Documents, Changes).
-  - Stage 4: the package editor in tabs (Business type, Trade packs,
-    Modules, Counter options, Settings & locks, Logins & limits, Name &
-    price) and a compare-packages table.
+  - Stage 4 (done): the package editor in tabs (Business type, Trade
+    packs, Modules, Counter options, Settings & locks, Logins & limits,
+    Name & price) and a compare-packages table.
   - Stage 5: auditor page in tabs, onboarding in three steps, audit-log
     filters and pages, walk-through, hand-over.
 

@@ -193,6 +193,11 @@ def _onboarding_packages(form):
         return {"packages": [], "type_packs": type_packs}
     by_key = {p.key: p.id for p in packages if p.key}
     suggest = {bt: by_key[key] for bt, key in BUSINESS_TYPE_PACKAGE.items() if key in by_key}
+    # A package marked for a business type (its editor's Business type tab)
+    # is offered first to clients of that type (console cleanup, stage 4).
+    for p in reversed(packages):
+        if p.business_type:
+            suggest[p.business_type] = p.id
     chosen = request.form.get("package_id", type=int) or suggest.get(form.business_type.data or "retail")
     return {"packages": packages, "package_suggest": suggest, "package_default": chosen, "type_packs": type_packs}
 

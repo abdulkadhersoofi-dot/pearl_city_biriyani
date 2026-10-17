@@ -45,6 +45,11 @@ class Package(db.Model, TimestampMixin):
     security = db.Column(db.JSON, nullable=False, default=dict, server_default="{}")
     price_monthly = db.Column(db.Numeric(10, 2))
     price_yearly = db.Column(db.Numeric(10, 2))
+    # Who it's for (console cleanup, stage 4): a BusinessType value, or null
+    # for any business. Only suggests - picking it in the editor pre-sets
+    # that type's trade pack and usual modules, and onboarding offers it to
+    # clients of that type first.
+    business_type = db.Column(db.String(30))
     is_active = db.Column(db.Boolean, nullable=False, default=True, server_default="true")
     sort_order = db.Column(db.Integer, nullable=False, default=0, server_default="0")
 

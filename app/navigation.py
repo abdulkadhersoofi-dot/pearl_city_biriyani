@@ -185,7 +185,7 @@ def _admin_groups(user) -> list[Group]:
             )),
             Group("platform", "Platform", (
                 Link("Packages", "tenants.packages", "layout-grid",
-                     endpoints=("tenants.packages", "tenants.package_new", "tenants.package_edit"),
+                     endpoints=("tenants.packages", "tenants.package_new", "tenants.package_edit", "tenants.packages_compare"),
                      keywords="plans modules subscription tiers"),
                 Link("Billing", "subscriptions.index", "banknote", blueprints=("subscriptions",),
                      keywords="subscriptions invoices fees"),

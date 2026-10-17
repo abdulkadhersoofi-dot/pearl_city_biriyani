@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Compare packages - {{ firm_name }}{% endblock %}
+{% block content %}
+{# Packages side by side (console cleanup, stage 4): packages across,
+   everything they decide down - sorted as the one catalogue sorts it.
+   "Only differences" hides the rows where every package agrees. #}
+{% set mark = {'inc': ('cmp-inc', 'Included', '✓'), 'choice': ('cmp-choice', "Client's choice", 'choice'), 'off': ('cmp-off', 'Off', '–')} %}
+<div x-data="{ diff: false }">
+  <div class="page-header">
+    <div>
+      <a href="{{ url_for('tenants.packages') }}" class="back-link">{{ icon('chevron-right', 'icon-sm icon-flip') }}Packages</a>
+      <h1>Compare packages</h1>
+      <p class="text-muted mt-0">{{ packages|length }} package{{ 's' if packages|length != 1 }} side by side.
+        <span class="cmp cmp-inc">✓</span> included · <span class="cmp cmp-choice">choice</span> the client's choice · <span class="cmp cmp-off">–</span> off</p>
+    </div>
+    <div class="row">
+      <a href="{{ url_for('tenants.packages_compare', retired=0 if show_retired else 1) }}" class="btn btn-quiet">{{ 'Hide retired' if show_retired else 'Show retired' }}</a>
+    </div>
+  </div>
+
+  <label class="switch-row mb-12">
+    <span class="switch"><input type="checkbox" x-model="diff"><span class="switch-track"></span></span>
+    <span><strong>Only differences</strong><small>Hide the rows where every package says the same.</small></span>
+  </label>
+
+  <div class="table-wrap card console-card">
+    <table class="compare-table no-stack" :class="{ 'only-diff': diff }">
+      <thead>
+        <tr>
+          <th scope="col"><span class="sr-only">What</span></th>
+          {% for p in packages %}
+          <th scope="col"><a href="{{ url_for('tenants.package_edit', package_id=p.id) }}">{{ p.name }}</a>
+            {% if not p.is_active %}<br><span class="status-badge status-draft">Retired</span>{% endif %}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="{{ 'same' if packages|map(attribute='business_type')|unique|list|length <= 1 else 'differs' }}">
+          <td>For</td>{% for p in packages %}<td>{{ types.get(p.business_type, 'Any business') if p.business_type else 'Any business' }}</td>{% endfor %}</tr>
+        <tr class="differs"><td>Clients on it</td>{% for p in packages %}<td>{{ counts.get(p.id, 0) }}</td>{% endfor %}</tr>
+        <tr class="{{ 'same' if packages|map(attribute='price_monthly')|unique|list|length <= 1 else 'differs' }}">
+          <td>Price a month</td>{% for p in packages %}<td>{{ ('Rs. ' ~ p.price_monthly|inr(0)) if p.price_monthly else '-' }}</td>{% endfor %}</tr>
+        <tr class="{{ 'same' if packages|map(attribute='price_yearly')|unique|list|length <= 1 else 'differs' }}">
+          <td>Price a year</td>{% for p in packages %}<td>{{ ('Rs. ' ~ p.price_yearly|inr(0)) if p.price_yearly else '-' }}</td>{% endfor %}</tr>
+        {% for key, label in limits.items() %}
+        {% set values = [] %}{% for p in packages %}{% set _ = values.append((p.limits or {}).get(key)) %}{% endfor %}
+        <tr class="{{ 'same' if values|unique|list|length <= 1 else 'differs' }}">
+          <td>{{ label }}</td>{% for v in values %}<td>{{ v if v is not none else 'any' }}</td>{% endfor %}</tr>
+        {% endfor %}
+        <tr class="{{ 'same' if packages|map(attribute='own_branding')|unique|list|length <= 1 else 'differs' }}">
+          <td>Own branding</td>{% for p in packages %}<td>{{ 'Yes' if p.own_branding else 'No' }}</td>{% endfor %}</tr>
+      </tbody>
+      {% for group in groups %}
+      <tbody>
+        {% if group.first %}<tr class="group-row kind-row"><th colspan="{{ packages|length + 1 }}" scope="colgroup">{{ group.kind_title }}</th></tr>{% endif %}
+        {% if group.kind == 'module' %}<tr class="group-row"><th colspan="{{ packages|length + 1 }}" scope="colgroup">{{ group.title }}</th></tr>{% endif %}
+        {% for row in group.rows %}
+        <tr class="{{ 'same' if row.same else 'differs' }}">
+          <td class="{{ 'is-addon-cell' if row.depth }}">{{ row.feature.label }}</td>
+          {% for state in row.cells %}<td><span class="cmp {{ mark[state][0] }}" title="{{ mark[state][1] }}" aria-label="{{ mark[state][1] }}">{{ mark[state][2] }}</span></td>{% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+      {% endfor %}
+      <tbody>
+        <tr class="group-row"><th colspan="{{ packages|length + 1 }}" scope="colgroup">Settings only ARFA changes</th></tr>
+        {% for row in settings %}
+        <tr class="{{ 'same' if row.same else 'differs' }}">
+          <td>{{ row.label }}</td>
+          {% for state in row.cells %}<td>{% if state == 'arfa' %}<span class="cmp cmp-inc" title="Only ARFA">{{ icon('lock-keyhole', 'icon-sm') }}</span>{% else %}<span class="cmp cmp-off" title="Client can change">–</span>{% endif %}</td>{% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

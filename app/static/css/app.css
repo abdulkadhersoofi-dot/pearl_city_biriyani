@@ -1956,3 +1956,51 @@ a.console-stat { text-decoration: none; }
 }
 /* "Only what differs": a client's exceptions table shows just their own changes. */
 .exceptions-table.only-changed tbody tr:not(.has-exception) { display: none; }
+
+/* The package editor in tabs (console cleanup, stage 4). Tabs are buttons
+   here - switching mustn't leave the unsaved form. */
+.subnav .tab-btn {
+  position: relative; flex-shrink: 0; display: inline-flex; align-items: center; gap: 6px; padding: 10px 14px; border: none;
+  background: transparent; font: inherit; font-weight: 600; color: var(--color-text-muted); white-space: nowrap; cursor: pointer;
+}
+.subnav .tab-btn::after {
+  content: ""; position: absolute; left: 10px; right: 10px; bottom: -1px; height: 3px; border-radius: 3px 3px 0 0;
+  background: var(--color-primary); transform: scaleX(0); transition: transform 0.22s var(--ease-out);
+}
+.subnav .tab-btn:hover { color: var(--color-text); }
+.subnav .tab-btn.active { color: var(--color-primary-dark); }
+.subnav .tab-btn.active::after { transform: scaleX(1); }
+.subnav .tab-btn:focus-visible { outline: 2px solid var(--color-primary); outline-offset: -2px; border-radius: 8px; }
+.editor-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.set-all { gap: 6px; flex-wrap: wrap; }
+.type-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; }
+.type-card { position: relative; display: flex; cursor: pointer; }
+.type-card input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.type-card > span {
+  flex: 1; display: flex; flex-direction: column; gap: 3px; padding: 12px 14px; border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border); background: var(--color-surface); transition: border-color 0.15s, box-shadow 0.15s;
+}
+.type-card small { color: var(--color-text-muted); font-size: 0.82rem; }
+.type-card:hover > span { border-color: var(--color-border-strong); }
+.type-card input:checked + span { border-color: var(--color-primary); box-shadow: 0 0 0 3px var(--color-primary-soft); }
+.type-card input:focus-visible + span { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.editor-save {
+  position: sticky; bottom: 0; z-index: 15; display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin: 0 -4px; padding: 12px 16px; border-radius: var(--radius-lg); border: 1px solid var(--color-border);
+  background: color-mix(in srgb, var(--color-surface) 92%, transparent); backdrop-filter: blur(8px); box-shadow: var(--shadow-2);
+}
+/* Compare packages. */
+.compare-table th, .compare-table td { text-align: center; white-space: nowrap; }
+.compare-table th:first-child, .compare-table td:first-child { text-align: left; white-space: normal; min-width: 220px; position: sticky; left: 0; background: var(--color-surface); z-index: 1; }
+.compare-table td.is-addon-cell { padding-left: 28px; }
+.compare-table tr.differs td:first-child { box-shadow: inset 3px 0 0 var(--color-accent); font-weight: 700; }
+.compare-table .group-row th { text-align: left; background: var(--color-surface-2); }
+.cmp { display: inline-grid; place-items: center; min-width: 26px; height: 24px; padding: 0 8px; border-radius: 999px; font-size: 0.76rem; font-weight: 700; }
+.cmp-inc { background: var(--color-success-bg); color: var(--color-primary-dark); }
+.cmp-choice { background: var(--color-warn-bg); color: var(--color-warn-text); }
+.cmp-off { color: var(--color-text-muted); }
+.compare-table.only-diff tbody tr.same { display: none; }
+@media (max-width: 640px) {
+  .editor-save { flex-direction: column; align-items: stretch; }
+}
+.package-for { display: flex; align-items: center; gap: 6px; font-size: 0.86rem; font-weight: 600; color: var(--color-primary-dark); }

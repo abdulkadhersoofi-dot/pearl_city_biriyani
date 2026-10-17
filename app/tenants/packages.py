@@ -47,6 +47,40 @@ def module_rows():
     return catalogue.groups()
 
 
+# The package editor's "Settings & locks" tab, in three groups (console
+# cleanup, stage 4). A setting added to entitlements.SETTINGS without a
+# group here still shows, under "Other".
+SETTING_GROUPS = [
+    ("Business", ("business_type", "aato", "pricing")),
+    ("Look & printing", ("branding", "receipt", "margin_declaration")),
+    ("Counter & sign-in", ("counter", "security", "gst_portal")),
+]
+
+# The editor's tabs, in order.
+EDITOR_TABS = [
+    ("type", "Business type"), ("trade", "Trade packs"), ("modules", "Modules"), ("counter", "Counter options"),
+    ("settings", "Settings & locks"), ("logins", "Logins & limits"), ("name", "Name & price"),
+]
+
+
+def setting_groups():
+    placed = {key for _, keys in SETTING_GROUPS for key in keys}
+    out = [(label, [(key, SETTINGS[key]) for key in keys if key in SETTINGS]) for label, keys in SETTING_GROUPS]
+    rest = [(key, label) for key, label in SETTINGS.items() if key not in placed]
+    if rest:
+        out.append(("Other", rest))
+    return out
+
+
+def _editor_context(package, clients, is_new):
+    tab = request.values.get("tab")
+    return {"package": package, "groups": module_rows(), "clients": clients, "settings": SETTINGS,
+            "setting_groups": setting_groups(), "limits": LIMITS, "states": MODULE_STATES,
+            "state_of": package_module_state, "is_new": is_new, "business_types": catalogue.business_types(),
+            "editor_tabs": EDITOR_TABS,
+            "tab": tab if tab in dict(EDITOR_TABS) else ("type" if is_new else "modules"), **_login_bits()}
+
+
 def _money(raw):
     raw = (raw or "").strip()
     if not raw:
@@ -91,7 +125,39 @@ def packages():
     counts = dict(db.session.query(TenantPackage.package_id, db.func.count(TenantPackage.id))
                   .group_by(TenantPackage.package_id).all())
     return render_template("tenants/packages.html", packages=rows, counts=counts,
-                           summaries={p.id: package_summary(p) for p in rows}, limits=LIMITS)
+                           summaries={p.id: package_summary(p) for p in rows}, limits=LIMITS,
+                           types={b["value"]: b["label"] for b in catalogue.business_types()})
+
+
+@tenants_bp.route("/packages/compare")
+@roles_required(UserRole.SUPER_ADMIN)
+def packages_compare():
+    """Packages side by side (console cleanup, stage 4): who each is for,
+    price, limits, then every switch by kind and area, and the locked
+    settings. Retired packages only with ?retired=1."""
+    ensure_starting_packages()
+    db.session.commit()
+    show_retired = request.args.get("retired") == "1"
+    query = Package.query if show_retired else Package.query.filter_by(is_active=True)
+    packages = query.order_by(Package.is_active.desc(), Package.sort_order, Package.name).all()
+    counts = dict(db.session.query(TenantPackage.package_id, db.func.count(TenantPackage.id))
+                  .group_by(TenantPackage.package_id).all())
+    types = {b["value"]: b["label"] for b in catalogue.business_types()}
+    groups = []
+    for group in module_rows():
+        rows = []
+        for row in group["items"]:
+            key = row["feature"].key
+            cells = [package_module_state(p, key) for p in packages]
+            rows.append({"feature": row["feature"], "depth": row["depth"], "cells": cells,
+                         "same": len(set(cells)) <= 1})
+        groups.append({**group, "rows": rows})
+    settings = []
+    for key, label in SETTINGS.items():
+        cells = [(p.settings or {}).get(key, "client") for p in packages]
+        settings.append({"label": label, "cells": cells, "same": len(set(cells)) <= 1})
+    return render_template("tenants/packages_compare.html", packages=packages, groups=groups, settings=settings,
+                           counts=counts, types=types, limits=LIMITS, states=MODULE_STATES, show_retired=show_retired)
 
 
 def _package_from_form(package):
@@ -104,6 +170,11 @@ def _package_from_form(package):
         errors.append(f"There is already a package called {name}.")
     package.name = name or package.name
     package.description = (request.form.get("description") or "").strip() or None
+    business_type = request.form.get("business_type") or None
+    if business_type is not None and business_type not in {b["value"] for b in catalogue.business_types()}:
+        errors.append("Pick a business type from the list.")
+        business_type = package.business_type
+    package.business_type = business_type
     try:
         package.price_monthly = _money(request.form.get("price_monthly"))
         package.price_yearly = _money(request.form.get("price_yearly"))
@@ -153,6 +224,7 @@ def package_new():
     if source is not None and request.method == "GET":
         package.name = f"{source.name} (copy)"
         package.description = source.description
+        package.business_type = source.business_type
         package.modules = {f.key: package_module_state(source, f.key) for f in AVAILABLE_FEATURES}
         package.settings = dict(source.settings or {})
         package.limits = dict(source.limits or {})
@@ -173,10 +245,8 @@ def package_new():
                          details={"name": package.name, "copied_from": source.name if source else None})
             db.session.commit()
             flash(f"Package {package.name} created.", "success")
-            return redirect(url_for("tenants.package_edit", package_id=package.id))
-    return render_template("tenants/package_form.html", package=package, groups=module_rows(), clients=0,
-                           settings=SETTINGS, limits=LIMITS, states=MODULE_STATES, state_of=package_module_state,
-                           is_new=True, **_login_bits())
+            return redirect(url_for("tenants.package_edit", package_id=package.id, tab=_posted_tab()))
+    return render_template("tenants/package_form.html", **_editor_context(package, 0, True))
 
 
 @tenants_bp.route("/packages/<int:package_id>", methods=["GET", "POST"])
@@ -184,7 +254,8 @@ def package_new():
 def package_edit(package_id):
     package = Package.query.get_or_404(package_id)
     if request.method == "POST":
-        before = {"modules": dict(package.modules or {}), "settings": dict(package.settings or {}),
+        before = {"business_type": package.business_type,
+                  "modules": dict(package.modules or {}), "settings": dict(package.settings or {}),
                   "limits": dict(package.limits or {}), "own_branding": package.own_branding,
                   "counter_permissions": package.counter_permissions, "security": dict(package.security or {}),
                   "price_monthly": str(package.price_monthly), "price_yearly": str(package.price_yearly)}
@@ -200,7 +271,8 @@ def package_edit(package_id):
                 refresh_read_only(grant.tenant)
             record_audit(current_user, "package_edited", entity_type="package", entity_id=package.id,
                          details={"name": package.name, "before": before,
-                                  "after": {"modules": package.modules, "settings": package.settings,
+                                  "after": {"business_type": package.business_type,
+                                            "modules": package.modules, "settings": package.settings,
                                             "limits": package.limits, "own_branding": package.own_branding,
                                             "counter_permissions": package.counter_permissions,
                                             "security": package.security,
@@ -208,10 +280,8 @@ def package_edit(package_id):
                                             "price_yearly": str(package.price_yearly)}})
             db.session.commit()
             flash(f"Package {package.name} saved.", "success")
-            return redirect(url_for("tenants.package_edit", package_id=package.id))
-    return render_template("tenants/package_form.html", package=package, groups=module_rows(),
-                           clients=_clients_using(package.id), settings=SETTINGS, limits=LIMITS,
-                           states=MODULE_STATES, state_of=package_module_state, is_new=False, **_login_bits())
+            return redirect(url_for("tenants.package_edit", package_id=package.id, tab=_posted_tab()))
+    return render_template("tenants/package_form.html", **_editor_context(package, _clients_using(package.id), False))
 
 
 @tenants_bp.route("/packages/<int:package_id>/active", methods=["POST"])
@@ -224,7 +294,12 @@ def package_active(package_id):
     db.session.commit()
     flash(f"{package.name} is {'available again' if package.is_active else 'retired - its clients keep it, nobody new gets it'}.",
           "success")
-    return redirect(url_for("tenants.package_edit", package_id=package.id))
+    return redirect(url_for("tenants.package_edit", package_id=package.id, tab="name"))
+
+
+def _posted_tab():
+    tab = request.form.get("tab")
+    return tab if tab in dict(EDITOR_TABS) else None
 
 
 # --- a client's package and exceptions ---------------------------------------------------------------

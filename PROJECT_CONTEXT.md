@@ -559,6 +559,16 @@ this list is just the index.
   tab. Redirects back to a client pass `tab=` (billing / package / users);
   a new section needs its `sec-` id added to the script's `HOLDS` map.
 
+- **Package editor tabs (console cleanup, stage 4).** `Package.business_type`
+  (migration f3c8d2a6b417, String, a BusinessType value or null).
+  `packages._editor_context` feeds `package_form.html` (tabs from
+  `EDITOR_TABS`, settings from `SETTING_GROUPS`, type cards from
+  `catalogue.business_types()` - their `pack_keys` / `presets` drive the
+  JS pre-set). The form posts `tab` so `package_edit` redirects back to it.
+  `packages_compare` (`/admin/packages/compare`) reads the same catalogue
+  groups. Onboarding's suggestion prefers a package whose `business_type`
+  matches.
+
 ## 5. Chronological development history (this session)
 
 This is the part README.md doesn't capture — the actual sequence of

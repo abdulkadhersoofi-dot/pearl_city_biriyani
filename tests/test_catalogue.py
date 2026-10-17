@@ -107,9 +107,12 @@ def _positions(html, *needles):
 def test_the_package_editor_is_sorted_by_kind(client, db, super_admin, packs):
     _login(client, super_admin.email, "SuperSecret123")
     html = client.get(f"/admin/packages/{packs['retail'].id}").get_data(as_text=True)
-    a = _positions(html, ">Trade packs<", ">Modules<small", ">Selling</h4>", ">Buying &amp; suppliers</h4>",
-                   ">Stock</h4>", ">Accounts</h4>", ">Reports</h4>", ">GST compliance</h4>", ">Counter options<")
+    # In tabs since console cleanup stage 4: one tab per kind, areas in order inside Modules.
+    a = _positions(html, 'id="ptab-trade"', 'id="ptab-modules"', ">Selling</h4>", ">Buying &amp; suppliers</h4>",
+                   ">Stock</h4>", ">Accounts</h4>", ">Reports</h4>", ">GST compliance</h4>", 'id="ptab-counter"')
     assert a == sorted(a)
+    trade = html.split('id="ptab-trade"', 1)[1].split('id="ptab-modules"', 1)[0]
+    assert 'id="lbl_pharmacy"' in trade and 'id="lbl_inventory"' not in trade
     # Supplier accounts is listed next to Purchases, not under money and reports.
     assert html.index('id="lbl_purchases"') < html.index('id="lbl_payables"') < html.index(">Stock</h4>")
     # Batch & expiry is an add-on under Inventory, with its warning ready.
