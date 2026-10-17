@@ -29,7 +29,7 @@ def _subject(kind: str, subject_id: int):
 
 def _back(subject):
     if isinstance(subject, Tenant):
-        return redirect(url_for("tenants.detail", tenant_id=subject.id))
+        return redirect(url_for("tenants.detail", tenant_id=subject.id, tab="billing"))
     return redirect(url_for("tenants.auditor_detail", auditor_id=subject.id))
 
 

@@ -119,7 +119,7 @@ def save_login_switches(tenant_id, user_id):
             raise InvalidOperation
     except InvalidOperation:
         flash("The discount limit is a percentage from 0 to 100 - or leave it blank.", "error")
-        return redirect(url_for("tenants.detail", tenant_id=tenant_id, _anchor=f"login-{login.id}"))
+        return redirect(url_for("tenants.detail", tenant_id=tenant_id, tab="users", _anchor=f"login-{login.id}"))
     if request.form.get("action") == "clear":
         hidden, permissions, cap = [], {}, None
     set_login_switches(login, current_user, hidden_modules=hidden, permissions=permissions, max_discount_percent=cap,
@@ -127,4 +127,4 @@ def save_login_switches(tenant_id, user_id):
     db.session.commit()
     flash(f"{'Handed back to the client' if request.form.get('action') == 'clear' else 'Switches saved'} "
           f"for {login.name}.", "success")
-    return redirect(url_for("tenants.detail", tenant_id=tenant_id, _anchor=f"login-{login.id}"))
+    return redirect(url_for("tenants.detail", tenant_id=tenant_id, tab="users", _anchor=f"login-{login.id}"))

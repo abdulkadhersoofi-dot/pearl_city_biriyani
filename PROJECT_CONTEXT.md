@@ -552,6 +552,13 @@ this list is just the index.
   Auditors lists filter client-side by `data-groups`; `?show=` picks the
   starting chip.
 
+- **Client page tabs (console cleanup, stage 3).** `tenants/detail.html`
+  renders every tab (`client_tabs` from `routes._client_tabs` - not
+  `tabs`, which base.html uses for the phone bar); `?tab=` picks the open
+  one and `clientPage()` maps old `#sec-...` / `#login-N` anchors to their
+  tab. Redirects back to a client pass `tab=` (billing / package / users);
+  a new section needs its `sec-` id added to the script's `HOLDS` map.
+
 ## 5. Chronological development history (this session)
 
 This is the part README.md doesn't capture — the actual sequence of

@@ -1919,3 +1919,40 @@ a.console-stat { text-decoration: none; }
   .today-item-head { display: grid; grid-template-columns: 40px minmax(0, 1fr); column-gap: 12px; row-gap: 10px; align-items: start; }
   .today-item-head .btn { grid-column: 2; justify-self: start; }
 }
+
+/* A client's page in tabs (console cleanup, stage 3). */
+.client-title { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.client-mark-lg { width: 48px !important; height: 48px !important; font-size: 1.3rem !important; border-radius: 14px !important; flex-shrink: 0; }
+.client-head .text-muted { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+.client-tabs { position: sticky; top: var(--topbar-h, 60px); z-index: 20; background: var(--color-bg); margin-top: 4px; overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; }
+.client-tabs a { white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
+.tab-count { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--color-surface-2); color: var(--color-text-muted); font-size: 0.74rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.tab-count.is-alert { background: var(--color-warn-bg); color: var(--color-warn-text); }
+.tab-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--color-warn-text); }
+.client-panel { animation: panel-in 0.18s var(--ease-out); }
+@keyframes panel-in { from { opacity: 0; transform: translateY(4px); } }
+.notice-row { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; padding: 12px 14px; border-radius: var(--radius); background: var(--color-warn-bg); color: var(--color-warn-text); text-decoration: none; }
+.notice-row span { flex: 1 1 auto; color: var(--color-text); }
+.client-facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px 20px; margin: 0; }
+.client-facts div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.client-facts dt { font-size: 0.78rem; font-weight: 600; color: var(--color-text-muted); }
+.client-facts dd { margin: 0; font-weight: 700; display: flex; flex-direction: column; }
+.client-facts dd small { font-weight: 500; color: var(--color-text-muted); font-size: 0.82rem; }
+.overview-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-bottom: 20px; }
+.client-logo { width: 72px; height: 72px; object-fit: contain; border-radius: var(--radius); border: 1px solid var(--color-border); background: #fff; }
+.login-table td { vertical-align: middle; }
+.row-end { justify-content: flex-end; }
+.block { display: block; }
+.maxw-360 { max-width: 360px; }
+.menu-wrap .more-pop { min-width: 220px; }
+.menu-wrap .more-pop .btn small { font-weight: 500; margin-left: 4px; }
+.seg-pills { display: inline-flex; gap: 2px; padding: 3px; border-radius: 10px; background: var(--color-surface-2); border: 1px solid var(--color-border); flex-wrap: wrap; }
+.seg-pills button { border: none; background: transparent; padding: 6px 12px; border-radius: 8px; font: inherit; font-size: 0.86rem; font-weight: 600; color: var(--color-text-muted); cursor: pointer; }
+.seg-pills button.is-on { background: var(--color-surface); color: var(--color-text); box-shadow: var(--shadow-1); }
+.seg-pills b { font-variant-numeric: tabular-nums; opacity: 0.7; margin-left: 2px; }
+@media (max-width: 900px) {
+  .client-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .overview-grid { grid-template-columns: minmax(0, 1fr); }
+}
+/* "Only what differs": a client's exceptions table shows just their own changes. */
+.exceptions-table.only-changed tbody tr:not(.has-exception) { display: none; }

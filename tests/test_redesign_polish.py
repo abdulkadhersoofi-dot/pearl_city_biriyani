@@ -135,9 +135,12 @@ def test_client_page_jumps_to_its_sections_and_reads_money_the_indian_way(client
     db.session.commit()
     _login(client, super_admin.email, "SuperSecret123")
     page = client.get(f"/admin/clients/{tenant.id}").get_data(as_text=True)
-    nav = page.split('aria-label="Sections of this page"', 1)[1].split("</nav>", 1)[0]
-    for target in ("#sec-access", "#sec-users", "#sec-activity"):
-        assert target in nav and f'id="{target[1:]}"' in page
+    # In tabs since console cleanup stage 3: each section sits in the tab that holds it.
+    nav = page.split('role="tablist"', 1)[1].split("</nav>", 1)[0]
+    for tab, section in (("billing", "sec-access"), ("users", "sec-users"), ("documents", "sec-activity")):
+        assert f"?tab={tab}" in nav
+        panel = page.split(f'id="tab-{tab}"', 1)[1].split('<section id="tab-', 1)[0]
+        assert f'id="{section}"' in panel
     assert "Rs. 1,18,000.00" in page
 
 

@@ -324,7 +324,7 @@ def assign_client_package(tenant_id):
     package = _allowed_package(request.form.get("package_id", type=int))
     if package is None:
         flash("Pick a package that's available.", "error")
-        return redirect(url_for("tenants.detail", tenant_id=tenant.id, _anchor="sec-package"))
+        return redirect(url_for("tenants.detail", tenant_id=tenant.id, tab="package", _anchor="sec-package"))
     # Only the Ultra Admin's exceptions exist, and only they may keep or drop them.
     keep = request.form.get("keep_exceptions") == "y" or not current_user.is_super_admin
     changes = preview_package(tenant, package, keep)
@@ -341,7 +341,7 @@ def assign_client_package(tenant_id):
         message += f"; fee set to Rs. {price}"
     db.session.commit()
     flash(message + ".", "success")
-    return redirect(url_for("tenants.detail", tenant_id=tenant.id, _anchor="sec-package"))
+    return redirect(url_for("tenants.detail", tenant_id=tenant.id, tab="package", _anchor="sec-package"))
 
 
 @tenants_bp.route("/clients/<int:tenant_id>/exceptions", methods=["POST"])
@@ -432,7 +432,7 @@ def save_client_exceptions(tenant_id):
     db.session.commit()
     flash(f"{changed} change{'s' if changed != 1 else ''} saved for {tenant.legal_name}." if changed
           else "Nothing changed.", "success")
-    return redirect(url_for("tenants.detail", tenant_id=tenant.id, _anchor="sec-package"))
+    return redirect(url_for("tenants.detail", tenant_id=tenant.id, tab="package", _anchor="sec-package"))
 
 
 @tenants_bp.route("/clients/<int:tenant_id>/requests/<int:request_id>", methods=["POST"])
@@ -442,7 +442,7 @@ def resolve_request(tenant_id, request_id):
     req = ModuleRequest.query.filter_by(id=request_id, tenant_id=tenant_id).first_or_404()
     if req.status != ModuleRequest.PENDING:
         flash("That request was already dealt with.", "info")
-        return redirect(url_for("tenants.detail", tenant_id=tenant_id, _anchor="sec-package"))
+        return redirect(url_for("tenants.detail", tenant_id=tenant_id, tab="package", _anchor="sec-package"))
     action = request.form.get("action")
     if action not in (CHOICE, "inc", "decline"):
         abort(400)
@@ -451,7 +451,7 @@ def resolve_request(tenant_id, request_id):
     label = FEATURES[req.feature_key].label if req.feature_key in FEATURES else req.feature_key
     flash(f"Declined {label} for {req.tenant.legal_name}." if action == "decline"
           else f"{label} added for {req.tenant.legal_name}.", "success")
-    return redirect(url_for("tenants.detail", tenant_id=tenant_id, _anchor="sec-package"))
+    return redirect(url_for("tenants.detail", tenant_id=tenant_id, tab="package", _anchor="sec-package"))
 
 
 @tenants_bp.route("/clients/<int:tenant_id>/choices", methods=["POST"])
@@ -474,7 +474,7 @@ def save_client_choices(tenant_id):
     db.session.commit()
     flash(f"{len(changed)} module{'s' if len(changed) != 1 else ''} switched for {tenant.legal_name}." if changed
           else "Nothing changed.", "success")
-    return redirect(url_for("tenants.detail", tenant_id=tenant.id, _anchor="sec-package"))
+    return redirect(url_for("tenants.detail", tenant_id=tenant.id, tab="package", _anchor="sec-package"))
 
 
 # --- the "Changes" list (stage 6) --------------------------------------------------------------------

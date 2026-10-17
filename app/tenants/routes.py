@@ -38,6 +38,7 @@ from app.utils.billing import (
     next_due_after,
     tenant_access_status,
 )
+from app.utils.catalogue import business_types
 from app.utils.features import apply_business_type_preset
 from app.models.package import Package
 from app.tenants.packages import client_package_context
@@ -233,8 +234,15 @@ def detail(tenant_id):
     gstin_form = AddGstinForm()
     billing_form = BillingCycleForm(billing_cycle=tenant.billing_cycle.value if tenant.billing_cycle else None)
     auditors = visible_auditors(current_user) if current_user.is_super_admin else []
+    pkg = client_package_context(tenant)
+    changes = client_changes(tenant, limit=5)
+    tabs = _client_tabs(tenant, users, pkg, changes[1], len(invoices) + len(pos_bills) + len(notes))
+    tab = request.args.get("tab")
     return render_template(
         "tenants/detail.html",
+        client_tabs=tabs,
+        tab=tab if tab in {t["key"] for t in tabs} else "overview",
+        business_type=next(b for b in business_types() if b["value"] == tenant.business_type.value),
         tenant=tenant,
         invoices=invoices,
         pos_bills=pos_bills,
@@ -245,11 +253,29 @@ def detail(tenant_id):
         auditors=auditors,
         access_status=tenant_access_status(tenant),
         default_period=_current_period(),
-        pkg=client_package_context(tenant),
+        pkg=pkg,
         gstin_meter=limit_meter(tenant, "gstins"),
         login_switches={u.id: branch_login_context(u) for u in users if u.is_staff} if current_user.is_super_admin else {},
-        changes=client_changes(tenant, limit=5),
+        changes=changes,
     )
+
+
+def _client_tabs(tenant, users, pkg, change_count, document_count):
+    """The client page's tabs (console cleanup, stage 3) - only the ones
+    this console login may see, each with a count where one helps."""
+    tabs = [{"key": "overview", "label": "Overview", "icon": "house", "count": None}]
+    if pkg:
+        waiting = len(pkg["requests"]) if pkg["is_ultra"] else 0
+        tabs.append({"key": "package", "label": "Package & modules", "icon": "layout-grid", "count": waiting or None,
+                     "alert": bool(waiting)})
+    tabs.append({"key": "users", "label": "Users & branches", "icon": "users", "count": len(users)})
+    if current_user.is_super_admin:
+        status = tenant_access_status(tenant)
+        tabs.append({"key": "billing", "label": "Billing", "icon": "banknote", "count": None,
+                     "alert": status.blocked or status.billing_notice})
+    tabs.append({"key": "documents", "label": "Documents", "icon": "receipt-text", "count": document_count or None})
+    tabs.append({"key": "changes", "label": "Changes", "icon": "list", "count": change_count or None})
+    return tabs
 
 
 @tenants_bp.route("/clients/<int:tenant_id>/invoices/<int:invoice_id>")
@@ -394,7 +420,7 @@ def set_billing_cycle(tenant_id):
         flash(message, "success")
     else:
         flash("Pick a billing cycle.", "error")
-    return redirect(url_for("tenants.detail", tenant_id=tenant.id))
+    return redirect(url_for("tenants.detail", tenant_id=tenant.id, tab="billing"))
 
 
 @tenants_bp.route("/clients/<int:tenant_id>/reassign-auditor", methods=["POST"])
@@ -470,7 +496,7 @@ def add_gstin(tenant_id):
     if not may_add(tenant, "gstins", current_user):
         flash(f"{tenant.display_name}'s package allows {limit_of(tenant, 'gstins')} GSTIN(s) - all in use. "
               "Ask ARFA to raise the limit.", "error")
-        return redirect(url_for("tenants.detail", tenant_id=tenant.id, _anchor="sec-locations"))
+        return redirect(url_for("tenants.detail", tenant_id=tenant.id, tab="overview", _anchor="sec-locations"))
     form = AddGstinForm()
     if form.validate_on_submit():
         gstin = Gstin(
@@ -531,21 +557,21 @@ def mark_billing_paid(tenant_id):
     result = mark_period_paid(tenant, date.today())
     if result == "paid_today":
         flash(f"{tenant.legal_name} was already marked paid today. Nothing more to do.", "info")
-        return redirect(url_for("tenants.detail", tenant_id=tenant.id))
+        return redirect(url_for("tenants.detail", tenant_id=tenant.id, tab="billing"))
     if result == "paid_ahead":
         flash(
             f"{tenant.legal_name} is already paid up - next renewal isn't due until "
             f"{tenant.next_billing_due.strftime('%d %b %Y')}. Nothing to do.",
             "info",
         )
-        return redirect(url_for("tenants.detail", tenant_id=tenant.id))
+        return redirect(url_for("tenants.detail", tenant_id=tenant.id, tab="billing"))
     record_audit(
         current_user, "client_billing_marked_paid", tenant_id=tenant.id, entity_type="tenant", entity_id=tenant.id,
         details={"next_billing_due": tenant.next_billing_due.isoformat()},
     )
     db.session.commit()
     flash(f"Marked paid - {tenant.legal_name}'s next renewal is due {tenant.next_billing_due.strftime('%d %b %Y')}.", "success")
-    return redirect(url_for("tenants.detail", tenant_id=tenant.id))
+    return redirect(url_for("tenants.detail", tenant_id=tenant.id, tab="billing"))
 
 
 @tenants_bp.route("/clients/<int:tenant_id>/billing/resync", methods=["POST"])
@@ -561,13 +587,13 @@ def resync_billing_cycle(tenant_id):
     tenant = Tenant.query.get_or_404(tenant_id)
     if tenant.billing_cycle is None:
         flash(f"Set a billing cycle for {tenant.legal_name} first.", "error")
-        return redirect(url_for("tenants.detail", tenant_id=tenant.id))
+        return redirect(url_for("tenants.detail", tenant_id=tenant.id, tab="billing"))
     if tenant.cycle_anchor_date is None:
         flash(
             f"{tenant.legal_name}'s cycle hasn't started yet (no login since verification) - nothing to resync.",
             "error",
         )
-        return redirect(url_for("tenants.detail", tenant_id=tenant.id))
+        return redirect(url_for("tenants.detail", tenant_id=tenant.id, tab="billing"))
 
     today = date.today()
     old_due = tenant.next_billing_due
@@ -590,7 +616,7 @@ def resync_billing_cycle(tenant_id):
         f"next renewal is {tenant.next_billing_due.strftime('%d %b %Y')}.",
         "success",
     )
-    return redirect(url_for("tenants.detail", tenant_id=tenant.id))
+    return redirect(url_for("tenants.detail", tenant_id=tenant.id, tab="billing"))
 
 
 @tenants_bp.route("/clients/<int:tenant_id>/billing/trigger-alarm", methods=["POST"])
@@ -603,7 +629,7 @@ def trigger_alarm(tenant_id):
     )
     db.session.commit()
     flash(f"Billing reminder turned on for {tenant.legal_name}.", "success")
-    return redirect(url_for("tenants.detail", tenant_id=tenant.id))
+    return redirect(url_for("tenants.detail", tenant_id=tenant.id, tab="billing"))
 
 
 @tenants_bp.route("/clients/<int:tenant_id>/billing/mute-alarm", methods=["POST"])
@@ -616,7 +642,7 @@ def mute_alarm(tenant_id):
     )
     db.session.commit()
     flash(f"Billing reminder turned off for {tenant.legal_name}.", "success")
-    return redirect(url_for("tenants.detail", tenant_id=tenant.id))
+    return redirect(url_for("tenants.detail", tenant_id=tenant.id, tab="billing"))
 
 
 @tenants_bp.route("/clients/<int:tenant_id>/users/<int:user_id>/act-as", methods=["POST"])
@@ -667,7 +693,7 @@ def deactivate_user(tenant_id, user_id):
     )
     db.session.commit()
     flash(f"{user.name} deactivated.", "success")
-    return redirect(url_for("tenants.detail", tenant_id=tenant_id))
+    return redirect(url_for("tenants.detail", tenant_id=tenant_id, tab="users"))
 
 
 @tenants_bp.route("/clients/<int:tenant_id>/users/<int:user_id>/activate", methods=["POST"])
@@ -682,14 +708,14 @@ def activate_user(tenant_id, user_id):
             if not may_add(tenant, key, current_user):
                 flash(f"{tenant.display_name}'s package has no room for another login - ask ARFA to raise it.",
                       "error")
-                return redirect(url_for("tenants.detail", tenant_id=tenant_id, _anchor="sec-users"))
+                return redirect(url_for("tenants.detail", tenant_id=tenant_id, tab="users", _anchor="sec-users"))
     user.is_active = True
     record_audit(
         current_user, "client_user_activated_by_firm", tenant_id=tenant_id, entity_type="user", entity_id=user.id,
     )
     db.session.commit()
     flash(f"{user.name} reactivated.", "success")
-    return redirect(url_for("tenants.detail", tenant_id=tenant_id))
+    return redirect(url_for("tenants.detail", tenant_id=tenant_id, tab="users"))
 
 
 @tenants_bp.route("/clients/<int:tenant_id>/users/<int:user_id>/reset-password", methods=["GET", "POST"])
@@ -712,7 +738,7 @@ def reset_client_password(tenant_id, user_id):
         )
         db.session.commit()
         flash(f"Password updated for {user.email}. Share it with them directly.", "success")
-        return redirect(url_for("tenants.detail", tenant_id=tenant_id))
+        return redirect(url_for("tenants.detail", tenant_id=tenant_id, tab="users"))
     return render_template("tenants/reset_password.html", form=form, tenant_user=user, tenant_id=tenant_id)
 
 
@@ -733,7 +759,7 @@ def reset_client_two_factor(tenant_id, user_id):
     record_audit(current_user, "two_factor_reset_by_firm", tenant_id=tenant_id, entity_type="user", entity_id=user.id)
     db.session.commit()
     flash(f"Two-step sign-in is off for {user.email} - they can turn it on again from Account security.", "success")
-    return redirect(url_for("tenants.detail", tenant_id=tenant_id))
+    return redirect(url_for("tenants.detail", tenant_id=tenant_id, tab="users"))
 
 
 @tenants_bp.route("/auditors/<int:auditor_id>/reset-two-factor", methods=["POST"])

@@ -124,11 +124,11 @@ def today_context(user) -> dict:
         if requests:
             needs.append(_item("layout-grid", "warn", f"{_plural(len(requests), 'module request')} to decide",
                                "Clients asked ARFA to add a module to their package.",
-                               url_for("tenants.detail", tenant_id=requests[0].tenant_id, _anchor="sec-package"),
+                               url_for("tenants.detail", tenant_id=requests[0].tenant_id, tab="package", _anchor="sec-package"),
                                "Decide",
                                [{"label": r.tenant.display_name,
                                  "note": f"asks for {FEATURES[r.feature_key].label if r.feature_key in FEATURES else r.feature_key}",
-                                 "url": url_for("tenants.detail", tenant_id=r.tenant_id, _anchor="sec-package")}
+                                 "url": url_for("tenants.detail", tenant_id=r.tenant_id, tab="package", _anchor="sec-package")}
                                 for r in requests]))
         unallotted = [t for t in clients if t.auditor_id is None and t.billing_cycle is not None]
         if unallotted:

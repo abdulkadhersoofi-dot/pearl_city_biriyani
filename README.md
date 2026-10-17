@@ -2522,6 +2522,43 @@ list:
   about who may see what changed - every count and row is scoped the way
   the Clients list already was.
 
+### Console cleanup - stage 3 (a client's page in tabs)
+
+A client's page in the console was twelve cards on one 4,600 px page. It
+is now six tabs, one shown at a time (Overview opens at about 900 px):
+
+- **Overview** - waiting-for-verification (with "Verify & activate" for
+  the Ultra Admin), the access message, a line pointing at any module
+  request, the facts (package, status, renewal, auditor, business type and
+  its packs, registration, logins, onboarded), allotting an auditor (or,
+  for an auditor, handing the client to a Sub-Auditor), business
+  locations (adding one folds away) and the logo.
+- **Package & modules** - the package, their own-choice switches by kind,
+  and the exceptions table, which opens on only what differs for this
+  client when anything does ("Only what differs" switch).
+- **Users & branches** - each login with "Act as" and a "..." menu for
+  reset password, reset two-step sign-in and deactivate / reactivate;
+  ARFA's per-login switches under each branch login.
+- **Billing** (Ultra Admin) - access, billing cycle, renewal, marking
+  paid, the fee and the reminder.
+- **Documents** - month-end pack and Tally export, and recent invoices,
+  counter bills and notes behind one switch.
+- **Changes** - the latest changes, with "See all".
+
+The header carries the status, an **Act as** menu (every active owner and
+branch login) and a **More** menu (pause / resume access, subscription
+invoices, filing tracker, every change). Tabs carry counts (logins,
+documents, changes; a waiting module request in amber).
+
+Every tab is in the page and Alpine shows one; the server opens on
+`?tab=` (default Overview), switching updates the address so a reload or
+a shared link opens the same tab, and an old `#sec-...` or `#login-N`
+link opens the tab that holds it and scrolls there. Every action now
+returns to its own tab (billing actions to Billing, package and request
+actions to Package & modules, login actions to Users & branches). Who
+sees which tab follows the same powers as before: no Billing tab for an
+auditor, no Package tab without a package power.
+
 ### Packages and powers - how to run it (hand-over)
 
 For the Ultra Admin. Everything below is in the console, which opens on
@@ -2541,7 +2578,7 @@ no auditor, renewals) with a link to each.
    subscription fee follows the package price unless unticked. A module
    taken away while it holds records turns read-only, never vanishes.
 3. **One client only** - "Change single modules or settings for this
-   client" on their page: any module, setting, limit, branding, counter
+   client" on their page's Package & modules tab: any module, setting, limit, branding, counter
    permissions or sign-in minimum, against the package. "As the package"
    undoes it.
 4. **Requests** - "Ask ARFA to add" from a client lands in your bell, on
@@ -2552,7 +2589,7 @@ no auditor, renewals) with a link to each.
    Sub-Auditors within their own powers.
 6. **Branch logins** - the client gives roles and hides counter modules on
    Branches -> Permissions. Your own switches for any login are on the
-   client's page -> Users -> "ARFA's switches"; the client sees them as
+   client's page -> Users & branches -> "ARFA's switches"; the client sees them as
    "Set by ARFA". "Hand back to the client" clears them.
 7. **A locked setting** - change it by "Act as" the client (the locks
    stand aside for you), or switch it to "Client can change".
@@ -2667,8 +2704,8 @@ before packages.
   - Stage 2 (done): a Today page to land on, the shorter side menu (Today ·
     Clients · Auditors · Filing & GST · Packages · Billing · Audit log),
     clients-list filters, a plain Auditors list.
-  - Stage 3: the client page in tabs (Overview, Package & modules, Users
-    & branches, Billing, Documents, Changes).
+  - Stage 3 (done): the client page in tabs (Overview, Package & modules,
+    Users & branches, Billing, Documents, Changes).
   - Stage 4: the package editor in tabs (Business type, Trade packs,
     Modules, Counter options, Settings & locks, Logins & limits, Name &
     price) and a compare-packages table.

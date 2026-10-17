@@ -461,6 +461,6 @@ def admin_needs_you() -> list[dict]:
         feature = FEATURES.get(req.feature_key)
         items.append({"label": f"{req.tenant.display_name} asks for {feature.label if feature else req.feature_key}",
                       "detail": f"Asked {req.created_at.strftime('%d %b')} - add it or decline",
-                      "url": url_for("tenants.detail", tenant_id=req.tenant_id, _anchor="sec-package"),
+                      "url": url_for("tenants.detail", tenant_id=req.tenant_id, tab="package", _anchor="sec-package"),
                       "icon": "layout-grid", "tone": "warn"})
     return items

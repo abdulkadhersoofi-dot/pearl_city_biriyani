@@ -85,12 +85,19 @@
   {% if pkg.is_ultra %}
   <form method="post" action="{{ url_for('tenants.save_client_exceptions', tenant_id=tenant.id) }}" class="mt-20">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <details class="exceptions" {% if pkg.exception_count %}open{% endif %}>
+    <details class="exceptions" {% if pkg.exception_count %}open{% endif %} x-data="{ only: {{ 'true' if pkg.exception_count else 'false' }} }">
       <summary><strong>Change single modules or settings for this client</strong>
         <span class="text-muted">- the package stays as it is for other clients</span></summary>
+      {% if pkg.exception_count %}
+      {# Only where this client differs from their package, until asked for the rest (stage 3). #}
+      <label class="switch-row mt-12">
+        <span class="switch"><input type="checkbox" x-model="only"><span class="switch-track"></span></span>
+        <span><strong>Only what differs for {{ tenant.display_name }}</strong><small>Untick to see every module and setting and change any of them.</small></span>
+      </label>
+      {% endif %}
 
       <div class="table-wrap mt-12">
-        <table class="exceptions-table no-stack">
+        <table class="exceptions-table no-stack" :class="{ 'only-changed': only }">
           <thead><tr><th>Module</th><th>Package says</th><th>For {{ tenant.display_name }}</th><th>Now</th></tr></thead>
           {% for group in pkg.module_rows %}
           <tbody>
@@ -118,7 +125,7 @@
       </div>
 
       <div class="table-wrap mt-16">
-        <table class="exceptions-table no-stack">
+        <table class="exceptions-table no-stack" :class="{ 'only-changed': only }">
           <thead><tr><th>Setting</th><th>Package says</th><th>For {{ tenant.display_name }}</th></tr></thead>
           <tbody>
             {% for row in pkg.setting_rows %}
