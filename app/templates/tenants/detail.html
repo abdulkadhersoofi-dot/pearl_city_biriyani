@@ -30,6 +30,18 @@
   </div>
 </div>
 
+{# Jump to a section - this page holds everything about one client. #}
+<nav class="report-jump" aria-label="Sections of this page">
+  {% if current_user.is_super_admin %}<a href="#sec-access">{{ icon('banknote', 'icon-sm') }}Access &amp; billing</a>{% endif %}
+  {% for id_, label, ic in [('allocation', 'Allocation', 'user-cog'), ('sub-auditor', 'Sub-Auditor', 'user-cog'), ('branding', 'Branding', 'sparkles'), ('locations', 'Locations', 'store'), ('users', 'Users', 'users'), ('month-end', 'Month-end', 'calendar-clock'), ('activity', 'Recent activity', 'receipt-text')] %}
+  <a href="#sec-{{ id_ }}" data-jump="sec-{{ id_ }}">{{ icon(ic, 'icon-sm') }}{{ label }}</a>
+  {% endfor %}
+</nav>
+<script>
+  // Only offer the sections this login actually sees.
+  document.querySelectorAll("[data-jump]").forEach(function (a) { if (!document.getElementById(a.dataset.jump)) a.remove(); });
+</script>
+
 {% if current_user.is_super_admin %}
 {% if tenant.billing_cycle is none %}
 <div class="card card-danger mb-20">
@@ -44,7 +56,7 @@
 </div>
 {% endif %}
 
-<div class="card mb-20">
+<div class="card mb-20" id="sec-access">
   <h2 class="mt-0">Access &amp; billing</h2>
   {% if access_status.blocked %}
   <p class="flash flash-error mt-0">{{ access_status.message }}</p>
@@ -100,7 +112,7 @@
   </div>
 </div>
 
-<div class="card mb-20">
+<div class="card mb-20" id="sec-allocation">
   <h2 class="mt-0">Allocation</h2>
   <form method="post" action="{{ url_for('tenants.reassign_auditor', tenant_id=tenant.id) }}" class="row">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -114,7 +126,7 @@
   </form>
 </div>
 {% elif current_user.is_auditor and tenant.auditor_id == current_user.id and current_user.sub_auditors %}
-<div class="card mb-20">
+<div class="card mb-20" id="sec-sub-auditor">
   <h2 class="mt-0">Allocate to Sub-Auditor</h2>
   <form method="post" action="{{ url_for('tenants.allocate_client_to_sub_auditor', tenant_id=tenant.id) }}" class="row">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -128,7 +140,7 @@
 </div>
 {% endif %}
 
-<div class="card mb-20">
+<div class="card mb-20" id="sec-branding">
   <h2 class="mt-0">Branding</h2>
   <div class="row items-center gap-16">
     {% if tenant.logo_image_id %}
@@ -147,7 +159,7 @@
   </form>
 </div>
 
-<div class="card mb-20">
+<div class="card mb-20" id="sec-locations">
   <h2 class="mt-0">Business locations</h2>
   <ul>
     {% for g in tenant.gstins %}
@@ -165,7 +177,7 @@
   </form>
 </div>
 
-<div class="card mb-20">
+<div class="card mb-20" id="sec-users">
   <h2 class="mt-0">Users</h2>
   <p class="text-muted mt-0">"Act as" signs you in as that login - the client admin's own invoicing, or a
     branch's own POS - so you can bill on their behalf exactly as they would. "Return to admin console" at the
@@ -215,7 +227,7 @@
   </table>
 </div>
 
-<form method="get" class="card row gap-10 items-end mb-20">
+<form method="get" class="card row gap-10 items-end mb-20" id="sec-month-end">
   <div><h2 class="m-0 mb-4">Month-end</h2><p class="text-muted mt-0 mb-0">GSTR-1/3B, HSN, registers, P&amp;L and Tally files in one ZIP.</p></div>
   <label class="field m-0"><span class="field-label">Month</span><input type="month" name="period" value="{{ request.args.get('period') or default_period }}" class="field-input" required></label>
   <button formaction="{{ url_for('tenants.monthly_pack', tenant_id=tenant.id) }}" class="btn btn-primary">Monthly pack</button>
@@ -223,7 +235,7 @@
   <a href="{{ url_for('tenants.filing_tracker') }}" class="btn btn-quiet">Filing tracker</a>
 </form>
 
-<div class="card mb-20">
+<div class="card mb-20" id="sec-activity">
   <h2 class="mt-0">Recent invoices (read-only)</h2>
   <table>
     <thead><tr><th>Number</th><th>Date</th><th>Customer</th><th>Status</th><th>Total</th></tr></thead>
@@ -234,7 +246,7 @@
         <td>{{ inv.invoice_date.strftime('%d %b %Y') }}</td>
         <td>{{ inv.customer_snapshot.name }}</td>
         <td><span class="status-badge status-{{ inv.status.value }}">{{ inv.status.value|title }}</span></td>
-        <td>Rs. {{ '%.2f'|format(inv.grand_total) }}</td>
+        <td class="num">Rs. {{ inv.grand_total|inr }}</td>
       </tr>
     {% else %}
       <tr><td colspan="5" class="empty-state">No invoices yet.</td></tr>
@@ -258,7 +270,7 @@
           {% elif b.status.value == 'voided' %}<span class="status-badge status-void">Voided</span>
           {% else %}<span class="status-badge status-void">Refunded</span>{% endif %}
         </td>
-        <td>Rs. {{ '%.2f'|format(b.grand_total) }}</td>
+        <td class="num">Rs. {{ b.grand_total|inr }}</td>
       </tr>
     {% else %}
       <tr><td colspan="5" class="empty-state">No POS bills yet.</td></tr>
@@ -279,7 +291,7 @@
         <td>{{ 'Credit' if n.document_type.value == 'credit_note' else 'Debit' }}</td>
         <td>{{ n.original_invoice.invoice_number if n.original_invoice else '-' }}</td>
         <td><span class="status-badge status-{{ n.status.value }}">{{ n.status.value|title }}</span></td>
-        <td>Rs. {{ '%.2f'|format(n.grand_total) }}</td>
+        <td class="num">Rs. {{ n.grand_total|inr }}</td>
       </tr>
     {% else %}
       <tr><td colspan="6" class="empty-state">No notes yet.</td></tr>

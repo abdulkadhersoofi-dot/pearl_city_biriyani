@@ -12,6 +12,20 @@ document.addEventListener("alpine:init", function () {
     try { localStorage.setItem(key, value); } catch (e) { /* private window - just not remembered */ }
   }
 
+  // Appearance (_theme_pick.html): Auto follows the device; Light or Dark
+  // stays on this device. _theme_boot.html applies it before first paint.
+  window.Alpine.data("themePick", function () {
+    var root = document.documentElement;
+    return {
+      theme: root.getAttribute("data-theme") || "auto",
+      choose: function (value) {
+        this.theme = value;
+        if (value === "auto") { root.removeAttribute("data-theme"); } else { root.setAttribute("data-theme", value); }
+        store("arfa.theme", value);
+      }
+    };
+  });
+
   window.Alpine.data("shell", function () {
     return {
       drawer: false,
@@ -272,5 +286,79 @@ document.addEventListener("DOMContentLoaded", function () {
       if (!ev.target.closest || !ev.target.closest(".more-pop")) closeAll(null);
     });
     document.addEventListener("keydown", function (ev) { if (ev.key === "Escape") closeAll(null); });
+  });
+})();
+
+// Accessibility helpers (redesign stage 6), on every page:
+//  - a field with no label of its own (filter bars, line-item tables)
+//    gets a name for screen readers: its table column heading plus the
+//    row's first cell, else its placeholder, else a select's first option;
+//  - pop-up menus (role="menu") move between their entries with the
+//    arrow keys, Home and End.
+(function () {
+  function hasLabel(el) {
+    if (el.getAttribute("aria-label") || el.getAttribute("aria-labelledby") || el.getAttribute("title")) return true;
+    if (el.closest("label")) return true;
+    return !!(el.id && document.querySelector('label[for="' + (window.CSS && CSS.escape ? CSS.escape(el.id) : el.id) + '"]'));
+  }
+
+  function columnName(el) {
+    var cell = el.closest("td, th");
+    var table = cell && cell.closest("table");
+    if (!table) return "";
+    var row = cell.parentElement;
+    var col = 0;
+    for (var i = 0; i < row.children.length && row.children[i] !== cell; i++) col += row.children[i].colSpan || 1;
+    var heads = table.querySelectorAll("thead tr:last-child th");
+    var head = heads[col] ? heads[col].textContent.trim() : "";
+    if (!head) return "";
+    var first = row.children[0];
+    var rowName = first && first !== cell && !first.querySelector("input, select, textarea") ? first.textContent.trim() : "";
+    return rowName ? head + " - " + rowName : head;
+  }
+
+  function nameFields() {
+    document.querySelectorAll("input:not([type=hidden]):not([type=submit]):not([type=button]), select, textarea").forEach(function (el) {
+      if (hasLabel(el)) return;
+      var name = columnName(el) || el.getAttribute("placeholder") ||
+        (el.tagName === "SELECT" && el.options.length ? el.options[0].textContent.trim() : "");
+      if (name) el.setAttribute("aria-label", name);
+    });
+  }
+
+  document.addEventListener("DOMContentLoaded", nameFields);
+  // Rows added later (a new invoice line) get named too.
+  document.addEventListener("focusin", function (ev) {
+    var el = ev.target;
+    if (el.matches && el.matches("input, select, textarea") && !hasLabel(el)) {
+      var name = columnName(el) || el.getAttribute("placeholder");
+      if (name) el.setAttribute("aria-label", name);
+    }
+  });
+
+  document.addEventListener("keydown", function (ev) {
+    var menu = ev.target.closest && ev.target.closest('[role="menu"]');
+    if (!menu || ["ArrowDown", "ArrowUp", "Home", "End"].indexOf(ev.key) === -1) return;
+    var items = Array.prototype.filter.call(menu.querySelectorAll('[role="menuitem"], .pop-item, .btn'), function (el) {
+      return el.offsetParent !== null;
+    });
+    if (!items.length) return;
+    ev.preventDefault();
+    var at = items.indexOf(document.activeElement);
+    var next = ev.key === "Home" ? 0 : ev.key === "End" ? items.length - 1
+      : ev.key === "ArrowDown" ? (at + 1) % items.length : (at - 1 + items.length) % items.length;
+    items[next].focus();
+  });
+  // Opening a menu from its button with the arrow keys lands on its first entry.
+  document.addEventListener("keydown", function (ev) {
+    if (ev.key !== "ArrowDown" || !ev.target.matches || !ev.target.matches('[aria-haspopup="menu"]')) return;
+    var wrap = ev.target.closest(".pop-wrap");
+    if (!wrap) return;
+    ev.preventDefault();
+    if (ev.target.getAttribute("aria-expanded") !== "true") ev.target.click();
+    setTimeout(function () {
+      var first = wrap.querySelector('[role="menu"] [role="menuitem"], [role="menu"] .pop-item, [role="menu"] .btn');
+      if (first) first.focus();
+    }, 30);
   });
 })();

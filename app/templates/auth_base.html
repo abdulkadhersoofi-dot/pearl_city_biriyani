@@ -4,25 +4,46 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5">
   <title>{% block title %}{{ firm_name }}{% endblock %}</title>
+  {% include "_theme_boot.html" %}
   <link rel="icon" href="{{ url_for('static', filename='img/arfa-logo.jpg') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
   {% if login_tenant %}<style>{{ tenant_theme_css(login_tenant) }}</style>{% endif %}
 </head>
+{# Sign-in, two-step and password pages (redesign stage 6): the brand on
+   one side - the client's own logo, name and button colour on their
+   branded link (/auth/login/<slug>), ARFA's otherwise - and the form on
+   the other. On a phone the brand side shrinks to a strip on top. #}
 <body class="auth-body">
-  <div class="auth-wrap">
-    <div class="auth-card">
-      {% if login_tenant %}
-        {% if login_tenant.logo_image_id %}
-          <img src="{{ url_for('main.media', image_id=login_tenant.logo_image_id) }}" alt="{{ login_tenant.display_name }}" class="auth-logo">
+  <div class="auth-split">
+    <aside class="auth-side">
+      <div class="auth-side-inner">
+        {% if login_tenant %}
+          {% if login_tenant.logo_image_id %}
+          <span class="auth-logo-tile"><img src="{{ url_for('main.media', image_id=login_tenant.logo_image_id) }}" alt="{{ login_tenant.display_name }}" class="auth-logo"></span>
+          {% else %}
+          <span class="auth-mark" aria-hidden="true">{{ login_tenant.display_name[:1] }}</span>
+          {% endif %}
+          <p class="auth-brand">{{ login_tenant.display_name }}</p>
+          <p class="auth-pitch">Billing, stock and GST for {{ login_tenant.display_name }}.</p>
+        {% else %}
+          <span class="auth-logo-tile"><img src="{{ url_for('static', filename='img/arfa-logo.jpg') }}" alt="ARFA" class="auth-logo"></span>
+          <p class="auth-brand">{{ firm_name }}</p>
+          <p class="auth-pitch">Billing, stock and GST for every counter you run.</p>
+          <ul class="auth-points">
+            <li>{{ icon('monitor') }}<span>A counter that keeps billing when the internet drops</span></li>
+            <li>{{ icon('file-check') }}<span>GSTR-1 and GSTR-3B working papers from your own bills</span></li>
+            <li>{{ icon('store') }}<span>Every branch, its stock and its takings on one screen</span></li>
+          </ul>
         {% endif %}
-        <h1 class="auth-brand">{{ login_tenant.display_name }}</h1>
-      {% else %}
-        <img src="{{ url_for('static', filename='img/arfa-logo.jpg') }}" alt="ARFA" class="auth-logo">
-        <h1 class="auth-brand">{{ firm_name }}</h1>
-      {% endif %}
-      {% include "_flashes.html" %}
-      {% block content %}{% endblock %}
-    </div>
+      </div>
+    </aside>
+    <main class="auth-main" id="main">
+      <div class="auth-card">
+        {% block heading %}{% endblock %}
+        {% include "_flashes.html" %}
+        {% block content %}{% endblock %}
+      </div>
+    </main>
   </div>
 </body>
 </html>

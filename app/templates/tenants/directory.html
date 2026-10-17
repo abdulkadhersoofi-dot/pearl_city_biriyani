@@ -1,35 +1,99 @@
 {% extends "base.html" %}
 {% block title %}Clients - {{ firm_name }}{% endblock %}
 {% block content %}
-<div class="page-header">
-  <h1>Clients</h1>
-  <a href="{{ url_for('tenants.onboard') }}" class="btn btn-primary">+ Onboard client</a>
-</div>
+{# The firm's console home (redesign stage 6): a count of clients by
+   state, then the list - searchable, and narrowed by state with one tap.
+   Every client still opens its own page; nothing here changes access. #}
+{% set rows = [] %}
+{% for tenant in tenants %}
+  {% set status = access_statuses[tenant.id] %}
+  {% if status.blocked %}{% set state = status.reason %}
+  {% elif status.billing_notice %}{% set state = 'renewal' %}
+  {% else %}{% set state = 'active' %}{% endif %}
+  {% set gstin = tenant.gstins.first() %}
+  {% set _ = rows.append({'tenant': tenant, 'state': state, 'gstin': gstin.display_label if gstin else ''}) %}
+{% endfor %}
+{% set count = {'active': 0, 'renewal': 0, 'attention': 0} %}
+{% for r in rows %}
+  {% if r.state == 'active' %}{% set _ = count.update({'active': count.active + 1}) %}
+  {% elif r.state == 'renewal' %}{% set _ = count.update({'renewal': count.renewal + 1}) %}
+  {% else %}{% set _ = count.update({'attention': count.attention + 1}) %}{% endif %}
+{% endfor %}
+{% set labels = {'active': 'Active', 'renewal': 'Renewal due', 'paused': 'Paused', 'billing_overdue': 'Billing overdue', 'pending_verification': 'Awaiting verification'} %}
 
-<div class="table-wrap card">
-  <table>
-    <thead>
-      <tr><th>Business</th><th>GSTIN</th><th>Registration</th><th>Status</th><th>Onboarded</th><th></th></tr>
-    </thead>
-    <tbody>
-      {% for tenant in tenants %}
-      <tr>
-        <td><a href="{{ url_for('tenants.detail', tenant_id=tenant.id) }}">{{ tenant.legal_name }}</a></td>
-        <td>{{ tenant.gstins.first().display_label if tenant.gstins.first() else '-' }}</td>
-        <td>{{ tenant.registration_type.value|title }}</td>
-        <td>
-          {% set status = access_statuses[tenant.id] %}
-          {% if status.blocked %}<span class="status-badge status-void">{{ status.reason|replace('_', ' ')|title }}</span>
-          {% elif status.billing_notice %}<span class="status-badge status-void">Renewal due</span>
-          {% else %}<span class="status-badge status-issued">Active</span>{% endif %}
-        </td>
-        <td>{{ tenant.created_at.strftime('%d %b %Y') }}</td>
-        <td><a href="{{ url_for('tenants.detail', tenant_id=tenant.id) }}">View</a></td>
-      </tr>
-      {% else %}
-      <tr><td colspan="6" class="empty-state">No clients onboarded yet.</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
+<div x-data="{ q: '', show: 'all' }">
+  <div class="page-header">
+    <div>
+      <h1>Clients</h1>
+      <p class="text-muted mt-0">Every business {{ 'you look after' if not current_user.is_super_admin else 'on ' ~ firm_name }}, and whether it can sign in today.</p>
+    </div>
+    <a href="{{ url_for('tenants.onboard') }}" class="btn btn-primary">{{ icon('plus') }}Onboard client</a>
+  </div>
+
+  <div class="console-stats">
+    <button type="button" class="console-stat" :class="{ 'is-on': show === 'all' }" @click="show = 'all'" :aria-pressed="(show === 'all').toString()">
+      <span class="console-stat-icon">{{ icon('building-2') }}</span>
+      <span><strong data-count-up="{{ rows|length }}">{{ rows|length }}</strong><small>All clients</small></span>
+    </button>
+    <button type="button" class="console-stat" :class="{ 'is-on': show === 'active' }" @click="show = 'active'" :aria-pressed="(show === 'active').toString()">
+      <span class="console-stat-icon tone-ok">{{ icon('circle-check') }}</span>
+      <span><strong data-count-up="{{ count.active }}">{{ count.active }}</strong><small>Active</small></span>
+    </button>
+    <button type="button" class="console-stat" :class="{ 'is-on': show === 'renewal' }" @click="show = 'renewal'" :aria-pressed="(show === 'renewal').toString()">
+      <span class="console-stat-icon tone-warn">{{ icon('calendar-clock') }}</span>
+      <span><strong data-count-up="{{ count.renewal }}">{{ count.renewal }}</strong><small>Renewal due</small></span>
+    </button>
+    <button type="button" class="console-stat" :class="{ 'is-on': show === 'attention' }" @click="show = 'attention'" :aria-pressed="(show === 'attention').toString()">
+      <span class="console-stat-icon tone-bad">{{ icon('triangle-alert') }}</span>
+      <span><strong data-count-up="{{ count.attention }}">{{ count.attention }}</strong><small>Can't sign in</small></span>
+    </button>
+  </div>
+
+  {% if rows %}
+  <div class="console-toolbar">
+    <label class="module-search console-search">
+      {{ icon('search') }}
+      <input type="search" placeholder="Find a client by name or GSTIN" aria-label="Find a client by name or GSTIN" x-model="q">
+    </label>
+  </div>
+  {% endif %}
+
+  <div class="table-wrap card console-card">
+    <table class="console-table">
+      <thead>
+        <tr><th>Business</th><th>GSTIN</th><th>Registration</th><th>Status</th><th>Onboarded</th><th><span class="sr-only">Open</span></th></tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        {% set tenant = r.tenant %}
+        {% set group = r.state if r.state in ('active', 'renewal') else 'attention' %}
+        <tr data-group="{{ group }}" data-hay="{{ (tenant.legal_name ~ ' ' ~ (tenant.trade_name or '') ~ ' ' ~ r.gstin)|lower }}"
+            x-show="(show === 'all' || show === '{{ group }}') && (!q || $el.dataset.hay.includes(q.toLowerCase()))">
+          <td>
+            <a href="{{ url_for('tenants.detail', tenant_id=tenant.id) }}" class="client-cell">
+              <span class="client-mark" aria-hidden="true">{{ tenant.legal_name[:1]|upper }}</span>
+              <span class="client-name"><strong>{{ tenant.legal_name }}</strong>{% if tenant.trade_name and tenant.trade_name != tenant.legal_name %}<small>{{ tenant.trade_name }}</small>{% endif %}</span>
+            </a>
+          </td>
+          <td class="mono-cell">{{ r.gstin or '-' }}</td>
+          <td>{{ tenant.registration_type.value|title }}</td>
+          <td>
+            {% if r.state == 'active' %}<span class="status-badge status-issued">Active</span>
+            {% elif r.state == 'renewal' %}<span class="status-badge status-warn">Renewal due</span>
+            {% else %}<span class="status-badge status-void">{{ labels.get(r.state, r.state|replace('_', ' ')|title) }}</span>{% endif %}
+          </td>
+          <td>{{ tenant.created_at.strftime('%d %b %Y') }}</td>
+          <td class="num"><a href="{{ url_for('tenants.detail', tenant_id=tenant.id) }}" class="row-go" aria-label="Open {{ tenant.legal_name }}">{{ icon('chevron-right') }}</a></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="empty-state">No clients onboarded yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% if rows %}
+    <p class="empty-state" x-cloak
+       x-show="![...$root.querySelectorAll('tr[data-hay]')].some(tr => (show === 'all' || show === tr.dataset.group) && (!q || tr.dataset.hay.includes(q.toLowerCase())))">No client matches that.</p>
+    {% endif %}
+  </div>
 </div>
 {% endblock %}

@@ -1,11 +1,23 @@
 {% extends "auth_base.html" %}
 {% from "macros.html" import field %}
 {% block title %}Sign in - {{ firm_name }}{% endblock %}
+{% block heading %}<h1 class="auth-title">Sign in</h1><p class="auth-sub">Welcome back. Use your work email and password.</p>{% endblock %}
 {% block content %}
 <form method="post" class="stack" novalidate>
   {{ form.hidden_tag() }}
-  {{ field(form.email) }}
-  {{ field(form.password) }}
+  <div class="field {{ 'field-error' if form.email.errors }}">
+    {{ form.email.label(class="field-label") }}
+    {{ form.email(class="field-input", autocomplete="username", inputmode="email", autofocus=true, **({'aria-invalid': 'true'} if form.email.errors else {})) }}
+    {% for error in form.email.errors %}<p class="field-error-msg">{{ error }}</p>{% endfor %}
+  </div>
+  <div class="field {{ 'field-error' if form.password.errors }}">
+    {{ form.password.label(class="field-label") }}
+    <div class="password-wrap">
+      {{ form.password(class="field-input", autocomplete="current-password", **({'aria-invalid': 'true'} if form.password.errors else {})) }}
+      <button type="button" class="password-eye" aria-label="Show password" aria-pressed="false" data-show-password>{{ icon('eye', 'when-hidden') }}{{ icon('eye-off', 'when-shown') }}</button>
+    </div>
+    {% for error in form.password.errors %}<p class="field-error-msg">{{ error }}</p>{% endfor %}
+  </div>
   <button type="submit" class="btn btn-primary btn-block btn-lg">Sign in</button>
 </form>
 <p class="text-muted text-center mt-16">
@@ -16,5 +28,17 @@
   // in - drop it on the sign-in page (bills still waiting to send stay
   // queued on the device; they belong to that device's own login).
   if (window.caches) { caches.delete("arfa-pos-v1").catch(function () {}); }
+  // Show or hide the password while typing it.
+  document.querySelectorAll("[data-show-password]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var input = btn.parentElement.querySelector("input");
+      var show = input.type === "password";
+      input.type = show ? "text" : "password";
+      btn.setAttribute("aria-pressed", show ? "true" : "false");
+      btn.setAttribute("aria-label", show ? "Hide password" : "Show password");
+      btn.classList.toggle("is-shown", show);
+      input.focus();
+    });
+  });
 </script>
 {% endblock %}

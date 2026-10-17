@@ -2013,6 +2013,52 @@ helpers in `posTerminal()` are new.
   category / sub-category / "Other", search overrides them, and a one-tap
   payment lands on the confirm step with the right mode.
 
+### Interface redesign - stage 6 (dark mode, sign-in, firm console, accessibility)
+
+- **Dark mode** follows the device (phone or computer set to dark) unless
+  someone picks **Light** or **Dark** under *Appearance* in their account
+  menu (branch logins: the sun/moon button by their name). The choice is
+  kept on that device only (`localStorage` "arfa.theme") and applied
+  before the page paints (`_theme_boot.html`). The dark colours live in
+  `app.css` as the same `--color-*` tokens, only inside `@media screen`,
+  so anything printed from the browser stays light; PDFs never used
+  `app.css`. A client's own button colour stays in the dark (links and
+  picked menu entries use a light shade of it); their chosen page
+  background and text colour apply to light screens only. Fixed colours
+  that were in the stylesheet (warnings, toasts, overlays, the save bar,
+  restaurant table cards) are tokens now so they switch too.
+- **Sign-in pages** (sign in, two-step, set password, recovery codes,
+  error pages when signed out) are split: the brand on a panel in the
+  button colour - the client's own logo, name and colour on their branded
+  link (`/auth/login/<slug>`), ARFA's otherwise - and the form on the
+  other side; on a phone the brand shrinks to a strip on top. The form
+  gets a heading, a show/hide password button, the right autocomplete
+  hints for password managers, and a wrong password is announced to
+  screen readers. Sign-in security (rate limits, lockout, two-step) is
+  untouched.
+- **Firm console**: the Clients page opens with four counts you can tap
+  to narrow the list - All, Active, Renewal due, Can't sign in (paused,
+  overdue past grace, awaiting verification) - a search by name or GSTIN,
+  and rows with the client's initial and status. A client's page has jump
+  links to its sections (Access & billing, Allocation, Branding,
+  Locations, Users, Month-end, Recent activity) and Indian-format
+  amounts. Who sees which client, and every action, is as before.
+- **Accessibility pass**: every client screen (85 of them) was checked in
+  light and dark for text contrast (WCAG AA) and fixed where short; the
+  focus ring is lighter in the dark; form errors and help text are tied
+  to their field (`aria-describedby`, `aria-invalid`); fields with no
+  label of their own (filter bars, invoice and purchase lines) are named
+  for screen readers from their column heading or placeholder
+  (`shell.js`); pop-up menus move with the arrow keys, Home and End, and
+  open onto their first entry with the down arrow; the saffron badge on
+  held bills uses dark text.
+- Tests: `tests/test_redesign_polish.py` - dark blocks only on screen, a
+  client's colours in the dark, the saved theme applied before the
+  stylesheet, the Appearance picker for client admins and branch logins,
+  the split sign-in page and a client's branded one, the wrong-password
+  alert, the two-step heading, the console's counts by state, the client
+  page's jump links and Indian amounts, and errors tied to their fields.
+
 ## Roadmap
 
 - **Platform build (ARFA general-purpose POS), phase by phase.**
@@ -2078,7 +2124,9 @@ helpers in `posTerminal()` are new.
     tiles, held bills in a drawer, Counter menu, one-tap payment buttons,
     fly-to-bill and paid animations, phone bill bar; restaurant tables and
     the PIN pad to match (KOT slips print as before).
-  - Stage 6: firm console, sign-in pages, dark mode, accessibility pass.
+  - Stage 6 (done): dark mode following the device with a per-device
+    Light / Dark choice, split-screen branded sign-in pages, the firm
+    console's Clients page and client page, accessibility pass.
 
   Stage 1 limits:
   - Stage 3 changed pages through shared CSS and two small scripts, not

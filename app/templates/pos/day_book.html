@@ -4,7 +4,7 @@
 <div class="page-header">
   <h1>POS day-book</h1>
   <form method="get" class="row">
-    <input type="date" name="date" value="{{ on_date.isoformat() }}" class="field-input" onchange="this.form.submit()">
+    <input type="date" name="date" value="{{ on_date.isoformat() }}" class="field-input" onchange="this.form.submit()" aria-label="Day">
     <a href="{{ url_for('pos.z_report_view', date=on_date.isoformat()) }}" class="btn btn-secondary">Z-report</a>
   </form>
 </div>

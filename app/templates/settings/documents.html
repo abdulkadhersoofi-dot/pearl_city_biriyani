@@ -10,7 +10,7 @@
     <div class="form-grid">
       <div class="field">
         <span class="field-label">Invoice print size</span>
-        <input class="field-input" value="A4" disabled>
+        <input class="field-input" value="A4" disabled aria-label="Invoice print size">
         <p class="field-help">Invoices always print on A4 - this isn't changeable.</p>
       </div>
       {{ field(form.default_receipt_format, help="POS checkout prints straight to this size - no size prompt every sale.") }}

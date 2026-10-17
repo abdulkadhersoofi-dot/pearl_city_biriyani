@@ -1,0 +1,11 @@
+{# Light, dark, or follow the device (shell.js "themePick"). #}
+<div class="theme-pick" x-data="themePick">
+  <p class="theme-pick-label" id="theme-pick-label">Appearance</p>
+  <div class="seg" role="radiogroup" aria-labelledby="theme-pick-label">
+    {% for value, label, ic in [('auto', 'Auto', 'sun-moon'), ('light', 'Light', 'sun'), ('dark', 'Dark', 'moon')] %}
+    <button type="button" class="seg-btn" role="radio" :aria-checked="(theme === '{{ value }}').toString()"
+            :class="{ 'is-on': theme === '{{ value }}' }" @click="choose('{{ value }}')"
+            title="{{ 'Follow this device' if value == 'auto' else label ~ ' always' }}">{{ icon(ic) }}<span>{{ label }}</span></button>
+    {% endfor %}
+  </div>
+</div>

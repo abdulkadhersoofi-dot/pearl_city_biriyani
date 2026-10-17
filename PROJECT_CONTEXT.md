@@ -433,6 +433,18 @@ this list is just the index.
   there but unused. `base.html` marks only `pos.terminal` as
   `is-counter` (menu as a drawer there). `tests/test_redesign_counter.py`
   runs the page's scripts in Node to drive `posTerminal()`.
+- **Interface redesign, stage 6: dark mode, sign-in, console, a11y.**
+  Dark tokens in `app.css` under `@media screen` (device setting) and
+  `:root[data-theme="dark"]` (picked); `_theme_boot.html` (head of both
+  bases) and `_theme_pick.html` + `themePick` in `shell.js`. New colour
+  tokens for states/overlays (`--color-warn-*`, `--color-ink`,
+  `--color-inverse`, `--color-scrim`, `--color-glass`, `--color-focus`,
+  `--color-primary-hover`, `--color-chart-quiet`) - use them rather than
+  fixed hex values. `auth_base.html` is the split layout with
+  `{% block heading %}`. `tenants/directory.html` computes each client's
+  state in the template from `tenant_access_status`. `field()` in
+  `macros.html` sets `aria-describedby` / `aria-invalid`; `shell.js` names
+  unlabelled fields and adds arrow keys to `role="menu"`.
 
 ## 5. Chronological development history (this session)
 

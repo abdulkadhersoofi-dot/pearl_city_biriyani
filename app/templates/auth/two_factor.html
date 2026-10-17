@@ -1,6 +1,7 @@
 {% extends "auth_base.html" %}
 {% from "macros.html" import field %}
 {% block title %}Two-step sign-in - {{ firm_name }}{% endblock %}
+{% block heading %}<h1 class="auth-title">Two-step sign-in</h1>{% endblock %}
 {% block content %}
 <p class="text-muted mt-0">Open your authenticator app and enter the 6-digit code for <strong>{{ user.email }}</strong>.</p>
 <form method="post" class="stack" novalidate>

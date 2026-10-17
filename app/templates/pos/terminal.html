@@ -638,7 +638,7 @@
           <p class="offline-banner" x-show="offlineQueued">No connection: bill <strong x-text="completedBillNumber"></strong> is saved on this device and printed. It goes to the books by itself when the connection is back.</p>
           <p class="text-muted mt-0" x-show="!offlineQueued">Bill <strong x-text="completedBillNumber"></strong> sent to the printer.</p>
           <p class="change-due change-done" x-show="completedChange !== null && completedChange > 0" x-text="'Give change: Rs. ' + (completedChange || 0).toFixed(2)"></p>
-          <p class="text-muted" x-show="creditWarning" x-text="creditWarning" style="color:#8a5a00; font-weight:600;"></p>
+          <p class="text-warn fw-600" x-show="creditWarning" x-text="creditWarning"></p>
           <button type="button" class="btn btn-secondary btn-block" @click="printReceipt(DEFAULT_RECEIPT_FORMAT, false)">Reprint</button>
           <button type="button" class="btn btn-secondary btn-block mt-10" @click="shareBill()" x-show="!offlineQueued">Share on WhatsApp</button>
           <template x-if="completedKotPdf">

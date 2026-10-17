@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5">
   <title>{% block title %}{{ firm_name }}{% endblock %}</title>
+  {% include "_theme_boot.html" %}
   <link rel="preload" href="{{ url_for('static', filename='fonts/figtree.woff2') }}" as="font" type="font/woff2" crossorigin>
   <link rel="icon" href="{{ url_for('static', filename='img/arfa-logo.jpg') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
@@ -149,12 +150,20 @@
                   <strong>{{ current_user.name }}</strong>
                   <span>{{ current_user.role_label }}{% if brand_tenant %} &middot; {{ brand_tenant.display_name }}{% endif %}</span>
                 </div>
+                {% include "_theme_pick.html" %}
                 <a href="{{ url_for('auth.account_security') }}" class="pop-item" role="menuitem">{{ icon('shield-check') }}<span>Security</span></a>
                 <a href="{{ url_for('auth.change_password') }}" class="pop-item" role="menuitem">{{ icon('key-round') }}<span>Change password</span></a>
                 <a href="{{ url_for('auth.logout') }}" class="pop-item" role="menuitem">{{ icon('log-out') }}<span>Sign out</span></a>
               </div>
             </div>
             {% else %}
+            <div class="pop-wrap" x-data="{ open: false }" @keydown.escape="open = false" @click.outside="open = false">
+              <button type="button" class="icon-btn" @click="open = !open" :aria-expanded="open" aria-label="Appearance: light or dark">{{ icon('sun-moon') }}</button>
+              <div class="pop pop-right" x-show="open" x-cloak
+                   x-transition:enter="pop-enter" x-transition:enter-start="pop-from" x-transition:leave="pop-leave" x-transition:leave-end="pop-from">
+                {% include "_theme_pick.html" %}
+              </div>
+            </div>
             <span class="user-name">{{ current_user.name }}</span>
             <a href="{{ url_for('auth.logout') }}" class="btn btn-quiet btn-sm">Sign out</a>
             {% endif %}

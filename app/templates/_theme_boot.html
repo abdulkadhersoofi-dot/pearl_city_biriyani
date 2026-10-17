@@ -1,0 +1,12 @@
+{# Dark mode (redesign stage 6): the screen follows the device unless the
+   person picked Light or Dark from their account menu - remembered on
+   this device only (localStorage "arfa.theme"). Runs before the page is
+   painted so it never flashes the wrong colours. #}
+<meta name="color-scheme" content="light dark">
+<script>
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem("arfa.theme"); } catch (e) { /* private window */ }
+    if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t);
+  })();
+</script>
