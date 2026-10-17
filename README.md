@@ -2206,6 +2206,54 @@ change yet.
   the client changing one, read-only pages open / saves refused / GSTR-3B
   ITC unchanged, and giving the module back.
 
+### Packages and powers - stage 4 (auditor powers)
+
+- **Powers on each auditor's page.** The Ultra Admin sees a **Powers**
+  section on every Auditor's and Sub-Auditor's page: nine switches
+  (onboard clients, choose a package for their clients, switch a
+  client's Client's-choice modules, pause and resume clients, add a
+  client's business locations and logo, act as a client or branch
+  login, reset / block / unblock a client's logins, month-end pack /
+  Tally / filing tracker, create Sub-Auditors), each with what it was
+  "as before" so a change is easy to see; the **packages** this auditor
+  may give clients; and a **client limit** and **Sub-Auditor limit**
+  (blank = no limit, with today's count beside each).
+- **Auditors set their Sub-Auditors' powers** - only powers they hold
+  themselves (the rest show "You don't have this power yourself")
+  and only from their own allowed packages. A Sub-Auditor can never
+  hold a power their Auditor doesn't: take a power from the Auditor and
+  their Sub-Auditors lose it too. Nobody else can change powers (403).
+- **Every console page follows the powers.** Without a power its pages
+  and actions answer 403 and its buttons and menu links are gone:
+  "Onboard client", "Pause access", "Upload logo" / "+ Add location",
+  "Act as", "Reset password" / two-step / block, the month-end section,
+  the Filing tracker, "Create" Sub-Auditor. An auditor at their client
+  limit is sent back from onboarding with a note; the same for the
+  Sub-Auditor limit.
+- **Packages for auditors.** With "Choose a package for their clients"
+  an auditor sees "Package & modules" on their own clients' pages and
+  in onboarding, offering only their allowed packages (anything else is
+  refused). Exceptions, requests and the subscription fee stay with the
+  Ultra Admin.
+- **Switching a client's own modules.** With "Switch a client's
+  Client's-choice modules" the client page has **Modules <client>
+  switches**: only the modules the package leaves to the client; an Off
+  or Included module can't be changed this way.
+- **"Act as" carries the auditor's powers**: an auditor acting as a
+  client without the switching power can't change Settings > Modules
+  either.
+- **Nothing changes until the Ultra Admin sets powers**: with no powers
+  saved an Auditor and Sub-Auditor have exactly today's console (every
+  power on except choosing packages). No migration in this stage - the
+  `auditor_powers` table came in stage 1.
+- Tests: `tests/test_auditor_powers.py` - the Ultra Admin setting powers
+  (and the audit entry), others refused, every page and button gone
+  without its power, today's powers unchanged, the client limit,
+  allowed packages for own clients and onboarding only, switching
+  choice modules, "Act as" carrying powers, Sub-Auditor powers within
+  their Auditor's, a Sub-Auditor losing their Auditor's power or package, and the
+  Sub-Auditor limit.
+
 ## Roadmap
 
 - **Platform build (ARFA general-purpose POS), phase by phase.**
@@ -2289,8 +2337,8 @@ change yet.
     into the subscription fee.
   - Stage 3 (done): clients see their package - locked modules and settings,
     "Ask ARFA to add", read-only for removed modules with data.
-  - Stage 4: auditor powers on each auditor's page, enforced on every
-    console page and in "Act as".
+  - Stage 4 (done): auditor powers on each auditor's page, enforced on
+    every console page and in "Act as"; packages and limits for auditors.
   - Stage 5: branch logins by role, modules per branch, the Ultra
     Admin's per-login switches, limits with usage, branding by package.
   - Stage 6: change history per client, checks, hand-over.

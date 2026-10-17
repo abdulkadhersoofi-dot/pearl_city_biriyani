@@ -15,7 +15,8 @@
     </p>
   </div>
   <div class="row">
-    {% if tenant.is_active %}
+    {% if not console_can('pause_clients') %}
+    {% elif tenant.is_active %}
     <form method="post" action="{{ url_for('tenants.deactivate', tenant_id=tenant.id) }}"
           onsubmit="return confirm('Pause {{ tenant.legal_name }}? They and every branch under them will no longer be able to sign in, until resumed.');">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -113,8 +114,6 @@
   </div>
 </div>
 
-{% if pkg %}{% include "tenants/_client_package.html" %}{% endif %}
-
 <div class="card mb-20" id="sec-allocation">
   <h2 class="mt-0">Allocation</h2>
   <form method="post" action="{{ url_for('tenants.reassign_auditor', tenant_id=tenant.id) }}" class="row">
@@ -143,6 +142,8 @@
 </div>
 {% endif %}
 
+{% if pkg %}{% include "tenants/_client_package.html" %}{% endif %}
+
 <div class="card mb-20" id="sec-branding">
   <h2 class="mt-0">Branding</h2>
   <div class="row items-center gap-16">
@@ -154,12 +155,14 @@
         sign-in, nav, invoices and receipts.</p>
     {% endif %}
   </div>
+  {% if console_can('edit_client_details') %}
   <form method="post" action="{{ url_for('tenants.update_logo', tenant_id=tenant.id) }}"
         enctype="multipart/form-data" class="row mt-12">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="file" name="logo" accept=".png,.jpg,.jpeg,.gif,.webp" class="field-input" required>
     <button type="submit" class="btn btn-secondary">{{ 'Replace logo' if tenant.logo_image_id else 'Upload logo' }}</button>
   </form>
+  {% endif %}
 </div>
 
 <div class="card mb-20" id="sec-locations">
@@ -171,6 +174,7 @@
       <li class="text-muted">No business location on file yet - POS and invoicing need at least one to bill from.</li>
     {% endfor %}
   </ul>
+  {% if console_can('edit_client_details') %}
   <form method="post" action="{{ url_for('tenants.add_gstin', tenant_id=tenant.id) }}" class="form-grid mt-12">
     {{ gstin_form.hidden_tag() }}
     {{ field(gstin_form.gstin, help="Leave blank if this client isn't GST-registered.") }}
@@ -178,6 +182,7 @@
     {{ field(gstin_form.registered_address) }}
     <button type="submit" class="btn btn-secondary">+ Add location</button>
   </form>
+  {% endif %}
 </div>
 
 <div class="card mb-20" id="sec-users">
@@ -196,12 +201,13 @@
         <td>{{ 'Active' if u.is_active else 'Inactive' }}</td>
         <td class="row">
           {% if u.role.value in ('client_admin', 'staff') %}
-          {% if u.is_active %}
+          {% if u.is_active and console_can('act_as') %}
           <form method="post" action="{{ url_for('tenants.act_as', tenant_id=tenant.id, user_id=u.id) }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn btn-secondary">Act as</button>
           </form>
           {% endif %}
+          {% if console_can('reset_logins') %}
           <a href="{{ url_for('tenants.reset_client_password', tenant_id=tenant.id, user_id=u.id) }}" class="btn btn-quiet">Reset password</a>
           {% if u.has_two_factor %}
           <form method="post" action="{{ url_for('tenants.reset_client_two_factor', tenant_id=tenant.id, user_id=u.id) }}"
@@ -223,6 +229,7 @@
           </form>
           {% endif %}
           {% endif %}
+          {% endif %}
         </td>
       </tr>
     {% endfor %}
@@ -230,6 +237,7 @@
   </table>
 </div>
 
+{% if console_can('month_end') %}
 <form method="get" class="card row gap-10 items-end mb-20" id="sec-month-end">
   <div><h2 class="m-0 mb-4">Month-end</h2><p class="text-muted mt-0 mb-0">GSTR-1/3B, HSN, registers, P&amp;L and Tally files in one ZIP.</p></div>
   <label class="field m-0"><span class="field-label">Month</span><input type="month" name="period" value="{{ request.args.get('period') or default_period }}" class="field-input" required></label>
@@ -237,6 +245,7 @@
   <button formaction="{{ url_for('tenants.tally_export', tenant_id=tenant.id) }}" class="btn btn-secondary">Tally export</button>
   <a href="{{ url_for('tenants.filing_tracker') }}" class="btn btn-quiet">Filing tracker</a>
 </form>
+{% endif %}
 
 <div class="card mb-20" id="sec-activity">
   <h2 class="mt-0">Recent invoices (read-only)</h2>

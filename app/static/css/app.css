@@ -1805,3 +1805,5 @@ a.report-tile:hover .report-go { transform: translateX(3px); color: var(--color-
 .is-read-only .app-main form[method="post"], .is-read-only .app-main form[method="POST"],
 .is-read-only .app-main a[href$="/new"], .is-read-only .app-main a[href*="/new?"],
 .is-read-only .app-main a[href$="/edit"] { display: none !important; }
+.power-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); gap: 12px 24px; }
+.power-row.is-fixed { opacity: 0.6; cursor: not-allowed; }

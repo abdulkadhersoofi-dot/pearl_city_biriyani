@@ -27,7 +27,7 @@
       <h1>Clients</h1>
       <p class="text-muted mt-0">Every business {{ 'you look after' if not current_user.is_super_admin else 'on ' ~ firm_name }}, and whether it can sign in today.</p>
     </div>
-    <a href="{{ url_for('tenants.onboard') }}" class="btn btn-primary">{{ icon('plus') }}Onboard client</a>
+    {% if console_can('onboard_clients') %}<a href="{{ url_for('tenants.onboard') }}" class="btn btn-primary">{{ icon('plus') }}Onboard client</a>{% endif %}
   </div>
 
   <div class="console-stats">

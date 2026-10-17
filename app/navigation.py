@@ -31,10 +31,19 @@ class Link:
     endpoints: tuple = ()
     kwargs: dict = field(default_factory=dict)
     keywords: str = ""
+    # A console power the signed-in auditor must hold (packages and powers).
+    power: str | None = None
 
     def visible(self) -> bool:
         if self.feature and not current_tenant_has(self.feature):
             return False
+        if self.power:
+            from flask_login import current_user
+
+            from app.utils.entitlements import auditor_can
+
+            if not auditor_can(current_user, self.power):
+                return False
         if self.any_feature and not any(current_tenant_has(f) for f in self.any_feature):
             return False
         return True
@@ -171,10 +180,12 @@ def _admin_groups(user) -> list[Group]:
                 Link("Clients", "tenants.directory", "building-2",
                      endpoints=("tenants.directory", "tenants.detail", "tenants.onboard")),
                 Link("Sub-Auditors", "tenants.auditors_directory", "user-cog",
-                     endpoints=("tenants.auditors_directory", "tenants.auditor_detail", "tenants.new_auditor")),
+                     endpoints=("tenants.auditors_directory", "tenants.auditor_detail", "tenants.new_auditor"),
+                     power="create_sub_auditors"),
             )),
             Group("filing", "Filing", (
-                Link("Filing", "tenants.filing_tracker", "calendar-clock", endpoints=("tenants.filing_tracker",)),
+                Link("Filing", "tenants.filing_tracker", "calendar-clock", endpoints=("tenants.filing_tracker",),
+                     power="month_end"),
             )),
             Group("platform", "Account", (
                 Link("Subscription", "subscriptions.mine", "banknote", blueprints=("subscriptions",)),
@@ -184,7 +195,8 @@ def _admin_groups(user) -> list[Group]:
         Group("clients", "Clients", (
             Link("Clients", "tenants.directory", "building-2",
                  endpoints=("tenants.directory", "tenants.detail", "tenants.onboard")),
-            Link("Filing", "tenants.filing_tracker", "calendar-clock", endpoints=("tenants.filing_tracker",)),
+            Link("Filing", "tenants.filing_tracker", "calendar-clock", endpoints=("tenants.filing_tracker",),
+                 power="month_end"),
         )),
     ]
 

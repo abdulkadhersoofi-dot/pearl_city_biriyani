@@ -192,6 +192,14 @@ def _register_context_processors(app: Flask) -> None:
     from app.utils.theme import tenant_theme_css
 
     app.jinja_env.globals["tenant_theme_css"] = tenant_theme_css
+
+    # console_can("act_as"): may the signed-in console login use this power
+    # (packages and powers, stage 4)? Always true for the Ultra Admin.
+    from flask_login import current_user as _console_user
+
+    from app.utils.entitlements import auditor_can as _auditor_can
+
+    app.jinja_env.globals["console_can"] = lambda power: _auditor_can(_console_user, power)
     from app import navigation
 
     # The grouped side menu, the "New" menu, the search palette and the

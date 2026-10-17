@@ -18,7 +18,7 @@ from app.settings.forms import (
 )
 from app.settings.sections import module_groups, section_info, section_menu
 from app.utils.audit import record_audit
-from app.utils.entitlements import SETTINGS, client_may_switch, locked_for_client
+from app.utils.entitlements import SETTINGS, acting_console_user, auditor_can, client_may_switch, locked_for_client
 from app.utils.features import AVAILABLE_FEATURES, BUSINESS_TYPE_LABELS, FEATURES, apply_business_type_preset
 from app.utils.uploads import UploadError, delete_uploaded_image, save_uploaded_image
 
@@ -237,6 +237,11 @@ def appearance():
 def features():
     tenant = current_user.tenant
     form = ModulesForm()
+    # "Act as" carries the console login's own powers: an auditor without
+    # "switch a client's modules" can't switch them this way either.
+    actor = acting_console_user()
+    if request.method == "POST" and actor is not None and not auditor_can(actor, "switch_client_modules"):
+        abort(403)
     if request.method == "GET":
         for feature in AVAILABLE_FEATURES:
             getattr(form, feature_field_name(feature.key)).data = tenant.has_feature(feature.key)

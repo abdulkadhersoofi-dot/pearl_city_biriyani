@@ -480,6 +480,17 @@ this list is just the index.
   Module requests: `ModuleRequest`, `request_module()`,
   `resolve_module_request()`, `navigation.admin_needs_you()` (the Ultra
   Admin's bell).
+- **Packages and powers, stage 4: auditor powers.** Guard console routes
+  with `@power_required("<power>")` (after the role decorator) and gate
+  buttons with the `console_can("<power>")` Jinja global; menu links take
+  `Link(power=...)`. `auditor_can()` caps a Sub-Auditor by their parent;
+  `grantable_powers()`, `allowed_packages()`, `client_room()`,
+  `sub_auditor_room()` and `acting_console_user()` (the auditor behind
+  an "Act as") are in `app/utils/entitlements.py`. The Powers editor is
+  `app/tenants/powers.py` + `tenants/_auditor_powers.html`;
+  `client_package_context(tenant, viewer)` returns None for viewers who
+  may neither assign packages nor switch choices. New console actions
+  need a power (or an explicit decision that every auditor gets them).
 
 ## 5. Chronological development history (this session)
 

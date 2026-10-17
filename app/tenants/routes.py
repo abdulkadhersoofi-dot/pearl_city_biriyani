@@ -41,7 +41,11 @@ from app.utils.billing import (
 from app.utils.features import apply_business_type_preset
 from app.models.package import Package
 from app.tenants.packages import client_package_context
-from app.utils.entitlements import BUSINESS_TYPE_PACKAGE, assign_package, ensure_starting_packages, grant_of, package_price_for
+from app.tenants.powers import auditor_powers_context
+from app.utils.entitlements import (
+    BUSINESS_TYPE_PACKAGE, allowed_packages, assign_package, client_room, ensure_starting_packages, grant_of, has_room,
+    package_price_for, power_required, sub_auditor_room,
+)
 from app.utils.indian_states import STATE_NAME_BY_CODE
 from app.utils.uploads import UploadError, delete_uploaded_image, save_uploaded_image
 
@@ -69,8 +73,13 @@ def directory():
 
 @tenants_bp.route("/clients/new", methods=["GET", "POST"])
 @admin_or_auditor_required
+@power_required("onboard_clients")
 def onboard():
     form = OnboardClientForm()
+    if not has_room(client_room(current_user)):
+        count, limit = client_room(current_user)
+        flash(f"You have {count} clients - your limit is {limit}. Ask ARFA to raise it.", "error")
+        return redirect(url_for("tenants.directory"))
     if form.validate_on_submit():
         existing = User.query.filter_by(email=form.admin_email.data.strip().lower()).first()
         if existing:
@@ -132,13 +141,13 @@ def onboard():
         db.session.add(admin_user)
         db.session.flush()
 
-        # The Ultra Admin picks the client's package here; a client an
-        # auditor onboards starts as before packages (stage 4 lets
-        # auditors choose from packages allowed to them).
-        if current_user.is_super_admin:
-            package = Package.query.get(request.form.get("package_id", type=int) or 0)
-            if package is not None and package.is_active:
-                assign_package(tenant, package, current_user)
+        # The client's package: any for the Ultra Admin; for an auditor,
+        # one of the packages allowed to them (if they may choose
+        # packages at all) - otherwise the client starts as before packages.
+        chosen = request.form.get("package_id", type=int)
+        package = next((p for p in allowed_packages(current_user) if p.id == chosen), None)
+        if package is not None:
+            assign_package(tenant, package, current_user)
         record_audit(
             current_user,
             "client_onboarded",
@@ -161,12 +170,13 @@ def onboard():
 
 
 def _onboarding_packages(form):
-    """The package picker on the onboarding form - Ultra Admin only."""
-    if not current_user.is_super_admin:
-        return {"packages": []}
+    """The package picker on the onboarding form - for the Ultra Admin, and
+    for an auditor allowed to choose packages (their allowed ones only)."""
     ensure_starting_packages()
     db.session.commit()
-    packages = Package.query.filter_by(is_active=True).order_by(Package.sort_order, Package.name).all()
+    packages = allowed_packages(current_user)
+    if not packages:
+        return {"packages": []}
     by_key = {p.key: p.id for p in packages if p.key}
     suggest = {bt: by_key[key] for bt, key in BUSINESS_TYPE_PACKAGE.items() if key in by_key}
     chosen = request.form.get("package_id", type=int) or suggest.get(form.business_type.data or "retail")
@@ -222,7 +232,7 @@ def detail(tenant_id):
         auditors=auditors,
         access_status=tenant_access_status(tenant),
         default_period=_current_period(),
-        pkg=client_package_context(tenant) if current_user.is_super_admin else None,
+        pkg=client_package_context(tenant),
     )
 
 
@@ -404,6 +414,7 @@ def reassign_auditor(tenant_id):
 
 @tenants_bp.route("/clients/<int:tenant_id>/logo", methods=["POST"])
 @admin_or_auditor_required
+@power_required("edit_client_details")
 def update_logo(tenant_id):
     # Lets the admin console set/replace a client's logo on their behalf -
     # clients onboarded before this feature existed otherwise have no way
@@ -436,6 +447,7 @@ def update_logo(tenant_id):
 
 @tenants_bp.route("/clients/<int:tenant_id>/gstins/new", methods=["POST"])
 @admin_or_auditor_required
+@power_required("edit_client_details")
 def add_gstin(tenant_id):
     tenant = Tenant.query.get_or_404(tenant_id)
     assert_auditor_owns_tenant(current_user, tenant)
@@ -462,6 +474,7 @@ def add_gstin(tenant_id):
 
 @tenants_bp.route("/clients/<int:tenant_id>/deactivate", methods=["POST"])
 @admin_or_auditor_required
+@power_required("pause_clients")
 def deactivate(tenant_id):
     tenant = Tenant.query.get_or_404(tenant_id)
     assert_auditor_owns_tenant(current_user, tenant)
@@ -476,6 +489,7 @@ def deactivate(tenant_id):
 
 @tenants_bp.route("/clients/<int:tenant_id>/activate", methods=["POST"])
 @admin_or_auditor_required
+@power_required("pause_clients")
 def activate(tenant_id):
     tenant = Tenant.query.get_or_404(tenant_id)
     assert_auditor_owns_tenant(current_user, tenant)
@@ -587,6 +601,7 @@ def mute_alarm(tenant_id):
 
 @tenants_bp.route("/clients/<int:tenant_id>/users/<int:user_id>/act-as", methods=["POST"])
 @admin_or_auditor_required
+@power_required("act_as")
 def act_as(tenant_id, user_id):
     # Full operational access to a client's own screens - billing a POS
     # sale under a specific branch, issuing an invoice as that client, or
@@ -621,6 +636,7 @@ def act_as(tenant_id, user_id):
 
 @tenants_bp.route("/clients/<int:tenant_id>/users/<int:user_id>/deactivate", methods=["POST"])
 @admin_or_auditor_required
+@power_required("reset_logins")
 def deactivate_user(tenant_id, user_id):
     tenant = Tenant.query.get_or_404(tenant_id)
     assert_auditor_owns_tenant(current_user, tenant)
@@ -636,6 +652,7 @@ def deactivate_user(tenant_id, user_id):
 
 @tenants_bp.route("/clients/<int:tenant_id>/users/<int:user_id>/activate", methods=["POST"])
 @admin_or_auditor_required
+@power_required("reset_logins")
 def activate_user(tenant_id, user_id):
     tenant = Tenant.query.get_or_404(tenant_id)
     assert_auditor_owns_tenant(current_user, tenant)
@@ -651,6 +668,7 @@ def activate_user(tenant_id, user_id):
 
 @tenants_bp.route("/clients/<int:tenant_id>/users/<int:user_id>/reset-password", methods=["GET", "POST"])
 @admin_or_auditor_required
+@power_required("reset_logins")
 def reset_client_password(tenant_id, user_id):
     tenant = Tenant.query.get_or_404(tenant_id)
     assert_auditor_owns_tenant(current_user, tenant)
@@ -674,6 +692,7 @@ def reset_client_password(tenant_id, user_id):
 
 @tenants_bp.route("/clients/<int:tenant_id>/users/<int:user_id>/reset-two-factor", methods=["POST"])
 @admin_or_auditor_required
+@power_required("reset_logins")
 def reset_client_two_factor(tenant_id, user_id):
     # A Client Admin who lost the phone with their authenticator app (and
     # their recovery codes): the firm switches two-step sign-in off; they
@@ -741,9 +760,14 @@ def auditors_directory():
 
 @tenants_bp.route("/auditors/new", methods=["GET", "POST"])
 @admin_or_auditor_required
+@power_required("create_sub_auditors")
 def new_auditor():
     if current_user.is_sub_auditor:
         abort(403)
+    if current_user.is_auditor and not has_room(sub_auditor_room(current_user)):
+        count, limit = sub_auditor_room(current_user)
+        flash(f"You have {count} Sub-Auditors - your limit is {limit}. Ask ARFA to raise it.", "error")
+        return redirect(url_for("tenants.auditors_directory"))
 
     # Only the Ultra Admin can create a top-level Auditor; an Auditor may
     # only ever create a Sub-Auditor within their own office (forced
@@ -820,6 +844,7 @@ def auditor_detail(auditor_id):
         sub_auditors=sub_auditors,
         billing_form=billing_form,
         auditor_access_status=auditor_access_status(auditor),
+        powers=auditor_powers_context(current_user, auditor),
     )
 
 
@@ -950,6 +975,7 @@ def mute_auditor_alarm(auditor_id):
 
 @tenants_bp.route("/auditors/<int:auditor_id>/act-as", methods=["POST"])
 @admin_or_auditor_required
+@power_required("act_as")
 def act_as_auditor(auditor_id):
     if current_user.is_sub_auditor:
         abort(403)
@@ -1017,6 +1043,7 @@ def reset_auditor_password(auditor_id):
 
 @tenants_bp.route("/clients/<int:tenant_id>/allocate-sub-auditor", methods=["POST"])
 @admin_or_auditor_required
+@power_required("create_sub_auditors")
 def allocate_client_to_sub_auditor(tenant_id):
     # An Auditor handing one of their own clients to one of their own
     # Sub-Auditors, "within his office" - never outside it.
@@ -1132,6 +1159,7 @@ def _period_arg(value=None) -> str:
 
 @tenants_bp.route("/filing")
 @admin_or_auditor_required
+@power_required("month_end")
 def filing_tracker():
     from app.finance.filing import tracker_rows
 
@@ -1142,6 +1170,7 @@ def filing_tracker():
 
 @tenants_bp.route("/clients/<int:tenant_id>/filing", methods=["POST"])
 @admin_or_auditor_required
+@power_required("month_end")
 def filing_update(tenant_id):
     from app.finance.filing import mark_filed, mark_ready
     from app.models.filing import ReturnType
@@ -1177,6 +1206,7 @@ def filing_update(tenant_id):
 
 @tenants_bp.route("/clients/<int:tenant_id>/monthly-pack.zip")
 @admin_or_auditor_required
+@power_required("month_end")
 def monthly_pack(tenant_id):
     from app.finance.filing import pack_files, safe_name
 
@@ -1197,6 +1227,7 @@ def monthly_pack(tenant_id):
 
 @tenants_bp.route("/clients/<int:tenant_id>/tally.zip")
 @admin_or_auditor_required
+@power_required("month_end")
 def tally_export(tenant_id):
     from app.finance.filing import period_bounds, safe_name
     from app.finance.tally import tally_zip

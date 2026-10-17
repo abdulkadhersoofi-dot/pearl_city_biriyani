@@ -16,7 +16,7 @@ from decimal import Decimal, InvalidOperation
 from flask import abort, flash, redirect, render_template, request, url_for
 from flask_login import current_user
 
-from app.auth.decorators import roles_required
+from app.auth.decorators import admin_or_auditor_required, roles_required
 from app.extensions import db
 from app.models.package import ModuleRequest, Package, TenantPackage
 from app.models.tenant import Tenant
@@ -24,8 +24,10 @@ from app.models.user import UserRole
 from app.settings.sections import MODULE_GROUPS
 from app.tenants import tenants_bp
 from app.utils.audit import record_audit
+from app.utils.auditor_scope import assert_auditor_owns_tenant
 from app.utils.entitlements import (
-    AS_PACKAGE, CHOICE, LIMITS, MODULE_STATES, OFF, SETTING_STATES, SETTINGS, assign_package, ensure_starting_packages,
+    AS_PACKAGE, CHOICE, LIMITS, MODULE_STATES, OFF, SETTING_STATES, SETTINGS, allowed_packages, assign_package,
+    auditor_can, ensure_starting_packages,
     grant_of, module_state, own_branding, package_module_state, package_price_for, package_summary, preview_package,
     refresh_read_only, resolve_module_request, set_branding_exception, set_limit_exception, set_module_exception, set_setting_exception,
     setting_state,
@@ -211,8 +213,19 @@ def package_active(package_id):
 
 # --- a client's package and exceptions ---------------------------------------------------------------
 
-def client_package_context(tenant):
-    """What the client page's "Package & modules" section shows."""
+def client_package_context(tenant, viewer=None):
+    """What the client page's "Package & modules" section shows. The
+    Ultra Admin sees all of it; an auditor only the parts their powers
+    allow (choosing from their allowed packages, switching the client's
+    own-choice modules) - None if neither."""
+    from flask_login import current_user
+
+    viewer = viewer or current_user
+    is_ultra = bool(viewer.is_super_admin)
+    can_assign = is_ultra or auditor_can(viewer, "assign_packages")
+    can_switch = is_ultra or auditor_can(viewer, "switch_client_modules")
+    if not (can_assign or can_switch):
+        return None
     ensure_starting_packages()
     grant = grant_of(tenant)
     current = grant.package if grant is not None else None
@@ -235,7 +248,8 @@ def client_package_context(tenant):
                   for key, label in LIMITS.items()]
     return {
         "grant": grant, "current_package": current,
-        "package_choices": Package.query.filter_by(is_active=True).order_by(Package.sort_order, Package.name).all(),
+        "package_choices": allowed_packages(viewer),
+        "is_ultra": is_ultra, "can_assign": can_assign, "can_switch": can_switch,
         "module_rows": rows, "setting_rows": setting_rows, "limit_rows": limit_rows,
         "branding_exception": grant.own_branding_override if grant is not None else None,
         "branding_now": own_branding(tenant), "branding_package": current.own_branding if current else True,
@@ -249,11 +263,24 @@ def client_package_context(tenant):
     }
 
 
-@tenants_bp.route("/clients/<int:tenant_id>/package/preview")
-@roles_required(UserRole.SUPER_ADMIN)
-def package_preview(tenant_id):
+def _client_for_packages(tenant_id, power):
+    """The client, if the signed-in console login may do `power` for it."""
     tenant = Tenant.query.get_or_404(tenant_id)
-    package = Package.query.get_or_404(request.args.get("package_id", type=int) or 0)
+    assert_auditor_owns_tenant(current_user, tenant)
+    if not auditor_can(current_user, power):
+        abort(403)
+    return tenant
+
+
+def _allowed_package(package_id):
+    return next((p for p in allowed_packages(current_user) if p.id == package_id), None)
+
+
+@tenants_bp.route("/clients/<int:tenant_id>/package/preview")
+@admin_or_auditor_required
+def package_preview(tenant_id):
+    tenant = _client_for_packages(tenant_id, "assign_packages")
+    package = _allowed_package(request.args.get("package_id", type=int)) or abort(404)
     keep = request.args.get("keep_exceptions") == "y"
     return render_template("tenants/_package_preview.html", tenant=tenant, package=package,
                            changes=preview_package(tenant, package, keep), summary=package_summary(package),
@@ -261,14 +288,15 @@ def package_preview(tenant_id):
 
 
 @tenants_bp.route("/clients/<int:tenant_id>/package", methods=["POST"])
-@roles_required(UserRole.SUPER_ADMIN)
+@admin_or_auditor_required
 def assign_client_package(tenant_id):
-    tenant = Tenant.query.get_or_404(tenant_id)
-    package = Package.query.get(request.form.get("package_id", type=int) or 0)
-    if package is None or not package.is_active:
+    tenant = _client_for_packages(tenant_id, "assign_packages")
+    package = _allowed_package(request.form.get("package_id", type=int))
+    if package is None:
         flash("Pick a package that's available.", "error")
         return redirect(url_for("tenants.detail", tenant_id=tenant.id, _anchor="sec-package"))
-    keep = request.form.get("keep_exceptions") == "y"
+    # Only the Ultra Admin's exceptions exist, and only they may keep or drop them.
+    keep = request.form.get("keep_exceptions") == "y" or not current_user.is_super_admin
     changes = preview_package(tenant, package, keep)
     assign_package(tenant, package, current_user, keep_exceptions=keep)
     message = f"{tenant.legal_name} is now on {package.name}"
@@ -276,7 +304,7 @@ def assign_client_package(tenant_id):
         on = sum(1 for c in changes if c["after"])
         message += f" - {on} module{'s' if on != 1 else ''} on, {len(changes) - on} off"
     price = package_price_for(package, tenant.billing_cycle)
-    if request.form.get("use_price") == "y" and price is not None:
+    if request.form.get("use_price") == "y" and price is not None and current_user.is_super_admin:
         tenant.subscription_fee = price
         record_audit(current_user, "subscription_fee_set", tenant_id=tenant.id, entity_type="tenant",
                      entity_id=tenant.id, details={"fee": str(price), "from_package": package.name})
@@ -366,3 +394,25 @@ def resolve_request(tenant_id, request_id):
     flash(f"Declined {label} for {req.tenant.legal_name}." if action == "decline"
           else f"{label} added for {req.tenant.legal_name}.", "success")
     return redirect(url_for("tenants.detail", tenant_id=tenant_id, _anchor="sec-package"))
+
+
+@tenants_bp.route("/clients/<int:tenant_id>/choices", methods=["POST"])
+@admin_or_auditor_required
+def save_client_choices(tenant_id):
+    """Switch a client's own-choice modules on or off for them (the Ultra
+    Admin, or an auditor with that power). Never touches a module the
+    package includes or leaves out."""
+    tenant = _client_for_packages(tenant_id, "switch_client_modules")
+    ticked = set(request.form.getlist("module"))
+    before = {f.key: tenant.has_feature(f.key) for f in AVAILABLE_FEATURES}
+    for feature in AVAILABLE_FEATURES:
+        if module_state(tenant, feature.key) == CHOICE:
+            tenant.set_feature(feature.key, feature.key in ticked)
+    changed = sorted(k for k, on in before.items() if tenant.has_feature(k) != on)
+    if changed:
+        record_audit(current_user, "client_modules_switched", tenant_id=tenant.id, entity_type="tenant",
+                     entity_id=tenant.id, details={"changed": changed})
+    db.session.commit()
+    flash(f"{len(changed)} module{'s' if len(changed) != 1 else ''} switched for {tenant.legal_name}." if changed
+          else "Nothing changed.", "success")
+    return redirect(url_for("tenants.detail", tenant_id=tenant.id, _anchor="sec-package"))

@@ -106,7 +106,7 @@ def test_branch_login_keeps_the_simple_counter_layout(client, db, tenant, staff)
 def test_firm_console_gets_its_own_groups(client, db, super_admin):
     _login(client, "firm@example.com", "SuperSecret123")
     html = _page(client, "/admin/clients")
-    assert _menu_labels(html) == ["All clients", "Auditors", "Filing", "GST exports", "Subscriptions", "Audit log"]
+    assert _menu_labels(html) == ["All clients", "Auditors", "Filing", "GST exports", "Packages", "Subscriptions", "Audit log"]
     assert "btn-new" not in html  # nothing to create from the console's New
     assert "/admin/audit-log" in {e["url"] for e in _palette(html)}
 

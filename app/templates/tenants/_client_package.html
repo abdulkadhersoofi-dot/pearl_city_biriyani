@@ -10,10 +10,10 @@
         {% if pkg.exception_count %} · <span class="text-warn">{{ pkg.exception_count }} change{{ 's' if pkg.exception_count != 1 }} for this client only</span>{% endif %}
       </p>
     </div>
-    <a href="{{ url_for('tenants.packages') }}" class="btn btn-quiet btn-sm">{{ icon('layout-grid', 'icon-sm') }}All packages</a>
+    {% if pkg.is_ultra %}<a href="{{ url_for('tenants.packages') }}" class="btn btn-quiet btn-sm">{{ icon('layout-grid', 'icon-sm') }}All packages</a>{% endif %}
   </div>
 
-  {% if pkg.requests %}
+  {% if pkg.requests and pkg.is_ultra %}
   <div class="request-list" role="region" aria-label="Modules this client asked for">
     <p class="m-0"><strong>{{ tenant.display_name }} asked for:</strong></p>
     {% for item in pkg.requests %}
@@ -32,6 +32,7 @@
   {% endif %}
 
   {# Change the package: pick one, see what changes for this client, then confirm. #}
+  {% if pkg.can_assign and pkg.package_choices %}
   <form method="post" action="{{ url_for('tenants.assign_client_package', tenant_id=tenant.id) }}" class="package-assign"
         hx-get="{{ url_for('tenants.package_preview', tenant_id=tenant.id) }}" hx-trigger="change from:select[name=package_id], change from:input[name=keep_exceptions], load"
         hx-target="#package-preview" hx-include="this" hx-swap="innerHTML">
@@ -43,15 +44,38 @@
         {% endfor %}
       </select>
     </label>
+    {% if pkg.is_ultra %}
     <div class="package-assign-opts">
       <label class="row gap-6"><input type="checkbox" name="keep_exceptions" value="y"> Keep this client's own changes</label>
       <label class="row gap-6"><input type="checkbox" name="use_price" value="y" checked> Set the subscription fee to the package price</label>
     </div>
+    {% endif %}
     <div id="package-preview" class="package-preview" aria-live="polite"></div>
     <div><button type="submit" class="btn btn-primary">Put {{ tenant.display_name }} on this package</button></div>
   </form>
+  {% endif %}
 
-  {# Exceptions: single modules, settings, limits and branding for this client only. #}
+  {# The client's own-choice modules, switched for them (Ultra Admin, or an auditor with that power). #}
+  {% if pkg.can_switch %}
+  {% set choices = [] %}
+  {% for group, items in pkg.module_rows %}{% for row in items if row.state == 'choice' %}{% set _ = choices.append(row) %}{% endfor %}{% endfor %}
+  {% if choices %}
+  <form method="post" action="{{ url_for('tenants.save_client_choices', tenant_id=tenant.id) }}" class="mt-20">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <h3 class="m-0">Modules {{ tenant.display_name }} switches</h3>
+    <p class="text-muted mt-0">The ones their package leaves to them - switch them here on their behalf.</p>
+    <div class="chip-checks">
+      {% for row in choices %}
+      <label class="chip-check"><input type="checkbox" name="module" value="{{ row.feature.key }}" {% if row.on %}checked{% endif %}><span>{{ icon('check', 'icon-sm') }}{{ row.feature.label }}</span></label>
+      {% endfor %}
+    </div>
+    <button type="submit" class="btn btn-secondary mt-12">Save their modules</button>
+  </form>
+  {% endif %}
+  {% endif %}
+
+  {# Exceptions: single modules, settings, limits and branding for this client only (Ultra Admin). #}
+  {% if pkg.is_ultra %}
   <form method="post" action="{{ url_for('tenants.save_client_exceptions', tenant_id=tenant.id) }}" class="mt-20">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <details class="exceptions" {% if pkg.exception_count %}open{% endif %}>
@@ -130,4 +154,5 @@
       <button type="submit" class="btn btn-primary mt-12">Save changes for this client</button>
     </details>
   </form>
+{% endif %}
 </div>

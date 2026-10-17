@@ -69,8 +69,9 @@ AUDITOR_POWERS = {
     "assign_packages": "Choose a package for their clients",
     "switch_client_modules": "Switch a client's Client's-choice modules",
     "pause_clients": "Pause and resume clients",
+    "edit_client_details": "Add a client's business locations and logo",
     "act_as": "Act as a client or branch login",
-    "reset_logins": "Reset passwords and two-step sign-in",
+    "reset_logins": "Reset, block and unblock a client's logins (password, two-step)",
     "month_end": "Month-end pack, Tally export and filing tracker",
     "create_sub_auditors": "Create Sub-Auditors and hand them clients",
 }
@@ -81,11 +82,13 @@ AUDITOR_POWERS = {
 ROLE_DEFAULT_POWERS = {
     "auditor": {
         "onboard_clients": True, "assign_packages": False, "switch_client_modules": True, "pause_clients": True,
-        "act_as": True, "reset_logins": True, "month_end": True, "create_sub_auditors": True,
+        "edit_client_details": True, "act_as": True, "reset_logins": True, "month_end": True,
+        "create_sub_auditors": True,
     },
     "sub_auditor": {
         "onboard_clients": True, "assign_packages": False, "switch_client_modules": True, "pause_clients": True,
-        "act_as": True, "reset_logins": True, "month_end": True, "create_sub_auditors": False,
+        "edit_client_details": True, "act_as": True, "reset_logins": True, "month_end": True,
+        "create_sub_auditors": False,
     },
 }
 
@@ -187,8 +190,95 @@ def auditor_can(user, power: str) -> bool:
         return False
     grant = getattr(user, "power_grant", None)
     if grant is not None and power in (grant.powers or {}):
-        return bool(grant.powers[power])
-    return ROLE_DEFAULT_POWERS[role][power]
+        allowed = bool(grant.powers[power])
+    else:
+        allowed = ROLE_DEFAULT_POWERS[role][power]
+    # A Sub-Auditor never holds a power their Auditor doesn't.
+    parent = getattr(user, "parent_auditor", None) if role == "sub_auditor" else None
+    if allowed and parent is not None:
+        allowed = auditor_can(parent, power)
+    return allowed
+
+
+def power_required(power: str):
+    """Route guard for the console: 403 unless the signed-in login holds
+    this power (the Ultra Admin always does)."""
+    from functools import wraps
+
+    from flask import abort
+    from flask_login import current_user
+
+    if power not in AUDITOR_POWERS:
+        raise ValueError(f"Unknown power: {power}")
+
+    def decorator(view):
+        @wraps(view)
+        def wrapped(*args, **kwargs):
+            if not auditor_can(current_user, power):
+                abort(403)
+            return view(*args, **kwargs)
+
+        return wrapped
+
+    return decorator
+
+
+def grantable_powers(actor) -> list[str]:
+    """Powers `actor` may hand out: the Ultra Admin any; an Auditor only
+    what they hold themselves, and never creating Sub-Auditors (a
+    Sub-Auditor can't have their own)."""
+    if actor.is_super_admin:
+        return list(AUDITOR_POWERS)
+    if actor.is_auditor:
+        return [p for p in AUDITOR_POWERS if p != "create_sub_auditors" and auditor_can(actor, p)]
+    return []
+
+
+def allowed_packages(user) -> list:
+    """Packages this login may give a client: every available one for the
+    Ultra Admin; for an auditor, the ones the Ultra Admin (or their
+    Auditor) allowed them - only with the "choose a package" power."""
+    from app.models.package import Package
+
+    query = Package.query.filter_by(is_active=True).order_by(Package.sort_order, Package.name)
+    if user.is_super_admin:
+        return query.all()
+    if not auditor_can(user, "assign_packages"):
+        return []
+    grant = getattr(user, "power_grant", None)
+    ids = set(grant.allowed_package_ids or []) if grant is not None else set()
+    # A Sub-Auditor never keeps a package their Auditor no longer has.
+    parent = getattr(user, "parent_auditor", None) if user.is_sub_auditor else None
+    if parent is not None:
+        ids &= {p.id for p in allowed_packages(parent)}
+    return [p for p in query.all() if p.id in ids]
+
+
+def client_room(user):
+    """(clients now, limit or None) for an auditor's client limit."""
+    from app.utils.auditor_scope import auditor_tenant_ids
+
+    if user.is_super_admin:
+        return 0, None
+    grant = getattr(user, "power_grant", None)
+    limit = grant.max_clients if grant is not None else None
+    return len(auditor_tenant_ids(user) or ()), limit
+
+
+def sub_auditor_room(user):
+    """(Sub-Auditors now, limit or None) for an Auditor."""
+    from app.models.user import User
+
+    if user.is_super_admin:
+        return 0, None
+    grant = getattr(user, "power_grant", None)
+    limit = grant.max_sub_auditors if grant is not None else None
+    return User.query.filter_by(parent_auditor_id=user.id).count(), limit
+
+
+def has_room(room) -> bool:
+    count, limit = room
+    return limit is None or count < limit
 
 
 # --- changing (each change audit-logged with who made it) ------------------------------------------
@@ -362,6 +452,17 @@ def ultra_admin_acting() -> bool:
 
     actor = db.session.get(User, session["impersonator_id"])
     return bool(actor and actor.is_super_admin)
+
+
+def acting_console_user():
+    """The console login acting as this client ("Act as"), if any."""
+    from flask import has_request_context, session
+
+    if not has_request_context() or not session.get("impersonator_id"):
+        return None
+    from app.models.user import User
+
+    return db.session.get(User, session["impersonator_id"])
 
 
 def locked_for_client(tenant, key: str) -> bool:

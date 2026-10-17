@@ -1,0 +1,45 @@
+{# An auditor's powers (packages and powers, stage 4). Context: powers =
+   auditor_powers_context(); shown to the Ultra Admin, and to an Auditor
+   on their own Sub-Auditor's page. #}
+<form method="post" action="{{ url_for('tenants.save_auditor_powers', auditor_id=auditor.id) }}" class="card mb-20" id="sec-powers">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="card-head">
+    <div>
+      <h2 class="m-0">Powers</h2>
+      <p class="text-muted m-0">What {{ auditor.name }} may do in the console.
+        {% if auditor.is_sub_auditor %}A Sub-Auditor never gets a power their Auditor doesn't have.{% endif %}</p>
+    </div>
+  </div>
+  <div class="power-list">
+    {% for row in powers.rows %}
+    <label class="switch-row power-row{{ ' is-fixed' if not row.grantable }}">
+      <span class="switch"><input type="checkbox" name="power" value="{{ row.key }}" {% if row.on %}checked{% endif %}
+            {% if not row.grantable %}disabled{% endif %}><span class="switch-track"></span></span>
+      <span><strong>{{ row.label }}</strong>
+        <small>{% if not row.grantable %}{{ 'Not for a Sub-Auditor' if row.key == 'create_sub_auditors' and auditor.is_sub_auditor else "You don't have this power yourself" }}{% elif not row.set %}As before: {{ 'on' if row.default else 'off' }}{% endif %}</small></span>
+    </label>
+    {% endfor %}
+  </div>
+
+  <h3 class="mt-16 mb-4">Packages {{ auditor.name }} may give clients</h3>
+  <p class="text-muted mt-0">Only used with "Choose a package for their clients" on.</p>
+  {% if powers.packages %}
+  <div class="chip-checks">
+    {% for p in powers.packages %}
+    <label class="chip-check"><input type="checkbox" name="package_id" value="{{ p.id }}" {% if p.id in powers.allowed_ids %}checked{% endif %}><span>{{ icon('check', 'icon-sm') }}{{ p.name }}</span></label>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="text-muted">No packages to give.</p>
+  {% endif %}
+
+  <div class="form-grid mt-16">
+    <label class="field"><span class="field-label">Client limit <span class="text-muted">({{ powers.clients_now }} now)</span></span>
+      <input type="number" name="max_clients" min="0" step="1" class="field-input" value="{{ powers.max_clients if powers.max_clients is not none else '' }}" placeholder="No limit"></label>
+    {% if powers.can_limit_subs %}
+    <label class="field"><span class="field-label">Sub-Auditor limit <span class="text-muted">({{ powers.subs_now }} now)</span></span>
+      <input type="number" name="max_sub_auditors" min="0" step="1" class="field-input" value="{{ powers.max_sub_auditors if powers.max_sub_auditors is not none else '' }}" placeholder="No limit"></label>
+    {% endif %}
+  </div>
+  <div><button type="submit" class="btn btn-primary">Save powers</button></div>
+</form>

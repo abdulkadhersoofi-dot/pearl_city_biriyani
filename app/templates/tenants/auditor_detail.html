@@ -13,7 +13,7 @@
     </p>
   </div>
   <div class="row">
-    {% if auditor.is_active %}
+    {% if auditor.is_active and console_can('act_as') %}
     <form method="post" action="{{ url_for('tenants.act_as_auditor', auditor_id=auditor.id) }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button type="submit" class="btn btn-secondary">Act as</button>
@@ -113,6 +113,8 @@
   </div>
 </div>
 {% endif %}
+
+{% if powers %}{% include "tenants/_auditor_powers.html" %}{% endif %}
 
 {% if auditor.is_auditor %}
 <div class="card mb-20">

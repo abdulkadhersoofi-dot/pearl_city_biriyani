@@ -3,9 +3,11 @@
 {% block content %}
 <div class="page-header">
   <h1>{{ 'Auditors' if current_user.is_super_admin else 'Your Sub-Auditors' }}</h1>
+  {% if console_can('create_sub_auditors') %}
   <a href="{{ url_for('tenants.new_auditor') }}" class="btn btn-primary">
     + {{ 'Create auditor' if current_user.is_super_admin else 'Create sub-auditor' }}
   </a>
+  {% endif %}
 </div>
 
 {% if current_user.is_super_admin and pending_tenants %}
