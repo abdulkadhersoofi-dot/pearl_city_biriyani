@@ -48,7 +48,7 @@
 </head>
 {% set new_actions = new_menu(current_user) %}
 {% set tabs = bottom_tabs(current_user) %}
-<body class="{{ 'has-menu' if menu else 'no-menu' }}{{ ' has-tabs' if tabs }}{{ ' is-counter' if request.endpoint == 'pos.terminal' }}" x-data="shell" data-rail-key="{{ rail_key }}"
+<body class="{{ 'has-menu' if menu else 'no-menu' }}{{ ' has-tabs' if tabs }}{{ ' is-counter' if request.endpoint == 'pos.terminal' }}{{ ' is-read-only' if g.read_only_module }}" x-data="shell" data-rail-key="{{ rail_key }}"
       @keydown.window="onKey($event)">
   <a class="skip-link" href="#main">Skip to content</a>
   <div class="shell">
@@ -123,7 +123,7 @@
           </div>
           {% endif %}
 
-          {% if current_user.is_authenticated and current_user.is_client_admin %}
+          {% if current_user.is_authenticated and (current_user.is_client_admin or current_user.is_super_admin) %}
           <div class="pop-wrap" x-data="{ open: false }" @keydown.escape="open = false" @click.outside="open = false">
             <button type="button" class="icon-btn bell-btn" @click="open = !open" :aria-expanded="open" aria-label="Things that need you">
               {{ icon('bell') }}<span class="bell-dot" id="bell-dot" hidden></span>
@@ -179,6 +179,11 @@
       </div>
       {% elif billing_notice %}
       <div class="notice-bar notice-billing">{{ billing_notice }}</div>
+      {% endif %}
+      {% if g.read_only_module %}
+      <div class="notice-bar notice-read-only" role="status">{{ icon('lock-keyhole', 'icon-sm') }}
+        {{ g.read_only_module }} is no longer in your package. Your records here still open, print and export; nothing new can be saved.
+        <a href="{{ url_for('settings.features') }}" class="btn btn-quiet btn-sm">Ask ARFA to add it back</a></div>
       {% endif %}
 
       <main id="main" class="app-main" tabindex="-1">

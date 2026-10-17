@@ -109,12 +109,27 @@ def module_groups(tenant) -> list[dict]:
             reachable = on and all(tenant.has_feature(k) for k in SETUP_ALSO_NEEDS.get(key, ()))
             items.append({"key": key, "label": feature.label, "description": feature.description, "icon": icon,
                           "on": on, "setup_url": url_for(endpoint, **kwargs) if (endpoint and reachable) else None,
-                          "setup_label": setup_label})
+                          "setup_label": setup_label, **_package_bits(tenant, key)})
         if items:
             groups.append({"label": label, "items": items})
     rest = [f for f in AVAILABLE_FEATURES if f.key not in placed]
     if rest:
         groups.append({"label": "Other", "items": [
             {"key": f.key, "label": f.label, "description": f.description, "icon": "layout-grid",
-             "on": tenant.has_feature(f.key), "setup_url": None, "setup_label": None} for f in rest]})
+             "on": tenant.has_feature(f.key), "setup_url": None, "setup_label": None, **_package_bits(tenant, f.key)}
+            for f in rest]})
     return groups
+
+
+def _package_bits(tenant, key) -> dict:
+    """Where the client's package puts a module (packages and powers,
+    stage 3): Included (always on, locked), Client's choice (their switch)
+    or Off - and, if Off but holding records, read-only with a link to
+    them."""
+    from app.utils.entitlements import READ_ONLY, module_mode, module_state
+    from app.utils.module_data import home_endpoint
+
+    state = module_state(tenant, key)
+    read_only = module_mode(tenant, key) == READ_ONLY
+    home = home_endpoint(key) if read_only else None
+    return {"state": state, "read_only": read_only, "records_url": url_for(home) if home else None}

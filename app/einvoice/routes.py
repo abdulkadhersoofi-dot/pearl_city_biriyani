@@ -25,6 +25,7 @@ from app.models.tenant import Gstin
 from app.models.user import UserRole
 from app.notes.services import NoteValidationError
 from app.utils.audit import record_audit
+from app.utils.entitlements import locked_for_client
 from app.utils.features import current_tenant_has, feature_required
 from app.utils.indian_states import STATE_NAME_BY_CODE
 from app.utils.tenant_scope import assert_owns, tenant_query
@@ -252,6 +253,8 @@ def log():
 def settings():
     tenant = _tenant()
     gstins = _gstins()
+    if request.method == "POST" and locked_for_client(tenant, "gst_portal"):
+        abort(403)
     if request.method == "POST":
         gstin = next((g for g in gstins if g.id == request.form.get("gstin_id", type=int)), None) or abort(404)
         action = request.form.get("action")
@@ -299,7 +302,7 @@ def settings():
         return redirect(url_for("einvoice.settings"))
     creds = {g.id: credential_for(tenant.id, g.id) for g in gstins}
     return render_template("einvoice/settings.html", gstins=gstins, creds=creds, providers=PROVIDERS,
-                           in_scope=rules.tenant_in_scope(tenant))
+                           in_scope=rules.tenant_in_scope(tenant), gst_locked=locked_for_client(tenant, "gst_portal"))
 
 
 # --- e-way bills ---------------------------------------------------------------------------

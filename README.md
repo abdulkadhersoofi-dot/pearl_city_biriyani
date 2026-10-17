@@ -2164,6 +2164,48 @@ change yet.
   by package (Ultra Admin) and as before (auditor), and the fee at
   verification.
 
+### Packages and powers - stage 3 (clients see their package)
+
+- **Settings > Modules** follows the client's package: *Included*
+  modules show with a lock ("Included", always on); *Client's choice*
+  modules keep their switch; everything else sits under **Not in your
+  package**, each with **Ask ARFA to add**. A client without a package
+  (or on Current setup) sees the page exactly as before.
+- **Ask ARFA to add** files one request per module (asking twice keeps
+  one) and puts it in the **Ultra Admin's bell** ("Kaveri Mobiles asks
+  for Loyalty points"). On the client's page the request shows with
+  **Add as their choice** (switched on for them), **Include** or
+  **Decline**. Table `module_requests` (with `tenant_id`).
+- **Locked settings**: a setting the package leaves to ARFA shows its
+  value, disabled, with "set by ARFA as part of your package" - type of
+  business (the "Recommended modules" card goes with it), turnover,
+  GST-included pricing, appearance, counter payment modes and UPI,
+  receipt size, margin-scheme wording, idle sign-out / counter lock,
+  e-Invoice and e-Way Bill logins. The server refuses changes too: a
+  locked field is kept as it is, and a whole locked section (appearance,
+  counter, sign-in & security, e-Invoice logins) answers 403. The
+  **Ultra Admin acting as the client** ("Act as") can change them - that
+  is how the firm changes a locked setting for a client.
+- **Read-only modules**: when a package (or an exception) switches a
+  module Off while the client has records in it (purchase bills, stock,
+  expenses, receipts, job cards, ... - `app/utils/module_data.py`), it
+  turns read-only instead of vanishing: its pages still open, print and
+  export, with a notice and "Ask ARFA to add it back"; save buttons are
+  hidden and any save is refused (403). Settings > Modules shows it with
+  "Read-only: your records still open - Open records". Giving the module
+  back ends read-only.
+- **GST returns and reports keep counting existing records**: GSTR-1 /
+  3B (advances, documents, ITC), the filing pack, P&L's cost method and
+  the purchase / expense registers ask `Tenant.uses_module()` (on or
+  read-only), so taking a module away never drops what was already
+  entered. A client switching a module off themselves behaves as before.
+- Tests: `tests/test_package_client_view.py` - the Modules page with and
+  without a package, asking ARFA (once), the bell and adding / declining
+  on the client page (a request reachable only through its own client),
+  locked settings refused with the lock shown, the Ultra Admin acting as
+  the client changing one, read-only pages open / saves refused / GSTR-3B
+  ITC unchanged, and giving the module back.
+
 ## Roadmap
 
 - **Platform build (ARFA general-purpose POS), phase by phase.**
@@ -2245,7 +2287,7 @@ change yet.
   - Stage 2 (done): packages in the console - the package editor, a client's
     "Package & modules" with exceptions, onboarding by package, price
     into the subscription fee.
-  - Stage 3: clients see their package - locked modules and settings,
+  - Stage 3 (done): clients see their package - locked modules and settings,
     "Ask ARFA to add", read-only for removed modules with data.
   - Stage 4: auditor powers on each auditor's page, enforced on every
     console page and in "Act as".

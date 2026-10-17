@@ -1,3 +1,9 @@
+{# A setting the client's package leaves to ARFA (packages and powers):
+   shown with its value, disabled, and this note. #}
+{% macro lock_note(on, what="This setting") %}
+{% if on %}<p class="lock-note">{{ icon('lock-keyhole', 'icon-sm') }}<span>{{ what }} is set by ARFA as part of your package. Ask ARFA if it needs to change.</span></p>{% endif %}
+{% endmacro %}
+
 {% macro field(f, help=None) %}
 {# Help text and errors are tied to the field (aria-describedby), so a
    screen reader reads them with it; a field in error says so. #}

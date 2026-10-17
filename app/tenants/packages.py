@@ -18,7 +18,7 @@ from flask_login import current_user
 
 from app.auth.decorators import roles_required
 from app.extensions import db
-from app.models.package import Package, TenantPackage
+from app.models.package import ModuleRequest, Package, TenantPackage
 from app.models.tenant import Tenant
 from app.models.user import UserRole
 from app.settings.sections import MODULE_GROUPS
@@ -27,7 +27,8 @@ from app.utils.audit import record_audit
 from app.utils.entitlements import (
     AS_PACKAGE, CHOICE, LIMITS, MODULE_STATES, OFF, SETTING_STATES, SETTINGS, assign_package, ensure_starting_packages,
     grant_of, module_state, own_branding, package_module_state, package_price_for, package_summary, preview_package,
-    set_branding_exception, set_limit_exception, set_module_exception, set_setting_exception, setting_state,
+    refresh_read_only, resolve_module_request, set_branding_exception, set_limit_exception, set_module_exception, set_setting_exception,
+    setting_state,
 )
 from app.utils.features import AVAILABLE_FEATURES, FEATURES
 
@@ -178,6 +179,9 @@ def package_edit(package_id):
                 flash(error, "error")
             package = Package.query.get_or_404(package_id)
         else:
+            # Clients on it may have just lost (or got back) a module with records.
+            for grant in TenantPackage.query.filter_by(package_id=package.id).all():
+                refresh_read_only(grant.tenant)
             record_audit(current_user, "package_edited", entity_type="package", entity_id=package.id,
                          details={"name": package.name, "before": before,
                                   "after": {"modules": package.modules, "settings": package.settings,
@@ -239,6 +243,9 @@ def client_package_context(tenant):
                             + len(grant.limit_overrides or {}) + (grant.own_branding_override is not None))
         if grant is not None else 0,
         "module_states": MODULE_STATES, "setting_states": SETTING_STATES,
+        "requests": [{"req": r, "label": FEATURES[r.feature_key].label if r.feature_key in FEATURES else r.feature_key}
+                     for r in ModuleRequest.query.filter_by(tenant_id=tenant.id, status=ModuleRequest.PENDING)
+                     .order_by(ModuleRequest.created_at)],
     }
 
 
@@ -340,3 +347,22 @@ def save_client_exceptions(tenant_id):
     flash(f"{changed} change{'s' if changed != 1 else ''} saved for {tenant.legal_name}." if changed
           else "Nothing changed.", "success")
     return redirect(url_for("tenants.detail", tenant_id=tenant.id, _anchor="sec-package"))
+
+
+@tenants_bp.route("/clients/<int:tenant_id>/requests/<int:request_id>", methods=["POST"])
+@roles_required(UserRole.SUPER_ADMIN)
+def resolve_request(tenant_id, request_id):
+    """Add a module a client asked for (as their choice, or included), or decline."""
+    req = ModuleRequest.query.filter_by(id=request_id, tenant_id=tenant_id).first_or_404()
+    if req.status != ModuleRequest.PENDING:
+        flash("That request was already dealt with.", "info")
+        return redirect(url_for("tenants.detail", tenant_id=tenant_id, _anchor="sec-package"))
+    action = request.form.get("action")
+    if action not in (CHOICE, "inc", "decline"):
+        abort(400)
+    resolve_module_request(req, action, current_user)
+    db.session.commit()
+    label = FEATURES[req.feature_key].label if req.feature_key in FEATURES else req.feature_key
+    flash(f"Declined {label} for {req.tenant.legal_name}." if action == "decline"
+          else f"{label} added for {req.tenant.legal_name}.", "success")
+    return redirect(url_for("tenants.detail", tenant_id=tenant_id, _anchor="sec-package"))

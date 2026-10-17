@@ -81,6 +81,10 @@ def needs_you():
 
     from app.navigation import needs_you as needs_you_items
 
+    if current_user.is_authenticated and current_user.is_super_admin:
+        from app.navigation import admin_needs_you
+
+        return render_template("_needs_you.html", items=admin_needs_you())
     if not (current_user.is_authenticated and current_user.is_client_admin and current_user.tenant):
         abort(404)
     return render_template("_needs_you.html", items=needs_you_items(current_user.tenant))

@@ -1,5 +1,5 @@
 {% extends "settings/_layout.html" %}
-{% from "macros.html" import field %}
+{% from "macros.html" import field, lock_note %}
 {% block section %}
 <form method="post" class="settings-form stack" novalidate x-data="settingsForm({{ form.errors|tojson }})"
       @input="touch()" @change="touch()" @submit="saving()">
@@ -13,7 +13,10 @@
         <input class="field-input" value="A4" disabled aria-label="Invoice print size">
         <p class="field-help">Invoices always print on A4 - this isn't changeable.</p>
       </div>
-      {{ field(form.default_receipt_format, help="POS checkout prints straight to this size - no size prompt every sale.") }}
+      <fieldset class="lock-fieldset" {% if locked.receipt %}disabled{% endif %}>
+        {{ lock_note(locked.receipt, "Your receipt size") }}
+        {{ field(form.default_receipt_format, help="POS checkout prints straight to this size - no size prompt every sale.") }}
+      </fieldset>
     </div>
     <p class="mt-0"><a href="{{ url_for('settings.printer_test') }}">Print a test receipt {{ icon('arrow-right', 'icon-sm') }}</a></p>
   </section>
@@ -21,10 +24,13 @@
   {% if tenant.has_feature('margin_scheme') %}
   <section class="card settings-card">
     <h2>Margin scheme (second-hand goods)</h2>
+    {{ lock_note(locked.margin_declaration, "The declaration wording") }}
+    <fieldset class="lock-fieldset" {% if locked.margin_declaration %}disabled{% endif %}>
     {{ field(form.margin_scheme_declaration, help="Printed on every margin-scheme invoice. Leave blank for the standard wording: \"" ~ default_margin_declaration ~ "\"") }}
+    </fieldset>
   </section>
   {% endif %}
 
-  {% include "settings/_save_bar.html" %}
+  {% if not (locked.receipt and (locked.margin_declaration or not tenant.has_feature('margin_scheme'))) %}{% include "settings/_save_bar.html" %}{% endif %}
 </form>
 {% endblock %}

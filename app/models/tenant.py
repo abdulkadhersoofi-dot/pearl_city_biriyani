@@ -201,6 +201,14 @@ class Tenant(db.Model, TimestampMixin):
 
         return module_mode(self, key) == ON
 
+    def uses_module(self, key: str) -> bool:
+        """On, or read-only (taken away by the package while it held
+        records). Reports and GST returns that count a module's records
+        ask this, so a package change never drops records already entered."""
+        from app.utils.entitlements import OFF, module_mode
+
+        return module_mode(self, key) != OFF
+
     def set_feature(self, key: str, enabled: bool) -> None:
         # Reassigned rather than mutated in place - a plain JSON column
         # doesn't track in-place dict changes, so mutating would silently

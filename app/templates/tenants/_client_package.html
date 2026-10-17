@@ -13,6 +13,24 @@
     <a href="{{ url_for('tenants.packages') }}" class="btn btn-quiet btn-sm">{{ icon('layout-grid', 'icon-sm') }}All packages</a>
   </div>
 
+  {% if pkg.requests %}
+  <div class="request-list" role="region" aria-label="Modules this client asked for">
+    <p class="m-0"><strong>{{ tenant.display_name }} asked for:</strong></p>
+    {% for item in pkg.requests %}
+    <form method="post" action="{{ url_for('tenants.resolve_request', tenant_id=tenant.id, request_id=item.req.id) }}" class="request-row">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <span>{{ icon('layout-grid', 'icon-sm') }}<strong>{{ item.label }}</strong>
+        <small class="text-muted">asked {{ item.req.created_at.strftime('%d %b') }}{% if item.req.requested_by %} by {{ item.req.requested_by.name }}{% endif %}</small></span>
+      <span class="row">
+        <button type="submit" name="action" value="choice" class="btn btn-primary btn-sm">Add as their choice</button>
+        <button type="submit" name="action" value="inc" class="btn btn-secondary btn-sm">Include</button>
+        <button type="submit" name="action" value="decline" class="btn btn-quiet btn-sm">Decline</button>
+      </span>
+    </form>
+    {% endfor %}
+  </div>
+  {% endif %}
+
   {# Change the package: pick one, see what changes for this client, then confirm. #}
   <form method="post" action="{{ url_for('tenants.assign_client_package', tenant_id=tenant.id) }}" class="package-assign"
         hx-get="{{ url_for('tenants.package_preview', tenant_id=tenant.id) }}" hx-trigger="change from:select[name=package_id], change from:input[name=keep_exceptions], load"

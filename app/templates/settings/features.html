@@ -12,14 +12,27 @@
   {{ form.hidden_tag() }}
   <div x-data="{ q: '' }" @module-filter.window="q = $event.detail">
     {% for group in groups %}
+    {% set mine = group['items']|rejectattr('state', 'equalto', 'off')|list %}
+    {% if mine %}
     <section class="module-group" x-show="!q || [...$el.querySelectorAll('.module-card')].some(c => c.dataset.hay.includes(q))">
       <h2 class="module-group-title">{{ group.label }}
-        <span class="module-count">{{ group['items']|selectattr('on')|list|length }} of {{ group['items']|length }} on</span></h2>
+        <span class="module-count">{{ mine|selectattr('on')|list|length }} of {{ mine|length }} on</span></h2>
       <div class="module-grid">
-        {% for item in group['items'] %}
+        {% for item in mine %}
         {% set f = form[field_name(item.key)] %}
-        <div class="module-card" data-hay="{{ (item.label ~ ' ' ~ item.description)|lower }}"
+        <div class="module-card{{ ' is-included' if item.state == 'inc' }}" data-hay="{{ (item.label ~ ' ' ~ item.description)|lower }}"
              x-show="!q || $el.dataset.hay.includes(q)">
+          {% if item.state == 'inc' %}
+          {# Part of the package: always on, the Ultra Admin's to change. #}
+          <div class="module-main">
+            <span class="module-icon">{{ icon(item.icon) }}</span>
+            <span class="module-text">
+              <strong>{{ item.label }}</strong>
+              <small>{{ item.description }}</small>
+            </span>
+            <span class="lock-pill" title="Part of your package - always on">{{ icon('lock-keyhole', 'icon-sm') }}Included</span>
+          </div>
+          {% else %}
           <label class="module-main" for="{{ f.id }}">
             <span class="module-icon">{{ icon(item.icon) }}</span>
             <span class="module-text">
@@ -28,6 +41,7 @@
             </span>
             <span class="switch">{{ f(role="switch") }}<span class="switch-track"></span></span>
           </label>
+          {% endif %}
           {% if item.setup_url %}
           <a href="{{ item.setup_url }}" class="module-setup">{{ item.setup_label }} {{ icon('arrow-right', 'icon-sm') }}</a>
           {% elif item.setup_label and not item.on %}
@@ -37,10 +51,49 @@
         {% endfor %}
       </div>
     </section>
+    {% endif %}
     {% endfor %}
     <p class="empty-state" x-show="q && ![...$root.querySelectorAll('.module-card')].some(c => c.dataset.hay.includes(q))" x-cloak>No module matches that.</p>
   </div>
   {% set save_label = 'Save modules' %}
   {% include "settings/_save_bar.html" %}
 </form>
+
+{# Modules outside the package: ask ARFA to add one; a module taken away
+   while it held records stays readable. #}
+{% set outside = [] %}
+{% for group in groups %}{% for item in group['items'] if item.state == 'off' %}{% set _ = outside.append(item) %}{% endfor %}{% endfor %}
+{% if outside %}
+<section class="module-group outside-package" x-data="{ q: '' }" @module-filter.window="q = $event.detail">
+  <h2 class="module-group-title">Not in your package <span class="module-count">{{ outside|length }}</span></h2>
+  <p class="text-muted mt-0">Ask ARFA to add any of these. Your request goes straight to them; once it's added it shows above.</p>
+  <div class="module-grid">
+    {% for item in outside %}
+    <div class="module-card is-outside" data-hay="{{ (item.label ~ ' ' ~ item.description)|lower }}" x-show="!q || $el.dataset.hay.includes(q)">
+      <div class="module-main">
+        <span class="module-icon">{{ icon(item.icon) }}</span>
+        <span class="module-text">
+          <strong>{{ item.label }}</strong>
+          <small>{{ item.description }}</small>
+        </span>
+      </div>
+      <div class="module-outside-actions">
+        {% if item.read_only %}
+        <span class="read-only-note">{{ icon('lock-keyhole', 'icon-sm') }}Read-only: your records still open.
+          {% if item.records_url %}<a href="{{ item.records_url }}">Open records</a>{% endif %}</span>
+        {% endif %}
+        {% if requests.get(item.key) %}
+        <span class="asked-note">{{ icon('clock', 'icon-sm') }}Asked {{ requests[item.key].created_at.strftime('%d %b') }}</span>
+        {% else %}
+        <form method="post" action="{{ url_for('settings.request_module', key=item.key) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn btn-secondary btn-sm">Ask ARFA to add</button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
 {% endblock %}

@@ -99,3 +99,28 @@ class AuditorPowers(db.Model, TimestampMixin):
 
     def __repr__(self):
         return f"<AuditorPowers user={self.user_id}>"
+
+
+class ModuleRequest(db.Model, TimestampMixin):
+    """A client asking ARFA to add a module that isn't in their package
+    ("Ask ARFA to add" in Settings > Modules). Lands in the Ultra Admin's
+    bell; one open request per module per client."""
+
+    __tablename__ = "module_requests"
+
+    PENDING, ADDED, DECLINED = "pending", "added", "declined"
+
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey("tenants.id", name="fk_module_requests_tenant"),
+                          nullable=False, index=True)
+    feature_key = db.Column(db.String(40), nullable=False)
+    status = db.Column(db.String(10), nullable=False, default="pending", server_default="pending", index=True)
+    requested_by_id = db.Column(db.Integer, db.ForeignKey("users.id", name="fk_module_requests_requested_by"))
+    resolved_by_id = db.Column(db.Integer, db.ForeignKey("users.id", name="fk_module_requests_resolved_by"))
+    resolved_at = db.Column(db.DateTime(timezone=True))
+
+    tenant = db.relationship("Tenant")
+    requested_by = db.relationship("User", foreign_keys=[requested_by_id])
+
+    def __repr__(self):
+        return f"<ModuleRequest tenant={self.tenant_id} {self.feature_key} {self.status}>"

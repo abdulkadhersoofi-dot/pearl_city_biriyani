@@ -1,5 +1,5 @@
 {% extends "settings/_layout.html" %}
-{% from "macros.html" import field %}
+{% from "macros.html" import field, lock_note %}
 {% block section %}
 <form method="post" class="settings-form stack" novalidate x-data="settingsForm({{ form.errors|tojson }})"
       @input="touch()" @change="touch()" @submit="saving()">
@@ -9,20 +9,30 @@
   <section class="card settings-card">
     <h2>Business profile</h2>
     <div class="form-grid">
-      {{ field(form.business_type, help="Used to suggest which modules you need. Changing it doesn't switch anything by itself.") }}
-      {{ field(form.aato, help="Aggregate annual turnover of the last financial year. Decides rules like how many HSN digits your bills need. Leave blank if under Rs. 5 crore and unsure.") }}
+      <fieldset class="lock-fieldset" {% if locked.business_type %}disabled{% endif %}>
+        {{ lock_note(locked.business_type, "Your type of business") }}
+        {{ field(form.business_type, help="Used to suggest which modules you need. Changing it doesn't switch anything by itself.") }}
+      </fieldset>
+      <fieldset class="lock-fieldset" {% if locked.aato %}disabled{% endif %}>
+        {{ lock_note(locked.aato, "Your turnover") }}
+        {{ field(form.aato, help="Aggregate annual turnover of the last financial year. Decides rules like how many HSN digits your bills need. Leave blank if under Rs. 5 crore and unsure.") }}
+      </fieldset>
     </div>
   </section>
 
   <section class="card settings-card">
     <h2>Prices of new items</h2>
+    {{ lock_note(locked.pricing) }}
+    <fieldset class="lock-fieldset" {% if locked.pricing %}disabled{% endif %}>
     <label class="switch-row">
       <span class="switch">{{ form.default_price_includes_tax(role="switch") }}<span class="switch-track"></span></span>
       <span><strong>{{ form.default_price_includes_tax.label.text }}</strong>
         <small>Pre-ticks "price already includes GST" for new items and new invoice lines. Each item keeps its own setting.</small></span>
     </label>
+    </fieldset>
   </section>
 
+  {% if not locked.business_type %}
   <section class="card settings-card">
     <h2>Recommended modules</h2>
     <label class="switch-row">
@@ -31,6 +41,7 @@
         <small>Turns your modules (and the GST-included default above) to what's usual for the type you picked. Leave off to keep your own choices - you can switch modules one by one under <a href="{{ url_for('settings.features') }}">Modules</a>.</small></span>
     </label>
   </section>
+  {% endif %}
 
   {% if tenant.login_slug %}
   <section class="card settings-card">

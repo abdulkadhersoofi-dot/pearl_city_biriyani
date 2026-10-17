@@ -466,6 +466,20 @@ this list is just the index.
   `client_package_context()`. `preview_package()`, `package_summary()`,
   `package_price_for()`, `BUSINESS_TYPE_PACKAGE`, `set_limit_exception()`
   and `set_branding_exception()` are in `app/utils/entitlements.py`.
+- **Packages and powers, stage 3: the client's side.** `feature_required`
+  lets GET/HEAD through for a read-only module (sets `g.read_only_module`,
+  which base.html turns into a notice and `body.is-read-only`) and 403s
+  anything else. `Tenant.uses_module()` = on or read-only - use it (not
+  `has_feature`) wherever existing records must keep counting (GST
+  returns, filing pack, P&L, registers). Read-only is recomputed by
+  `refresh_read_only()` after every package / exception / package-edit
+  change, from `app/utils/module_data.MODULE_RECORDS`. Settings locks:
+  `locked_for_client()` (stands aside for the Ultra Admin acting as the
+  client); each Settings route checks `_locked(key)`; templates get
+  `locked` and use `lock_note()` + `fieldset.lock-fieldset[disabled]`.
+  Module requests: `ModuleRequest`, `request_module()`,
+  `resolve_module_request()`, `navigation.admin_needs_you()` (the Ultra
+  Admin's bell).
 
 ## 5. Chronological development history (this session)
 

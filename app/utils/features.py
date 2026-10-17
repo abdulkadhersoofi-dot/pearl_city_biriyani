@@ -11,7 +11,7 @@ saw a module appear that they hadn't turned on.
 from dataclasses import dataclass
 from functools import wraps
 
-from flask import abort
+from flask import abort, g, request
 from flask_login import current_user, login_required
 
 from app.models.tenant import BusinessType
@@ -342,9 +342,23 @@ def current_tenant_has(key: str) -> bool:
     return bool(tenant and tenant.has_feature(key))
 
 
+def current_tenant_reads(key: str) -> bool:
+    """Is this module read-only for the signed-in user's client?"""
+    if not current_user.is_authenticated or current_user.tenant_id is None:
+        return False
+    from app.utils.entitlements import READ_ONLY, module_mode
+
+    tenant = current_user.tenant
+    return bool(tenant and module_mode(tenant, key) == READ_ONLY)
+
+
 def feature_required(key: str):
     """Route guard: 404 when the signed-in client has this flag off - a
-    switched-off module is invisible, not merely forbidden."""
+    switched-off module is invisible, not merely forbidden.
+
+    A module the client's package took away while it held records is
+    read-only: its pages still open (view, print, export) but nothing can
+    be saved there - any other request is refused (403)."""
     if key not in FEATURES:
         raise ValueError(f"Unknown feature flag: {key}")
 
@@ -353,7 +367,11 @@ def feature_required(key: str):
         @login_required
         def wrapped(*args, **kwargs):
             if not current_tenant_has(key):
-                abort(404)
+                if not current_tenant_reads(key):
+                    abort(404)
+                if request.method not in ("GET", "HEAD"):
+                    abort(403)
+                g.read_only_module = FEATURES[key].label
             return view(*args, **kwargs)
 
         return wrapped

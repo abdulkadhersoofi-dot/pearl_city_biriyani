@@ -226,6 +226,7 @@ def assign_package(tenant, package, actor, keep_exceptions: bool = False):
         grant.setting_overrides = {}
         grant.limit_overrides = {}
         grant.own_branding_override = None
+    refresh_read_only(tenant)
     record_audit(actor, "package_assigned", tenant_id=tenant.id, entity_type="tenant", entity_id=tenant.id,
                  details={"from": before, "to": package.name, "kept_exceptions": keep_exceptions})
     return grant
@@ -248,6 +249,7 @@ def set_module_exception(tenant, key: str, state, actor):
     else:
         overrides[key] = state
     grant.module_overrides = overrides
+    refresh_read_only(tenant)
     record_audit(actor, "module_exception_set", tenant_id=tenant.id, entity_type="tenant", entity_id=tenant.id,
                  details={"module": key, "from": before, "to": overrides.get(key)})
     return grant
@@ -327,6 +329,85 @@ def set_auditor_powers(user, powers: dict, actor, allowed_package_ids=None, max_
     record_audit(actor, "auditor_powers_set", entity_type="user", entity_id=user.id,
                  details={"before": before, "after": grant.powers})
     return grant
+
+
+# --- read-only, locks, requests (what the client sees; stage 3) ------------------------------------
+
+def refresh_read_only(tenant):
+    """Re-work out which modules are read-only for this client: every
+    module their package (or an exception) switched Off while they still
+    hold records in it. Called after any change to their package."""
+    from app.utils.features import AVAILABLE_FEATURES
+    from app.utils.module_data import has_records
+
+    grant = grant_of(tenant)
+    if grant is None:
+        return []
+    keys = sorted(f.key for f in AVAILABLE_FEATURES
+                  if module_state(tenant, f.key) == OFF and has_records(tenant, f.key))
+    if keys != list(grant.read_only_modules or []):
+        grant.read_only_modules = keys
+    return keys
+
+
+def ultra_admin_acting() -> bool:
+    """Is the Ultra Admin signed in as this client ("Act as")? Then the
+    package's locks stand aside, so the firm can change a locked setting
+    for the client on their own screens."""
+    from flask import has_request_context, session
+
+    if not has_request_context() or not session.get("impersonator_id"):
+        return False
+    from app.models.user import User
+
+    actor = db.session.get(User, session["impersonator_id"])
+    return bool(actor and actor.is_super_admin)
+
+
+def locked_for_client(tenant, key: str) -> bool:
+    """Is this setting locked for whoever is signed in as the client now?"""
+    return setting_locked(tenant, key) and not ultra_admin_acting()
+
+
+def request_module(tenant, key: str, user):
+    """The client asks ARFA to add a module. Returns the open request
+    (an existing one if they already asked)."""
+    from app.models.package import ModuleRequest
+    from app.utils.features import FEATURES
+
+    if key not in FEATURES:
+        raise ValueError(f"Unknown module: {key}")
+    open_request = ModuleRequest.query.filter_by(tenant_id=tenant.id, feature_key=key,
+                                                 status=ModuleRequest.PENDING).first()
+    if open_request is not None:
+        return open_request
+    req = ModuleRequest(tenant_id=tenant.id, feature_key=key, requested_by_id=_id(user))
+    db.session.add(req)
+    record_audit(user, "module_requested", tenant_id=tenant.id, entity_type="tenant", entity_id=tenant.id,
+                 details={"module": key})
+    return req
+
+
+def resolve_module_request(req, action: str, actor):
+    """"choice" or "inc" adds the module for this client (as an exception
+    to their package); "decline" closes the request."""
+    from datetime import datetime, timezone
+
+    from app.models.package import ModuleRequest
+
+    if action not in (CHOICE, INCLUDED, "decline"):
+        raise ValueError(f"Unknown action: {action}")
+    if action != "decline":
+        set_module_exception(req.tenant, req.feature_key, action, actor)
+        if action == CHOICE:
+            # They asked for it, so it starts switched on.
+            req.tenant.set_feature(req.feature_key, True)
+    req.status = ModuleRequest.DECLINED if action == "decline" else ModuleRequest.ADDED
+    req.resolved_by_id = _id(actor)
+    req.resolved_at = datetime.now(timezone.utc)
+    record_audit(actor, "module_request_resolved", tenant_id=req.tenant_id, entity_type="tenant",
+                 entity_id=req.tenant_id, details={"module": req.feature_key, "action": action})
+    return req
 
 
 # --- previews and summaries (the console) ------------------------------------------------------------

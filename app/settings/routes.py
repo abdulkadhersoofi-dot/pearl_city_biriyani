@@ -1,4 +1,4 @@
-from flask import flash, redirect, render_template, request, url_for
+from flask import abort, flash, redirect, render_template, request, url_for
 from flask_login import current_user
 
 from app.auth.decorators import roles_required
@@ -18,8 +18,8 @@ from app.settings.forms import (
 )
 from app.settings.sections import module_groups, section_info, section_menu
 from app.utils.audit import record_audit
-from app.utils.entitlements import client_may_switch
-from app.utils.features import AVAILABLE_FEATURES, BUSINESS_TYPE_LABELS, apply_business_type_preset
+from app.utils.entitlements import SETTINGS, client_may_switch, locked_for_client
+from app.utils.features import AVAILABLE_FEATURES, BUSINESS_TYPE_LABELS, FEATURES, apply_business_type_preset
 from app.utils.uploads import UploadError, delete_uploaded_image, save_uploaded_image
 
 
@@ -64,6 +64,19 @@ def _submitted_business_type(form, tenant):
     return BusinessType(submitted) if submitted else tenant.business_type
 
 
+def _apply_locks(tenant, form, business_type):
+    """True when the post tried to change a locked business setting."""
+    # A locked field is shown disabled, so it only arrives if someone
+    # posted it by hand.
+    sent = request.form
+    tried = _locked("business_type") and (
+        ("business_type" in sent and business_type != tenant.business_type) or form.apply_business_preset.data)
+    tried = tried or (_locked("aato") and "aato" in sent and form.aato.data != tenant.aato)
+    tried = tried or (_locked("pricing") and "default_price_includes_tax" in sent
+                      and form.default_price_includes_tax.data != tenant.default_price_includes_tax)
+    return bool(tried)
+
+
 def _save_features(tenant, form):
     # Only the modules the client's package leaves to them; Included and
     # Off modules are the Ultra Admin's to change (app/utils/entitlements.py).
@@ -95,8 +108,19 @@ def _finish(tenant, before_features, section=None):
 
 
 def _section(template, key, **context):
-    return render_template(template, section=section_info(key), sections=section_menu(key),
-                           tenant=current_user.tenant, **context)
+    tenant = current_user.tenant
+    return render_template(template, section=section_info(key), sections=section_menu(key), tenant=tenant,
+                           locked={k: locked_for_client(tenant, k) for k in SETTINGS}, **context)
+
+
+def _locked(key):
+    """Is this setting the Ultra Admin's for the signed-in client's package?
+    (Not while the Ultra Admin is acting as them.)"""
+    return locked_for_client(current_user.tenant, key)
+
+
+def _kept_locked():
+    flash("Some settings are set by ARFA for your package and were not changed.", "warning")
 
 
 # --- Business (and the all-in-one form, at the same address) ------------------------------------
@@ -113,16 +137,26 @@ def index():
     if form.validate_on_submit():
         business_type = _submitted_business_type(form, tenant)
         before = dict(tenant.features or {})
-        tenant.aato = form.aato.data
-        if form.apply_business_preset.data:
+        refused = _apply_locks(tenant, form, business_type)
+        if refused:
+            business_type = tenant.business_type
+        if not _locked("aato"):
+            tenant.aato = form.aato.data
+        if form.apply_business_preset.data and not _locked("business_type"):
+            kept_pricing = tenant.default_price_includes_tax
             apply_business_type_preset(tenant, business_type)
+            if _locked("pricing"):
+                tenant.default_price_includes_tax = kept_pricing
             message = (f"Saved - modules switched to the recommended set for "
                        f"{BUSINESS_TYPE_LABELS[business_type]}.")
         else:
             tenant.business_type = business_type
-            tenant.default_price_includes_tax = form.default_price_includes_tax.data
+            if not _locked("pricing"):
+                tenant.default_price_includes_tax = form.default_price_includes_tax.data
             message = "Business details saved."
         _finish(tenant, before, "business")
+        if refused:
+            _kept_locked()
         flash(message, "success")
         return redirect(url_for("settings.index"))
     return _section("settings/business.html", "business", form=form)
@@ -134,28 +168,34 @@ def _save_everything(tenant):
     form = TenantSettingsForm(obj=tenant)
     if not form.validate_on_submit():
         return _rejected(*[e for errors in form.errors.values() for e in errors])
-    error = _save_appearance(tenant, form)
-    if error:
-        return _rejected(error)
-    tenant.default_receipt_format = form.default_receipt_format.data
-    tenant.aato = form.aato.data
+    if not _locked("branding"):
+        error = _save_appearance(tenant, form)
+        if error:
+            return _rejected(error)
+    if not _locked("receipt"):
+        tenant.default_receipt_format = form.default_receipt_format.data
+    if not _locked("aato"):
+        tenant.aato = form.aato.data
     # Only when the counter card was on the submitted page - an older
     # client/test posting without it keeps the modes it has.
-    if request.form.get("pos_settings_shown"):
+    if request.form.get("pos_settings_shown") and not _locked("counter"):
         error = _save_counter(tenant, form)
         if error:
             return _rejected(error)
     # Only when its card was on the page (the margin_scheme module was on).
-    if request.form.get("margin_settings_shown"):
+    if request.form.get("margin_settings_shown") and not _locked("margin_declaration"):
         tenant.margin_scheme_declaration = form.margin_scheme_declaration.data
     business_type = _submitted_business_type(form, tenant)
+    if _locked("business_type"):
+        business_type = tenant.business_type
     before = dict(tenant.features or {})
-    if form.apply_business_preset.data:
+    if form.apply_business_preset.data and not _locked("business_type"):
         apply_business_type_preset(tenant, business_type)
         message = f"Settings updated - modules reset to the recommended set for {BUSINESS_TYPE_LABELS[business_type]}."
     else:
         tenant.business_type = business_type
-        tenant.default_price_includes_tax = form.default_price_includes_tax.data
+        if not _locked("pricing"):
+            tenant.default_price_includes_tax = form.default_price_includes_tax.data
         _save_features(tenant, form)
         message = "Settings updated."
     _finish(tenant, before)
@@ -177,6 +217,8 @@ def _rejected(*errors):
 def appearance():
     tenant = current_user.tenant
     form = AppearanceForm(obj=tenant)
+    if request.method == "POST" and _locked("branding"):
+        abort(403)
     if form.validate_on_submit():
         error = _save_appearance(tenant, form)
         if error:
@@ -207,8 +249,27 @@ def features():
         flash(f"Modules saved - {len(changed)} changed." if changed else "Modules saved - nothing changed.",
               "success")
         return redirect(url_for("settings.features"))
+    from app.models.package import ModuleRequest
+
+    pending = {r.feature_key: r for r in ModuleRequest.query.filter_by(tenant_id=tenant.id,
+                                                                     status=ModuleRequest.PENDING)}
     return _section("settings/features.html", "modules", form=form, groups=module_groups(tenant),
-                    field_name=feature_field_name)
+                    field_name=feature_field_name, requests=pending)
+
+
+@settings_bp.route("/features/ask/<key>", methods=["POST"])
+@roles_required(UserRole.CLIENT_ADMIN)
+def request_module(key):
+    """"Ask ARFA to add" a module that isn't in the client's package."""
+    from app.utils.entitlements import OFF, module_state, request_module as ask
+
+    tenant = current_user.tenant
+    if key not in FEATURES or module_state(tenant, key) != OFF:
+        abort(404)
+    ask(tenant, key, current_user)
+    db.session.commit()
+    flash(f"Asked ARFA to add {FEATURES[key].label}. It shows here once it's added.", "success")
+    return redirect(url_for("settings.features"))
 
 
 # --- Counter -------------------------------------------------------------------------------------
@@ -220,6 +281,8 @@ def counter():
     form = CounterForm(obj=tenant)
     if request.method == "GET":
         form.pos_payment_modes.data = list(tenant.pos_payment_modes or [])
+    if request.method == "POST" and _locked("counter"):
+        abort(403)
     if form.validate_on_submit():
         error = _save_counter(tenant, form)
         if error:
@@ -241,10 +304,16 @@ def documents():
     tenant = current_user.tenant
     form = DocumentsForm(obj=tenant)
     if form.validate_on_submit():
-        tenant.default_receipt_format = form.default_receipt_format.data
-        if tenant.has_feature("margin_scheme"):
+        refused = ((_locked("receipt") and form.default_receipt_format.data != tenant.default_receipt_format)
+                   or (_locked("margin_declaration") and tenant.has_feature("margin_scheme")
+                       and (form.margin_scheme_declaration.data or None) != (tenant.margin_scheme_declaration or None)))
+        if not _locked("receipt"):
+            tenant.default_receipt_format = form.default_receipt_format.data
+        if tenant.has_feature("margin_scheme") and not _locked("margin_declaration"):
             tenant.margin_scheme_declaration = form.margin_scheme_declaration.data
         _finish(tenant, dict(tenant.features or {}), "documents")
+        if refused:
+            _kept_locked()
         flash("Printing settings saved.", "success")
         return redirect(url_for("settings.documents"))
     return _section("settings/documents.html", "documents", form=form, default_margin_declaration=DEFAULT_DECLARATION)
@@ -302,6 +371,8 @@ def security():
     from app.utils.module_settings import module_settings, save_module_settings
 
     tenant = current_user.tenant
+    if request.method == "POST" and _locked("security"):
+        abort(403)
     if request.method == "POST":
         idle = request.form.get("idle_minutes", type=int) or 0
         save_module_settings(tenant, "security", {"idle_minutes": idle if idle in IDLE_CHOICES else 0})

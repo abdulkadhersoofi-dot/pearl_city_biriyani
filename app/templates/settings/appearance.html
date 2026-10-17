@@ -1,9 +1,11 @@
 {% extends "settings/_layout.html" %}
-{% from "macros.html" import field %}
+{% from "macros.html" import field, lock_note %}
 {% block section %}
 <form method="post" class="settings-form stack" novalidate enctype="multipart/form-data"
       x-data="settingsForm({{ form.errors|tojson }})" @input="touch()" @change="touch()" @submit="saving()">
   {{ form.hidden_tag() }}
+  {{ lock_note(locked.branding, "Your logo, colours and font") }}
+  <fieldset class="lock-fieldset stack" {% if locked.branding %}disabled{% endif %}>
 
   <section class="card settings-card">
     <h2>Logo</h2>
@@ -38,8 +40,9 @@
       </div>
     </div>
   </section>
+  </fieldset>
 
-  {% include "settings/_save_bar.html" %}
+  {% if not locked.branding %}{% include "settings/_save_bar.html" %}{% endif %}
 </form>
 {% endblock %}
 

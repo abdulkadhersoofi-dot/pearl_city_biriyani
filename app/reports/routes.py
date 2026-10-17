@@ -386,7 +386,7 @@ def register_xlsx(kind):
     from app.reports.registers import expense_register_workbook, purchase_register_workbook
 
     tenant = current_user.tenant
-    if not tenant.has_feature("purchases" if kind == "purchase" else "expenses"):
+    if not tenant.uses_module("purchases" if kind == "purchase" else "expenses"):
         abort(404)
     filters = _month_filters()
     build = purchase_register_workbook if kind == "purchase" else expense_register_workbook

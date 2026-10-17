@@ -310,7 +310,7 @@ def profit_and_loss(tenant, start: date, end: date, location_id: int | None = No
     p = places(tenant)
     rev = revenue(tenant, start, end, location_id, p)
     exp = expenses(tenant, start, end, location_id, p)
-    accrual = tenant.has_feature("inventory")
+    accrual = tenant.uses_module("inventory")
     if accrual:
         cost = cost_of_goods(tenant, start, end, location_id, p)
     else:

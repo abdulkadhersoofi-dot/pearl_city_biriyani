@@ -139,9 +139,9 @@ def pack_files(tenant, period: str) -> list[tuple[str, bytes]]:
                       (f"{tag}/GSTR3B_{period}.pdf", render_gstr3b_pdf(g3)),
                       (f"{tag}/GSTR3B_{period}.json", to_json_bytes(g3)),
                       (f"{tag}/HSN_summary_{period}.xlsx", _hsn_workbook(g1).getvalue())]
-    if tenant.has_feature("purchases"):
+    if tenant.uses_module("purchases"):
         files.append((f"Purchase_register_{period}.xlsx", purchase_register_workbook(tenant, start, end).getvalue()))
-    if tenant.has_feature("expenses"):
+    if tenant.uses_module("expenses"):
         files.append((f"Expense_register_{period}.xlsx", expense_register_workbook(tenant, start, end).getvalue()))
     files.append((f"Profit_and_loss_{period}.xlsx",
                   pnl_workbook(statement(tenant, start, end, None, "previous"), "All locations").getvalue()))

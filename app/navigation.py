@@ -418,3 +418,20 @@ def needs_you(tenant) -> list[dict]:
                           "detail": "Review the drafts", "url": url_for("sales.recurring"),
                           "icon": "repeat", "tone": "warn"})
     return items
+
+
+def admin_needs_you() -> list[dict]:
+    """The Ultra Admin's bell: clients asking ARFA to add a module to their
+    package (Settings > Modules > "Ask ARFA to add"), newest first."""
+    from app.models.package import ModuleRequest
+    from app.utils.features import FEATURES
+
+    items = []
+    for req in (ModuleRequest.query.filter_by(status=ModuleRequest.PENDING)
+                .order_by(ModuleRequest.created_at.desc()).limit(20).all()):
+        feature = FEATURES.get(req.feature_key)
+        items.append({"label": f"{req.tenant.display_name} asks for {feature.label if feature else req.feature_key}",
+                      "detail": f"Asked {req.created_at.strftime('%d %b')} - add it or decline",
+                      "url": url_for("tenants.detail", tenant_id=req.tenant_id, _anchor="sec-package"),
+                      "icon": "layout-grid", "tone": "warn"})
+    return items

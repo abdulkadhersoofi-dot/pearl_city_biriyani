@@ -1,9 +1,11 @@
 {% extends "settings/_layout.html" %}
-{% from "macros.html" import field %}
+{% from "macros.html" import field, lock_note %}
 {% block section %}
 <form method="post" class="settings-form stack" novalidate x-data="settingsForm({{ form.errors|tojson }})"
       @input="touch()" @change="touch()" @submit="saving()">
   {{ form.hidden_tag() }}
+  {{ lock_note(locked.counter, "How bills are paid at your counter") }}
+  <fieldset class="lock-fieldset stack" {% if locked.counter %}disabled{% endif %}>
 
   <section class="card settings-card">
     <h2>{{ form.pos_payment_modes.label.text }}</h2>
@@ -22,6 +24,7 @@
       {{ field(form.upi_payee_name, help="Optional - defaults to your business name.") }}
     </div>
   </section>
+  </fieldset>
 
   {% set links = [
     (url_for('branches.list_branches'), 'store', 'Branches & counter logins', 'Who bills where', True),
@@ -44,6 +47,6 @@
     </div>
   </section>
 
-  {% include "settings/_save_bar.html" %}
+  {% if not locked.counter %}{% include "settings/_save_bar.html" %}{% endif %}
 </form>
 {% endblock %}

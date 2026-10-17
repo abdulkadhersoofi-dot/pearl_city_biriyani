@@ -368,7 +368,7 @@ def _collect_supply_lines(tenant: Tenant, gstin: Gstin, period: str) -> tuple[li
     # Phase 6 documents - only for clients with those modules on, so
     # everyone else's document summary stays exactly as it was.
     receipt_vouchers, refund_vouchers, sales_challans = [], [], []
-    if tenant.has_feature("receivables"):
+    if tenant.uses_module("receivables"):
         from app.models.accounts import CustomerReceipt, RefundVoucher
 
         receipt_vouchers = CustomerReceipt.query.filter(
@@ -378,7 +378,7 @@ def _collect_supply_lines(tenant: Tenant, gstin: Gstin, period: str) -> tuple[li
         refund_vouchers = RefundVoucher.query.filter(
             RefundVoucher.tenant_id == tenant.id, RefundVoucher.gstin_id == gstin.id,
             RefundVoucher.voucher_date >= start, RefundVoucher.voucher_date <= end).all()
-    if tenant.has_feature("sales_documents"):
+    if tenant.uses_module("sales_documents"):
         from app.models.sales import SalesDocument, SalesDocumentKind
 
         sales_challans = SalesDocument.query.filter(
@@ -640,7 +640,7 @@ def gstr1_data(tenant: Tenant, gstin: Gstin, period: str) -> dict:
         "b2cl": sorted(b2cl.values(), key=lambda d: (d["doc_date"], d["doc_number"])),
         "document_summary": _document_summaries(tenant, gstin, raw),
         "totals": totals,
-        **({"advances": _advances(tenant, gstin, raw)} if tenant.has_feature("receivables") else {}),
+        **({"advances": _advances(tenant, gstin, raw)} if tenant.uses_module("receivables") else {}),
     }
 
 
@@ -692,7 +692,7 @@ def gstr3b_data(tenant: Tenant, gstin: Gstin, period: str) -> dict:
         bucket["igst"] += l.sign * l.igst
 
     advances = None
-    if tenant.has_feature("receivables"):
+    if tenant.uses_module("receivables"):
         # Tax on advances received less advances adjusted / refunded
         # (GSTR-1 11A - 11B) is part of 3.1(a).
         advances = _advances(tenant, gstin, raw)
@@ -732,7 +732,7 @@ def _itc_and_payment(tenant, gstin, period, output_tax) -> dict:
     record purchases or expenses; everyone else's working paper is as
     before. Credit is set off by app.utils.gst_setoff (Rule 88A); tax on
     reverse-charge purchases is always paid in cash."""
-    if not (tenant.has_feature("purchases") or tenant.has_feature("expenses")):
+    if not (tenant.uses_module("purchases") or tenant.uses_module("expenses")):
         return {}
     from app.utils.gst_setoff import set_off
 

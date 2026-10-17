@@ -1781,3 +1781,27 @@ a.report-tile:hover .report-go { transform: translateX(3px); color: var(--color-
 .exceptions-table .group-row th { background: transparent; padding-top: 16px; color: var(--color-text); letter-spacing: 0.04em; }
 .exceptions-table tr.has-exception td:first-child { box-shadow: inset 3px 0 0 var(--color-accent); font-weight: 700; }
 .limit-field { border: none; padding: 0; margin: 0 0 16px; min-width: 0; }
+.notice-read-only { background: var(--color-neutral-bg); color: var(--color-text); }
+.lock-pill { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; padding: 4px 9px; border-radius: 999px; font-size: 0.76rem; font-weight: 700; background: var(--color-primary-soft); color: var(--color-primary-dark); }
+.module-card.is-included { border-color: color-mix(in srgb, var(--color-primary) 30%, var(--color-border)); }
+.module-card.is-included .module-icon { background: var(--color-primary-soft); color: var(--color-primary); }
+.outside-package { margin-top: 0; padding-top: 18px; border-top: 1px dashed var(--color-border-strong); }
+.module-card.is-outside { border-style: dashed; box-shadow: none; }
+.module-card.is-outside .module-icon { color: var(--color-text-muted); }
+.module-outside-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-top: auto; padding: 0 14px 14px; }
+.read-only-note, .asked-note { display: inline-flex; align-items: center; gap: 5px; font-size: 0.82rem; font-weight: 600; color: var(--color-text-muted); }
+.read-only-note a { margin-left: 4px; }
+.module-card.is-included .module-main, .module-card.is-outside .module-main { cursor: default; }
+.lock-fieldset { border: none; margin: 0; padding: 0; min-width: 0; }
+.lock-fieldset[disabled] .field-input, .lock-fieldset[disabled] .chip-check, .lock-fieldset[disabled] .switch-row { opacity: 0.75; cursor: not-allowed; }
+.lock-note { display: flex; align-items: flex-start; gap: 8px; margin: 0 0 12px; padding: 10px 12px; border-radius: var(--radius); background: var(--color-primary-soft); color: var(--color-primary-dark); font-weight: 600; font-size: 0.9rem; }
+.lock-note .icon { margin-top: 2px; }
+.request-list { display: grid; gap: 8px; padding: 14px; margin-bottom: 18px; border-radius: var(--radius); background: var(--color-warn-bg); }
+.request-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.request-row > span:first-of-type { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+/* A read-only module (taken away by the package while it held records):
+   its pages open, but the actions that would save are hidden - the
+   server refuses them anyway. Printing and exports are plain links. */
+.is-read-only .app-main form[method="post"], .is-read-only .app-main form[method="POST"],
+.is-read-only .app-main a[href$="/new"], .is-read-only .app-main a[href*="/new?"],
+.is-read-only .app-main a[href$="/edit"] { display: none !important; }

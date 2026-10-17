@@ -7,6 +7,9 @@
     <p class="text-muted mt-0">Per GSTIN: the address the IRP needs, and - if you want the app to talk to the IRP for you - who connects you and their login. Without a login everything still works through JSON download and upload on the portal.</p>
   </div>
 </div>
+{% from "macros.html" import lock_note %}
+{% if gst_locked %}{{ lock_note(True, "Your e-Invoice and e-Way Bill logins") }}{% endif %}
+
 {% include "einvoice/_tabs.html" %}
 {% if has_feature('einvoice') and not in_scope %}
 <p class="flash flash-warning">Your turnover (AATO in Settings) is not above the e-invoicing limit, so no document needs an IRN yet. Set your AATO in Settings if it is.</p>

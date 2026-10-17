@@ -1,4 +1,5 @@
 {% extends "settings/_layout.html" %}
+{% from "macros.html" import lock_note %}
 {% block section %}
 <section class="card settings-card">
   <h2>Your own sign-in</h2>
@@ -19,6 +20,8 @@
 
 <form method="post" class="settings-form stack" x-data="settingsForm({})" @input="touch()" @change="touch()" @submit="saving()">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  {{ lock_note(locked.security, "Idle sign-out and the counter lock") }}
+  <fieldset class="lock-fieldset" {% if locked.security %}disabled{% endif %}>
   <section class="card settings-card">
     <h2>Idle sign-out</h2>
     <p class="text-muted mt-0">For screens left open where anyone could walk up to them.</p>
@@ -43,6 +46,7 @@
     </div>
     {% endif %}
   </section>
-  {% include "settings/_save_bar.html" %}
+  </fieldset>
+  {% if not locked.security %}{% include "settings/_save_bar.html" %}{% endif %}
 </form>
 {% endblock %}
