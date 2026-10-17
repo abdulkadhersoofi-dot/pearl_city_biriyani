@@ -2067,6 +2067,57 @@ helpers in `posTerminal()` are new.
   print - or, if a pop-up blocker stops that, shows a note with a link.
   Tests: `tests/test_print_fallback.py`.
 
+### Packages and powers - stage 1 (the rules underneath)
+
+The plan (approved with the recommendations): the Ultra Admin decides what
+each account may use. Five layers decide a module or setting, each only
+able to narrow the one before it - the client's **package**, the Ultra
+Admin's **exceptions for that client**, the **client's own switches**
+(only for modules left to them), a **branch's** narrowing and a
+**login's** powers. Stage 1 puts the rules in place without changing what
+anyone sees.
+
+- **Packages** (`app/models/package.py`, table `packages`): each module
+  *Off* (hidden, its pages 404), *Included* (always on, the client can't
+  switch it off) or *Client's choice*; each setting "Client can change"
+  or "Only ARFA"; limits on branches, branch logins and GSTINs; own
+  branding yes/no; monthly and yearly price. A package belongs to the
+  firm, so it has no `tenant_id` (like `platform_profile`).
+- **A client's package and exceptions** (`tenant_packages`, one row per
+  client, with `tenant_id`): the package, and any single module, setting
+  or limit changed for this client only. `read_only_modules` lists
+  modules taken away while they held data (stage 3 fills it).
+- **Auditor powers** (`auditor_powers`, one row per auditor): onboard
+  clients, choose packages, switch a client's Client's-choice modules,
+  pause, act as, reset logins, month-end exports, create Sub-Auditors -
+  plus the packages they may give and client limits. No row means the
+  role's powers as before (`ROLE_DEFAULT_POWERS`).
+- **One answer for every check**: `app/utils/entitlements.py`.
+  `module_mode()` says on / off / read-only, and `Tenant.has_feature()`
+  asks it - so menus, search, route guards and saves all follow the
+  package. `client_may_switch()`, `setting_locked()`, `limit_of()`,
+  `own_branding()` and `auditor_can()` answer the rest. Every change
+  (`assign_package`, `set_module_exception`, `set_setting_exception`,
+  `set_auditor_powers`) is audit-logged with who made it.
+- **Settings > Modules** saves only the modules left to the client; an
+  Included or Off module can't be changed from there, even by a crafted
+  post.
+- **Starting packages** (all editable later): Current setup, Billing,
+  Retail, Restaurant, Pharmacy, Mobiles & Electronics, Wholesale,
+  Everything - built from the business-type presets, prices left blank.
+- **Nothing changes for anyone**: the migration puts every existing
+  client on *Current setup* (every module their own choice, every
+  setting theirs, no limits); a client with no package row behaves the
+  same; no auditor has a powers row, so every auditor keeps today's
+  powers.
+- Tests: `tests/test_entitlements.py` - no change without a package or on
+  Current setup, the migration's packages match the code, package /
+  exception / client switch layering, read-only, a module switched off
+  by the package is a 404, Settings saves only the client's choices,
+  settings locks / limits / branding, the audit trail, one client's
+  package never touching another's, auditor power defaults and per-
+  auditor powers.
+
 ## Roadmap
 
 - **Platform build (ARFA general-purpose POS), phase by phase.**
@@ -2135,6 +2186,26 @@ helpers in `posTerminal()` are new.
   - Stage 6 (done): dark mode following the device with a per-device
     Light / Dark choice, split-screen branded sign-in pages, the firm
     console's Clients page and client page, accessibility pass.
+
+- **Packages and powers** (plan approved with the recommendations: keep
+  every existing client's setup until a package is assigned, list
+  modules outside the package as "Ask ARFA to add", read-only for a
+  removed module that holds data, auditors choose only from packages
+  allowed to them, packages and auditor powers without a client id), in
+  six stages:
+  - Stage 1 (done): packages, each client's package and exceptions,
+    auditor powers, and the one set of rules every check uses; every
+    existing client on "Current setup" - no change for anyone.
+  - Stage 2: packages in the console - the package editor, a client's
+    "Package & modules" with exceptions, onboarding by package, price
+    into the subscription fee.
+  - Stage 3: clients see their package - locked modules and settings,
+    "Ask ARFA to add", read-only for removed modules with data.
+  - Stage 4: auditor powers on each auditor's page, enforced on every
+    console page and in "Act as".
+  - Stage 5: branch logins by role, modules per branch, the Ultra
+    Admin's per-login switches, limits with usage, branding by package.
+  - Stage 6: change history per client, checks, hand-over.
 
   Stage 1 limits:
   - Stage 3 changed pages through shared CSS and two small scripts, not

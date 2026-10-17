@@ -193,7 +193,13 @@ class Tenant(db.Model, TimestampMixin):
         return self.trade_name or self.legal_name
 
     def has_feature(self, key: str) -> bool:
-        return bool((self.features or {}).get(key, False))
+        """Is this module on for this client now? Decided by their package,
+        the Ultra Admin's exceptions and their own switches together
+        (app/utils/entitlements.py); without a package, by their own
+        switches alone, as before packages existed."""
+        from app.utils.entitlements import ON, module_mode
+
+        return module_mode(self, key) == ON
 
     def set_feature(self, key: str, enabled: bool) -> None:
         # Reassigned rather than mutated in place - a plain JSON column

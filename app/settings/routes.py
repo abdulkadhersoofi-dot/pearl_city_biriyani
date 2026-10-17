@@ -18,6 +18,7 @@ from app.settings.forms import (
 )
 from app.settings.sections import module_groups, section_info, section_menu
 from app.utils.audit import record_audit
+from app.utils.entitlements import client_may_switch
 from app.utils.features import AVAILABLE_FEATURES, BUSINESS_TYPE_LABELS, apply_business_type_preset
 from app.utils.uploads import UploadError, delete_uploaded_image, save_uploaded_image
 
@@ -64,8 +65,11 @@ def _submitted_business_type(form, tenant):
 
 
 def _save_features(tenant, form):
+    # Only the modules the client's package leaves to them; Included and
+    # Off modules are the Ultra Admin's to change (app/utils/entitlements.py).
     for feature in AVAILABLE_FEATURES:
-        tenant.set_feature(feature.key, getattr(form, feature_field_name(feature.key)).data)
+        if client_may_switch(tenant, feature.key):
+            tenant.set_feature(feature.key, getattr(form, feature_field_name(feature.key)).data)
 
 
 def _finish(tenant, before_features, section=None):

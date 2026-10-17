@@ -445,6 +445,18 @@ this list is just the index.
   state in the template from `tenant_access_status`. `field()` in
   `macros.html` sets `aria-describedby` / `aria-invalid`; `shell.js` names
   unlabelled fields and adds arrow keys to `role="menu"`.
+- **Packages and powers, stage 1: the rules underneath.** Tables
+  `packages` (firm-level, no tenant_id), `tenant_packages` (per client:
+  package + module/setting/limit exceptions + read-only modules) and
+  `auditor_powers` (per auditor). `app/utils/entitlements.py` is the one
+  place that decides: `module_mode()` (Tenant.has_feature calls it),
+  `client_may_switch()`, `setting_locked()`, `limit_of()`,
+  `own_branding()`, `auditor_can()`, and the audit-logged setters. A new
+  module check still uses `has_feature`; a new setting that ARFA may
+  lock gets a key in `SETTINGS`; a new console power gets a key in
+  `AUDITOR_POWERS` with its role defaults. Migration `a7c3f9d21b40`
+  carries a frozen copy of `STARTING_PACKAGES` (a test keeps the two
+  equal) and puts every existing client on "Current setup".
 
 ## 5. Chronological development history (this session)
 
