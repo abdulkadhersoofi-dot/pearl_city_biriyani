@@ -35,6 +35,7 @@
 <nav class="report-jump" aria-label="Sections of this page">
   {% if current_user.is_super_admin %}<a href="#sec-access">{{ icon('banknote', 'icon-sm') }}Access &amp; billing</a>{% endif %}
   {% if pkg %}<a href="#sec-package">{{ icon('layout-grid', 'icon-sm') }}Package &amp; modules</a>{% endif %}
+  <a href="#sec-changes">{{ icon('list', 'icon-sm') }}Changes</a>
   {% for id_, label, ic in [('allocation', 'Allocation', 'user-cog'), ('sub-auditor', 'Sub-Auditor', 'user-cog'), ('branding', 'Branding', 'sparkles'), ('locations', 'Locations', 'store'), ('users', 'Users', 'users'), ('month-end', 'Month-end', 'calendar-clock'), ('activity', 'Recent activity', 'receipt-text')] %}
   <a href="#sec-{{ id_ }}" data-jump="sec-{{ id_ }}">{{ icon(ic, 'icon-sm') }}{{ label }}</a>
   {% endfor %}
@@ -143,6 +144,15 @@
 {% endif %}
 
 {% if pkg %}{% include "tenants/_client_package.html" %}{% endif %}
+
+<div class="card mb-20" id="sec-changes">
+  <div class="card-head">
+    <div><h2 class="m-0">Changes</h2>
+      <p class="text-muted m-0">The latest changes to this client's package, modules, settings and logins.</p></div>
+    {% if changes[1] %}<a href="{{ url_for('tenants.client_changes_view', tenant_id=tenant.id) }}" class="btn btn-quiet btn-sm">See all {{ changes[1] }}</a>{% endif %}
+  </div>
+  {% with rows = changes[0] %}{% include "tenants/_changes_list.html" %}{% endwith %}
+</div>
 
 <div class="card mb-20" id="sec-branding">
   <h2 class="mt-0">Branding</h2>

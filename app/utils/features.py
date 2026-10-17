@@ -383,6 +383,9 @@ def feature_required(key: str):
                 g.read_only_module = FEATURES[key].label
             return view(*args, **kwargs)
 
+        # Read by the URL sweep test (tests/test_packages_checks.py): every
+        # page behind a module, reachable through any decorator around it.
+        wrapped.required_feature = key
         return wrapped
 
     return decorator

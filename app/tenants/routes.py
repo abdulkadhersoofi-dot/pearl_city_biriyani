@@ -41,7 +41,8 @@ from app.utils.billing import (
 from app.utils.features import apply_business_type_preset
 from app.models.package import Package
 from app.tenants.packages import client_package_context
-from app.tenants.powers import auditor_powers_context
+from app.tenants.powers import auditor_powers_context, may_set_powers
+from app.utils.changes import auditor_changes, client_changes
 from app.utils.entitlements import (
     BUSINESS_TYPE_PACKAGE, allowed_packages, assign_package, branch_login_context, client_room,
     ensure_starting_packages, grant_of, has_room, limit_meter, limit_of, may_add, package_price_for, power_required,
@@ -236,6 +237,7 @@ def detail(tenant_id):
         pkg=client_package_context(tenant),
         gstin_meter=limit_meter(tenant, "gstins"),
         login_switches={u.id: branch_login_context(u) for u in users if u.is_staff} if current_user.is_super_admin else {},
+        changes=client_changes(tenant, limit=5),
     )
 
 
@@ -858,6 +860,7 @@ def auditor_detail(auditor_id):
         billing_form=billing_form,
         auditor_access_status=auditor_access_status(auditor),
         powers=auditor_powers_context(current_user, auditor),
+        power_changes=auditor_changes(auditor, limit=10) if may_set_powers(current_user, auditor) else None,
     )
 
 

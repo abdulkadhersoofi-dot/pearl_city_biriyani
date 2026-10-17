@@ -66,6 +66,7 @@
     <p class="field-help mt-0">Untick one this branch doesn't need - its pages and counter panel go from this login only. Your business keeps it.</p>
     <div class="chip-checks">
       {% for m in counter_modules %}
+      {% if not m.hidden_by_arfa %}<input type="hidden" name="module_shown" value="{{ m.key }}">{% endif %}
       <label class="chip-check">
         <input type="checkbox" name="module" value="{{ m.key }}" {% if not m.hidden_by_client and not m.hidden_by_arfa %}checked{% endif %} {% if m.hidden_by_arfa %}disabled{% endif %}>
         <span>{{ icon('check', 'icon-sm') }}{{ m.label }}{% if m.hidden_by_arfa %} <small>(hidden by ARFA)</small>{% endif %}</span>

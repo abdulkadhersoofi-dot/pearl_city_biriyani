@@ -1,0 +1,13 @@
+{# A list of changes (packages and powers, stage 6). Context: rows from app/utils/changes.py. #}
+{% set kind_icon = {'package': 'layout-grid', 'modules': 'layout-grid', 'settings': 'settings', 'logins': 'store', 'powers': 'user-cog'} %}
+<ol class="change-list">
+  {% for row in rows %}
+  <li class="change-row">
+    <span class="change-icon">{{ icon(kind_icon.get(row.kind, 'list'), 'icon-sm') }}</span>
+    <span class="change-text">{{ row.text }}
+      <small class="text-muted">{{ row.who }}{% if row.who_role %} ({{ row.who_role }}){% endif %} · <time datetime="{{ row.when.isoformat() }}">{{ row.when.strftime('%d %b %Y, %H:%M') }}</time></small></span>
+  </li>
+  {% else %}
+  <li class="text-muted">No changes yet.</li>
+  {% endfor %}
+</ol>

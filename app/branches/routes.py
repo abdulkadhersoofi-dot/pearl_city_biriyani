@@ -66,7 +66,9 @@ def new_branch():
         _apply_role(user, form.role.data)
         user.set_password(form.password.data)
         db.session.add(user)
-        record_audit(current_user, "branch_created", tenant_id=current_user.tenant_id, entity_type="user")
+        db.session.flush()
+        record_audit(current_user, "branch_created", tenant_id=current_user.tenant_id, entity_type="user",
+                     entity_id=user.id, details={"name": user.name, "role_label": BRANCH_ROLES[user.branch_role]["label"]})
         db.session.commit()
         flash(f"{user.name} added. Share the password you set with them.", "success")
         return redirect(url_for("branches.list_branches"))
@@ -190,15 +192,17 @@ def branch_permissions(user_id):
         branch.branch_role = role_of({k: getattr(branch, c) for k, c in PERMISSION_COLUMNS.items()},
                                      branch.max_discount_percent)
         # Modules at this counter: those ticked stay; the business keeps them all.
-        # (One the business has off, or ARFA hid, isn't on the form: it keeps
-        # the Client Admin's earlier choice.)
-        shown = set(request.form.getlist("module"))
+        # Only a module that was on the form can be hidden by leaving it
+        # unticked; any other (off for the business, hidden by ARFA, or
+        # switched on since the page opened) keeps the earlier choice.
+        on_form = set(request.form.getlist("module_shown"))
+        ticked = set(request.form.getlist("module"))
         hidden = []
         for m in ctx["modules"]:
-            if not m["business_on"] or m["hidden_by_arfa"]:
-                if m["hidden_by_client"]:
+            if m["key"] in on_form and m["business_on"] and not m["hidden_by_arfa"]:
+                if m["key"] not in ticked:
                     hidden.append(m["key"])
-            elif m["key"] not in shown:
+            elif m["hidden_by_client"]:
                 hidden.append(m["key"])
         branch.hidden_modules = hidden or None
         after = {name: getattr(branch, name) for name in PERMISSION_FIELDS}

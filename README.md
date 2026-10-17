@@ -2319,6 +2319,87 @@ change yet.
   two-step for the owner, client exceptions, the package editor, and
   ARFA's look.
 
+### Packages and powers - stage 6 (history, checks, hand-over)
+
+- **Changes on each client.** The client page has a **Changes** card (the
+  latest five, with "See all") and `/admin/clients/<id>/changes` lists
+  every change to the client's package, modules, settings, limits,
+  branding, sign-in minimums and branch logins - in plain words ("Loyalty
+  points: as the package → Client's choice", "ARFA's switches for S1
+  Counter: Void bills always off"), with who made it and when, filterable
+  by Package / Modules / Settings / Branches & logins. Edits of the package
+  the client is on show there too. The Ultra Admin and the auditors who
+  look after the client can read it; a client can't.
+- **Changes on each auditor.** The auditor page lists the changes to that
+  auditor's powers, for whoever may set them.
+- Read from the audit log (`app/utils/changes.py`); nothing extra is
+  stored. A branch login added now records its name and role, and
+  switching a client's modules for them records which went on and off.
+- **Checks** (`tests/test_packages_checks.py`):
+  - every page behind a module carries the module guard - a new module
+    page without one fails the test (five pages that check inside the
+    view are listed by name);
+  - a client whose package leaves everything out gets "not found" from
+    every one of those pages - reading and saving (174 routes) - even with
+    the modules switched on before; with everything included they open;
+  - a branch login gets "not found" from the pages of a module hidden at
+    its counter;
+  - with every setting "Only ARFA", every settings save is refused or
+    changes nothing; a client can't switch on a module outside their
+    package;
+  - each client sees only its own package rows, requests and changes; an
+    auditor reads only their own clients' changes; a client can't open the
+    console's change history.
+- **Walk-through as each role** (Ultra Admin, Auditor, Client Admin,
+  branch login) in the browser: switches set by the Ultra Admin show on the
+  client's Permissions page as "Set by ARFA" and close the module at the
+  branch; the auditor sees Changes and their own switching powers, not
+  ARFA's switches or exceptions.
+- Fixed on the way: a branch's Permissions save only hides a counter module
+  that was on the form (a module switched on while the page was open stays
+  shown); the "Acting as" banner names the role when acting as an auditor.
+
+### Packages and powers - how to run it (hand-over)
+
+For the Ultra Admin. Everything below is in the console.
+
+1. **Packages** (Platform -> Packages). Eight to start, all editable:
+   Current setup (every client that existed before - nothing changed for
+   them), Billing, Retail, Restaurant, Pharmacy, Mobiles & Electronics,
+   Wholesale, Everything. In a package set each module **Off / Included /
+   Client's choice**, each setting **Client can change / Only ARFA**, the
+   branch / login / GSTIN limits, own branding, the counter permissions a
+   client may give, sign-in minimums and the price. "Copy" starts a new one
+   from an existing one; "Retire" stops new clients getting it.
+2. **Give a client a package** - at onboarding, or on the client's page ->
+   Package & modules: pick, read the preview of what changes, confirm. The
+   subscription fee follows the package price unless unticked. A module
+   taken away while it holds records turns read-only, never vanishes.
+3. **One client only** - "Change single modules or settings for this
+   client" on their page: any module, setting, limit, branding, counter
+   permissions or sign-in minimum, against the package. "As the package"
+   undoes it.
+4. **Requests** - "Ask ARFA to add" from a client lands in your bell and
+   on their page: Add as their choice / Include / Decline.
+5. **Auditors** - each auditor's page -> Powers: nine switches, the
+   packages they may give, client and Sub-Auditor limits. Nothing changes
+   for an auditor until you save there. An Auditor sets their own
+   Sub-Auditors within their own powers.
+6. **Branch logins** - the client gives roles and hides counter modules on
+   Branches -> Permissions. Your own switches for any login are on the
+   client's page -> Users -> "ARFA's switches"; the client sees them as
+   "Set by ARFA". "Hand back to the client" clears them.
+7. **A locked setting** - change it by "Act as" the client (the locks
+   stand aside for you), or switch it to "Client can change".
+8. **What happened** - the client's Changes list, the auditor's power
+   changes, and Platform -> Audit log for everything else.
+
+Rules worth knowing: an Off module is gone from menus, search and its
+pages ("not found"); GST returns keep counting records of a read-only
+module; limits only stop adding, never remove; you can always go past a
+limit; a client without a package (or on Current setup) works exactly as
+before packages.
+
 ## Roadmap
 
 - **Platform build (ARFA general-purpose POS), phase by phase.**
@@ -2407,7 +2488,8 @@ change yet.
   - Stage 5 (done): branch logins by role, modules per branch, the Ultra
     Admin's per-login switches, limits with usage meters, branding by
     package, sign-in minimums.
-  - Stage 6: change history per client, checks, hand-over.
+  - Stage 6 (done): change history per client and auditor, checks across
+    every layer, walk-through as each role, hand-over guide.
 
   Stage 1 limits:
   - Stage 3 changed pages through shared CSS and two small scripts, not

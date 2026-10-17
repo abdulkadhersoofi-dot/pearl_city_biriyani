@@ -1809,6 +1809,13 @@ a.report-tile:hover .report-go { transform: translateX(3px); color: var(--color-
 .role-option small { display: block; color: var(--color-text-muted); font-weight: 400; }
 .perm-row.is-capped { opacity: 0.6; }
 .plain-fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
+/* The "Changes" list (packages and powers, stage 6) */
+.change-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
+.change-row { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid var(--color-border); }
+.change-row:last-child { border-bottom: 0; }
+.change-icon { flex-shrink: 0; display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 999px; background: var(--color-primary-soft); color: var(--color-primary-dark); }
+.change-text { display: grid; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
+a.cat-chip { text-decoration: none; display: inline-flex; align-items: center; }
 .login-switches { border-top: 1px solid var(--color-border); padding-top: 12px; margin-top: 8px; }
 .request-list { display: grid; gap: 8px; padding: 14px; margin-bottom: 18px; border-radius: var(--radius); background: var(--color-warn-bg); }
 .request-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }

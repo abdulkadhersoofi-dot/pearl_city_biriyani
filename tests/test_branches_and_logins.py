@@ -99,8 +99,8 @@ def test_a_branch_can_be_left_without_a_module(client, db, tenant, client_admin,
     tenant.set_feature("job_cards", True)
     db.session.commit()
     _login(client, client_admin.email, "ClientSecret123")
-    client.post(f"/branches/{staff.id}/permissions",
-                data={"role": "cashier", "module": []})               # nothing ticked: job cards hidden here
+    client.post(f"/branches/{staff.id}/permissions",                 # on the form, not ticked: hidden here
+                data={"role": "cashier", "module_shown": ["job_cards"], "module": []})
     db.session.expire_all()
     assert staff.hidden_modules == ["job_cards"] and login_hides(staff, "job_cards")
     assert tenant.has_feature("job_cards")                            # the business keeps it
@@ -128,7 +128,8 @@ def test_ultra_admin_switches_for_one_login(client, db, tenant, client_admin, st
     _login(client, client_admin.email, "ClientSecret123")
     page = client.get(f"/branches/{staff.id}/permissions").get_data(as_text=True)
     assert "Set by ARFA" in page and "hidden by ARFA" in page
-    client.post(f"/branches/{staff.id}/permissions", data={"role": "manager", "module": ["job_cards"]})
+    client.post(f"/branches/{staff.id}/permissions",
+                data={"role": "manager", "module_shown": ["job_cards"], "module": ["job_cards"]})
     db.session.expire_all()
     assert not user_can(staff, "refund") and login_hides(staff, "job_cards")
     assert client.post(f"/admin/clients/{tenant.id}/logins/{staff.id}/switches", data={}).status_code in (302, 403)

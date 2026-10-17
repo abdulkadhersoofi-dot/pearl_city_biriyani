@@ -506,6 +506,14 @@ this list is just the index.
   and `two_factor_required`. Branding: `own_branding`, `brand_logo_id`
   (use it for any printed logo), `tenant_theme_css` returns "" without
   own branding.
+- **Packages and powers, stage 6: history and checks.** The Changes list
+  is built from the audit log by `app/utils/changes.py` (`CLIENT_ACTIONS`,
+  `describe()`) - a new package / module / setting / login action should
+  be added there to show up. `feature_required` tags its view with
+  `required_feature`; `tests/test_packages_checks.py` sweeps every such
+  route and fails on a module page without the guard (exceptions listed in
+  `GUARDED_IN_VIEW`). The README has a hand-over guide for the Ultra Admin
+  ("Packages and powers - how to run it").
 
 ## 5. Chronological development history (this session)
 

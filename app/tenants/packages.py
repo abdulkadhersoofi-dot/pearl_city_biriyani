@@ -473,8 +473,33 @@ def save_client_choices(tenant_id):
     changed = sorted(k for k, on in before.items() if tenant.has_feature(k) != on)
     if changed:
         record_audit(current_user, "client_modules_switched", tenant_id=tenant.id, entity_type="tenant",
-                     entity_id=tenant.id, details={"changed": changed})
+                     entity_id=tenant.id, details={"changed": changed,
+                                                   "on": [k for k in changed if tenant.has_feature(k)]})
     db.session.commit()
     flash(f"{len(changed)} module{'s' if len(changed) != 1 else ''} switched for {tenant.legal_name}." if changed
           else "Nothing changed.", "success")
     return redirect(url_for("tenants.detail", tenant_id=tenant.id, _anchor="sec-package"))
+
+
+# --- the "Changes" list (stage 6) --------------------------------------------------------------------
+
+CHANGES_PER_PAGE = 50
+
+
+@tenants_bp.route("/clients/<int:tenant_id>/changes")
+@admin_or_auditor_required
+def client_changes_view(tenant_id):
+    """Everything changed for this client's package, modules, settings and
+    logins - when, and by whom. Anyone who can open the client can read it."""
+    from app.utils.changes import KINDS, client_changes
+
+    tenant = Tenant.query.get_or_404(tenant_id)
+    assert_auditor_owns_tenant(current_user, tenant)
+    kind = request.args.get("kind")
+    if kind not in KINDS or kind == "powers":
+        kind = None
+    page = max(request.args.get("page", type=int) or 1, 1)
+    rows, total = client_changes(tenant, kind=kind, limit=CHANGES_PER_PAGE, offset=(page - 1) * CHANGES_PER_PAGE)
+    return render_template("tenants/changes.html", tenant=tenant, rows=rows, total=total, kind=kind,
+                           kinds={k: v for k, v in KINDS.items() if k != "powers"}, page=page,
+                           pages=max(1, -(-total // CHANGES_PER_PAGE)))

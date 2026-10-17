@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Changes - {{ tenant.display_name }} - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <a href="{{ url_for('tenants.detail', tenant_id=tenant.id) }}" class="back-link">{{ icon('chevron-right', 'icon-sm icon-flip') }}{{ tenant.display_name }}</a>
+    <h1>Changes</h1>
+    <p class="text-muted mt-0">Package, modules, settings and branch logins - what changed, when, and who changed it.</p>
+  </div>
+</div>
+<nav class="chip-row mb-16" aria-label="Show">
+  <a href="{{ url_for('tenants.client_changes_view', tenant_id=tenant.id) }}" class="cat-chip cat-chip-sub {{ 'is-active' if not kind }}" {% if not kind %}aria-current="page"{% endif %}>All</a>
+  {% for key, label in kinds.items() %}
+  <a href="{{ url_for('tenants.client_changes_view', tenant_id=tenant.id, kind=key) }}" class="cat-chip cat-chip-sub {{ 'is-active' if kind == key }}" {% if kind == key %}aria-current="page"{% endif %}>{{ label }}</a>
+  {% endfor %}
+</nav>
+<div class="card">
+  <p class="text-muted mt-0">{{ total }} change{{ 's' if total != 1 }}</p>
+  {% include "tenants/_changes_list.html" %}
+  {% if pages > 1 %}
+  <nav class="row mt-16" aria-label="Pages">
+    {% if page > 1 %}<a class="btn btn-quiet btn-sm" href="{{ url_for('tenants.client_changes_view', tenant_id=tenant.id, kind=kind, page=page - 1) }}">Newer</a>{% endif %}
+    <span class="text-muted">Page {{ page }} of {{ pages }}</span>
+    {% if page < pages %}<a class="btn btn-quiet btn-sm" href="{{ url_for('tenants.client_changes_view', tenant_id=tenant.id, kind=kind, page=page + 1) }}">Older</a>{% endif %}
+  </nav>
+  {% endif %}
+</div>
+{% endblock %}

@@ -115,6 +115,12 @@
 {% endif %}
 
 {% if powers %}{% include "tenants/_auditor_powers.html" %}{% endif %}
+{% if power_changes %}
+<div class="card mb-20" id="sec-power-changes">
+  <h2 class="mt-0">Changes to {{ auditor.name }}'s powers</h2>
+  {% with rows = power_changes[0] %}{% include "tenants/_changes_list.html" %}{% endwith %}
+</div>
+{% endif %}
 
 {% if auditor.is_auditor %}
 <div class="card mb-20">
