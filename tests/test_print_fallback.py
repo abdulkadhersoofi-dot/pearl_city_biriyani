@@ -16,11 +16,11 @@ PRINT_JS = (ROOT / "app" / "static" / "js" / "print.js").read_text()
 STUB = """
 var opened = [], notes = [], printed = 0, afterRan = 0, popupsBlocked = %(blocked)s;
 function el() { return {children: [], style: {}, setAttribute() {}, addEventListener() {},
-  appendChild(c) { this.children.push(c); notes.push(c); }, remove() {}}; }
+  appendChild(c) { this.children.push(c); }, remove() {}}; }
 var frame = {src: "", onload: null, contentWindow: {focus() {},
   get print() { if (%(throws)s) { throw new Error("SecurityError: Blocked a frame from accessing a cross-origin frame"); }
                 return function () { printed++; }; }}};
-var stack = el();
+var stack = el(); stack.appendChild = c => { notes.push(c); };
 var document = {getElementById: id => id === "receipt-print-frame" ? frame : null,
   querySelector: () => stack, createElement: el, body: el()};
 var window = {open: url => { if (popupsBlocked) return null; opened.push(url); return {}; }};
