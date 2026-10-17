@@ -27,10 +27,9 @@ def _recent_failed_logins(email: str, window_minutes: int) -> int:
 def _post_login_redirect(user: User):
     if user.must_change_password:
         return redirect(url_for("auth.change_password"))
-    if user.is_super_admin:
-        return redirect(url_for("tenants.auditors_directory"))
     if user.is_admin_hierarchy:
-        return redirect(url_for("tenants.directory"))
+        # Every console login lands on Today (console cleanup, stage 2).
+        return redirect(url_for("tenants.today"))
     if user.is_client_admin:
         if user.tenant and user.tenant.has_feature("business_reports"):
             return redirect(url_for("reports.dashboard"))

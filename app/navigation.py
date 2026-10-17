@@ -167,49 +167,48 @@ def _accounts_link() -> tuple:
 
 
 def _admin_groups(user) -> list[Group]:
+    """The console's side menu (console cleanup, stage 2): Today first,
+    then the day's work, then the firm's own setup."""
+    today = Link("Today", "tenants.today", "house", endpoints=("tenants.today",), keywords="home needs you")
+    clients = Link("Clients", "tenants.directory", "building-2",
+                   endpoints=("tenants.directory", "tenants.detail", "tenants.onboard", "tenants.client_changes_view"),
+                   keywords="tenants businesses")
+    filing = ("tenants.filing_tracker", "tenants.gst_exports")
     if user.is_super_admin:
         return [
-            Group("clients", "Clients", (
-                Link("All clients", "tenants.directory", "building-2",
-                     endpoints=("tenants.directory", "tenants.detail", "tenants.onboard"), keywords="tenants"),
+            Group("work", "Work", (
+                today, clients,
                 Link("Auditors", "tenants.auditors_directory", "user-cog",
                      endpoints=("tenants.auditors_directory", "tenants.auditor_detail", "tenants.new_auditor")),
-            )),
-            Group("filing", "Filing", (
-                Link("Filing", "tenants.filing_tracker", "calendar-clock", endpoints=("tenants.filing_tracker",)),
-                Link("GST exports", "tenants.gst_exports", "file-spreadsheet", endpoints=("tenants.gst_exports",)),
+                Link("Filing & GST", "tenants.filing_tracker", "calendar-clock", endpoints=filing,
+                     keywords="returns gstr exports monthly pack tally"),
             )),
             Group("platform", "Platform", (
                 Link("Packages", "tenants.packages", "layout-grid",
                      endpoints=("tenants.packages", "tenants.package_new", "tenants.package_edit"),
                      keywords="plans modules subscription tiers"),
-                Link("Subscriptions", "subscriptions.index", "banknote", blueprints=("subscriptions",)),
+                Link("Billing", "subscriptions.index", "banknote", blueprints=("subscriptions",),
+                     keywords="subscriptions invoices fees"),
                 Link("Audit log", "tenants.audit_log", "list", endpoints=("tenants.audit_log",)),
             )),
         ]
     if user.is_auditor:
         return [
-            Group("clients", "Clients", (
-                Link("Clients", "tenants.directory", "building-2",
-                     endpoints=("tenants.directory", "tenants.detail", "tenants.onboard")),
+            Group("work", "Work", (
+                today, clients,
                 Link("Sub-Auditors", "tenants.auditors_directory", "user-cog",
                      endpoints=("tenants.auditors_directory", "tenants.auditor_detail", "tenants.new_auditor"),
                      power="create_sub_auditors"),
-            )),
-            Group("filing", "Filing", (
-                Link("Filing", "tenants.filing_tracker", "calendar-clock", endpoints=("tenants.filing_tracker",),
-                     power="month_end"),
+                Link("Filing", "tenants.filing_tracker", "calendar-clock", endpoints=filing, power="month_end"),
             )),
             Group("platform", "Account", (
                 Link("Subscription", "subscriptions.mine", "banknote", blueprints=("subscriptions",)),
             )),
         ]
     return [
-        Group("clients", "Clients", (
-            Link("Clients", "tenants.directory", "building-2",
-                 endpoints=("tenants.directory", "tenants.detail", "tenants.onboard")),
-            Link("Filing", "tenants.filing_tracker", "calendar-clock", endpoints=("tenants.filing_tracker",),
-                 power="month_end"),
+        Group("work", "Work", (
+            today, clients,
+            Link("Filing", "tenants.filing_tracker", "calendar-clock", endpoints=filing, power="month_end"),
         )),
     ]
 

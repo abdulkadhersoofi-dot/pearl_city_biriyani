@@ -1,0 +1,10 @@
+{# "Filing & GST" (console cleanup, stage 2): the filing tracker and, for
+   the Ultra Admin, bulk GST exports - one menu entry, two tabs. #}
+{% if current_user.is_super_admin %}
+<nav class="subnav" aria-label="Filing and GST">
+  <a href="{{ url_for('tenants.filing_tracker') }}" class="{{ 'active' if request.endpoint == 'tenants.filing_tracker' }}"
+     {% if request.endpoint == 'tenants.filing_tracker' %}aria-current="page"{% endif %}>Filing tracker</a>
+  <a href="{{ url_for('tenants.gst_exports') }}" class="{{ 'active' if request.endpoint == 'tenants.gst_exports' }}"
+     {% if request.endpoint == 'tenants.gst_exports' %}aria-current="page"{% endif %}>Bulk GST exports</a>
+</nav>
+{% endif %}

@@ -64,8 +64,8 @@ def index():
         return redirect(url_for("auth.login"))
     if current_user.must_change_password:
         return redirect(url_for("auth.change_password"))
-    if current_user.is_super_admin:
-        return redirect(url_for("tenants.directory"))
+    if current_user.is_admin_hierarchy:
+        return redirect(url_for("tenants.today"))
     if current_user.is_client_admin:
         if current_user.tenant and current_user.tenant.has_feature("business_reports"):
             return redirect(url_for("reports.dashboard"))

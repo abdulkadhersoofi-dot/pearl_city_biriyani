@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Today - {{ firm_name }}{% endblock %}
+{% block content %}
+{# The console's home (console cleanup, stage 2): what needs you, a few
+   counts, and what changed today. Every row links to where it's dealt
+   with - nothing is changed from here. #}
+<div class="page-header">
+  <div>
+    <h1>{{ greeting }}, {{ current_user.name.split(' ')[0] }}</h1>
+    <p class="text-muted mt-0">{{ today.strftime('%A, %d %B %Y') }} · {{ client_count }} client{{ 's' if client_count != 1 }}{{ ' on ' ~ firm_name if current_user.is_super_admin else ' you look after' }}</p>
+  </div>
+  {% if console_can('onboard_clients') %}<a href="{{ url_for('tenants.onboard') }}" class="btn btn-primary">{{ icon('plus') }}Onboard client</a>{% endif %}
+</div>
+
+<div class="console-stats today-stats">
+  {% for s in stats %}
+  {% if s.url %}<a href="{{ s.url }}" class="console-stat">{% else %}<div class="console-stat is-static">{% endif %}
+    <span class="console-stat-icon{{ ' tone-' ~ s.tone if s.tone }}">{{ icon(s.icon) }}</span>
+    <span><strong data-count-up="{{ s.value }}">{{ s.value }}</strong><small>{{ s.label }}</small></span>
+  {% if s.url %}</a>{% else %}</div>{% endif %}
+  {% endfor %}
+</div>
+
+<div class="today-grid">
+  <section class="card today-needs" aria-labelledby="needs-title">
+    <h2 id="needs-title" class="mt-0">Needs you</h2>
+    {% if needs %}
+    <ul class="today-list">
+      {% for n in needs %}
+      <li class="today-item tone-{{ n.tone }}">
+        <div class="today-item-head">
+          <span class="console-stat-icon tone-{{ n.tone }}">{{ icon(n.icon) }}</span>
+          <div class="today-item-text">
+            <strong>{{ n.title }}</strong>
+            <small>{{ n.detail }}</small>
+          </div>
+          <a href="{{ n.url }}" class="btn btn-secondary btn-sm">{{ n.action }}</a>
+        </div>
+        {% if n.rows %}
+        <ul class="today-rows">
+          {% for r in n.rows %}
+          <li><a href="{{ r.url }}"><span>{{ r.label }}</span>{% if r.note %}<small>{{ r.note }}</small>{% endif %}{{ icon('chevron-right', 'icon-sm') }}</a></li>
+          {% endfor %}
+          {% if n.more %}<li class="today-more"><a href="{{ n.url }}">and {{ n.more }} more {{ icon('arrow-right', 'icon-sm') }}</a></li>{% endif %}
+        </ul>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <div class="all-clear">
+      <span class="all-clear-tick">{{ icon('circle-check') }}</span>
+      <p><strong>Nothing needs you today.</strong><br><span class="text-muted">Every client can sign in, nobody is waiting to be verified, and no request is open.</span></p>
+    </div>
+    {% endif %}
+  </section>
+
+  <section class="card today-changes" aria-labelledby="changes-title">
+    <h2 id="changes-title" class="mt-0">Changed today</h2>
+    {% if changes %}
+    <ol class="today-feed">
+      {% for c in changes %}
+      <li>
+        <time datetime="{{ c.when.isoformat() }}">{{ c.when|ist('%H:%M') }}</time>
+        <div>
+          {% if c.client %}<a href="{{ c.url }}"><strong>{{ c.client }}</strong></a> - {% endif %}{{ c.text }}
+          <small>by {{ c.who }}</small>
+        </div>
+      </li>
+      {% endfor %}
+    </ol>
+    {% if current_user.is_super_admin %}<a href="{{ url_for('tenants.audit_log') }}" class="card-link">Audit log {{ icon('arrow-right', 'icon-sm') }}</a>{% endif %}
+    {% else %}
+    <p class="text-muted m-0">No packages, modules, settings or clients changed yet today.</p>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

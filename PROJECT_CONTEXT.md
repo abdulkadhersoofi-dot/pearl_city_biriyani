@@ -541,6 +541,17 @@ this list is just the index.
   `Entry` there (`tests/test_catalogue.py`). Plan for stages 2-5: the
   "Console cleanup" Roadmap entry in the README.
 
+- **Console Today page (console cleanup, stage 2).** `app/tenants/today.py`
+  (`/admin/today`, endpoint `tenants.today`) is where `_post_login_redirect`
+  and `/` send every admin-hierarchy login (also after "Act as" an auditor
+  and after stopping act-as). `today_context(user)` scopes by
+  `auditor_tenant_ids`; "Changed today" shows `CONSOLE_ACTIONS` plus the
+  Changes list's `CLIENT_ACTIONS` / `AUDITOR_ACTIONS` since IST midnight -
+  add a new console action to `CONSOLE_ACTIONS` to show it. The console
+  menu is `navigation._admin_groups` (Work / Platform). Clients and
+  Auditors lists filter client-side by `data-groups`; `?show=` picks the
+  starting chip.
+
 ## 5. Chronological development history (this session)
 
 This is the part README.md doesn't capture — the actual sequence of

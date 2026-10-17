@@ -467,7 +467,7 @@ def test_stop_impersonating_returns_to_admin_console(client, db, super_admin, te
 
     resp = client.get("/auth/stop-impersonating", follow_redirects=True)
     assert resp.status_code == 200
-    assert resp.request.path == "/admin/auditors"
+    assert resp.request.path == "/admin/today"
 
     # Back to being the super admin - can reach the admin console again.
     resp = client.get("/admin/clients")

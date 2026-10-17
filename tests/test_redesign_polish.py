@@ -2,6 +2,7 @@
 device), the split-screen sign-in pages, the firm console's Clients page
 and the accessibility helpers."""
 
+import html
 import re
 from datetime import date
 from decimal import Decimal
@@ -111,12 +112,14 @@ def test_clients_page_counts_clients_by_state(client, db, super_admin, tenant):
     db.session.commit()
     _login(client, super_admin.email, "SuperSecret123")
     page = client.get("/admin/clients").get_data(as_text=True)
-    counts = dict(re.findall(r'data-count-up="(\d+)">\d+</strong><small>([^<]+)</small>', page)[i][::-1]
-                  for i in range(4))
-    assert counts == {"All clients": "3", "Active": "1", "Renewal due": "0", "Can't sign in": "2"}
-    assert 'data-group="attention"' in page and "Paused" in page and "Awaiting verification" in page
+    # One row of filter chips with counts (console cleanup, stage 2).
+    counts = {html.unescape(label.strip()): n
+              for label, n in re.findall(r'class="filter-chip"[^>]*>\s*([^<]+?) <b>(\d+)</b>', page)}
+    assert counts == {"All": "3", "Active": "1", "Renewal due": "0", "Can't sign in": "1",
+                      "Waiting for verification": "1", "No auditor": "2"}
+    assert 'data-groups=" all blocked no_auditor "' in page and "Paused" in page and "Waiting for verification" in page
     acme = page.split("Acme Traders", 1)[0].rsplit("<tr", 1)[1]
-    assert 'data-group="active"' in acme and "27aaaaa0000a1z5" in acme   # searchable by GSTIN
+    assert 'data-groups=" all active no_auditor "' in acme and "27aaaaa0000a1z5" in acme   # searchable by GSTIN
 
 
 def test_client_page_jumps_to_its_sections_and_reads_money_the_indian_way(client, db, super_admin, tenant, client_admin):

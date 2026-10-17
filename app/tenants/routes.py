@@ -68,9 +68,16 @@ def _scoped_tenant_query():
 @tenants_bp.route("/clients")
 @admin_or_auditor_required
 def directory():
+    """Every client in scope, narrowed by one row of filter chips (console
+    cleanup, stage 2): all, active, renewal due, can't sign in, waiting for
+    verification and - for the Ultra Admin - no auditor. `?show=` opens it
+    on one of them (the Today page links here that way)."""
     tenants = _scoped_tenant_query().order_by(Tenant.legal_name).all()
     access_statuses = {t.id: tenant_access_status(t) for t in tenants}
-    return render_template("tenants/directory.html", tenants=tenants, access_statuses=access_statuses)
+    filters = ["all", "active", "renewal", "blocked", "pending"] + (["no_auditor"] if current_user.is_super_admin else [])
+    show = request.args.get("show")
+    return render_template("tenants/directory.html", tenants=tenants, access_statuses=access_statuses,
+                           filters=filters, show=show if show in filters else "all")
 
 
 @tenants_bp.route("/clients/new", methods=["GET", "POST"])
@@ -748,32 +755,22 @@ def reset_auditor_two_factor(auditor_id):
 @tenants_bp.route("/auditors")
 @admin_or_auditor_required
 def auditors_directory():
-    # The Ultra Admin's own equivalent of the Clients tab: every Auditor
-    # in the firm, plus clients still awaiting verification or not yet
-    # allocated to anyone. For an Auditor, the same page scoped to just
-    # their own Sub-Auditors - "within his office".
+    # Every Auditor in the firm for the Ultra Admin; an Auditor's own
+    # Sub-Auditors for them - "within his office". A plain list with filter
+    # chips (console cleanup, stage 2): verifying moved to the Today page and
+    # clients with no auditor to the Clients list.
     if current_user.is_sub_auditor:
         abort(403)
     auditors = visible_auditors(current_user)
-    pending_tenants = []
-    unallocated_tenants = []
-    pending_auditors = []
-    if current_user.is_super_admin:
-        pending_tenants = Tenant.query.filter_by(billing_cycle=None).order_by(Tenant.created_at.desc()).all()
-        unallocated_tenants = (
-            Tenant.query.filter(Tenant.auditor_id.is_(None), Tenant.billing_cycle.isnot(None))
-            .order_by(Tenant.legal_name)
-            .all()
-        )
-        pending_auditors = [a for a in auditors if a.billing_cycle is None]
     access_statuses = {a.id: auditor_access_status(a) for a in auditors}
+    filters = ["all", "active", "renewal", "blocked", "pending"]
+    show = request.args.get("show")
     return render_template(
         "tenants/auditors_directory.html",
         auditors=auditors,
-        pending_tenants=pending_tenants,
-        unallocated_tenants=unallocated_tenants,
-        pending_auditors=pending_auditors,
         access_statuses=access_statuses,
+        filters=filters,
+        show=show if show in filters else "all",
     )
 
 
@@ -1012,7 +1009,7 @@ def act_as_auditor(auditor_id):
 
     login_user(target, remember=False)
     session["impersonator_id"] = admin_id
-    return redirect(url_for("tenants.directory"))
+    return redirect(url_for("tenants.today"))
 
 
 @tenants_bp.route("/auditors/<int:auditor_id>/deactivate", methods=["POST"])

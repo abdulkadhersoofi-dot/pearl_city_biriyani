@@ -1,89 +1,85 @@
 {% extends "base.html" %}
-{% block title %}Auditors - {{ firm_name }}{% endblock %}
+{% block title %}{{ 'Auditors' if current_user.is_super_admin else 'Sub-Auditors' }} - {{ firm_name }}{% endblock %}
 {% block content %}
-<div class="page-header">
-  <h1>{{ 'Auditors' if current_user.is_super_admin else 'Your Sub-Auditors' }}</h1>
-  {% if console_can('create_sub_auditors') %}
-  <a href="{{ url_for('tenants.new_auditor') }}" class="btn btn-primary">
-    + {{ 'Create auditor' if current_user.is_super_admin else 'Create sub-auditor' }}
-  </a>
+{# A plain list (console cleanup, stage 2): filter chips, a search, the
+   list. Verifying lives on the Today page; clients with no auditor on the
+   Clients list. #}
+{% set rows = [] %}
+{% for a in auditors %}
+  {% set status = access_statuses[a.id] %}
+  {% if status.blocked %}{% set state = 'pending' if status.reason == 'pending_verification' else 'blocked' %}
+  {% elif status.billing_notice %}{% set state = 'renewal' %}
+  {% else %}{% set state = 'active' %}{% endif %}
+  {% set _ = rows.append({'a': a, 'state': state, 'reason': status.reason}) %}
+{% endfor %}
+{% set chip_labels = {'all': 'All', 'active': 'Active', 'renewal': 'Renewal due', 'blocked': "Can't sign in", 'pending': 'Awaiting verification'} %}
+{% set counts = {'all': rows|length,
+                 'active': rows|selectattr('state', 'in', ['active', 'renewal'])|list|length,
+                 'renewal': rows|selectattr('state', 'equalto', 'renewal')|list|length,
+                 'blocked': rows|selectattr('state', 'equalto', 'blocked')|list|length,
+                 'pending': rows|selectattr('state', 'equalto', 'pending')|list|length} %}
+
+<div x-data="{ q: '', show: '{{ show }}' }">
+  <div class="page-header">
+    <div>
+      <h1>{{ 'Auditors' if current_user.is_super_admin else 'Your Sub-Auditors' }}</h1>
+      <p class="text-muted mt-0">{{ 'Every Auditor and Sub-Auditor in the firm' if current_user.is_super_admin else 'The Sub-Auditors in your office' }}, and the clients each looks after.</p>
+    </div>
+    {% if console_can('create_sub_auditors') %}
+    <a href="{{ url_for('tenants.new_auditor') }}" class="btn btn-primary">{{ icon('plus') }}{{ 'Create auditor' if current_user.is_super_admin else 'Create sub-auditor' }}</a>
+    {% endif %}
+  </div>
+
+  {% if rows %}
+  <div class="filter-chips" role="group" aria-label="Show auditors">
+    {% for key in filters if key == 'all' or counts[key] %}
+    <button type="button" class="filter-chip" :class="{ 'is-on': show === '{{ key }}' }" @click="show = '{{ key }}'"
+            :aria-pressed="(show === '{{ key }}').toString()" aria-pressed="{{ 'true' if show == key else 'false' }}">
+      {{ chip_labels[key] }} <b>{{ counts[key] }}</b></button>
+    {% endfor %}
+  </div>
+  <div class="console-toolbar">
+    <label class="module-search console-search">
+      {{ icon('search') }}
+      <input type="search" placeholder="Find by name or email" aria-label="Find an auditor by name or email" x-model="q">
+    </label>
+  </div>
   {% endif %}
-</div>
 
-{% if current_user.is_super_admin and pending_tenants %}
-<div class="card card-danger mb-20">
-  <h2 class="mt-0">Awaiting verification ({{ pending_tenants|length }})</h2>
-  <table>
-    <thead><tr><th>Business</th><th>Onboarded by</th><th>Created</th><th></th></tr></thead>
-    <tbody>
-      {% for t in pending_tenants %}
-      <tr>
-        <td>{{ t.legal_name }}</td>
-        <td>{{ t.auditor.name if t.auditor else 'Ultra Admin' }}</td>
-        <td>{{ t.created_at.strftime('%d %b %Y') }}</td>
-        <td><a href="{{ url_for('tenants.detail', tenant_id=t.id) }}" class="btn btn-quiet">Verify</a></td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
-{% endif %}
-
-{% if current_user.is_super_admin and pending_auditors %}
-<div class="card card-danger mb-20">
-  <h2 class="mt-0">Auditors awaiting verification ({{ pending_auditors|length }})</h2>
-  <table>
-    <thead><tr><th>Name</th><th>Role</th><th>Created</th><th></th></tr></thead>
-    <tbody>
-      {% for a in pending_auditors %}
-      <tr>
-        <td>{{ a.name }}</td>
-        <td>{{ a.role_label }}</td>
-        <td>{{ a.created_at.strftime('%d %b %Y') }}</td>
-        <td><a href="{{ url_for('tenants.auditor_detail', auditor_id=a.id) }}" class="btn btn-quiet">Verify</a></td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
-{% endif %}
-
-{% if current_user.is_super_admin and unallocated_tenants %}
-<div class="card mb-20">
-  <h2 class="mt-0">Unallocated clients ({{ unallocated_tenants|length }})</h2>
-  <table>
-    <thead><tr><th>Business</th><th></th></tr></thead>
-    <tbody>
-      {% for t in unallocated_tenants %}
-      <tr><td>{{ t.legal_name }}</td><td><a href="{{ url_for('tenants.detail', tenant_id=t.id) }}" class="btn btn-quiet">Allot</a></td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
-{% endif %}
-
-<div class="table-wrap card">
-  <table>
-    <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Clients</th><th>Status</th><th></th></tr></thead>
-    <tbody>
-      {% for a in auditors %}
-      <tr>
-        <td><a href="{{ url_for('tenants.auditor_detail', auditor_id=a.id) }}">{{ a.name }}</a></td>
-        <td>{{ a.email }}</td>
-        <td>{{ a.role_label }}</td>
-        <td>{{ a.allocated_tenants|length }}</td>
-        <td>
-          {% set status = access_statuses[a.id] %}
-          {% if status.blocked %}<span class="status-badge status-void">{{ status.reason|replace('_', ' ')|title }}</span>
-          {% elif status.billing_notice %}<span class="status-badge status-void">Renewal due</span>
-          {% else %}<span class="status-badge status-issued">Active</span>{% endif %}
-        </td>
-        <td><a href="{{ url_for('tenants.auditor_detail', auditor_id=a.id) }}">View</a></td>
-      </tr>
-      {% else %}
-      <tr><td colspan="6" class="empty-state">No auditors yet.</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <div class="table-wrap card console-card">
+    <table class="console-table">
+      <thead><tr><th>Name</th><th>Role</th><th>Clients</th><th>Status</th><th><span class="sr-only">Open</span></th></tr></thead>
+      <tbody>
+        {% for r in rows %}
+        {% set a = r.a %}
+        {% set groups = ['all', r.state] + (['active'] if r.state == 'renewal' else []) %}
+        <tr data-groups=" {{ groups|join(' ') }} " data-hay="{{ (a.name ~ ' ' ~ a.email)|lower }}"
+            x-show="$el.dataset.groups.includes(' ' + show + ' ') && (!q || $el.dataset.hay.includes(q.toLowerCase()))">
+          <td>
+            <a href="{{ url_for('tenants.auditor_detail', auditor_id=a.id) }}" class="client-cell">
+              <span class="client-mark" aria-hidden="true">{{ a.name[:1]|upper }}</span>
+              <span class="client-name"><strong>{{ a.name }}</strong><small>{{ a.email }}</small></span>
+            </a>
+          </td>
+          <td>{{ a.role_label }}{% if a.is_sub_auditor and a.parent_auditor %}<small class="text-muted"> - {{ a.parent_auditor.name }}</small>{% endif %}</td>
+          <td>{{ a.allocated_tenants|length }}</td>
+          <td>
+            {% if r.state == 'active' %}<span class="status-badge status-issued">Active</span>
+            {% elif r.state == 'renewal' %}<span class="status-badge status-warn">Renewal due</span>
+            {% elif r.state == 'pending' %}<span class="status-badge status-warn">Awaiting verification</span>
+            {% else %}<span class="status-badge status-void">{{ {'paused': 'Paused', 'billing_overdue': 'Billing overdue'}.get(r.reason, r.reason|replace('_', ' ')|title) }}</span>{% endif %}
+          </td>
+          <td class="num"><a href="{{ url_for('tenants.auditor_detail', auditor_id=a.id) }}" class="row-go" aria-label="Open {{ a.name }}">{{ icon('chevron-right') }}</a></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="empty-state">{{ 'No auditors yet.' if current_user.is_super_admin else 'No Sub-Auditors yet.' }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% if rows %}
+    <p class="empty-state" x-cloak
+       x-show="![...$root.querySelectorAll('tr[data-hay]')].some(tr => tr.dataset.groups.includes(' ' + show + ' ') && (!q || tr.dataset.hay.includes(q.toLowerCase())))">No one matches that.</p>
+    {% endif %}
+  </div>
 </div>
 {% endblock %}

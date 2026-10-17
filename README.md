@@ -2486,9 +2486,47 @@ once, in `app/utils/catalogue.py`, and every screen reads that list:
 - Nothing stored changed: no migration, every client's modules, packages
   and settings as they were. The client's own side menu is unchanged.
 
+### Console cleanup - stage 2 (Today page and navigation)
+
+Every console login - Ultra Admin, Auditor, Sub-Auditor - now lands on
+**Today** (`/admin/today`, `app/tenants/today.py`) instead of the Auditors
+list:
+
+- **Needs you** - each item says what's waiting, why, and links straight
+  to where it's dealt with, with the first five names under it:
+  clients waiting to be verified, auditors waiting to be verified, module
+  requests to decide, clients with no auditor, clients who can't sign in
+  (paused or past the grace days), renewals due, auditors with a renewal
+  due. An auditor sees the same for their own clients only; verifying and
+  module requests stay ARFA's, so a client of theirs waiting for
+  verification shows as information. "Nothing needs you today" when it's
+  all clear.
+- **Four counts** - active clients, renewals due, auditors (Sub-Auditors
+  for an auditor; "can't sign in" for a Sub-Auditor) and changes today.
+- **Changed today** - package, module, setting, login and client /
+  auditor changes since midnight (Indian time), newest first, with who
+  made them; views, sign-ins and exports are left out. An auditor sees
+  only their own clients' changes.
+- **Shorter menu.** Ultra Admin: Today · Clients · Auditors · Filing &
+  GST under *Work*; Packages · Billing · Audit log under *Platform*.
+  Filing and bulk GST exports are one entry with two tabs. Auditors: Today
+  · Clients · Sub-Auditors · Filing, and their Subscription.
+- **Clients list** - one row of filter chips with counts: All, Active,
+  Renewal due, Can't sign in, Waiting for verification and (Ultra Admin)
+  No auditor - the "Unallocated clients" box moved here from the Auditors
+  page. `?show=<chip>` opens the list on one chip; Today's links use it.
+- **Auditors list** - a plain list with chips and a search; the
+  verification and unallocated boxes are gone (they're on Today and the
+  Clients list).
+- Stopping "Act as" and "Act as" an auditor also land on Today. Nothing
+  about who may see what changed - every count and row is scoped the way
+  the Clients list already was.
+
 ### Packages and powers - how to run it (hand-over)
 
-For the Ultra Admin. Everything below is in the console.
+For the Ultra Admin. Everything below is in the console, which opens on
+**Today** - what needs you (verifications, module requests, clients with
+no auditor, renewals) with a link to each.
 
 1. **Packages** (Platform -> Packages). Eight to start, all editable:
    Current setup (every client that existed before - nothing changed for
@@ -2506,8 +2544,8 @@ For the Ultra Admin. Everything below is in the console.
    client" on their page: any module, setting, limit, branding, counter
    permissions or sign-in minimum, against the package. "As the package"
    undoes it.
-4. **Requests** - "Ask ARFA to add" from a client lands in your bell and
-   on their page: Add as their choice / Include / Decline.
+4. **Requests** - "Ask ARFA to add" from a client lands in your bell, on
+   Today and on their page: Add as their choice / Include / Decline.
 5. **Auditors** - each auditor's page -> Powers: nine switches, the
    packages they may give, client and Sub-Auditor limits. Nothing changes
    for an auditor until you save there. An Auditor sets their own
@@ -2626,7 +2664,7 @@ before packages.
     in six areas, counter options, add-ons under what they need; the
     package editor, client page, onboarding and Settings > Modules read
     it.
-  - Stage 2: a Today page to land on, the shorter side menu (Today ·
+  - Stage 2 (done): a Today page to land on, the shorter side menu (Today ·
     Clients · Auditors · Filing & GST · Packages · Billing · Audit log),
     clients-list filters, a plain Auditors list.
   - Stage 3: the client page in tabs (Overview, Package & modules, Users

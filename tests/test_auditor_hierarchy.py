@@ -458,7 +458,7 @@ def test_auditor_can_act_as_their_own_clients_admin(client, db):
 
     resp = client.get("/auth/stop-impersonating", follow_redirects=True)
     assert resp.status_code == 200
-    assert resp.request.path == "/admin/clients"
+    assert resp.request.path == "/admin/today"
 
 
 def test_auditor_cannot_act_as_a_client_outside_their_scope(client, db):
@@ -480,11 +480,11 @@ def test_ultra_admin_can_act_as_an_auditor(client, db, super_admin):
     _login(client, super_admin.email, "SuperSecret123")
     resp = client.post(f"/admin/auditors/{auditor.id}/act-as", follow_redirects=True)
     assert resp.status_code == 200
-    assert resp.request.path == "/admin/clients"
+    assert resp.request.path == "/admin/today"
 
     resp = client.get("/auth/stop-impersonating", follow_redirects=True)
     assert resp.status_code == 200
-    assert resp.request.path == "/admin/auditors"
+    assert resp.request.path == "/admin/today"
 
 
 def test_auditor_can_act_as_their_own_sub_auditor(client, db):
@@ -493,7 +493,7 @@ def test_auditor_can_act_as_their_own_sub_auditor(client, db):
     _login(client, auditor.email, "AuditorPass123")
     resp = client.post(f"/admin/auditors/{sub.id}/act-as", follow_redirects=True)
     assert resp.status_code == 200
-    assert resp.request.path == "/admin/clients"
+    assert resp.request.path == "/admin/today"
 
 
 def test_auditor_cannot_act_as_an_unrelated_auditor(client, db):
