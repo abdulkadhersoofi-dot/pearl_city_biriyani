@@ -2601,6 +2601,64 @@ off) and the settings only ARFA changes. Rows where packages differ are
 marked; "Only differences" hides the rest. Each package card on the
 Packages list now says who it's for.
 
+### Console cleanup - stage 5 (auditors, onboarding, audit log, hand-over)
+
+- **An auditor's page in tabs** - Overview (waiting-for-verification with
+  "Verify & activate", the facts: role, status, clients, Sub-Auditors,
+  renewal, two-step sign-in), Powers, Clients & Sub-Auditors, Billing
+  (Ultra Admin) and Changes. "Act as" in the header; reset password, reset
+  two-step sign-in, subscription invoices and deactivate / reactivate in
+  **More**. As on a client's page: `?tab=` opens a tab, old `#sec-...`
+  links land on the tab holding them, and each action returns to its own
+  tab (billing to Billing, powers to Powers). An Auditor opening their own
+  Sub-Auditor sees no Billing tab and no resets.
+- **Onboarding in three steps** - 1 the business (name, registration,
+  GSTIN, state, turnover, business type with the trade pack it brings,
+  address, logo), 2 the package (suggested from the type; shows who it's
+  for, its modules, limits and price - or, for an auditor who can't pick
+  packages, that ARFA picks it), 3 the owner's login and a last look
+  (business, GSTIN, type, package). "Next" checks only the step it leaves;
+  the server checks everything again and, on an error, reopens the step
+  that holds it. Still one form and one client created, waiting for
+  verification.
+- **The audit log, searchable** - filter by client, by who did it, by kind
+  (sign-ins & security; packages, modules & logins; clients & auditors;
+  billing; views & exports; business records) and between two dates; 50
+  rows a page with Newer / Older; each row in plain words (the Changes
+  list's wording where it has one), Indian time, the client linked. A new
+  action falls into a kind by its name (`routes.audit_kind`) without being
+  listed. Before this the log was the last 200 rows on one 10,000 px page.
+- Fixed on the way: the audit filter by person uses the log's
+  `actor_user_id` column (caught by its test before it shipped).
+
+### Console cleanup - how to run it (hand-over)
+
+For the Ultra Admin; an Auditor sees the same pages for their own clients,
+limited by their powers.
+
+1. **Today** is where you land: what needs you (verifications, module
+   requests, clients with no auditor, can't sign in, renewals) with a
+   button to each, four counts and what changed today.
+2. **Clients** - filter chips (active, renewal due, can't sign in, waiting
+   for verification, no auditor) and a search. A client opens in tabs:
+   Overview, Package & modules, Users & branches, Billing, Documents,
+   Changes; "Act as" and "More" (pause, invoices, filing, every change) in
+   the header.
+3. **Onboard client** (Today or Clients) - three steps: business, package,
+   owner's login.
+4. **Auditors** - a plain list with chips; an auditor opens in tabs:
+   Overview, Powers, Clients & Sub-Auditors, Billing, Changes.
+5. **Filing & GST** - the filing tracker and bulk GST exports, two tabs.
+6. **Packages** - each package in tabs (who it's for, trade packs,
+   modules, counter options, settings & locks, logins & limits, name &
+   price); **Compare** puts them side by side.
+7. **Billing** - subscription invoices. **Audit log** - everything, by
+   client, person, kind and dates.
+
+Everything a client has is sorted the same way everywhere: business type,
+trade packs, modules in six areas (Selling; Buying & suppliers; Stock;
+Accounts; Reports; GST compliance), counter options.
+
 ### Packages and powers - how to run it (hand-over)
 
 For the Ultra Admin. Everything below is in the console, which opens on
@@ -2754,8 +2812,8 @@ before packages.
   - Stage 4 (done): the package editor in tabs (Business type, Trade
     packs, Modules, Counter options, Settings & locks, Logins & limits,
     Name & price) and a compare-packages table.
-  - Stage 5: auditor page in tabs, onboarding in three steps, audit-log
-    filters and pages, walk-through, hand-over.
+  - Stage 5 (done): auditor page in tabs, onboarding in three steps,
+    audit-log filters and pages, walk-through, hand-over.
 
   Interface redesign limits:
   - Stage 3 changed pages through shared CSS and two small scripts, not

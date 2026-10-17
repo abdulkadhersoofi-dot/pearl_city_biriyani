@@ -2,50 +2,140 @@
 {% from "macros.html" import field %}
 {% block title %}Onboard client - {{ firm_name }}{% endblock %}
 {% block content %}
-<div class="page-header"><h1>Onboard a new client</h1></div>
-<form method="post" class="card stack" novalidate enctype="multipart/form-data">
+{# Onboarding in three steps (console cleanup, stage 5): 1 the business,
+   2 its package, 3 the owner's login and a last look. One form - "Next"
+   only checks the step's own fields; the server checks everything again
+   and, on an error, opens the step that holds it. #}
+{% set step_one = ['legal_name', 'trade_name', 'registration_type', 'gstin', 'state_code', 'business_type', 'aato', 'registered_address', 'logo'] %}
+{% set errors = form.errors.keys()|list %}
+{% set start = 1 if errors|select('in', step_one)|list else (3 if errors else 1) %}
+<div class="page-header">
+  <div>
+    <a href="{{ url_for('tenants.directory') }}" class="back-link">{{ icon('chevron-right', 'icon-sm icon-flip') }}Clients</a>
+    <h1>Onboard a new client</h1>
+    <p class="text-muted mt-0">Three steps. The client starts waiting for verification - it can't sign in until ARFA sets a billing cycle.</p>
+  </div>
+</div>
+
+<form method="post" class="onboard" novalidate enctype="multipart/form-data"
+      x-data="onboardSteps({{ start }}, {{ (package_info or {})|tojson|forceescape }})" @submit="if (step < 3) { $event.preventDefault(); next(); }">
   {{ form.hidden_tag() }}
-  <div class="form-grid">
-    {{ field(form.legal_name) }}
-    {{ field(form.trade_name) }}
-    {{ field(form.registration_type, help="Composition and unregistered clients issue a Bill of Supply, never a Tax Invoice.") }}
-    {{ field(form.gstin) }}
-    {{ field(form.state_code) }}
+  <ol class="stepper" aria-label="Steps">
+    {% for n, label in [(1, 'Business'), (2, 'Package'), (3, 'Owner & check')] %}
+    <li :class="{ 'is-on': step === {{ n }}, 'is-done': step > {{ n }} }" class="{{ 'is-on' if start == n }}">
+      <button type="button" @click="jump({{ n }})" :aria-current="step === {{ n }} ? 'step' : null"><span class="step-num">{{ n }}</span>{{ label }}</button>
+    </li>
+    {% endfor %}
+  </ol>
+
+  {# --- 1. The business ------------------------------------------------------------------- #}
+  <section class="card stack onboard-step" data-step="1" x-show="step === 1" {% if start != 1 %}x-cloak{% endif %} aria-label="Step 1: the business">
+    <h2 class="m-0">The business</h2>
+    <div class="form-grid">
+      {{ field(form.legal_name) }}
+      {{ field(form.trade_name) }}
+      {{ field(form.registration_type, help="Composition and unregistered clients issue a Bill of Supply, never a Tax Invoice.") }}
+      {{ field(form.gstin) }}
+      {{ field(form.state_code) }}
+      {{ field(form.aato, help="Aggregate annual turnover of the last financial year - drives compliance rules like HSN digits.") }}
+    </div>
     {{ field(form.business_type, help="Pre-switches its trade pack and the modules this kind of business usually needs. Any of it can be changed later.") }}
-    {{ field(form.aato, help="Aggregate annual turnover of the last financial year - drives compliance rules like HSN digits.") }}
-  </div>
-  {# What the business type brings (app/utils/catalogue.py) - its trade pack(s), pre-set and editable. #}
-  <p class="type-brings" aria-live="polite" x-data='{ packs: {{ type_packs|tojson }}, now: {{ (form.business_type.data or "retail")|tojson }} }'
-     x-init="const bt = document.getElementById('business_type'); if (bt) bt.addEventListener('change', () => { now = bt.value; })">
-    {{ icon('layout-grid', 'icon-sm') }}
-    <span x-text="packs[now] && packs[now].length ? 'Comes with the ' + packs[now].join(', ') + ' trade pack' + (packs[now].length > 1 ? 's' : '') + ' - more can be added later.' : 'No trade pack of its own - any can be added later.'">
-      {%- set mine = type_packs.get(form.business_type.data or 'retail', []) -%}
-      {{ 'Comes with the ' ~ mine|join(', ') ~ ' trade pack' ~ ('s' if mine|length > 1 else '') ~ ' - more can be added later.' if mine else 'No trade pack of its own - any can be added later.' }}</span>
-  </p>
-  {% if packages %}
-  {# Ultra Admin only: the package this client starts on (suggested from the type of business). #}
-  <label class="field" x-data='{ suggest: {{ package_suggest|tojson }} }'
-         x-init="const bt = document.getElementById('business_type'); if (bt) bt.addEventListener('change', () => { if (suggest[bt.value]) $refs.pkg.value = suggest[bt.value]; })">
-    <span class="field-label">Package</span>
-    <select name="package_id" class="field-input" x-ref="pkg">
-      {% for p in packages %}<option value="{{ p.id }}" {% if p.id == package_default %}selected{% endif %}>{{ p.name }}{% if p.price_monthly %} - Rs. {{ p.price_monthly|inr(0) }}/month{% endif %}</option>{% endfor %}
-    </select>
-    <p class="field-help">Which modules and settings the client gets. The type of business above still decides which of their own choices start switched on.</p>
-  </label>
-  {% endif %}
-  {{ field(form.registered_address) }}
-  {{ field(form.logo, help="Shown to this client's own users instead of the platform logo, and on their printed invoices/receipts.") }}
-  <p class="flash flash-info">This client will be created pending verification - it cannot sign in until the
-    Ultra Admin reviews it and sets a billing cycle.</p>
-  <hr>
-  <h2 class="fs-md m-0">Client Admin login</h2>
-  <div class="form-grid">
-    {{ field(form.admin_name) }}
-    {{ field(form.admin_email) }}
-    {{ field(form.admin_phone) }}
-    {{ field(form.admin_password, help="Share this with the client yourself - they'll be asked to change it on first sign-in.") }}
-    {{ field(form.admin_confirm_password) }}
-  </div>
-  <button type="submit" class="btn btn-primary btn-lg">Onboard client</button>
+    {# What the business type brings (app/utils/catalogue.py) - its trade pack(s), pre-set and editable. #}
+    <p class="type-brings" aria-live="polite" x-data='{ packs: {{ type_packs|tojson }}, now: {{ (form.business_type.data or "retail")|tojson }} }'
+       x-init="const bt = document.getElementById('business_type'); if (bt) bt.addEventListener('change', () => { now = bt.value; })">
+      {{ icon('layout-grid', 'icon-sm') }}
+      <span x-text="packs[now] && packs[now].length ? 'Comes with the ' + packs[now].join(', ') + ' trade pack' + (packs[now].length > 1 ? 's' : '') + ' - more can be added later.' : 'No trade pack of its own - any can be added later.'">
+        {%- set mine = type_packs.get(form.business_type.data or 'retail', []) -%}
+        {{ 'Comes with the ' ~ mine|join(', ') ~ ' trade pack' ~ ('s' if mine|length > 1 else '') ~ ' - more can be added later.' if mine else 'No trade pack of its own - any can be added later.' }}</span>
+    </p>
+    {{ field(form.registered_address) }}
+    {{ field(form.logo, help="Shown to this client's own users instead of the platform logo, and on their printed invoices/receipts.") }}
+    <div class="step-actions"><span></span><button type="button" class="btn btn-primary" @click="next()">Next: package {{ icon('arrow-right', 'icon-sm') }}</button></div>
+  </section>
+
+  {# --- 2. The package --------------------------------------------------------------------- #}
+  <section class="card stack onboard-step" data-step="2" x-show="step === 2" x-cloak aria-label="Step 2: the package">
+    <h2 class="m-0">The package</h2>
+    {% if packages %}
+    {# Suggested from the type of business; any available one can be picked. #}
+    <label class="field m-0" x-data='{ suggest: {{ package_suggest|tojson }} }'
+           x-init="const bt = document.getElementById('business_type'); if (bt) bt.addEventListener('change', () => { if (suggest[bt.value]) { $refs.pkg.value = suggest[bt.value]; pkg = String(suggest[bt.value]); } })">
+      <span class="field-label">Package</span>
+      <select name="package_id" class="field-input" x-ref="pkg" x-model="pkg">
+        {% for p in packages %}<option value="{{ p.id }}" {% if p.id == package_default %}selected{% endif %}>{{ p.name }}{% if p.price_monthly %} - Rs. {{ p.price_monthly|inr(0) }}/month{% endif %}</option>{% endfor %}
+      </select>
+      <p class="field-help">Which modules and settings the client gets. The type of business still decides which of their own choices start switched on.</p>
+    </label>
+    <dl class="client-facts package-peek" x-show="info[pkg]">
+      <div><dt>For</dt><dd x-text="info[pkg] && info[pkg].for"></dd></div>
+      <div><dt>Modules</dt><dd x-text="info[pkg] && info[pkg].modules"></dd></div>
+      <div><dt>Limits</dt><dd x-text="info[pkg] && info[pkg].limits"></dd></div>
+      <div><dt>Price</dt><dd x-text="info[pkg] && info[pkg].price"></dd></div>
+    </dl>
+    {% else %}
+    <p class="text-muted m-0">ARFA picks this client's package. Until then every module is the client's own choice, with the
+      type of business deciding which start switched on.</p>
+    {% endif %}
+    <div class="step-actions">
+      <button type="button" class="btn btn-quiet" @click="step = 1">{{ icon('chevron-right', 'icon-sm icon-flip') }}Back</button>
+      <button type="button" class="btn btn-primary" @click="next()">Next: owner's login {{ icon('arrow-right', 'icon-sm') }}</button>
+    </div>
+  </section>
+
+  {# --- 3. The owner's login and a last look ----------------------------------------------- #}
+  <section class="card stack onboard-step" data-step="3" x-show="step === 3" {% if start != 3 %}x-cloak{% endif %} aria-label="Step 3: the owner's login">
+    <h2 class="m-0">The owner's login</h2>
+    <div class="form-grid">
+      {{ field(form.admin_name) }}
+      {{ field(form.admin_email) }}
+      {{ field(form.admin_phone) }}
+      {{ field(form.admin_password, help="Share this with the client yourself - they'll be asked to change it on first sign-in.") }}
+      {{ field(form.admin_confirm_password) }}
+    </div>
+    <div class="final-check" aria-live="polite">
+      <h3 class="m-0">Before you onboard</h3>
+      <dl class="client-facts">
+        <div><dt>Business</dt><dd x-text="val('legal_name') || '-'"></dd></div>
+        <div><dt>GSTIN</dt><dd x-text="val('gstin') || 'Unregistered'"></dd></div>
+        <div><dt>Type</dt><dd x-text="text('business_type')"></dd></div>
+        <div><dt>Package</dt><dd x-text="info[pkg] ? info[pkg].name : 'ARFA picks it'"></dd></div>
+      </dl>
+      <p class="text-muted m-0">The client is created waiting for verification - nobody can sign in until ARFA sets a billing cycle.</p>
+    </div>
+    <div class="step-actions">
+      <button type="button" class="btn btn-quiet" @click="step = 2">{{ icon('chevron-right', 'icon-sm icon-flip') }}Back</button>
+      <button type="submit" class="btn btn-primary btn-lg">Onboard client</button>
+    </div>
+  </section>
 </form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Onboarding steps: "Next" checks only the fields of the step it leaves
+// (the browser's own required / pattern checks), so a mistake shows where
+// it was made. The server checks it all again on submit.
+function onboardSteps(start, info) {
+  return {
+    step: start,
+    info: info,
+    pkg: "{{ package_default or '' }}",
+    fields(n) { return [...this.$root.querySelectorAll('[data-step="' + n + '"] input, [data-step="' + n + '"] select')]; },
+    ok(n) {
+      const bad = this.fields(n).find(el => !el.checkValidity());
+      if (bad) { bad.reportValidity(); return false; }
+      return true;
+    },
+    next() { if (this.ok(this.step)) { this.step = Math.min(this.step + 1, 3); this.$root.scrollIntoView({ block: "start" }); } },
+    jump(n) {
+      for (let i = 1; i < n; i++) { if (!this.ok(i)) { this.step = i; return; } }
+      this.step = n;
+    },
+    // Read from the form, again whenever the step changes (reading
+    // this.step makes Alpine re-run them) - the last look is current.
+    val(id) { this.step; const el = document.getElementById(id); return el ? el.value.trim() : ""; },
+    text(id) { this.step; const el = document.getElementById(id); return el && el.selectedOptions[0] ? el.selectedOptions[0].text : ""; }
+  };
+}
+</script>
 {% endblock %}

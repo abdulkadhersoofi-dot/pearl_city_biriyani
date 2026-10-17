@@ -569,6 +569,17 @@ this list is just the index.
   groups. Onboarding's suggestion prefers a package whose `business_type`
   matches.
 
+- **Console cleanup, stage 5 (done - the plan is finished).**
+  `auditor_detail.html` in tabs (`auditor_tabs`, `pageTabs()` script; the
+  same `?tab=` / `#sec-` rules as the client page; auditor action
+  redirects pass `tab=`). `onboard.html` in three client-side steps
+  (`onboardSteps()`; `_onboarding_packages` also returns `package_info`;
+  the step to reopen after a server error is worked out from
+  `form.errors`). `tenants.audit_log` filters by `client` / `who`
+  (`AuditLog.actor_user_id`) / `kind` (`AUDIT_KINDS`, `audit_kind()` by
+  action name) / `from` / `to` (IST days), `AUDIT_PER_PAGE` = 50. README
+  has "Console cleanup - how to run it".
+
 ## 5. Chronological development history (this session)
 
 This is the part README.md doesn't capture — the actual sequence of

@@ -90,12 +90,12 @@ def save_auditor_powers(auditor_id):
                     else (grant.max_sub_auditors if grant is not None else None))
     except ValueError:
         flash("Limits are whole numbers - or leave them blank for no limit.", "error")
-        return redirect(url_for("tenants.auditor_detail", auditor_id=auditor.id, _anchor="sec-powers"))
+        return redirect(url_for("tenants.auditor_detail", auditor_id=auditor.id, tab="powers", _anchor="sec-powers"))
     set_auditor_powers(auditor, powers, current_user, allowed_package_ids=package_ids, max_clients=max_clients,
                        max_sub_auditors=max_subs)
     db.session.commit()
     flash(f"Powers saved for {auditor.name}.", "success")
-    return redirect(url_for("tenants.auditor_detail", auditor_id=auditor.id, _anchor="sec-powers"))
+    return redirect(url_for("tenants.auditor_detail", auditor_id=auditor.id, tab="powers", _anchor="sec-powers"))
 
 
 # --- the Ultra Admin's switches for one branch login (stage 5) -------------------------------------

@@ -1,24 +1,68 @@
 {% extends "base.html" %}
 {% block title %}Audit log - {{ firm_name }}{% endblock %}
 {% block content %}
-<div class="page-header"><h1>Audit log</h1></div>
-<div class="table-wrap card">
-  <table>
-    <thead><tr><th>When</th><th>Actor</th><th>Action</th><th>Client</th><th>Entity</th><th>IP</th></tr></thead>
+{# Everything recorded, searchable (console cleanup, stage 5): filter by
+   client, who, kind and dates; 50 rows a page; times in Indian time. #}
+<div class="page-header">
+  <div>
+    <h1>Audit log</h1>
+    <p class="text-muted mt-0">{{ '{:,}'.format(total) }} entr{{ 'y' if total == 1 else 'ies' }}{{ ' match' if filtered else '' }} · newest first · Indian time</p>
+  </div>
+</div>
+
+<form method="get" class="card audit-filters mb-20" aria-label="Filter the audit log">
+  <label class="field m-0"><span class="field-label">Client</span>
+    <select name="client" class="field-input">
+      <option value="">Every client</option>
+      {% for c in clients %}<option value="{{ c.id }}" {% if filters.client == c.id %}selected{% endif %}>{{ c.legal_name }}</option>{% endfor %}
+    </select></label>
+  <label class="field m-0"><span class="field-label">Who</span>
+    <select name="who" class="field-input">
+      <option value="">Anyone</option>
+      {% for u in people %}<option value="{{ u.id }}" {% if filters.who == u.id %}selected{% endif %}>{{ u.name }} ({{ u.role_label }})</option>{% endfor %}
+    </select></label>
+  <label class="field m-0"><span class="field-label">Kind</span>
+    <select name="kind" class="field-input">
+      <option value="">Every kind</option>
+      {% for key, label in kinds.items() %}<option value="{{ key }}" {% if filters.kind == key %}selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select></label>
+  <label class="field m-0"><span class="field-label">From</span>
+    <input type="date" name="from" class="field-input" value="{{ filters['from'] }}"></label>
+  <label class="field m-0"><span class="field-label">To</span>
+    <input type="date" name="to" class="field-input" value="{{ filters['to'] }}"></label>
+  <div class="audit-filter-actions">
+    <button type="submit" class="btn btn-primary">Show</button>
+    {% if filtered %}<a href="{{ url_for('tenants.audit_log') }}" class="btn btn-quiet">Clear</a>{% endif %}
+  </div>
+</form>
+
+<div class="table-wrap card console-card">
+  <table class="console-table audit-table">
+    <thead><tr><th>When</th><th>What</th><th>Client</th><th>Who</th><th>Kind</th><th>IP</th></tr></thead>
     <tbody>
-    {% for log in logs %}
+    {% for r in rows %}
+      {% set log = r.log %}
       <tr>
-        <td>{{ log.created_at.strftime('%d %b %Y %H:%M') }}</td>
-        <td>{{ log.actor.name if log.actor else 'System' }}</td>
-        <td>{{ log.action|replace('_',' ') }}</td>
-        <td>{{ log.tenant.legal_name if log.tenant else '-' }}</td>
-        <td>{{ log.entity_type or '-' }}{% if log.entity_id %} #{{ log.entity_id }}{% endif %}</td>
-        <td>{{ log.ip_address or '-' }}</td>
+        <td class="nowrap"><time datetime="{{ log.created_at.isoformat() }}">{{ log.created_at|ist('%d %b %Y %H:%M') }}</time></td>
+        <td>{{ r.text }}{% if log.entity_type %}<small class="block text-muted">{{ log.entity_type|replace('_', ' ') }}{% if log.entity_id %} #{{ log.entity_id }}{% endif %}</small>{% endif %}</td>
+        <td>{% if log.tenant %}<a href="{{ url_for('tenants.detail', tenant_id=log.tenant_id) }}">{{ log.tenant.legal_name }}</a>{% else %}-{% endif %}</td>
+        <td>{{ log.actor.name if log.actor else 'System' }}{% if log.actor %}<small class="block text-muted">{{ log.actor.role_label }}</small>{% endif %}</td>
+        <td><span class="pill pill-muted">{{ r.kind }}</span></td>
+        <td class="mono-cell">{{ log.ip_address or '-' }}</td>
       </tr>
     {% else %}
-      <tr><td colspan="6" class="empty-state">No activity recorded yet.</td></tr>
+      <tr><td colspan="6" class="empty-state">{{ 'Nothing matches these filters.' if filtered else 'No activity recorded yet.' }}</td></tr>
     {% endfor %}
     </tbody>
   </table>
 </div>
+
+{% if pages > 1 %}
+{% set args = request.args.to_dict() %}
+<nav class="pager mt-16" aria-label="Pages">
+  {% if page > 1 %}{% set _ = args.update({'page': page - 1}) %}<a href="{{ url_for('tenants.audit_log', **args) }}" class="btn btn-secondary btn-sm" rel="prev">{{ icon('chevron-right', 'icon-sm icon-flip') }}Newer</a>{% endif %}
+  <span class="text-muted">Page {{ page }} of {{ pages }}</span>
+  {% if page < pages %}{% set _ = args.update({'page': page + 1}) %}<a href="{{ url_for('tenants.audit_log', **args) }}" class="btn btn-secondary btn-sm" rel="next">Older{{ icon('chevron-right', 'icon-sm') }}</a>{% endif %}
+</nav>
+{% endif %}
 {% endblock %}

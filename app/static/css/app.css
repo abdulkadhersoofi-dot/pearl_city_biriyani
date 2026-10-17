@@ -2004,3 +2004,26 @@ a.console-stat { text-decoration: none; }
   .editor-save { flex-direction: column; align-items: stretch; }
 }
 .package-for { display: flex; align-items: center; gap: 6px; font-size: 0.86rem; font-weight: 600; color: var(--color-primary-dark); }
+
+/* Onboarding in three steps (console cleanup, stage 5). */
+.onboard { max-width: 920px; }
+.stepper { list-style: none; display: flex; gap: 8px; margin: 0 0 16px; padding: 0; counter-reset: step; flex-wrap: wrap; }
+.stepper li { flex: 1 1 0; min-width: 140px; }
+.stepper button {
+  width: 100%; display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: var(--radius-lg); cursor: pointer;
+  border: 1px solid var(--color-border); background: var(--color-surface); color: var(--color-text-muted); font: inherit; font-weight: 600; text-align: left;
+}
+.step-num { width: 26px; height: 26px; flex-shrink: 0; display: grid; place-items: center; border-radius: 50%; background: var(--color-surface-2); font-size: 0.82rem; font-weight: 700; }
+.stepper li.is-on button { border-color: var(--color-primary); color: var(--color-text); box-shadow: 0 0 0 3px var(--color-primary-soft); }
+.stepper li.is-on .step-num, .stepper li.is-done .step-num { background: var(--color-primary); color: var(--color-on-ink, #fff); }
+.stepper li.is-done button { color: var(--color-text); }
+.step-actions { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding-top: 6px; }
+.package-peek, .final-check .client-facts { padding: 14px; border-radius: var(--radius); background: var(--color-surface-2); border: 1px solid var(--color-border); }
+.final-check { display: grid; gap: 10px; padding-top: 12px; border-top: 1px solid var(--color-border); }
+@media (max-width: 640px) { .stepper li { min-width: 0; } .stepper button { padding: 8px; font-size: 0.86rem; } }
+
+/* The audit log's filters (console cleanup, stage 5). */
+.audit-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; align-items: end; }
+.audit-filter-actions { display: flex; gap: 8px; }
+.audit-table td { vertical-align: top; }
+.pager { display: flex; align-items: center; justify-content: center; gap: 14px; }

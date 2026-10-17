@@ -1,175 +1,269 @@
 {% extends "base.html" %}
 {% block title %}{{ auditor.name }} - {{ firm_name }}{% endblock %}
+{% macro panel_open(key) %}<section id="tab-{{ key }}" role="tabpanel" aria-labelledby="tabbtn-{{ key }}" class="client-panel"
+         x-show="tab === '{{ key }}'" {% if tab != key %}x-cloak{% endif %}>{% endmacro %}
 {% block content %}
-{% set badge = {'paused': 'status-void', 'billing_overdue': 'status-void', 'pending_verification': 'status-void'} %}
-<div class="page-header">
-  <div>
-    <h1>{{ auditor.name }}</h1>
-    <p class="text-muted mt-0">{{ auditor.role_label }} · {{ auditor.email }}
-      {% if auditor.parent_auditor %}· Sub-Auditor of {{ auditor.parent_auditor.name }}{% endif %}
-      {% if auditor_access_status.blocked %}· <span class="status-badge {{ badge.get(auditor_access_status.reason, 'status-void') }}">{{ auditor_access_status.reason|replace('_', ' ')|title }}</span>
-      {% elif auditor_access_status.billing_notice %}· <span class="status-badge status-void">Renewal due</span>
-      {% else %}· <span class="status-badge status-issued">Active</span>{% endif %}
-    </p>
-  </div>
-  <div class="row">
-    {% if auditor.is_active and console_can('act_as') %}
-    <form method="post" action="{{ url_for('tenants.act_as_auditor', auditor_id=auditor.id) }}">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button type="submit" class="btn btn-secondary">Act as</button>
-    </form>
-    {% endif %}
-    {% if current_user.is_super_admin %}
-    <a href="{{ url_for('tenants.reset_auditor_password', auditor_id=auditor.id) }}" class="btn btn-quiet">Reset password</a>
-    {% if auditor.has_two_factor %}
-    <form method="post" action="{{ url_for('tenants.reset_auditor_two_factor', auditor_id=auditor.id) }}"
-          onsubmit="return confirm('Reset two-step sign-in for {{ auditor.name }}? They set it up again at their next sign-in.');">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button class="btn btn-quiet">Reset two-step sign-in</button>
-    </form>
-    {% endif %}
-    {% if auditor.is_active %}
-    <form method="post" action="{{ url_for('tenants.deactivate_auditor', auditor_id=auditor.id) }}"
-          onsubmit="return confirm('Deactivate {{ auditor.name }}? They will no longer be able to sign in.');">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button class="btn btn-quiet">Deactivate</button>
-    </form>
-    {% else %}
-    <form method="post" action="{{ url_for('tenants.activate_auditor', auditor_id=auditor.id) }}">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button class="btn btn-quiet">Reactivate</button>
-    </form>
-    {% endif %}
-    {% endif %}
-  </div>
-</div>
+{# One auditor, in tabs (console cleanup, stage 5): Overview, Powers,
+   Clients & Sub-Auditors, Billing (Ultra Admin), Changes. Like a client's
+   page: one tab shows at a time, ?tab= opens one, old #sec- links land on
+   the tab holding them; the resets and pausing sit in a menu. #}
+{% set state = 'pending' if auditor_access_status.reason == 'pending_verification' else ('blocked' if auditor_access_status.blocked else ('renewal' if auditor_access_status.billing_notice else 'active')) %}
+{% set state_badge = {'pending': ('status-warn', 'Waiting for verification'), 'blocked': ('status-void', {'paused': 'Paused', 'billing_overdue': 'Billing overdue'}.get(auditor_access_status.reason, 'Blocked')), 'renewal': ('status-warn', 'Renewal due'), 'active': ('status-issued', 'Active')} %}
 
-{% if current_user.is_super_admin %}
-{% if auditor.billing_cycle is none %}
-<div class="card card-danger mb-20">
-  <h2 class="mt-0">Awaiting verification</h2>
-  <p class="text-muted mt-0">This {{ auditor.role_label|lower }} cannot sign in until you pick a billing cycle.</p>
-  <form method="post" action="{{ url_for('tenants.set_auditor_billing_cycle', auditor_id=auditor.id) }}" class="row">
-    {{ billing_form.hidden_tag() }}
-    {{ billing_form.billing_cycle(class="field-input") }}
-    <button type="submit" class="btn btn-primary">Verify &amp; activate</button>
-  </form>
-</div>
-{% endif %}
+<div x-data="pageTabs('{{ tab }}', {'sec-verify': 'overview', 'sec-powers': 'powers', 'sec-clients': 'clients', 'sec-subs': 'clients', 'sec-billing': 'billing', 'sec-power-changes': 'changes'})">
+  <div class="page-header client-head" data-no-more>
+    <div class="client-title">
+      <span class="client-mark client-mark-lg" aria-hidden="true">{{ auditor.name[:1]|upper }}</span>
+      <div>
+        <h1>{{ auditor.name }}</h1>
+        <p class="text-muted mt-0">
+          <span class="status-badge {{ state_badge[state][0] }}">{{ state_badge[state][1] }}</span>
+          · {{ auditor.role_label }}{% if auditor.parent_auditor %} of {{ auditor.parent_auditor.name }}{% endif %}
+          · {{ auditor.email }}
+        </p>
+      </div>
+    </div>
+    <div class="row">
+      {% if auditor.is_active and console_can('act_as') %}
+      <form method="post" action="{{ url_for('tenants.act_as_auditor', auditor_id=auditor.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-secondary">{{ icon('log-out', 'icon-sm') }}Act as</button>
+      </form>
+      {% endif %}
+      {% if current_user.is_super_admin %}
+      <div class="pop-wrap menu-wrap" x-data="{ open: false }" @click.outside="open = false" @keydown.escape.window="open = false">
+        <button type="button" class="btn btn-secondary" @click="open = !open" aria-haspopup="menu" :aria-expanded="open.toString()">
+          More {{ icon('chevron-down', 'icon-sm') }}</button>
+        <div class="pop pop-right more-pop" role="menu" x-show="open" x-transition.opacity x-cloak>
+          <a href="{{ url_for('tenants.reset_auditor_password', auditor_id=auditor.id) }}" class="btn" role="menuitem">Reset password</a>
+          {% if auditor.has_two_factor %}
+          <form method="post" action="{{ url_for('tenants.reset_auditor_two_factor', auditor_id=auditor.id) }}"
+                onsubmit="return confirm('Reset two-step sign-in for {{ auditor.name }}? They set it up again at their next sign-in.');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn" role="menuitem">Reset two-step sign-in</button>
+          </form>
+          {% endif %}
+          <a href="{{ url_for('subscriptions.index', kind='auditor', subject_id=auditor.id) }}" class="btn" role="menuitem">Subscription invoices</a>
+          {% if auditor.is_active %}
+          <form method="post" action="{{ url_for('tenants.deactivate_auditor', auditor_id=auditor.id) }}"
+                onsubmit="return confirm('Deactivate {{ auditor.name }}? They will no longer be able to sign in.');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-danger" role="menuitem">Deactivate</button>
+          </form>
+          {% else %}
+          <form method="post" action="{{ url_for('tenants.activate_auditor', auditor_id=auditor.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-primary" role="menuitem">Reactivate</button>
+          </form>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
 
-<div class="card mb-20">
-  <h2 class="mt-0">Billing</h2>
-  {% if auditor_access_status.blocked %}
-  <p class="flash flash-error mt-0">{{ auditor_access_status.message }}</p>
-  {% elif auditor_access_status.billing_notice %}
-  <p class="flash flash-info mt-0">{{ auditor_access_status.billing_notice_message }}</p>
-  {% endif %}
-  <div class="form-grid">
-    <div>
-      <p class="text-muted m-0 mb-4">Billing cycle</p>
-      {% if auditor.billing_cycle is not none %}
+  <nav class="subnav client-tabs" role="tablist" aria-label="About {{ auditor.name }}">
+    {% for t in auditor_tabs %}
+    <a href="{{ url_for('tenants.auditor_detail', auditor_id=auditor.id, tab=t.key) }}" role="tab" id="tabbtn-{{ t.key }}" aria-controls="tab-{{ t.key }}"
+       class="{{ 'active' if tab == t.key }}" :class="{ active: tab === '{{ t.key }}' }"
+       aria-selected="{{ 'true' if tab == t.key else 'false' }}" :aria-selected="(tab === '{{ t.key }}').toString()"
+       @click.prevent="go('{{ t.key }}')">{{ t.label }}{% if t.count %} <span class="tab-count">{{ t.count }}</span>{% endif %}</a>
+    {% endfor %}
+  </nav>
+
+  {# --- Overview -------------------------------------------------------------------------- #}
+  {{ panel_open('overview') }}
+    {% if auditor.billing_cycle is none %}
+    <div class="card card-danger mb-20" id="sec-verify">
+      <h2 class="mt-0">Waiting for verification</h2>
+      <p class="text-muted mt-0">This {{ auditor.role_label|lower }} can't sign in until {{ 'you pick' if current_user.is_super_admin else 'ARFA picks' }} a billing cycle.</p>
+      {% if current_user.is_super_admin %}
       <form method="post" action="{{ url_for('tenants.set_auditor_billing_cycle', auditor_id=auditor.id) }}" class="row">
         {{ billing_form.hidden_tag() }}
         {{ billing_form.billing_cycle(class="field-input") }}
-        <button type="submit" class="btn btn-secondary">Change</button>
-      </form>
-      {% else %}
-      <p class="m-0"><strong>Not set</strong></p>
-      {% endif %}
-    </div>
-    <div>
-      <p class="text-muted m-0 mb-4">Cycle started</p>
-      <p class="m-0"><strong>{{ auditor.cycle_anchor_date.strftime('%d %b %Y') if auditor.cycle_anchor_date else 'Not yet - starts on first login after password change' }}</strong></p>
-    </div>
-    <div>
-      <p class="text-muted m-0 mb-4">Renewal due</p>
-      <p class="m-0"><strong>{{ auditor.next_billing_due.strftime('%d %b %Y') if auditor.next_billing_due else 'Not tracked yet' }}</strong></p>
-      <p class="text-muted m-0 mt-4">Last paid: {{ auditor.last_paid_on.strftime('%d %b %Y') if auditor.last_paid_on else 'Never' }}</p>
-      <form class="mt-8" method="post" action="{{ url_for('tenants.mark_auditor_billing_paid', auditor_id=auditor.id) }}">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button type="submit" class="btn btn-secondary">Mark this period paid</button>
-      </form>
-      <form class="mt-6" method="post" action="{{ url_for('tenants.resync_auditor_billing_cycle', auditor_id=auditor.id) }}">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button type="submit" class="btn btn-quiet" title="Recomputes the renewal date from the live calendar - use this if the cycle ever looks wrong.">Resync to live calendar</button>
-      </form>
-    </div>
-    {% with kind='auditor', subject=auditor %}{% include "subscriptions/_fee.html" %}{% endwith %}
-    <div>
-      <p class="text-muted m-0 mb-4">Manual reminder</p>
-      <p class="m-0"><strong>{{ 'On' if auditor.manual_alarm_active else 'Off' }}</strong></p>
-      {% if auditor.manual_alarm_active %}
-      <form class="mt-8" method="post" action="{{ url_for('tenants.mute_auditor_alarm', auditor_id=auditor.id) }}">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button type="submit" class="btn btn-secondary">Turn off reminder</button>
-      </form>
-      {% else %}
-      <form class="mt-8" method="post" action="{{ url_for('tenants.trigger_auditor_alarm', auditor_id=auditor.id) }}">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button type="submit" class="btn btn-secondary">Trigger reminder now</button>
+        <button type="submit" class="btn btn-primary">Verify &amp; activate</button>
       </form>
       {% endif %}
     </div>
-  </div>
-</div>
-{% endif %}
+    {% elif auditor_access_status.blocked %}
+    <p class="flash flash-error mt-0">{{ auditor_access_status.message }}</p>
+    {% elif auditor_access_status.billing_notice %}
+    <p class="flash flash-info mt-0">{{ auditor_access_status.billing_notice_message }}</p>
+    {% endif %}
+    <div class="card mb-20">
+      <dl class="client-facts">
+        <div><dt>Role</dt><dd>{{ auditor.role_label }}{% if auditor.parent_auditor %}<small>of {{ auditor.parent_auditor.name }}</small>{% endif %}</dd></div>
+        <div><dt>Status</dt><dd>{{ state_badge[state][1] }}</dd></div>
+        <div><dt>Clients</dt><dd>{{ clients|length }}</dd></div>
+        <div><dt>{{ 'Sub-Auditors' if auditor.is_auditor else 'Phone' }}</dt><dd>{{ sub_auditors|length if auditor.is_auditor else (auditor.phone or '-') }}</dd></div>
+        <div><dt>Renews</dt><dd>{{ auditor.next_billing_due.strftime('%d %b %Y') if auditor.next_billing_due else ('Not verified yet' if auditor.billing_cycle is none else 'Not tracked yet') }}</dd></div>
+        <div><dt>Two-step sign-in</dt><dd>{{ 'On' if auditor.has_two_factor else 'Not set up' }}</dd></div>
+        <div><dt>Email</dt><dd class="break-all">{{ auditor.email }}</dd></div>
+        <div><dt>Created</dt><dd>{{ auditor.created_at.strftime('%d %b %Y') }}</dd></div>
+      </dl>
+    </div>
+  </section>
 
-{% if powers %}{% include "tenants/_auditor_powers.html" %}{% endif %}
-{% if power_changes %}
-<div class="card mb-20" id="sec-power-changes">
-  <h2 class="mt-0">Changes to {{ auditor.name }}'s powers</h2>
-  {% with rows = power_changes[0] %}{% include "tenants/_changes_list.html" %}{% endwith %}
-</div>
-{% endif %}
+  {# --- Powers --------------------------------------------------------------------------- #}
+  {% if powers %}
+  {{ panel_open('powers') }}
+    {% include "tenants/_auditor_powers.html" %}
+  </section>
+  {% endif %}
 
-{% if auditor.is_auditor %}
-<div class="card mb-20">
-  <h2 class="mt-0">Sub-Auditors ({{ sub_auditors|length }})</h2>
-  <table>
-    <thead><tr><th>Name</th><th>Email</th><th>Clients</th><th></th></tr></thead>
-    <tbody>
-      {% for s in sub_auditors %}
-      <tr>
-        <td><a href="{{ url_for('tenants.auditor_detail', auditor_id=s.id) }}">{{ s.name }}</a></td>
-        <td>{{ s.email }}</td>
-        <td>{{ s.allocated_tenants|length }}</td>
-        <td class="row">
-          <a href="{{ url_for('tenants.auditor_detail', auditor_id=s.id) }}">View</a>
-          {% if current_user.is_super_admin %}
-          <a href="{{ url_for('tenants.reset_auditor_password', auditor_id=s.id) }}" class="btn btn-quiet">Reset password</a>
+  {# --- Clients & Sub-Auditors ------------------------------------------------------------- #}
+  {{ panel_open('clients') }}
+    {% if auditor.is_auditor %}
+    <div class="card mb-20" id="sec-subs">
+      <h2 class="mt-0">Sub-Auditors <span class="tab-count">{{ sub_auditors|length }}</span></h2>
+      <div class="table-wrap">
+        <table class="console-table">
+          <thead><tr><th>Name</th><th>Clients</th><th><span class="sr-only">Open</span></th></tr></thead>
+          <tbody>
+            {% for s in sub_auditors %}
+            <tr>
+              <td><a href="{{ url_for('tenants.auditor_detail', auditor_id=s.id) }}" class="client-cell">
+                <span class="client-mark" aria-hidden="true">{{ s.name[:1]|upper }}</span>
+                <span class="client-name"><strong>{{ s.name }}</strong><small>{{ s.email }}</small></span></a></td>
+              <td>{{ s.allocated_tenants|length }}</td>
+              <td class="num"><a href="{{ url_for('tenants.auditor_detail', auditor_id=s.id) }}" class="row-go" aria-label="Open {{ s.name }}">{{ icon('chevron-right') }}</a></td>
+            </tr>
+            {% else %}
+            <tr><td colspan="3" class="empty-state">No Sub-Auditors yet.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+    <div class="card mb-20" id="sec-clients">
+      <h2 class="mt-0">Clients <span class="tab-count">{{ clients|length }}</span></h2>
+      <div class="table-wrap">
+        <table class="console-table">
+          <thead><tr><th>Business</th><th>GSTIN</th><th>Status</th><th>Onboarded</th><th><span class="sr-only">Open</span></th></tr></thead>
+          <tbody>
+            {% for tenant in clients %}
+            {% set status = access_statuses[tenant.id] %}
+            <tr>
+              <td><a href="{{ url_for('tenants.detail', tenant_id=tenant.id) }}" class="client-cell">
+                <span class="client-mark" aria-hidden="true">{{ tenant.legal_name[:1]|upper }}</span>
+                <span class="client-name"><strong>{{ tenant.legal_name }}</strong></span></a></td>
+              <td class="mono-cell">{{ tenant.gstins.first().display_label if tenant.gstins.first() else '-' }}</td>
+              <td>
+                {% if status.reason == 'pending_verification' %}<span class="status-badge status-warn">Waiting for verification</span>
+                {% elif status.blocked %}<span class="status-badge status-void">{{ {'paused': 'Paused', 'billing_overdue': 'Billing overdue'}.get(status.reason, status.reason|replace('_', ' ')|title) }}</span>
+                {% elif status.billing_notice %}<span class="status-badge status-warn">Renewal due</span>
+                {% else %}<span class="status-badge status-issued">Active</span>{% endif %}
+              </td>
+              <td>{{ tenant.created_at.strftime('%d %b %Y') }}</td>
+              <td class="num"><a href="{{ url_for('tenants.detail', tenant_id=tenant.id) }}" class="row-go" aria-label="Open {{ tenant.legal_name }}">{{ icon('chevron-right') }}</a></td>
+            </tr>
+            {% else %}
+            <tr><td colspan="5" class="empty-state">No clients allocated yet.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  {# --- Billing (Ultra Admin) ------------------------------------------------------------- #}
+  {% if current_user.is_super_admin %}
+  {{ panel_open('billing') }}
+    <div class="card mb-20" id="sec-billing">
+      <h2 class="mt-0">Billing</h2>
+      {% if auditor_access_status.blocked %}
+      <p class="flash flash-error mt-0">{{ auditor_access_status.message }}</p>
+      {% elif auditor_access_status.billing_notice %}
+      <p class="flash flash-info mt-0">{{ auditor_access_status.billing_notice_message }}</p>
+      {% endif %}
+      <div class="form-grid">
+        <div>
+          <p class="text-muted m-0 mb-4">Billing cycle</p>
+          {% if auditor.billing_cycle is not none %}
+          <form method="post" action="{{ url_for('tenants.set_auditor_billing_cycle', auditor_id=auditor.id) }}" class="row">
+            {{ billing_form.hidden_tag() }}
+            {{ billing_form.billing_cycle(class="field-input") }}
+            <button type="submit" class="btn btn-secondary">Change</button>
+          </form>
+          {% else %}
+          <p class="m-0"><strong>Not set</strong> - verify from the Overview tab.</p>
           {% endif %}
-        </td>
-      </tr>
-      {% else %}
-      <tr><td colspan="4" class="empty-state">No Sub-Auditors yet.</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
-{% endif %}
+        </div>
+        <div>
+          <p class="text-muted m-0 mb-4">Cycle started</p>
+          <p class="m-0"><strong>{{ auditor.cycle_anchor_date.strftime('%d %b %Y') if auditor.cycle_anchor_date else 'Not yet - starts on first login after password change' }}</strong></p>
+        </div>
+        <div>
+          <p class="text-muted m-0 mb-4">Renewal due</p>
+          <p class="m-0"><strong>{{ auditor.next_billing_due.strftime('%d %b %Y') if auditor.next_billing_due else 'Not tracked yet' }}</strong></p>
+          <p class="text-muted m-0 mt-4">Last paid: {{ auditor.last_paid_on.strftime('%d %b %Y') if auditor.last_paid_on else 'Never' }}</p>
+          <form class="mt-8" method="post" action="{{ url_for('tenants.mark_auditor_billing_paid', auditor_id=auditor.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-secondary">Mark this period paid</button>
+          </form>
+          <form class="mt-6" method="post" action="{{ url_for('tenants.resync_auditor_billing_cycle', auditor_id=auditor.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-quiet" title="Recomputes the renewal date from the live calendar - use this if the cycle ever looks wrong.">Resync to live calendar</button>
+          </form>
+        </div>
+        {% with kind='auditor', subject=auditor %}{% include "subscriptions/_fee.html" %}{% endwith %}
+        <div>
+          <p class="text-muted m-0 mb-4">Manual reminder</p>
+          <p class="m-0"><strong>{{ 'On' if auditor.manual_alarm_active else 'Off' }}</strong></p>
+          {% if auditor.manual_alarm_active %}
+          <form class="mt-8" method="post" action="{{ url_for('tenants.mute_auditor_alarm', auditor_id=auditor.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-secondary">Turn off reminder</button>
+          </form>
+          {% else %}
+          <form class="mt-8" method="post" action="{{ url_for('tenants.trigger_auditor_alarm', auditor_id=auditor.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-secondary">Trigger reminder now</button>
+          </form>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </section>
+  {% endif %}
 
-<div class="table-wrap card">
-  <h2 class="mt-0">Clients ({{ clients|length }})</h2>
-  <table>
-    <thead><tr><th>Business</th><th>GSTIN</th><th>Status</th><th>Onboarded</th><th></th></tr></thead>
-    <tbody>
-      {% for tenant in clients %}
-      <tr>
-        <td><a href="{{ url_for('tenants.detail', tenant_id=tenant.id) }}">{{ tenant.legal_name }}</a></td>
-        <td>{{ tenant.gstins.first().display_label if tenant.gstins.first() else '-' }}</td>
-        <td>
-          {% set status = access_statuses[tenant.id] %}
-          {% if status.blocked %}<span class="status-badge status-void">{{ status.reason|replace('_', ' ')|title }}</span>
-          {% elif status.billing_notice %}<span class="status-badge status-void">Renewal due</span>
-          {% else %}<span class="status-badge status-issued">Active</span>{% endif %}
-        </td>
-        <td>{{ tenant.created_at.strftime('%d %b %Y') }}</td>
-        <td><a href="{{ url_for('tenants.detail', tenant_id=tenant.id) }}">View</a></td>
-      </tr>
-      {% else %}
-      <tr><td colspan="5" class="empty-state">No clients allocated yet.</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  {# --- Changes ---------------------------------------------------------------------------- #}
+  {% if power_changes %}
+  {{ panel_open('changes') }}
+    <div class="card mb-20" id="sec-power-changes">
+      <h2 class="mt-0">Changes to {{ auditor.name }}'s powers</h2>
+      {% with rows = power_changes[0] %}{% include "tenants/_changes_list.html" %}{% endwith %}
+    </div>
+  </section>
+  {% endif %}
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Tabs on a console page: one shows at a time; the URL keeps ?tab= so a
+// reload or shared link opens the same one; an old #sec-... link opens the
+// tab holding it and scrolls there.
+function pageTabs(initial, holds) {
+  return {
+    tab: initial,
+    init() {
+      const hash = decodeURIComponent(location.hash.slice(1));
+      const holder = holds[hash];
+      if (holder && document.getElementById("tab-" + holder)) {
+        this.tab = holder;
+        this.$nextTick(() => { const el = document.getElementById(hash); if (el) el.scrollIntoView({ block: "start" }); });
+      }
+    },
+    go(key) {
+      this.tab = key;
+      const url = new URL(location.href);
+      url.searchParams.set("tab", key);
+      url.hash = "";
+      history.replaceState(null, "", url);
+    }
+  };
+}
+</script>
 {% endblock %}

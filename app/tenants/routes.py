@@ -1,5 +1,5 @@
 import re
-from datetime import date
+from datetime import date, datetime, time, timedelta
 from io import BytesIO
 from zipfile import ZIP_DEFLATED, ZipFile
 
@@ -47,7 +47,7 @@ from app.utils.changes import auditor_changes, client_changes
 from app.utils.entitlements import (
     BUSINESS_TYPE_PACKAGE, allowed_packages, assign_package, branch_login_context, client_room,
     ensure_starting_packages, grant_of, has_room, limit_meter, limit_of, may_add, package_price_for, power_required,
-    sub_auditor_room,
+    sub_auditor_room, LIMITS, package_summary,
 )
 from app.utils.indian_states import STATE_NAME_BY_CODE
 from app.utils.uploads import UploadError, delete_uploaded_image, save_uploaded_image
@@ -199,7 +199,18 @@ def _onboarding_packages(form):
         if p.business_type:
             suggest[p.business_type] = p.id
     chosen = request.form.get("package_id", type=int) or suggest.get(form.business_type.data or "retail")
-    return {"packages": packages, "package_suggest": suggest, "package_default": chosen, "type_packs": type_packs}
+    # What each package gives, shown under the picker (onboarding step 2).
+    types = {b["value"]: b["label"] for b in business_types()}
+    info = {}
+    for p in packages:
+        counts = package_summary(p)
+        limits = p.limits or {}
+        info[p.id] = {"name": p.name, "for": types.get(p.business_type, "Any business"),
+                      "modules": f"{counts['inc']} included · {counts['choice']} client's choice · {counts['off']} off",
+                      "limits": " · ".join(f"{LIMITS[k]}: {limits[k] if k in limits else 'any'}" for k in LIMITS),
+                      "price": f"Rs. {p.price_monthly:,.0f} a month" if p.price_monthly else "No price set"}
+    return {"packages": packages, "package_suggest": suggest, "package_default": chosen, "type_packs": type_packs,
+            "package_info": info}
 
 
 @tenants_bp.route("/clients/<int:tenant_id>")
@@ -883,16 +894,31 @@ def auditor_detail(auditor_id):
     access_statuses = {t.id: tenant_access_status(t) for t in clients}
     sub_auditors = list(auditor.sub_auditors) if auditor.is_auditor else []
     billing_form = BillingCycleForm(billing_cycle=auditor.billing_cycle.value if auditor.billing_cycle else None)
+    powers = auditor_powers_context(current_user, auditor)
+    power_changes = auditor_changes(auditor, limit=10) if may_set_powers(current_user, auditor) else None
+    # Its tabs (console cleanup, stage 5) - only what this login may see.
+    tabs = [{"key": "overview", "label": "Overview", "count": None}]
+    if powers:
+        tabs.append({"key": "powers", "label": "Powers", "count": None})
+    tabs.append({"key": "clients", "label": "Clients & Sub-Auditors" if auditor.is_auditor else "Clients",
+                 "count": len(clients) + len(sub_auditors) or None})
+    if current_user.is_super_admin:
+        tabs.append({"key": "billing", "label": "Billing", "count": None})
+    if power_changes:
+        tabs.append({"key": "changes", "label": "Changes", "count": power_changes[1] or None})
+    tab = request.args.get("tab")
     return render_template(
         "tenants/auditor_detail.html",
+        auditor_tabs=tabs,
+        tab=tab if tab in {t["key"] for t in tabs} else "overview",
         auditor=auditor,
         clients=clients,
         access_statuses=access_statuses,
         sub_auditors=sub_auditors,
         billing_form=billing_form,
         auditor_access_status=auditor_access_status(auditor),
-        powers=auditor_powers_context(current_user, auditor),
-        power_changes=auditor_changes(auditor, limit=10) if may_set_powers(current_user, auditor) else None,
+        powers=powers,
+        power_changes=power_changes,
     )
 
 
@@ -933,7 +959,7 @@ def set_auditor_billing_cycle(auditor_id):
         flash(message, "success")
     else:
         flash("Pick a billing cycle.", "error")
-    return redirect(url_for("tenants.auditor_detail", auditor_id=auditor.id))
+    return redirect(url_for("tenants.auditor_detail", auditor_id=auditor.id, tab="billing"))
 
 
 @tenants_bp.route("/auditors/<int:auditor_id>/billing/mark-paid", methods=["POST"])
@@ -944,21 +970,21 @@ def mark_auditor_billing_paid(auditor_id):
     result = mark_period_paid(auditor, date.today())
     if result == "paid_today":
         flash(f"{auditor.name} was already marked paid today. Nothing more to do.", "info")
-        return redirect(url_for("tenants.auditor_detail", auditor_id=auditor.id))
+        return redirect(url_for("tenants.auditor_detail", auditor_id=auditor.id, tab="billing"))
     if result == "paid_ahead":
         flash(
             f"{auditor.name} is already paid up - next renewal isn't due until "
             f"{auditor.next_billing_due.strftime('%d %b %Y')}. Nothing to do.",
             "info",
         )
-        return redirect(url_for("tenants.auditor_detail", auditor_id=auditor.id))
+        return redirect(url_for("tenants.auditor_detail", auditor_id=auditor.id, tab="billing"))
     record_audit(
         current_user, "auditor_billing_marked_paid", entity_type="user", entity_id=auditor.id,
         details={"next_billing_due": auditor.next_billing_due.isoformat()},
     )
     db.session.commit()
     flash(f"Marked paid - {auditor.name}'s next renewal is due {auditor.next_billing_due.strftime('%d %b %Y')}.", "success")
-    return redirect(url_for("tenants.auditor_detail", auditor_id=auditor.id))
+    return redirect(url_for("tenants.auditor_detail", auditor_id=auditor.id, tab="billing"))
 
 
 @tenants_bp.route("/auditors/<int:auditor_id>/billing/resync", methods=["POST"])
@@ -968,13 +994,13 @@ def resync_auditor_billing_cycle(auditor_id):
     auditor = User.query.filter(User.id == auditor_id, User.role.in_([UserRole.AUDITOR, UserRole.SUB_AUDITOR])).first_or_404()
     if auditor.billing_cycle is None:
         flash(f"Set a billing cycle for {auditor.name} first.", "error")
-        return redirect(url_for("tenants.auditor_detail", auditor_id=auditor.id))
+        return redirect(url_for("tenants.auditor_detail", auditor_id=auditor.id, tab="billing"))
     if auditor.cycle_anchor_date is None:
         flash(
             f"{auditor.name}'s cycle hasn't started yet (no login since verification) - nothing to resync.",
             "error",
         )
-        return redirect(url_for("tenants.auditor_detail", auditor_id=auditor.id))
+        return redirect(url_for("tenants.auditor_detail", auditor_id=auditor.id, tab="billing"))
 
     today = date.today()
     old_due = auditor.next_billing_due
@@ -996,7 +1022,7 @@ def resync_auditor_billing_cycle(auditor_id):
         f"next renewal is {auditor.next_billing_due.strftime('%d %b %Y')}.",
         "success",
     )
-    return redirect(url_for("tenants.auditor_detail", auditor_id=auditor.id))
+    return redirect(url_for("tenants.auditor_detail", auditor_id=auditor.id, tab="billing"))
 
 
 @tenants_bp.route("/auditors/<int:auditor_id>/billing/trigger-alarm", methods=["POST"])
@@ -1007,7 +1033,7 @@ def trigger_auditor_alarm(auditor_id):
     record_audit(current_user, "auditor_billing_alarm_triggered", entity_type="user", entity_id=auditor.id)
     db.session.commit()
     flash(f"Billing reminder turned on for {auditor.name}.", "success")
-    return redirect(url_for("tenants.auditor_detail", auditor_id=auditor.id))
+    return redirect(url_for("tenants.auditor_detail", auditor_id=auditor.id, tab="billing"))
 
 
 @tenants_bp.route("/auditors/<int:auditor_id>/billing/mute-alarm", methods=["POST"])
@@ -1018,7 +1044,7 @@ def mute_auditor_alarm(auditor_id):
     record_audit(current_user, "auditor_billing_alarm_muted", entity_type="user", entity_id=auditor.id)
     db.session.commit()
     flash(f"Billing reminder turned off for {auditor.name}.", "success")
-    return redirect(url_for("tenants.auditor_detail", auditor_id=auditor.id))
+    return redirect(url_for("tenants.auditor_detail", auditor_id=auditor.id, tab="billing"))
 
 
 @tenants_bp.route("/auditors/<int:auditor_id>/act-as", methods=["POST"])
@@ -1123,8 +1149,80 @@ def allocate_client_to_sub_auditor(tenant_id):
 @tenants_bp.route("/audit-log")
 @roles_required(UserRole.SUPER_ADMIN)
 def audit_log():
-    logs = AuditLog.query.order_by(AuditLog.created_at.desc()).limit(200).all()
-    return render_template("tenants/audit_log.html", logs=logs)
+    """Everything recorded, searchable (console cleanup, stage 5): by
+    client, by who did it, by kind of action and between two dates, 50
+    rows a page, newest first, each in plain words."""
+    from app.einvoice.providers.common import IST
+    from app.utils.changes import describe
+
+    args = request.args
+    query = AuditLog.query
+    tenant_id = args.get("client", type=int)
+    actor_id = args.get("who", type=int)
+    kind = args.get("kind") if args.get("kind") in AUDIT_KINDS else None
+    if tenant_id:
+        query = query.filter(AuditLog.tenant_id == tenant_id)
+    if actor_id:
+        query = query.filter(AuditLog.actor_user_id == actor_id)
+    if kind:
+        actions = [a for (a,) in db.session.query(AuditLog.action).distinct() if audit_kind(a) == kind]
+        query = query.filter(AuditLog.action.in_(actions) if actions else db.false())
+    dates = {}
+    for key in ("from", "to"):
+        try:
+            dates[key] = date.fromisoformat(args.get(key) or "")
+        except ValueError:
+            dates[key] = None
+    if dates["from"]:
+        query = query.filter(AuditLog.created_at >= datetime.combine(dates["from"], time.min, tzinfo=IST))
+    if dates["to"]:
+        query = query.filter(AuditLog.created_at < datetime.combine(dates["to"] + timedelta(days=1), time.min, tzinfo=IST))
+    total = query.count()
+    pages = max(1, -(-total // AUDIT_PER_PAGE))
+    page = min(max(args.get("page", type=int) or 1, 1), pages)
+    logs = (query.order_by(AuditLog.created_at.desc(), AuditLog.id.desc())
+            .offset((page - 1) * AUDIT_PER_PAGE).limit(AUDIT_PER_PAGE).all())
+    rows = [{"log": log, "kind": AUDIT_KINDS[audit_kind(log.action)], "text": describe(log)} for log in logs]
+    people = (User.query.filter(User.id.in_(db.session.query(AuditLog.actor_user_id).distinct()))
+              .order_by(User.name).all())
+    clients = Tenant.query.order_by(Tenant.legal_name).all()
+    filters = {"client": tenant_id, "who": actor_id, "kind": kind,
+               "from": dates["from"].isoformat() if dates["from"] else "", "to": dates["to"].isoformat() if dates["to"] else ""}
+    return render_template("tenants/audit_log.html", rows=rows, total=total, page=page, pages=pages, kinds=AUDIT_KINDS,
+                           people=people, clients=clients, filters=filters,
+                           filtered=any(v for v in filters.values()))
+
+
+AUDIT_PER_PAGE = 50
+
+# Kinds of audit entry, for the audit log's filter (console cleanup, stage 5).
+AUDIT_KINDS = {
+    "signin": "Sign-ins & security",
+    "access": "Packages, modules & logins",
+    "console": "Clients & auditors",
+    "billing": "Billing",
+    "views": "Views & exports",
+    "records": "Business records",
+}
+
+
+def audit_kind(action: str) -> str:
+    """Which kind an audit action is - by its name, so a new action falls
+    somewhere sensible without being listed."""
+    from app.utils.changes import AUDITOR_ACTIONS, CLIENT_ACTIONS
+
+    if action.startswith(("login", "logout", "two_factor", "password", "impersonation", "auditor_impersonation",
+                          "cashier_pin", "cashier_locked")):
+        return "signin"
+    if action in CLIENT_ACTIONS or action in AUDITOR_ACTIONS or action.startswith("package_"):
+        return "access"
+    if "billing" in action or action.startswith(("subscription", "platform_invoice", "platform_profile")):
+        return "billing"
+    if action.startswith("view_") or action.endswith("_export") or action in ("bulk_gst_export",):
+        return "views"
+    if action.startswith(("client_", "auditor_", "sub_auditor_", "tenant_")):
+        return "console"
+    return "records"
 
 
 def _current_period() -> str:
