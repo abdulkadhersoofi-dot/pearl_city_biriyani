@@ -1,28 +1,16 @@
-{% extends "base.html" %}
+{# A Client Admin sees this inside Settings (the Subscription section); an
+   Auditor's office sees it on its own. #}
+{% extends "settings/_layout.html" if section is defined else "base.html" %}
 {% block title %}Subscription - {{ firm_name }}{% endblock %}
+{% block section %}{% include "subscriptions/_mine_table.html" %}{% endblock %}
 {% block content %}
+{% if section is defined %}{{ super() }}{% else %}
 <div class="page-header">
   <div>
     <h1>Your {{ platform_name }} subscription</h1>
     <p class="text-muted mt-0">Invoices for using {{ platform_name }}. Unpaid ones can be paid by UPI from the invoice.</p>
   </div>
 </div>
-<div class="table-wrap card">
-  <table>
-    <thead><tr><th>Invoice</th><th>Date</th><th>Period</th><th>Status</th><th class="num">Total</th></tr></thead>
-    <tbody>
-    {% for i in invoices %}
-      <tr>
-        <td><a href="{{ url_for('subscriptions.view', invoice_id=i.id) }}">{{ i.number }}</a></td>
-        <td>{{ i.invoice_date.strftime('%d %b %Y') }}</td>
-        <td>{{ i.period_start.strftime('%d %b %Y') }} - {{ i.period_end.strftime('%d %b %Y') }}</td>
-        <td>{% if i.status.value == 'paid' %}<span class="tag tag-ok">Paid</span>{% elif i.status.value == 'void' %}<span class="tag">Cancelled</span>{% else %}<span class="tag tag-warn">To pay</span>{% endif %}</td>
-        <td class="num">Rs. {{ '%.2f'|format(i.grand_total) }}</td>
-      </tr>
-    {% else %}
-      <tr><td colspan="5" class="empty-state">No invoices yet.</td></tr>
-    {% endfor %}
-    </tbody>
-  </table>
-</div>
+{% include "subscriptions/_mine_table.html" %}
+{% endif %}
 {% endblock %}

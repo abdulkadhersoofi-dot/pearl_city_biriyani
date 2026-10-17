@@ -238,4 +238,9 @@ def mine():
     else:
         abort(404)
     invoices = query.order_by(PlatformInvoice.invoice_date.desc(), PlatformInvoice.id.desc()).all()
+    if current_user.is_client_admin:
+        from app.settings.sections import section_info, section_menu
+
+        return render_template("subscriptions/mine.html", invoices=invoices, section=section_info("subscription"),
+                               sections=section_menu("subscription"))
     return render_template("subscriptions/mine.html", invoices=invoices)

@@ -1,0 +1,46 @@
+{% extends "settings/_layout.html" %}
+{% block section_actions %}
+<label class="module-search" data-no-dirty>
+  {{ icon('search') }}
+  <input type="search" placeholder="Find a module" aria-label="Find a module" x-data
+         @input="$dispatch('module-filter', $event.target.value.toLowerCase())">
+</label>
+{% endblock %}
+{% block section %}
+<form method="post" class="settings-form" novalidate x-data="settingsForm({{ form.errors|tojson }})"
+      @input="touch($event)" @change="touch($event)" @submit="saving()">
+  {{ form.hidden_tag() }}
+  <div x-data="{ q: '' }" @module-filter.window="q = $event.detail">
+    {% for group in groups %}
+    <section class="module-group" x-show="!q || [...$el.querySelectorAll('.module-card')].some(c => c.dataset.hay.includes(q))">
+      <h2 class="module-group-title">{{ group.label }}
+        <span class="module-count">{{ group['items']|selectattr('on')|list|length }} of {{ group['items']|length }} on</span></h2>
+      <div class="module-grid">
+        {% for item in group['items'] %}
+        {% set f = form[field_name(item.key)] %}
+        <div class="module-card" data-hay="{{ (item.label ~ ' ' ~ item.description)|lower }}"
+             x-show="!q || $el.dataset.hay.includes(q)">
+          <label class="module-main" for="{{ f.id }}">
+            <span class="module-icon">{{ icon(item.icon) }}</span>
+            <span class="module-text">
+              <strong>{{ item.label }}</strong>
+              <small>{{ item.description }}</small>
+            </span>
+            <span class="switch">{{ f(role="switch") }}<span class="switch-track"></span></span>
+          </label>
+          {% if item.setup_url %}
+          <a href="{{ item.setup_url }}" class="module-setup">{{ item.setup_label }} {{ icon('arrow-right', 'icon-sm') }}</a>
+          {% elif item.setup_label and not item.on %}
+          <span class="module-setup is-later">Set up after saving</span>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    </section>
+    {% endfor %}
+    <p class="empty-state" x-show="q && ![...$root.querySelectorAll('.module-card')].some(c => c.dataset.hay.includes(q))" x-cloak>No module matches that.</p>
+  </div>
+  {% set save_label = 'Save modules' %}
+  {% include "settings/_save_bar.html" %}
+</form>
+{% endblock %}

@@ -21,7 +21,11 @@ class MultiCheckboxField(SelectMultipleField):
     option_widget = widgets.CheckboxInput()
 
 
-class TenantSettingsForm(FlaskForm):
+# Settings come in sections (redesign stage 2), each with its own small
+# form and Save; TenantSettingsForm is every section at once - what the
+# single Settings form posted before, still accepted at /settings/.
+
+class AppearanceForm(FlaskForm):
     logo = FileField(
         "Logo",
         validators=[
@@ -45,10 +49,9 @@ class TenantSettingsForm(FlaskForm):
         render_kw={"type": "color"},
     )
     font_family = SelectField("Font", choices=FONT_FAMILY_CHOICES, validators=[DataRequired()])
-    default_receipt_format = SelectField(
-        "POS bill print size", choices=RECEIPT_FORMAT_CHOICES, validators=[DataRequired()]
-    )
 
+
+class BusinessForm(FlaskForm):
     # Optional server-side: the select always submits a value, and a client
     # that omits it keeps its current type (settings.routes).
     business_type = SelectField("Type of business", choices=BUSINESS_TYPE_CHOICES, validators=[Optional()])
@@ -58,6 +61,8 @@ class TenantSettingsForm(FlaskForm):
     )
     default_price_includes_tax = BooleanField("New items' prices already include GST")
 
+
+class CounterForm(FlaskForm):
     pos_payment_modes = MultiCheckboxField("Payment modes at the counter", choices=PAYMENT_MODE_CHOICES)
     upi_vpa = StringField(
         "UPI ID for scan-to-pay",
@@ -68,10 +73,24 @@ class TenantSettingsForm(FlaskForm):
         "Name shown in the customer's UPI app", filters=[lambda v: (v or "").strip() or None],
         validators=[Optional(), Length(max=100)],
     )
+
+
+class DocumentsForm(FlaskForm):
+    default_receipt_format = SelectField(
+        "POS bill print size", choices=RECEIPT_FORMAT_CHOICES, validators=[DataRequired()]
+    )
     margin_scheme_declaration = TextAreaField(
         "Declaration on margin-scheme invoices", filters=[lambda v: (v or "").strip() or None],
         validators=[Optional(), Length(max=1000)],
     )
+
+
+class ModulesForm(FlaskForm):
+    """One switch per built module - added below."""
+
+
+class TenantSettingsForm(AppearanceForm, BusinessForm, CounterForm, DocumentsForm, ModulesForm):
+    pass
 
 
 def feature_field_name(key: str) -> str:
@@ -82,4 +101,4 @@ def feature_field_name(key: str) -> str:
 # flag for a module that doesn't exist yet is never offered, since
 # switching it on would do nothing.
 for _feature in AVAILABLE_FEATURES:
-    setattr(TenantSettingsForm, feature_field_name(_feature.key), BooleanField(_feature.label))
+    setattr(ModulesForm, feature_field_name(_feature.key), BooleanField(_feature.label))

@@ -1,35 +1,48 @@
-{% extends "base.html" %}
-{% block title %}Idle sign-out - {{ firm_name }}{% endblock %}
-{% block content %}
-<div class="page-header">
-  <div>
-    <h1>Idle sign-out</h1>
-    <p class="text-muted mt-0">For screens left open where anyone could walk up to them.</p>
+{% extends "settings/_layout.html" %}
+{% block section %}
+<section class="card settings-card">
+  <h2>Your own sign-in</h2>
+  <div class="link-tiles">
+    <a href="{{ url_for('auth.account_security') }}" class="link-tile">
+      <span class="link-tile-icon">{{ icon('shield-check') }}</span>
+      <span><strong>Two-step sign-in</strong>
+        <small>{% if current_user.has_two_factor %}On - a code from your phone at every sign-in{% else %}Off - add a code from your phone{% endif %}</small></span>
+      <span class="pill {{ 'pill-ok' if current_user.has_two_factor else 'pill-muted' }}">{{ 'On' if current_user.has_two_factor else 'Off' }}</span>
+    </a>
+    <a href="{{ url_for('auth.change_password') }}" class="link-tile">
+      <span class="link-tile-icon">{{ icon('key-round') }}</span>
+      <span><strong>Change password</strong><small>For your own login</small></span>
+      {{ icon('chevron-right', 'link-tile-go') }}
+    </a>
   </div>
-  <a href="{{ url_for('settings.index') }}" class="btn btn-quiet">Back to settings</a>
-</div>
-<form method="post" class="card stack" style="max-width:640px;">
+</section>
+
+<form method="post" class="settings-form stack" x-data="settingsForm({})" @input="touch()" @change="touch()" @submit="saving()">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  <div class="field">
-    <label class="field-label" for="idle_minutes">Sign out your logins (you and every branch) after</label>
-    <select name="idle_minutes" id="idle_minutes" class="field-input">
-      {% for m in idle_choices %}
-      <option value="{{ m }}" {{ 'selected' if m == idle }}>{{ 'Never' if m == 0 else (m ~ ' minutes' if m < 60 else (m // 60) ~ ' hour' ~ ('s' if m >= 120 else '')) }} {{ 'without activity' if m }}</option>
-      {% endfor %}
-    </select>
-    <p class="field-help">"Never" keeps everyone signed in for the working day, as before. A shorter time is safer on a shared computer.</p>
-  </div>
-  {% if has_feature('cashier_pin') %}
-  <div class="field">
-    <label class="field-label" for="lock_minutes">Lock a counter with cashier PINs after</label>
-    <select name="lock_minutes" id="lock_minutes" class="field-input">
-      {% for m in lock_choices %}
-      <option value="{{ m }}" {{ 'selected' if m == lock }}>{{ 'Only when a cashier taps Lock' if m == 0 else m ~ ' minutes idle' }}</option>
-      {% endfor %}
-    </select>
-    <p class="field-help">The counter stays signed in; the next cashier just enters their PIN.</p>
-  </div>
-  {% endif %}
-  <button type="submit" class="btn btn-primary">Save</button>
+  <section class="card settings-card">
+    <h2>Idle sign-out</h2>
+    <p class="text-muted mt-0">For screens left open where anyone could walk up to them.</p>
+    <div class="field">
+      <label class="field-label" for="idle_minutes">Sign out your logins (you and every branch) after</label>
+      <select name="idle_minutes" id="idle_minutes" class="field-input">
+        {% for m in idle_choices %}
+        <option value="{{ m }}" {{ 'selected' if m == idle }}>{{ 'Never' if m == 0 else (m ~ ' minutes' if m < 60 else (m // 60) ~ ' hour' ~ ('s' if m >= 120 else '')) }} {{ 'without activity' if m }}</option>
+        {% endfor %}
+      </select>
+      <p class="field-help">"Never" keeps everyone signed in for the working day, as before. A shorter time is safer on a shared computer.</p>
+    </div>
+    {% if has_feature('cashier_pin') %}
+    <div class="field">
+      <label class="field-label" for="lock_minutes">Lock a counter with cashier PINs after</label>
+      <select name="lock_minutes" id="lock_minutes" class="field-input">
+        {% for m in lock_choices %}
+        <option value="{{ m }}" {{ 'selected' if m == lock }}>{{ 'Only when a cashier taps Lock' if m == 0 else m ~ ' minutes idle' }}</option>
+        {% endfor %}
+      </select>
+      <p class="field-help">The counter stays signed in; the next cashier just enters their PIN.</p>
+    </div>
+    {% endif %}
+  </section>
+  {% include "settings/_save_bar.html" %}
 </form>
 {% endblock %}

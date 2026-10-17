@@ -107,6 +107,40 @@ document.addEventListener("alpine:init", function () {
     };
   });
 
+  // A Settings section's form (settings/_layout.html): the save bar slides
+  // up once something changes; Discard puts the form back; leaving with
+  // unsaved changes asks first. A form that came back with errors starts
+  // "changed", so its Save is in view.
+  window.Alpine.data("settingsForm", function (errors) {
+    return {
+      dirty: !!(errors && Object.keys(errors).length),
+      submitting: false,
+      init: function () {
+        var self = this;
+        this.$el.classList.add("is-tracking");
+        this.$watch("dirty", function (value) { self.$el.classList.toggle("is-dirty", value); });
+        this.$el.classList.toggle("is-dirty", this.dirty);
+        window.addEventListener("beforeunload", function (ev) {
+          if (self.dirty && !self.submitting) { ev.preventDefault(); ev.returnValue = ""; }
+        });
+      },
+      touch: function (ev) {
+        if (ev && ev.target && ev.target.closest && ev.target.closest("[data-no-dirty]")) return;
+        this.dirty = true;
+      },
+      discard: function () {
+        this.$root.reset();
+        this.dirty = false;
+        document.dispatchEvent(new CustomEvent("settings:discarded"));
+      },
+      saving: function () {
+        this.submitting = true;
+        var button = this.$root.querySelector('.save-bar [type="submit"]');
+        if (button) button.classList.add("is-busy");
+      }
+    };
+  });
+
   // A toast leaves on its own after a few seconds, unless it reports a
   // problem - those stay until closed, so nobody misses one.
   window.Alpine.data("toast", function (category) {

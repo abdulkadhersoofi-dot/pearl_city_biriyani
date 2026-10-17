@@ -1,0 +1,91 @@
+{% extends "settings/_layout.html" %}
+{% from "macros.html" import field %}
+{% block section %}
+<form method="post" class="settings-form stack" novalidate enctype="multipart/form-data"
+      x-data="settingsForm({{ form.errors|tojson }})" @input="touch()" @change="touch()" @submit="saving()">
+  {{ form.hidden_tag() }}
+
+  <section class="card settings-card">
+    <h2>Logo</h2>
+    <div class="logo-row">
+      <div class="logo-frame">
+        <img id="logo-preview" alt="" {% if tenant.logo_image_id %}src="{{ url_for('main.media', image_id=tenant.logo_image_id) }}"{% else %}hidden{% endif %}>
+        <span id="logo-empty" class="logo-empty" {% if tenant.logo_image_id %}hidden{% endif %}>{{ icon('store') }}</span>
+      </div>
+      <div class="logo-pick">
+        {{ field(form.logo, help="Shown in your menu, on your sign-in page, and on your printed invoices and receipts. PNG, JPG, GIF or WEBP, up to 5 MB.") }}
+      </div>
+    </div>
+  </section>
+
+  <section class="card settings-card">
+    <h2>Colours and font</h2>
+    <p class="text-muted mt-0">Applies across your whole site - menus, buttons and pages - and on your branded sign-in page.</p>
+    <div class="appearance-grid">
+      <div class="form-grid">
+        {{ field(form.primary_color, help="Buttons, links and the active menu entry.") }}
+        {{ field(form.background_color, help="Page background.") }}
+        {{ field(form.text_color, help="Page text, over your background colour.") }}
+        {{ field(form.font_family, help="Text throughout the site.") }}
+      </div>
+      <div class="theme-mock" id="theme-preview" aria-label="Preview">
+        <div class="theme-mock-side"><span id="mock-dot"></span><i></i><i></i><i></i></div>
+        <div class="theme-mock-page">
+          <strong id="theme-preview-text">Today at a glance</strong>
+          <span class="theme-mock-card">Sales today <b>Rs. 12,480.00</b></span>
+          <button type="button" id="theme-preview-btn" class="btn btn-primary btn-sm">New bill</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  {% include "settings/_save_bar.html" %}
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var FONT_STACKS = {
+    system: '"Figtree", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
+    serif: 'Georgia, "Times New Roman", Times, serif',
+    rounded: 'Verdana, "Trebuchet MS", Tahoma, sans-serif',
+    mono: '"Courier New", Courier, monospace',
+  };
+  var colorInput = document.getElementById('primary_color');
+  var bgInput = document.getElementById('background_color');
+  var textInput = document.getElementById('text_color');
+  var fontInput = document.getElementById('font_family');
+  var logoInput = document.getElementById('logo');
+  var preview = document.getElementById('theme-preview');
+  var previewBtn = document.getElementById('theme-preview-btn');
+  var previewText = document.getElementById('theme-preview-text');
+  var dot = document.getElementById('mock-dot');
+
+  function applyPreview() {
+    if (colorInput) { previewBtn.style.background = colorInput.value; dot.style.background = colorInput.value; }
+    if (bgInput) preview.querySelector('.theme-mock-page').style.background = bgInput.value;
+    if (textInput) previewText.style.color = textInput.value;
+    if (fontInput) preview.style.fontFamily = FONT_STACKS[fontInput.value] || FONT_STACKS.system;
+  }
+  [colorInput, bgInput, textInput, fontInput].forEach(function (el) {
+    if (el) { el.addEventListener('input', applyPreview); el.addEventListener('change', applyPreview); }
+  });
+  if (logoInput) {
+    logoInput.addEventListener('change', function () {
+      var file = logoInput.files && logoInput.files[0];
+      if (!file || !window.FileReader) return;
+      var reader = new FileReader();
+      reader.onload = function (e) {
+        var img = document.getElementById('logo-preview');
+        img.src = e.target.result; img.hidden = false;
+        document.getElementById('logo-empty').hidden = true;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+  document.addEventListener('settings:discarded', applyPreview);
+  applyPreview();
+})();
+</script>
+{% endblock %}

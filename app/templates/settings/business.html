@@ -1,0 +1,51 @@
+{% extends "settings/_layout.html" %}
+{% from "macros.html" import field %}
+{% block section %}
+<form method="post" class="settings-form stack" novalidate x-data="settingsForm({{ form.errors|tojson }})"
+      @input="touch()" @change="touch()" @submit="saving()">
+  {{ form.hidden_tag() }}
+  <input type="hidden" name="section" value="business">
+
+  <section class="card settings-card">
+    <h2>Business profile</h2>
+    <div class="form-grid">
+      {{ field(form.business_type, help="Used to suggest which modules you need. Changing it doesn't switch anything by itself.") }}
+      {{ field(form.aato, help="Aggregate annual turnover of the last financial year. Decides rules like how many HSN digits your bills need. Leave blank if under Rs. 5 crore and unsure.") }}
+    </div>
+  </section>
+
+  <section class="card settings-card">
+    <h2>Prices of new items</h2>
+    <label class="switch-row">
+      <span class="switch">{{ form.default_price_includes_tax(role="switch") }}<span class="switch-track"></span></span>
+      <span><strong>{{ form.default_price_includes_tax.label.text }}</strong>
+        <small>Pre-ticks "price already includes GST" for new items and new invoice lines. Each item keeps its own setting.</small></span>
+    </label>
+  </section>
+
+  <section class="card settings-card">
+    <h2>Recommended modules</h2>
+    <label class="switch-row">
+      <span class="switch">{{ form.apply_business_preset(role="switch") }}<span class="switch-track"></span></span>
+      <span><strong>{{ form.apply_business_preset.label.text }}</strong>
+        <small>Turns your modules (and the GST-included default above) to what's usual for the type you picked. Leave off to keep your own choices - you can switch modules one by one under <a href="{{ url_for('settings.features') }}">Modules</a>.</small></span>
+    </label>
+  </section>
+
+  {% if tenant.login_slug %}
+  <section class="card settings-card">
+    <h2>Your branded sign-in page</h2>
+    <p class="text-muted mt-0">Share this link with your staff instead of the general sign-in page - it shows your own logo and theme.</p>
+    <div class="copy-row" x-data="{ copied: false }">
+      <code id="login-link">{{ url_for('auth.tenant_login', slug=tenant.login_slug, _external=True) }}</code>
+      <button type="button" class="btn btn-secondary btn-sm"
+              @click="navigator.clipboard && navigator.clipboard.writeText(document.getElementById('login-link').textContent).then(() => { copied = true; setTimeout(() => copied = false, 1600) })">
+        <span x-text="copied ? 'Copied' : 'Copy link'">Copy link</span>
+      </button>
+    </div>
+  </section>
+  {% endif %}
+
+  {% include "settings/_save_bar.html" %}
+</form>
+{% endblock %}

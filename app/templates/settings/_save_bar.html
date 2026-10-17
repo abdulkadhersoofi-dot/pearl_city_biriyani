@@ -1,0 +1,7 @@
+{# The section's Save: slides up once something on the form has changed
+   (always shown without JavaScript, or after a failed save). #}
+<div class="save-bar" role="region" aria-label="Save changes">
+  <span class="save-bar-text">{{ icon('info') }}<span>You have unsaved changes</span></span>
+  <button type="button" class="btn btn-quiet btn-sm" @click="discard()">Discard</button>
+  <button type="submit" class="btn btn-primary">{{ save_label|default('Save') }}</button>
+</div>

@@ -1,9 +1,9 @@
-{% extends "base.html" %}
+{% extends "settings/_layout.html" %}
 {% block title %}Module settings - {{ firm_name }}{% endblock %}
-{% block content %}
-<div class="page-header"><div><h1>Module settings</h1></div><a href="{{ url_for('settings.index') }}" class="btn btn-quiet">Back to Settings</a></div>
+{% block section_actions %}<a href="{{ url_for('settings.features') }}" class="btn btn-quiet btn-sm">{{ icon('chevron-right', 'icon-flip') }} All modules</a>{% endblock %}
+{% block section %}
 {% if has_feature('weighing') %}
-<form method="post" class="card" style="margin-bottom:16px;">
+<form method="post" class="card settings-card" id="weighing" style="margin-bottom:16px;">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="module" value="weighing">
   <h2 class="mt-0">Weighing scale labels</h2>
   <p class="field-help mt-0">A scale label's barcode starts with a 2-digit prefix (20-29), then the item's scale code, then the weight or price. Set them the way your scale is set up.</p>
@@ -16,7 +16,7 @@
 </form>
 {% endif %}
 {% if has_feature('loyalty') %}
-<form method="post" class="card">
+<form method="post" class="card settings-card" id="loyalty">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="module" value="loyalty">
   <h2 class="mt-0">Loyalty points</h2>
   <div class="form-grid">

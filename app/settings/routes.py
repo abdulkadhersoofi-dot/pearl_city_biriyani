@@ -6,99 +6,244 @@ from app.extensions import db
 from app.models.tenant import BusinessType
 from app.models.user import UserRole
 from app.settings import settings_bp
-from app.settings.forms import PAYMENT_MODE_CHOICES, TenantSettingsForm, feature_field_name
+from app.settings.forms import (
+    PAYMENT_MODE_CHOICES,
+    AppearanceForm,
+    BusinessForm,
+    CounterForm,
+    DocumentsForm,
+    ModulesForm,
+    TenantSettingsForm,
+    feature_field_name,
+)
+from app.settings.sections import module_groups, section_info, section_menu
 from app.utils.audit import record_audit
 from app.utils.features import AVAILABLE_FEATURES, BUSINESS_TYPE_LABELS, apply_business_type_preset
 from app.utils.uploads import UploadError, delete_uploaded_image, save_uploaded_image
 
 
+# --- saving, shared by the sections and the all-in-one form -----------------------------------
+# Each returns an error message (nothing saved by the caller) or None.
+
+def _save_appearance(tenant, form):
+    if form.logo.data and getattr(form.logo.data, "filename", None):
+        try:
+            new_logo_id = save_uploaded_image(form.logo.data)
+        except UploadError as exc:
+            return exc.message
+        # Point the tenant at the new image (and flush it) before deleting
+        # the old row - the other way around trips the foreign key, since
+        # tenant.logo_image_id still references it.
+        old_logo_id = tenant.logo_image_id
+        tenant.logo_image_id = new_logo_id
+        db.session.flush()
+        delete_uploaded_image(old_logo_id)
+    tenant.primary_color = form.primary_color.data
+    tenant.background_color = form.background_color.data
+    tenant.text_color = form.text_color.data
+    tenant.font_family = form.font_family.data
+    return None
+
+
+def _save_counter(tenant, form):
+    modes = [m for m, _ in PAYMENT_MODE_CHOICES if m in (form.pos_payment_modes.data or [])]
+    if not modes:
+        return "Keep at least one payment mode switched on."
+    tenant.pos_payment_modes = modes
+    tenant.upi_vpa = form.upi_vpa.data
+    tenant.upi_payee_name = form.upi_payee_name.data
+    return None
+
+
+def _submitted_business_type(form, tenant):
+    # The submitted value, not form.business_type.data: when the field is
+    # absent, Optional() lets the obj-populated enum (stringified) through
+    # as "data". Absent means "keep the current type".
+    submitted = (form.business_type.raw_data or [""])[0]
+    return BusinessType(submitted) if submitted else tenant.business_type
+
+
+def _save_features(tenant, form):
+    for feature in AVAILABLE_FEATURES:
+        tenant.set_feature(feature.key, getattr(form, feature_field_name(feature.key)).data)
+
+
+def _finish(tenant, before_features, section=None):
+    """Ticks the first-run "business profile" step, audit-logs a change of
+    modules (and which section was saved), and commits."""
+    if not (tenant.first_run or {}).get("profile_saved"):
+        from app.onboarding import mark
+
+        mark(tenant, "profile_saved")
+    if tenant.features != before_features:
+        record_audit(
+            current_user,
+            "tenant_features_changed",
+            tenant_id=tenant.id,
+            entity_type="tenant",
+            entity_id=tenant.id,
+            details={"before": before_features, "after": tenant.features},
+        )
+    if section:
+        record_audit(current_user, "settings_saved", tenant_id=tenant.id, entity_type="tenant", entity_id=tenant.id,
+                     details={"section": section})
+    db.session.commit()
+
+
+def _section(template, key, **context):
+    return render_template(template, section=section_info(key), sections=section_menu(key),
+                           tenant=current_user.tenant, **context)
+
+
+# --- Business (and the all-in-one form, at the same address) ------------------------------------
+
 @settings_bp.route("/", methods=["GET", "POST"])
 @roles_required(UserRole.CLIENT_ADMIN)
 def index():
     tenant = current_user.tenant
-    form = TenantSettingsForm(obj=tenant)
+    if request.method == "POST" and not request.form.get("section"):
+        return _save_everything(tenant)
+    form = BusinessForm(obj=tenant)
     if request.method == "GET":
         form.business_type.data = tenant.business_type.value
-        form.pos_payment_modes.data = list(tenant.pos_payment_modes or [])
-        for feature in AVAILABLE_FEATURES:
-            getattr(form, feature_field_name(feature.key)).data = tenant.has_feature(feature.key)
     if form.validate_on_submit():
-        if form.logo.data and form.logo.data.filename:
-            try:
-                new_logo_id = save_uploaded_image(form.logo.data)
-            except UploadError as exc:
-                flash(exc.message, "error")
-                return _render(form, tenant)
-            # Point the tenant at the new image (and flush it) before
-            # deleting the old row - the other way around trips the
-            # foreign key, since tenant.logo_image_id still references it.
-            old_logo_id = tenant.logo_image_id
-            tenant.logo_image_id = new_logo_id
-            db.session.flush()
-            delete_uploaded_image(old_logo_id)
-
-        tenant.primary_color = form.primary_color.data
-        tenant.background_color = form.background_color.data
-        tenant.text_color = form.text_color.data
-        tenant.font_family = form.font_family.data
-        tenant.default_receipt_format = form.default_receipt_format.data
-        tenant.aato = form.aato.data
-        # Only when the counter card was on the submitted page - an older
-        # client/test posting without it keeps the modes it has.
-        if request.form.get("pos_settings_shown"):
-            modes = [m for m, _ in PAYMENT_MODE_CHOICES if m in (form.pos_payment_modes.data or [])]
-            if not modes:
-                flash("Keep at least one payment mode switched on.", "error")
-                return _render(form, tenant)
-            tenant.pos_payment_modes = modes
-            tenant.upi_vpa = form.upi_vpa.data
-            tenant.upi_payee_name = form.upi_payee_name.data
-        # Only when its card was on the page (the margin_scheme module was on).
-        if request.form.get("margin_settings_shown"):
-            tenant.margin_scheme_declaration = form.margin_scheme_declaration.data
-
-        # The submitted value, not form.business_type.data: when the field
-        # is absent, Optional() lets the obj-populated enum (stringified)
-        # through as "data". Absent means "keep the current type".
-        submitted = (form.business_type.raw_data or [""])[0]
-        business_type = BusinessType(submitted) if submitted else tenant.business_type
+        business_type = _submitted_business_type(form, tenant)
         before = dict(tenant.features or {})
+        tenant.aato = form.aato.data
         if form.apply_business_preset.data:
             apply_business_type_preset(tenant, business_type)
-            message = f"Settings updated - modules reset to the recommended set for {BUSINESS_TYPE_LABELS[business_type]}."
+            message = (f"Saved - modules switched to the recommended set for "
+                       f"{BUSINESS_TYPE_LABELS[business_type]}.")
         else:
             tenant.business_type = business_type
             tenant.default_price_includes_tax = form.default_price_includes_tax.data
-            for feature in AVAILABLE_FEATURES:
-                tenant.set_feature(feature.key, getattr(form, feature_field_name(feature.key)).data)
-            message = "Settings updated."
-        if not (tenant.first_run or {}).get("profile_saved"):
-            from app.onboarding import mark
-
-            mark(tenant, "profile_saved")
-        if tenant.features != before:
-            record_audit(
-                current_user,
-                "tenant_features_changed",
-                tenant_id=tenant.id,
-                entity_type="tenant",
-                entity_id=tenant.id,
-                details={"before": before, "after": tenant.features},
-            )
-        db.session.commit()
+            message = "Business details saved."
+        _finish(tenant, before, "business")
         flash(message, "success")
         return redirect(url_for("settings.index"))
+    return _section("settings/business.html", "business", form=form)
 
-    return _render(form, tenant)
+
+def _save_everything(tenant):
+    """Every section from one post - how the single Settings form saved
+    before the sections existed. Kept so nothing that posts it breaks."""
+    form = TenantSettingsForm(obj=tenant)
+    if not form.validate_on_submit():
+        return _rejected(*[e for errors in form.errors.values() for e in errors])
+    error = _save_appearance(tenant, form)
+    if error:
+        return _rejected(error)
+    tenant.default_receipt_format = form.default_receipt_format.data
+    tenant.aato = form.aato.data
+    # Only when the counter card was on the submitted page - an older
+    # client/test posting without it keeps the modes it has.
+    if request.form.get("pos_settings_shown"):
+        error = _save_counter(tenant, form)
+        if error:
+            return _rejected(error)
+    # Only when its card was on the page (the margin_scheme module was on).
+    if request.form.get("margin_settings_shown"):
+        tenant.margin_scheme_declaration = form.margin_scheme_declaration.data
+    business_type = _submitted_business_type(form, tenant)
+    before = dict(tenant.features or {})
+    if form.apply_business_preset.data:
+        apply_business_type_preset(tenant, business_type)
+        message = f"Settings updated - modules reset to the recommended set for {BUSINESS_TYPE_LABELS[business_type]}."
+    else:
+        tenant.business_type = business_type
+        tenant.default_price_includes_tax = form.default_price_includes_tax.data
+        _save_features(tenant, form)
+        message = "Settings updated."
+    _finish(tenant, before)
+    flash(message, "success")
+    return redirect(url_for("settings.index"))
 
 
-def _render(form, tenant):
+def _rejected(*errors):
+    """Nothing saved: say why and show Settings again (as the single form did)."""
+    for error in errors:
+        flash(error, "error")
+    return _section("settings/business.html", "business", form=BusinessForm(obj=current_user.tenant))
+
+
+# --- Appearance ----------------------------------------------------------------------------------
+
+@settings_bp.route("/appearance", methods=["GET", "POST"])
+@roles_required(UserRole.CLIENT_ADMIN)
+def appearance():
+    tenant = current_user.tenant
+    form = AppearanceForm(obj=tenant)
+    if form.validate_on_submit():
+        error = _save_appearance(tenant, form)
+        if error:
+            flash(error, "error")
+        else:
+            _finish(tenant, dict(tenant.features or {}), "appearance")
+            flash("Appearance saved.", "success")
+            return redirect(url_for("settings.appearance"))
+    return _section("settings/appearance.html", "appearance", form=form)
+
+
+# --- Modules (the switches) ----------------------------------------------------------------------
+
+@settings_bp.route("/features", methods=["GET", "POST"])
+@roles_required(UserRole.CLIENT_ADMIN)
+def features():
+    tenant = current_user.tenant
+    form = ModulesForm()
+    if request.method == "GET":
+        for feature in AVAILABLE_FEATURES:
+            getattr(form, feature_field_name(feature.key)).data = tenant.has_feature(feature.key)
+    if form.validate_on_submit():
+        before = dict(tenant.features or {})
+        _save_features(tenant, form)
+        changed = sorted(k for k in set(before) | set(tenant.features or {})
+                         if bool(before.get(k)) != tenant.has_feature(k))
+        _finish(tenant, before, "modules")
+        flash(f"Modules saved - {len(changed)} changed." if changed else "Modules saved - nothing changed.",
+              "success")
+        return redirect(url_for("settings.features"))
+    return _section("settings/features.html", "modules", form=form, groups=module_groups(tenant),
+                    field_name=feature_field_name)
+
+
+# --- Counter -------------------------------------------------------------------------------------
+
+@settings_bp.route("/counter", methods=["GET", "POST"])
+@roles_required(UserRole.CLIENT_ADMIN)
+def counter():
+    tenant = current_user.tenant
+    form = CounterForm(obj=tenant)
+    if request.method == "GET":
+        form.pos_payment_modes.data = list(tenant.pos_payment_modes or [])
+    if form.validate_on_submit():
+        error = _save_counter(tenant, form)
+        if error:
+            flash(error, "error")
+        else:
+            _finish(tenant, dict(tenant.features or {}), "counter")
+            flash("Counter settings saved.", "success")
+            return redirect(url_for("settings.counter"))
+    return _section("settings/counter.html", "counter", form=form)
+
+
+# --- Documents & printing ------------------------------------------------------------------------
+
+@settings_bp.route("/documents", methods=["GET", "POST"])
+@roles_required(UserRole.CLIENT_ADMIN)
+def documents():
     from app.utils.margin import DEFAULT_DECLARATION
 
-    return render_template(
-        "settings/form.html", form=form, tenant=tenant, features=AVAILABLE_FEATURES, feature_field_name=feature_field_name,
-        default_margin_declaration=DEFAULT_DECLARATION
-    )
+    tenant = current_user.tenant
+    form = DocumentsForm(obj=tenant)
+    if form.validate_on_submit():
+        tenant.default_receipt_format = form.default_receipt_format.data
+        if tenant.has_feature("margin_scheme"):
+            tenant.margin_scheme_declaration = form.margin_scheme_declaration.data
+        _finish(tenant, dict(tenant.features or {}), "documents")
+        flash("Printing settings saved.", "success")
+        return redirect(url_for("settings.documents"))
+    return _section("settings/documents.html", "documents", form=form, default_margin_declaration=DEFAULT_DECLARATION)
 
 
 @settings_bp.route("/modules", methods=["GET", "POST"])
@@ -136,7 +281,7 @@ def modules():
         flash("Saved.", "success")
         return redirect(url_for("settings.modules"))
     weighing = module_settings(tenant, "weighing")
-    return render_template("settings/modules.html", weighing=weighing, loyalty=module_settings(tenant, "loyalty"),
+    return _section("settings/modules.html", "modules", weighing=weighing, loyalty=module_settings(tenant, "loyalty"),
                            weight_prefixes=", ".join(k for k, v in weighing["prefixes"].items() if v == "weight"),
                            price_prefixes=", ".join(k for k, v in weighing["prefixes"].items() if v == "price"))
 
@@ -165,9 +310,9 @@ def security():
         db.session.commit()
         flash("Saved.", "success")
         return redirect(url_for("settings.security"))
-    return render_template("settings/security.html", idle=module_settings(tenant, "security")["idle_minutes"],
-                           lock=module_settings(tenant, "cashier")["lock_minutes"], idle_choices=IDLE_CHOICES,
-                           lock_choices=LOCK_CHOICES)
+    return _section("settings/security.html", "security", idle=module_settings(tenant, "security")["idle_minutes"],
+                    lock=module_settings(tenant, "cashier")["lock_minutes"], idle_choices=IDLE_CHOICES,
+                    lock_choices=LOCK_CHOICES)
 
 
 # --- first-run checklist ---------------------------------------------------------------------

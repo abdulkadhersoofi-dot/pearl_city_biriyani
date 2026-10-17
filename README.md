@@ -1821,6 +1821,66 @@ their content and are reworked in later stages.
   and New lists, active entry, branch layout, console groups, toasts,
   vendored assets, bell scoping and flags, theme fonts).
 
+### Interface redesign - stage 2 (Settings in sections)
+
+Settings was one 4,900-pixel form with a single Save at the bottom. It is
+now seven short sections, each with its own Save, under one Settings menu
+(`app/settings/sections.py`, `settings/_layout.html`):
+
+- **Business** (`/settings/`): type of business, turnover, the
+  GST-included default for new items, "switch modules to the recommended
+  set", and the branded sign-in link with a Copy button.
+- **Appearance** (`/settings/appearance`): logo (previewed as soon as a
+  file is picked), colours and font, with a live preview of a screen.
+- **Modules** (`/settings/features`): every module as a switch, grouped
+  by purpose - Selling, Stock & buying, Money & reports, GST, Your
+  industry, At the counter - each with its icon, what it does, a "3 of 5
+  on" count per group and a search box. A module that's on shows a "Set
+  up" link to its own screen (categories, suppliers, scale labels,
+  cashiers...); the link only appears once its screen exists, so it is
+  never a 404 (Expiry and Serial numbers also need Inventory). A module
+  added later without a group still appears, under "Other".
+- **Counter** (`/settings/counter`): payment modes as tap-on chips, the
+  UPI scan-to-pay ID, and tiles to the counter's own screens (branches,
+  cashiers & PINs, offline devices, restaurant setup, scale labels,
+  printer test) - each only with its module on.
+- **Documents & printing** (`/settings/documents`): POS bill print size
+  (invoices stay A4) and, with the margin scheme on, its declaration.
+- **Sign-in & security** (`/settings/security`, the address idle sign-out
+  already had): two-step sign-in status and link, change password, idle
+  sign-out and the counter lock.
+- **Subscription**: the client's invoices for the software
+  (`/admin/subscriptions/mine`), shown inside Settings for a Client
+  Admin; an Auditor's office sees it on its own as before.
+- Scale-label and loyalty rules (`/settings/modules`, same address and
+  same 404 when both modules are off) open inside Settings too, reached
+  from their modules' "Set up" links.
+
+How saving works:
+- Each section posts only its own fields (separate small forms in
+  `app/settings/forms.py`); saving one section never changes another.
+  The save bar slides up once something changes, with Discard, and the
+  browser asks before leaving with unsaved changes. Without JavaScript the
+  Save is simply always shown.
+- Every section save is audit-logged (`settings_saved` with the section);
+  a change of modules is still logged as `tenant_features_changed` with
+  before / after, and the first-run "Business profile" step ticks on the
+  first save of any section.
+- The single all-in-one post to `/settings/` that the old page made still
+  works exactly as before (`TenantSettingsForm` is all the section forms
+  together, saved by the same helpers), so nothing that posts it breaks.
+- Search (Ctrl K) finds each section by name ("modules", "upi", "print
+  size", "logo"...).
+- Fixed on the way: search listed Expiry and Serial numbers when only
+  their own module was on, but those screens also need Inventory - they
+  now need both, like their routes.
+- Tests: `tests/test_redesign_settings.py` (sections open in the frame,
+  branch logins refused, each section saves only its own fields, preset,
+  module audit, set-up links only when reachable, payment-mode and UPI
+  checks, margin wording only with the module, colour validation, no
+  effect on another client, search entries). One older test now looks
+  for the print sizes on the Documents & printing section.
+
 ## Roadmap
 
 - **Platform build (ARFA general-purpose POS), phase by phase.**
@@ -1871,10 +1931,10 @@ their content and are reworked in later stages.
     menu with rail and phone drawer, search (Ctrl K), New menu, bell,
     account menu, phone bottom bar, toasts, motion with reduced-motion
     respected.
-  - Stage 2: Settings in sections (Business, Appearance, Modules,
+  - Stage 2 (done): Settings in sections (Business, Appearance, Modules,
     Counter, Documents & printing, Sign-in & security, Subscription),
     module switches grouped by purpose with "Set up" links, per-section
-    save.
+    save with a sliding save bar.
   - Stage 3: list / record / form page patterns on every template, one
     primary action per page with the rest under More, the inline styles
     replaced by shared components, empty states, phone-friendly tables.

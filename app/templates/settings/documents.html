@@ -1,0 +1,30 @@
+{% extends "settings/_layout.html" %}
+{% from "macros.html" import field %}
+{% block section %}
+<form method="post" class="settings-form stack" novalidate x-data="settingsForm({{ form.errors|tojson }})"
+      @input="touch()" @change="touch()" @submit="saving()">
+  {{ form.hidden_tag() }}
+
+  <section class="card settings-card">
+    <h2>Print sizes</h2>
+    <div class="form-grid">
+      <div class="field">
+        <span class="field-label">Invoice print size</span>
+        <input class="field-input" value="A4" disabled>
+        <p class="field-help">Invoices always print on A4 - this isn't changeable.</p>
+      </div>
+      {{ field(form.default_receipt_format, help="POS checkout prints straight to this size - no size prompt every sale.") }}
+    </div>
+    <p class="mt-0"><a href="{{ url_for('settings.printer_test') }}">Print a test receipt {{ icon('arrow-right', 'icon-sm') }}</a></p>
+  </section>
+
+  {% if tenant.has_feature('margin_scheme') %}
+  <section class="card settings-card">
+    <h2>Margin scheme (second-hand goods)</h2>
+    {{ field(form.margin_scheme_declaration, help="Printed on every margin-scheme invoice. Leave blank for the standard wording: \"" ~ default_margin_declaration ~ "\"") }}
+  </section>
+  {% endif %}
+
+  {% include "settings/_save_bar.html" %}
+</form>
+{% endblock %}

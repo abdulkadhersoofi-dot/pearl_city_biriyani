@@ -400,6 +400,16 @@ this list is just the index.
   override. Stages 2-6 (Settings sections, page patterns, Home/Reports,
   the counter, console/sign-in/dark mode/accessibility) are in README's
   Roadmap.
+- **Interface redesign, stage 2: Settings in sections.**
+  `app/settings/sections.py` (section menu, module groups with icons and
+  set-up links), small per-section forms in `app/settings/forms.py`
+  (`TenantSettingsForm` = all of them, still accepted at `/settings/` for
+  the old all-in-one post), one route per section in
+  `app/settings/routes.py` (`index` = Business, `appearance`, `features`
+  = the module switches, `counter`, `documents`, `security`; `modules`
+  stays the weighing/loyalty setup page). Templates under
+  `templates/settings/` extend `settings/_layout.html`;
+  `settingsForm` in `static/js/shell.js` drives the save bar.
 
 ## 5. Chronological development history (this session)
 

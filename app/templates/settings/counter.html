@@ -1,0 +1,49 @@
+{% extends "settings/_layout.html" %}
+{% from "macros.html" import field %}
+{% block section %}
+<form method="post" class="settings-form stack" novalidate x-data="settingsForm({{ form.errors|tojson }})"
+      @input="touch()" @change="touch()" @submit="saving()">
+  {{ form.hidden_tag() }}
+
+  <section class="card settings-card">
+    <h2>{{ form.pos_payment_modes.label.text }}</h2>
+    <p class="text-muted mt-0">The buttons shown when a bill is paid. Credit (pay later) also needs the Credit sales module on, and a customer on the bill.</p>
+    <div class="chip-checks">
+      {% for option in form.pos_payment_modes %}
+      <label class="chip-check">{{ option() }}<span>{{ icon('check', 'icon-sm') }}{{ option.label.text }}</span></label>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="card settings-card">
+    <h2>Scan-to-pay (UPI)</h2>
+    <div class="form-grid">
+      {{ field(form.upi_vpa, help="Shows a QR with the bill amount filled in when UPI is picked at checkout. Blank = no QR.") }}
+      {{ field(form.upi_payee_name, help="Optional - defaults to your business name.") }}
+    </div>
+  </section>
+
+  {% set links = [
+    (url_for('branches.list_branches'), 'store', 'Branches & counter logins', 'Who bills where', True),
+    (url_for('branches.cashiers') if has_feature('cashier_pin') else None, 'key-round', 'Cashiers & PINs', 'Several cashiers on one counter', has_feature('cashier_pin')),
+    (url_for('pos.offline_bills') if has_feature('offline_pos') else None, 'cloud-off', 'Counter devices & offline bills', 'Billing without the internet', has_feature('offline_pos')),
+    (url_for('restaurant.setup') if has_feature('restaurant_mode') else None, 'utensils-crossed', 'Tables, order types & charges', 'Restaurant setup', has_feature('restaurant_mode')),
+    (url_for('settings.modules') if has_feature('weighing') else None, 'scale', 'Scale label format', 'Weighing-scale barcodes', has_feature('weighing')),
+    (url_for('settings.printer_test'), 'printer', 'Printer test', 'Print a test receipt', True),
+  ] %}
+  <section class="card settings-card">
+    <h2>Counter setup</h2>
+    <div class="link-tiles">
+      {% for url, ic, label, sub, show in links if show %}
+      <a href="{{ url }}" class="link-tile">
+        <span class="link-tile-icon">{{ icon(ic) }}</span>
+        <span><strong>{{ label }}</strong><small>{{ sub }}</small></span>
+        {{ icon('chevron-right', 'link-tile-go') }}
+      </a>
+      {% endfor %}
+    </div>
+  </section>
+
+  {% include "settings/_save_bar.html" %}
+</form>
+{% endblock %}

@@ -62,7 +62,8 @@ def test_receipt_page_has_a_single_reprint_button(client, db, tenant, client_adm
 
 def test_settings_page_shows_invoice_size_fixed_and_pos_size_editable(client, db, client_admin):
     _login(client, client_admin.email, "ClientSecret123")
-    resp = client.get("/settings/")
+    # Print sizes live in the "Documents & printing" section of Settings.
+    resp = client.get("/settings/documents")
 
     assert resp.status_code == 200
     assert b"Invoice print size" in resp.data

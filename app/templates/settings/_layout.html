@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{# Every Settings section sits in this frame: the sections' menu on the
+   left (a row of chips on phones), the section's own page on the right. #}
+{% block title %}{{ section.label }} - Settings - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="settings-shell">
+  <nav class="settings-nav" aria-label="Settings sections" x-data
+       x-init="const a = $el.querySelector('.active'); if (a && $el.scrollWidth > $el.clientWidth) $el.scrollLeft = a.offsetLeft - 8">
+    <p class="settings-nav-title">Settings</p>
+    {% for s in sections %}
+    <a href="{{ s.url }}" class="settings-nav-link{{ ' active' if s.active }}"{% if s.active %} aria-current="page"{% endif %}>
+      {{ icon(s.icon) }}<span>{{ s.label }}</span>
+    </a>
+    {% endfor %}
+  </nav>
+  <div class="settings-body">
+    <header class="settings-head">
+      <span class="settings-head-icon">{{ icon(section.icon) }}</span>
+      <div>
+        <h1>{{ section.label }}</h1>
+        <p class="text-muted">{{ section.description }}</p>
+      </div>
+      {% block section_actions %}{% endblock %}
+    </header>
+    {% block section %}{% endblock %}
+  </div>
+</div>
+{% endblock %}

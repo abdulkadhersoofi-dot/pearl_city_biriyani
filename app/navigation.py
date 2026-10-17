@@ -129,8 +129,8 @@ def _client_groups() -> list[Group]:
         Group("business", "Business", (
             Link("Branches", "branches.list_branches", "store", blueprints=("branches",),
                  keywords="branch counter login staff cashiers"),
-            Link("Settings", "settings.index", "settings", blueprints=("settings",),
-                 keywords="logo theme modules printer preferences"),
+            Link("Settings", "settings.index", "settings", blueprints=("settings",), endpoints=("subscriptions.mine",),
+                 keywords="business profile turnover preferences"),
         )),
     ]
 
@@ -258,8 +258,11 @@ def _more_screens() -> list[tuple[str, Link]]:
         (b, Link("Reorder list", "inventory.reorder", "triangle-alert", feature="inventory", keywords="low stock")),
         (b, Link("Barcode labels", "inventory.labels", "printer", feature="inventory")),
         (b, Link("Stock locations", "inventory.locations", "store", feature="inventory", keywords="godown")),
-        (b, Link("Expiry", "inventory.expiry", "calendar-clock", feature="batch_expiry", keywords="batch expired")),
-        (b, Link("Serial numbers", "inventory.serials", "scan-line", feature="serial_imei", keywords="imei")),
+        # These two screens need Inventory on as well as their own module.
+        (b, Link("Expiry", "inventory.expiry", "calendar-clock", feature="inventory", any_feature=("batch_expiry",),
+                 keywords="batch expired")),
+        (b, Link("Serial numbers", "inventory.serials", "scan-line", feature="inventory", any_feature=("serial_imei",),
+                 keywords="imei")),
         (b, Link("Suppliers", "purchases.suppliers", "truck", feature="purchases", keywords="vendor")),
         (b, Link("Purchase orders", "purchases.orders", "file-text", feature="purchases")),
         (b, Link("Purchase returns", "purchases.returns", "file-minus", feature="purchases", keywords="debit note")),
@@ -293,12 +296,19 @@ def _more_screens() -> list[tuple[str, Link]]:
         (r, Link("Margin scheme register", "reports.margin_register", "file-spreadsheet", feature="margin_scheme")),
         (r, Link("Drug register", "pharmacy.register", "pill", feature="pharmacy", keywords="schedule h h1")),
         (r, Link("e-Way bills", "einvoice.eway_bills", "truck", feature="eway_bill")),
+        ("Settings", Link("Appearance", "settings.appearance", "sparkles", keywords="logo theme colour color font brand")),
+        ("Settings", Link("Modules", "settings.features", "layout-grid",
+                          keywords="features switch on off enable disable turn")),
+        ("Settings", Link("Counter settings", "settings.counter", "monitor", keywords="payment modes upi qr cash card")),
+        ("Settings", Link("Documents & printing", "settings.documents", "printer",
+                          keywords="print size receipt paper roll margin declaration")),
+        ("Settings", Link("Subscription", "subscriptions.mine", "banknote", keywords="software fee plan invoices")),
         ("Business", Link("Cashiers", "branches.cashiers", "key-round", feature="cashier_pin", keywords="pin")),
-        ("Business", Link("Module settings", "settings.modules", "settings", any_feature=("weighing", "loyalty"),
+        ("Settings", Link("Scale labels & loyalty points", "settings.modules", "settings", any_feature=("weighing", "loyalty"),
                           keywords="weighing scale loyalty points")),
-        ("Business", Link("Sign-in & security settings", "settings.security", "shield-check",
+        ("Settings", Link("Sign-in & security", "settings.security", "shield-check",
                           keywords="two-step lockout timeout")),
-        ("Business", Link("Printer test", "settings.printer_test", "printer", keywords="thermal receipt")),
+        ("Settings", Link("Printer test", "settings.printer_test", "printer", keywords="thermal receipt")),
     ]
 
 
