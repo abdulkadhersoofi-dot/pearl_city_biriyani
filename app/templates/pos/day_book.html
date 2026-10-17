@@ -15,7 +15,7 @@
     <tbody>
     {% for b in bills %}
       <tr{% if b.status.value == 'voided' %} class="text-muted"{% endif %}>
-        <td><a href="{{ url_for('pos.view_receipt', bill_id=b.id) }}">{{ b.bill_number }}</a>{% if b.customer_snapshot %}<div class="text-muted" style="font-size:0.85rem;">{{ b.customer_snapshot.name }}</div>{% endif %}</td>
+        <td><a href="{{ url_for('pos.view_receipt', bill_id=b.id) }}">{{ b.bill_number }}</a>{% if b.customer_snapshot %}<div class="text-muted fs-sm">{{ b.customer_snapshot.name }}</div>{% endif %}</td>
         <td>{{ b.completed_at.strftime('%H:%M') if b.completed_at else '-' }}</td>
         <td>{{ b.payment_summary()|upper }}</td>
         <td>
@@ -34,7 +34,7 @@
             <input type="hidden" name="amount" value="{{ b.grand_total }}">
             <input type="hidden" name="redirect_date" value="{{ on_date.isoformat() }}">
             <input type="hidden" name="reason">
-            <button class="btn btn-quiet btn-sm" style="color:var(--color-danger);">Refund</button>
+            <button class="btn btn-quiet btn-sm text-danger">Refund</button>
           </form>
           {% endif %}
           {% endif %}
@@ -44,7 +44,7 @@
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="redirect_date" value="{{ on_date.isoformat() }}">
             <input type="hidden" name="reason">
-            <button class="btn btn-quiet btn-sm" style="color:var(--color-danger);">Void</button>
+            <button class="btn btn-quiet btn-sm text-danger">Void</button>
           </form>
           {% endif %}
         </div></td>
@@ -67,11 +67,11 @@
     {% endfor %}
     </tbody>
   </table>
-  <iframe id="receipt-print-frame" style="display:none;"></iframe>
+  <iframe class="d-none" id="receipt-print-frame"></iframe>
 </div>
 
 {% if returns %}
-<div class="table-wrap card" style="margin-top:20px;">
+<div class="table-wrap card mt-20">
   <h2 class="mt-0">Sales returns</h2>
   <table>
     <thead><tr><th>Return</th><th>Time</th><th>Against</th><th>Paid back</th><th>Status</th><th>Amount</th></tr></thead>

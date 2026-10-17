@@ -2,18 +2,18 @@
    (Ultra Admin only). kind: "tenant" | "auditor"; subject: the Tenant / User. #}
 {% if current_user.is_super_admin %}
 <div>
-  <p class="text-muted" style="margin:0 0 4px;">Subscription fee (per {{ subject.billing_cycle.value[:-2] if subject.billing_cycle else 'cycle' }}, before GST)</p>
+  <p class="text-muted m-0 mb-4">Subscription fee (per {{ subject.billing_cycle.value[:-2] if subject.billing_cycle else 'cycle' }}, before GST)</p>
   <form method="post" action="{{ url_for('subscriptions.set_fee', kind=kind, subject_id=subject.id) }}" class="row">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <input type="number" name="fee" step="0.01" min="0" class="field-input" style="max-width:140px;" value="{{ subject.subscription_fee if subject.subscription_fee is not none else '' }}" placeholder="0 = no invoice">
+    <input type="number" name="fee" step="0.01" min="0" class="field-input maxw-140" value="{{ subject.subscription_fee if subject.subscription_fee is not none else '' }}" placeholder="0 = no invoice">
     <button type="submit" class="btn btn-secondary">Save</button>
   </form>
   {% if subject.subscription_fee and subject.next_billing_due %}
-  <form method="post" action="{{ url_for('subscriptions.raise_one', kind=kind, subject_id=subject.id) }}" style="margin-top:6px;">
+  <form class="mt-6" method="post" action="{{ url_for('subscriptions.raise_one', kind=kind, subject_id=subject.id) }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <button type="submit" class="btn btn-quiet">Raise invoice for {{ subject.next_billing_due.strftime('%d %b %Y') }} now</button>
   </form>
   {% endif %}
-  <a href="{{ url_for('subscriptions.index', kind=kind, subject_id=subject.id) }}" class="btn btn-quiet" style="margin-top:6px;">Subscription invoices</a>
+  <a href="{{ url_for('subscriptions.index', kind=kind, subject_id=subject.id) }}" class="btn btn-quiet mt-6">Subscription invoices</a>
 </div>
 {% endif %}

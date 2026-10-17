@@ -13,7 +13,7 @@
 {% endif %}
 {% for g in gstins %}
 {% set cred = creds[g.id] %}
-<div class="card" style="margin-bottom:16px;">
+<div class="card mb-16">
   <h2 class="mt-0">{{ g.gstin }} <small class="text-muted">{{ g.state_name }}</small></h2>
   <form method="post" class="form-grid">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="gstin_id" value="{{ g.id }}">
@@ -26,7 +26,7 @@
   <h3>Connection to the IRP</h3>
   {% if cred %}
   <p>Connected through <strong>{{ providers[cred.provider].label }}</strong> as <strong>{{ cred.username }}</strong>{% if cred.token_expiry %} &middot; <span class="text-muted">logged in until {{ cred.token_expiry|ist }}</span>{% endif %}.</p>
-  <form method="post" class="row" style="gap:8px;">
+  <form method="post" class="row gap-8">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="gstin_id" value="{{ g.id }}">
     <button name="action" value="test" class="btn btn-secondary">Test login</button>
     <button name="action" value="remove" class="btn btn-quiet" onclick="return confirm('Remove the saved login?');">Remove login</button>
@@ -34,13 +34,13 @@
   {% else %}
   <p class="text-muted">No login saved - use the JSON downloads and record the IRN / e-way bill number you get back.</p>
   {% endif %}
-  <details style="margin-top:10px;" {% if not cred %}open{% endif %}>
+  <details class="mt-10" {% if not cred %}open{% endif %}>
     <summary>{{ 'Change' if cred else 'Add' }} login</summary>
     <p class="field-help">Pick one. Most businesses use a GSP (the company that sells you e-invoice access); NIC direct needs NIC to whitelist this server. Try the sandbox first with NIC's test login.</p>
     {% for key, prov in providers.items() %}
-    <details class="card" style="margin-top:10px;" {% if cred and cred.provider == key %}open{% endif %}>
+    <details class="card mt-10" {% if cred and cred.provider == key %}open{% endif %}>
     <summary><strong>{{ prov.label }}</strong></summary>
-    <form method="post" style="margin-top:10px;">
+    <form class="mt-10" method="post">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="gstin_id" value="{{ g.id }}">
       <input type="hidden" name="provider" value="{{ key }}">
       <div class="form-grid">

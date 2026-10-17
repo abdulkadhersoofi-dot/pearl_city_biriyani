@@ -22,8 +22,8 @@
 </div>
 
 {% if invoice.credit_debit_notes %}
-<div class="card" style="margin-bottom:20px;">
-  <h2 style="margin-top:0;">Notes issued against this invoice</h2>
+<div class="card mb-20">
+  <h2 class="mt-0">Notes issued against this invoice</h2>
   <table>
     <thead><tr><th>Number</th><th>Type</th><th>Date</th><th>Status</th><th>Total</th></tr></thead>
     <tbody>
@@ -41,7 +41,7 @@
 </div>
 {% endif %}
 
-<div class="card" style="margin-bottom:20px;">
+<div class="card mb-20">
   <div class="form-grid">
     <div><strong>{{ 'Billed to (branch)' if invoice.branch_user_id else 'Customer' }}</strong><p>{{ invoice.customer_snapshot.name }}<br>
       {% if invoice.branch_user_id %}{{ 'PCB-owned branch - stock transfer, no GST' if invoice.branch_user.branch_type.value == 'owned' else 'Third-party branch' }}<br>{% endif %}
@@ -85,8 +85,8 @@
   </div>
 </div>
 {% if is_margin %}
-<div class="card" style="margin-top:12px;"><strong>Margin scheme (Rule 32(5)).</strong> The buyer pays the total above; the GST shown here is on your margin and is not printed on the invoice, which carries this declaration instead:
-  <p class="text-muted" style="margin-bottom:0;">{{ margin_declaration_for(invoice.tenant_id) }}</p>
+<div class="card mt-12"><strong>Margin scheme (Rule 32(5)).</strong> The buyer pays the total above; the GST shown here is on your margin and is not printed on the invoice, which carries this declaration instead:
+  <p class="text-muted mb-0">{{ margin_declaration_for(invoice.tenant_id) }}</p>
 </div>
 {% endif %}
 
@@ -94,19 +94,19 @@
 {% with source=invoice %}{% include "einvoice/_eway_panel.html" %}{% endwith %}
 
 {% if invoice.status.value == 'issued' and not (invoice.irn and not invoice.irn_cancelled_at) %}
-<div class="card" style="margin-top:20px;">
-  <h2 style="margin-top:0;">Void this invoice</h2>
+<div class="card mt-20">
+  <h2 class="mt-0">Void this invoice</h2>
   <p class="text-muted">Invoices are never deleted - voiding keeps it on record with the reason, for audit.</p>
   <form method="post" action="{{ url_for('invoicing.void_invoice_route', invoice_id=invoice.id) }}"
         onsubmit="return confirm('Void invoice {{ invoice.invoice_number }}? This cannot be undone.');" class="row">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <input type="text" name="reason" placeholder="Reason for voiding" required class="field-input" style="flex:1; min-width:200px;">
+    <input type="text" name="reason" placeholder="Reason for voiding" required class="field-input grow minw-200">
     <button class="btn btn-danger">Void invoice</button>
     {% if has_feature('sales_documents') %}<button class="btn btn-secondary" name="reissue" value="1">Void &amp; re-issue a corrected copy</button>{% endif %}
   </form>
 </div>
 {% elif invoice.status.value == 'void' %}
-<div class="card" style="margin-top:20px;">
+<div class="card mt-20">
   {% if has_feature('sales_documents') and invoice.customer_id %}<p><a href="{{ url_for('invoicing.new_invoice', duplicate_from=invoice.id) }}" class="btn btn-secondary">Duplicate as a new invoice</a></p>{% endif %}
   <p><strong>Voided</strong> on {{ invoice.voided_at.strftime('%d %b %Y %H:%M') }} by {{ invoice.voided_by.name if invoice.voided_by else '-' }}.</p>
   <p class="text-muted">Reason: {{ invoice.void_reason }}</p>

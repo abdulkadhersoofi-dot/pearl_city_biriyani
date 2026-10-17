@@ -38,6 +38,6 @@
   {% endif %}
 </div>
 {% if data.offline_problems %}
-<p class="flash flash-error" style="margin-top:12px;">{{ data.offline_problems }} offline bill{{ 's' if data.offline_problems != 1 }} couldn't be booked -
+<p class="flash flash-error mt-12">{{ data.offline_problems }} offline bill{{ 's' if data.offline_problems != 1 }} couldn't be booked -
   <a href="{{ url_for('pos.offline_bills') }}">look at them</a>.</p>
 {% endif %}

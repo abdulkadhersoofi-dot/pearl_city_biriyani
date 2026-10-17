@@ -5,13 +5,13 @@
 {% include "inventory/_nav.html" %}
 <p class="text-muted">Every place stock is kept. The main store is where invoices and the main counter sell from; each branch login has its own location, made automatically. Add godowns and extra stores here and move goods between them with a transfer.</p>
 
-<form method="post" class="card row" style="gap:10px; align-items:flex-end; flex-wrap:wrap;">
+<form method="post" class="card row gap-10 items-end flex-wrap">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  <label class="field" style="margin:0; flex:1; min-width:180px;">
+  <label class="field m-0 grow minw-180">
     <span class="field-label">Name</span>
     <input type="text" name="name" class="field-input" maxlength="100" placeholder="e.g. Back godown" required>
   </label>
-  <label class="field" style="margin:0;">
+  <label class="field m-0">
     <span class="field-label">Type</span>
     <select name="kind" class="field-input"><option value="godown">Godown</option><option value="store">Store</option></select>
   </label>
@@ -22,7 +22,7 @@
   <button class="btn btn-primary">Add location</button>
 </form>
 
-<div class="card table-wrap" style="margin-top:16px;">
+<div class="card table-wrap mt-16">
   <table>
     <thead><tr><th>Name</th><th>Type</th><th>Address</th><th class="num">Items in stock</th><th>Status</th><th></th></tr></thead>
     <tbody>

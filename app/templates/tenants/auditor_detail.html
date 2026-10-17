@@ -46,8 +46,8 @@
 
 {% if current_user.is_super_admin %}
 {% if auditor.billing_cycle is none %}
-<div class="card" style="margin-bottom:20px; border-color: var(--color-danger, #b23b3b);">
-  <h2 style="margin-top:0;">Awaiting verification</h2>
+<div class="card card-danger mb-20">
+  <h2 class="mt-0">Awaiting verification</h2>
   <p class="text-muted mt-0">This {{ auditor.role_label|lower }} cannot sign in until you pick a billing cycle.</p>
   <form method="post" action="{{ url_for('tenants.set_auditor_billing_cycle', auditor_id=auditor.id) }}" class="row">
     {{ billing_form.hidden_tag() }}
@@ -57,16 +57,16 @@
 </div>
 {% endif %}
 
-<div class="card" style="margin-bottom:20px;">
-  <h2 style="margin-top:0;">Billing</h2>
+<div class="card mb-20">
+  <h2 class="mt-0">Billing</h2>
   {% if auditor_access_status.blocked %}
-  <p class="flash flash-error" style="margin-top:0;">{{ auditor_access_status.message }}</p>
+  <p class="flash flash-error mt-0">{{ auditor_access_status.message }}</p>
   {% elif auditor_access_status.billing_notice %}
-  <p class="flash flash-info" style="margin-top:0;">{{ auditor_access_status.billing_notice_message }}</p>
+  <p class="flash flash-info mt-0">{{ auditor_access_status.billing_notice_message }}</p>
   {% endif %}
   <div class="form-grid">
     <div>
-      <p class="text-muted" style="margin:0 0 4px;">Billing cycle</p>
+      <p class="text-muted m-0 mb-4">Billing cycle</p>
       {% if auditor.billing_cycle is not none %}
       <form method="post" action="{{ url_for('tenants.set_auditor_billing_cycle', auditor_id=auditor.id) }}" class="row">
         {{ billing_form.hidden_tag() }}
@@ -74,37 +74,37 @@
         <button type="submit" class="btn btn-secondary">Change</button>
       </form>
       {% else %}
-      <p style="margin:0;"><strong>Not set</strong></p>
+      <p class="m-0"><strong>Not set</strong></p>
       {% endif %}
     </div>
     <div>
-      <p class="text-muted" style="margin:0 0 4px;">Cycle started</p>
-      <p style="margin:0;"><strong>{{ auditor.cycle_anchor_date.strftime('%d %b %Y') if auditor.cycle_anchor_date else 'Not yet - starts on first login after password change' }}</strong></p>
+      <p class="text-muted m-0 mb-4">Cycle started</p>
+      <p class="m-0"><strong>{{ auditor.cycle_anchor_date.strftime('%d %b %Y') if auditor.cycle_anchor_date else 'Not yet - starts on first login after password change' }}</strong></p>
     </div>
     <div>
-      <p class="text-muted" style="margin:0 0 4px;">Renewal due</p>
-      <p style="margin:0;"><strong>{{ auditor.next_billing_due.strftime('%d %b %Y') if auditor.next_billing_due else 'Not tracked yet' }}</strong></p>
-      <p class="text-muted" style="margin:4px 0 0;">Last paid: {{ auditor.last_paid_on.strftime('%d %b %Y') if auditor.last_paid_on else 'Never' }}</p>
-      <form method="post" action="{{ url_for('tenants.mark_auditor_billing_paid', auditor_id=auditor.id) }}" style="margin-top:8px;">
+      <p class="text-muted m-0 mb-4">Renewal due</p>
+      <p class="m-0"><strong>{{ auditor.next_billing_due.strftime('%d %b %Y') if auditor.next_billing_due else 'Not tracked yet' }}</strong></p>
+      <p class="text-muted m-0 mt-4">Last paid: {{ auditor.last_paid_on.strftime('%d %b %Y') if auditor.last_paid_on else 'Never' }}</p>
+      <form class="mt-8" method="post" action="{{ url_for('tenants.mark_auditor_billing_paid', auditor_id=auditor.id) }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="btn btn-secondary">Mark this period paid</button>
       </form>
-      <form method="post" action="{{ url_for('tenants.resync_auditor_billing_cycle', auditor_id=auditor.id) }}" style="margin-top:6px;">
+      <form class="mt-6" method="post" action="{{ url_for('tenants.resync_auditor_billing_cycle', auditor_id=auditor.id) }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="btn btn-quiet" title="Recomputes the renewal date from the live calendar - use this if the cycle ever looks wrong.">Resync to live calendar</button>
       </form>
     </div>
     {% with kind='auditor', subject=auditor %}{% include "subscriptions/_fee.html" %}{% endwith %}
     <div>
-      <p class="text-muted" style="margin:0 0 4px;">Manual reminder</p>
-      <p style="margin:0;"><strong>{{ 'On' if auditor.manual_alarm_active else 'Off' }}</strong></p>
+      <p class="text-muted m-0 mb-4">Manual reminder</p>
+      <p class="m-0"><strong>{{ 'On' if auditor.manual_alarm_active else 'Off' }}</strong></p>
       {% if auditor.manual_alarm_active %}
-      <form method="post" action="{{ url_for('tenants.mute_auditor_alarm', auditor_id=auditor.id) }}" style="margin-top:8px;">
+      <form class="mt-8" method="post" action="{{ url_for('tenants.mute_auditor_alarm', auditor_id=auditor.id) }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="btn btn-secondary">Turn off reminder</button>
       </form>
       {% else %}
-      <form method="post" action="{{ url_for('tenants.trigger_auditor_alarm', auditor_id=auditor.id) }}" style="margin-top:8px;">
+      <form class="mt-8" method="post" action="{{ url_for('tenants.trigger_auditor_alarm', auditor_id=auditor.id) }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="btn btn-secondary">Trigger reminder now</button>
       </form>
@@ -115,8 +115,8 @@
 {% endif %}
 
 {% if auditor.is_auditor %}
-<div class="card" style="margin-bottom:20px;">
-  <h2 style="margin-top:0;">Sub-Auditors ({{ sub_auditors|length }})</h2>
+<div class="card mb-20">
+  <h2 class="mt-0">Sub-Auditors ({{ sub_auditors|length }})</h2>
   <table>
     <thead><tr><th>Name</th><th>Email</th><th>Clients</th><th></th></tr></thead>
     <tbody>
@@ -141,7 +141,7 @@
 {% endif %}
 
 <div class="table-wrap card">
-  <h2 style="margin-top:0;">Clients ({{ clients|length }})</h2>
+  <h2 class="mt-0">Clients ({{ clients|length }})</h2>
   <table>
     <thead><tr><th>Business</th><th>GSTIN</th><th>Status</th><th>Onboarded</th><th></th></tr></thead>
     <tbody>

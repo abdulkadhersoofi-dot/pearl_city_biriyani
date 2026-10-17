@@ -10,7 +10,7 @@
   <a href="{{ url_for('accounts.new_payment', supplier_id=supplier.id) }}" class="btn btn-primary">+ Payment</a>
 </div>
 {% include "accounts/_nav.html" %}
-<div class="card" style="margin-bottom:16px;">
+<div class="card mb-16">
   <div class="form-grid">
     {% for name, _, _ in buckets %}<div><strong>{{ name }} days</strong><p>{{ '%.2f'|format(ageing[name]) }}</p></div>{% endfor %}
     <div><strong>Paid ahead</strong><p>{{ '%.2f'|format(ageing.on_account) }}</p></div>

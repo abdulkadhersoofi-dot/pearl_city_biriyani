@@ -11,18 +11,18 @@
 
 {% include "reports/_filter_bar.html" %}
 
-<div class="form-grid" style="margin-bottom:20px;">
+<div class="form-grid mb-20">
   <div class="card">
     <p class="text-muted mt-0">Quantity sold</p>
-    <p style="font-size:1.6rem; font-weight:800; margin:0;">{{ '%.2f'|format(data.totals.qty) }}</p>
+    <p class="figure m-0">{{ '%.2f'|format(data.totals.qty) }}</p>
   </div>
   <div class="card">
     <p class="text-muted mt-0">Taxable value</p>
-    <p style="font-size:1.6rem; font-weight:800; margin:0;">Rs. {{ '%.2f'|format(data.totals.taxable_value) }}</p>
+    <p class="figure m-0">Rs. {{ '%.2f'|format(data.totals.taxable_value) }}</p>
   </div>
   <div class="card">
     <p class="text-muted mt-0">Total</p>
-    <p style="font-size:1.6rem; font-weight:800; margin:0;">Rs. {{ '%.2f'|format(data.totals.total) }}</p>
+    <p class="figure m-0">Rs. {{ '%.2f'|format(data.totals.total) }}</p>
   </div>
 </div>
 

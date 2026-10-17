@@ -23,7 +23,7 @@
   </div>
   <button type="submit" class="btn btn-primary btn-block btn-lg">Turn on</button>
 </form>
-<p class="text-muted" style="text-align:center; margin-top:16px;">
+<p class="text-muted text-center mt-16">
   {% if pending %}<a href="{{ url_for('auth.logout') }}">Cancel</a>{% else %}<a href="{{ url_for('auth.account_security') }}">Back</a>{% endif %}
 </p>
 {% endblock %}

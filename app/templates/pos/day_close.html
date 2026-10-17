@@ -12,18 +12,18 @@
 {% if not session %}
 <div class="card"><p class="mt-0">The day isn't open on this counter. Open it from the billing screen.</p></div>
 {% else %}
-<div class="form-grid" style="margin-bottom:20px;">
+<div class="form-grid mb-20">
   <div class="card">
     <p class="text-muted mt-0">Bills</p>
-    <p style="font-size:1.6rem; font-weight:800; margin:0;">{{ activity.bill_count }}{% if activity.voided_count %} <span class="text-muted" style="font-size:0.9rem;">+ {{ activity.voided_count }} voided</span>{% endif %}</p>
+    <p class="figure m-0">{{ activity.bill_count }}{% if activity.voided_count %} <span class="text-muted fs-sm2">+ {{ activity.voided_count }} voided</span>{% endif %}</p>
   </div>
   <div class="card">
     <p class="text-muted mt-0">Sales</p>
-    <p style="font-size:1.6rem; font-weight:800; margin:0;">Rs. {{ '%.2f'|format(activity.total_sales) }}</p>
+    <p class="figure m-0">Rs. {{ '%.2f'|format(activity.total_sales) }}</p>
   </div>
   <div class="card">
     <p class="text-muted mt-0">Expected cash in drawer</p>
-    <p style="font-size:1.6rem; font-weight:800; margin:0;">Rs. {{ '%.2f'|format(session.expected_cash if session.closed_at else activity.expected_cash) }}</p>
+    <p class="figure m-0">Rs. {{ '%.2f'|format(session.expected_cash if session.closed_at else activity.expected_cash) }}</p>
   </div>
   {% if session.closed_at %}
   <div class="card">
@@ -33,7 +33,7 @@
   {% endif %}
 </div>
 
-<div class="card" style="margin-bottom:20px;">
+<div class="card mb-20">
   <h2 class="mt-0">How the cash adds up</h2>
   <table>
     <tbody>

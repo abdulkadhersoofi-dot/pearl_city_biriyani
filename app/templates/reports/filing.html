@@ -6,22 +6,22 @@
     <h1>GST filing - {{ period }}</h1>
     <p class="text-muted mt-0">When every bill, purchase and expense for the month is in, mark it ready - your accountant files from it and marks it filed here.</p>
   </div>
-  <form method="get" class="row" style="gap:8px; align-items:flex-end;">
-    <label class="field" style="margin:0;"><span class="field-label">Month</span><input type="month" name="period" value="{{ period }}" class="field-input"></label>
+  <form method="get" class="row gap-8 items-end">
+    <label class="field m-0"><span class="field-label">Month</span><input type="month" name="period" value="{{ period }}" class="field-input"></label>
     <button class="btn btn-secondary">Show</button>
   </form>
 </div>
 {% for c in cards %}
-<div class="card" style="margin-bottom:16px;">
-  <div class="row" style="justify-content:space-between; align-items:center;">
-    <h2 class="mt-0" style="margin-bottom:0;">{{ c.gstin.display_label }}</h2>
+<div class="card mb-16">
+  <div class="row justify-between items-center">
+    <h2 class="mt-0 mb-0">{{ c.gstin.display_label }}</h2>
     <form method="post">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="gstin_id" value="{{ c.gstin.id }}"><input type="hidden" name="period" value="{{ period }}">
       {% if c.ready %}<button name="action" value="not_ready" class="btn btn-quiet">Not ready after all</button>
       {% else %}<button name="action" value="ready" class="btn btn-primary">My {{ period }} data is complete</button>{% endif %}
     </form>
   </div>
-  <table style="margin-top:10px;">
+  <table class="mt-10">
     <thead><tr><th>Return</th><th>Due</th><th>Data</th><th>Filed</th></tr></thead>
     <tbody>
     {% for r in c.returns %}

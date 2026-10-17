@@ -5,9 +5,9 @@
   toggles which date input is *visible* - every input stays in the form
   regardless, so switching modes never loses what was typed into the others.
 #}
-<form method="get" class="card stack" style="margin-bottom:20px;" x-data="{ mode: '{{ filters.mode }}' }">
-  <div class="row" style="gap:16px; flex-wrap:wrap; align-items:flex-end;">
-    <div class="field" style="margin-bottom:0;">
+<form method="get" class="card stack mb-20" x-data="{ mode: '{{ filters.mode }}' }">
+  <div class="row gap-16 flex-wrap items-end">
+    <div class="field mb-0">
       <label class="field-label" for="mode">Period</label>
       <select name="mode" id="mode" class="field-input" x-model="mode">
         <option value="range">Date range</option>
@@ -15,30 +15,30 @@
         <option value="month">Month</option>
       </select>
     </div>
-    <div class="field" style="margin-bottom:0;" x-show="mode === 'range'">
+    <div class="field mb-0" x-show="mode === 'range'">
       <label class="field-label" for="start">From</label>
       <input type="date" name="start" id="start" value="{{ filters.start.isoformat() }}" class="field-input">
     </div>
-    <div class="field" style="margin-bottom:0;" x-show="mode === 'range'">
+    <div class="field mb-0" x-show="mode === 'range'">
       <label class="field-label" for="end">To</label>
       <input type="date" name="end" id="end" value="{{ filters.end.isoformat() }}" class="field-input">
     </div>
-    <div class="field" style="margin-bottom:0;" x-show="mode === 'day'">
+    <div class="field mb-0" x-show="mode === 'day'">
       <label class="field-label" for="date">Day</label>
       <input type="date" name="date" id="date" value="{{ filters.day_value }}" class="field-input">
     </div>
-    <div class="field" style="margin-bottom:0;" x-show="mode === 'month'">
+    <div class="field mb-0" x-show="mode === 'month'">
       <label class="field-label" for="month">Month</label>
       <input type="month" name="month" id="month" value="{{ filters.month_value }}" class="field-input">
     </div>
-    <div class="field" style="margin-bottom:0;">
+    <div class="field mb-0">
       <label class="field-label" for="branch_id">Branch(es)</label>
       <select name="branch_id" id="branch_id" class="field-input" multiple style="min-height:42px;">
         {% for b in branches %}
         <option value="{{ b.id }}" {% if filters.branch_ids and b.id in filters.branch_ids %}selected{% endif %}>{{ b.name }}</option>
         {% endfor %}
       </select>
-      <p class="field-help" style="margin:4px 0 0;">Leave blank for all branches. Ctrl/Cmd-click to select several.</p>
+      <p class="field-help m-0 mt-4">Leave blank for all branches. Ctrl/Cmd-click to select several.</p>
     </div>
     <button type="submit" class="btn btn-primary">Apply</button>
   </div>

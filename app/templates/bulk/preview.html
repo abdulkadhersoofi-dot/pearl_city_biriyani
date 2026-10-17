@@ -6,9 +6,9 @@
   <a href="{{ url_for('bulk.index', kind=spec.kind) }}" class="btn btn-quiet">Cancel</a>
 </div>
 
-<div class="card stack" style="margin-bottom:16px;">
-  <p class="mt-0" style="margin-bottom:0;"><strong>{{ filename }}</strong></p>
-  <div class="row" style="gap:16px;">
+<div class="card stack mb-16">
+  <p class="mt-0 mb-0"><strong>{{ filename }}</strong></p>
+  <div class="row gap-16">
     <span class="status-badge status-issued">{{ created }} to add</span>
     <span class="status-badge status-issued">{{ updated }} to update</span>
     {% if errors %}<span class="status-badge status-void">{{ errors }} with problems (will be skipped)</span>{% endif %}
@@ -19,7 +19,7 @@
     <button type="submit" class="btn btn-primary btn-lg">Import {{ created + updated }} row{{ 's' if created + updated != 1 }}</button>
   </form>
   {% else %}
-  <p class="flash flash-error" style="margin:0;">Every row has a problem - fix the file and upload it again.</p>
+  <p class="flash flash-error m-0">Every row has a problem - fix the file and upload it again.</p>
   {% endif %}
 </div>
 
@@ -37,7 +37,7 @@
             {% else %}<span class="status-badge status-issued">Add</span>{% endif %}
           </td>
           <td>{{ r.values.get('name') or '-' }}</td>
-          <td>{% for e in r.errors %}<div style="color:var(--color-danger);">{{ e }}</div>{% endfor %}</td>
+          <td>{% for e in r.errors %}<div class="text-danger">{{ e }}</div>{% endfor %}</td>
         </tr>
       {% endfor %}
       </tbody>

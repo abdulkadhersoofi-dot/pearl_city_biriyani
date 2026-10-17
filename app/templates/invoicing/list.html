@@ -5,11 +5,12 @@
   <h1>Invoices</h1>
   <a href="{{ url_for('invoicing.new_invoice') }}" class="btn btn-primary btn-lg">+ New invoice</a>
 </div>
+{% include "invoicing/_tabs.html" %}
 {% include "_first_run.html" %}
 
 <form class="search-bar" method="get">
   <input type="text" name="q" value="{{ search }}" placeholder="Search invoice number" class="field-input">
-  <select name="status" class="field-input" style="max-width:180px;">
+  <select name="status" class="field-input maxw-180">
     <option value="">All statuses</option>
     {% for s in InvoiceStatus %}
       <option value="{{ s.value }}" {{ 'selected' if status == s.value }}>{{ s.value|title }}</option>

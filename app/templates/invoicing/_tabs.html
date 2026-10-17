@@ -1,0 +1,6 @@
+{# Invoices and the credit / debit notes against them share one menu entry
+   (Sell > Invoices) - these tabs switch between the two lists. #}
+<nav class="subnav" aria-label="Invoices and notes">
+  <a href="{{ url_for('invoicing.list_invoices') }}" class="{{ 'active' if request.blueprint == 'invoicing' }}">Invoices</a>
+  <a href="{{ url_for('notes.list_notes') }}" class="{{ 'active' if request.blueprint == 'notes' }}">Credit &amp; debit notes</a>
+</nav>

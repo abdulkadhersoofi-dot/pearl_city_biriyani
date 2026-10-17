@@ -20,8 +20,8 @@
   </div>
 </div>
 {% include "reports/_owner_summary_body.html" %}
-<div class="card" style="margin-top:16px;">
-  <h2 style="margin-top:0;">The message</h2>
+<div class="card mt-16">
+  <h2 class="mt-0">The message</h2>
   <pre class="summary-text">{{ text }}</pre>
   {% if not email_ready %}<p class="text-muted">Email isn't set up on this server (SMTP_HOST / SMTP_FROM) - WhatsApp works without it.</p>{% endif %}
 </div>

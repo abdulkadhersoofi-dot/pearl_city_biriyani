@@ -7,7 +7,7 @@
 <form method="post" enctype="multipart/form-data"
       x-data='expenseForm({{ (form.get("is_gst_bill") == "1")|tojson }}, {{ (form.get("is_rcm") == "1")|tojson }}, {{ (form.get("amount_includes_gst") == "1")|tojson }})'>
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  <div class="card" style="margin-bottom:16px;">
+  <div class="card mb-16">
     <div class="form-grid">
       <label class="field"><span class="field-label">Date</span>
         <input type="date" name="expense_date" class="field-input" max="{{ today.isoformat() }}" value="{{ form.get('expense_date', '') }}" required></label>
@@ -42,11 +42,11 @@
         </select></label>
       {% endif %}
     </div>
-    <label class="row" style="gap:8px; align-items:center; margin-top:8px;">
+    <label class="row gap-8 items-center mt-8">
       <input type="checkbox" name="is_gst_bill" value="1" x-model="gst"> This is a GST bill (the supplier charged GST)</label>
   </div>
 
-  <div class="card" style="margin-bottom:16px;" x-show="gst">
+  <div class="card mb-16" x-show="gst">
     <h2 class="mt-0">GST bill</h2>
     {% if not claims_itc %}<p class="field-help">Your business isn't a regular GST registration, so GST on expenses can't be claimed back - it's recorded as part of the cost.</p>{% endif %}
     <div class="form-grid">
@@ -68,22 +68,22 @@
         <select name="gstin_id" class="field-input">{% for g in gstins %}<option value="{{ g.id }}" {{ 'selected' if form.get('gstin_id') == g.id|string }}>{{ g.display_label }}</option>{% endfor %}</select></label>
       {% endif %}
     </div>
-    <label class="row" style="gap:8px; align-items:center;" x-show="!rcm"><input type="checkbox" name="amount_includes_gst" value="1" x-model="incl"> The amount above is the bill total, GST included</label>
-    <label class="row" style="gap:8px; align-items:center; margin-top:6px;"><input type="checkbox" name="is_rcm" value="1" x-model="rcm"> Reverse charge - the supplier doesn't charge GST; you pay it to the government</label>
+    <label class="row gap-8 items-center" x-show="!rcm"><input type="checkbox" name="amount_includes_gst" value="1" x-model="incl"> The amount above is the bill total, GST included</label>
+    <label class="row gap-8 items-center mt-6"><input type="checkbox" name="is_rcm" value="1" x-model="rcm"> Reverse charge - the supplier doesn't charge GST; you pay it to the government</label>
     <p class="text-muted" x-show="amount > 0">Taxable <strong x-text="money(taxable())"></strong> + GST <strong x-text="money(tax())"></strong>
       <span x-show="!rcm">= paid <strong x-text="money(taxable() + tax())"></strong></span>
       <span x-show="rcm">- you pay the supplier <strong x-text="money(taxable())"></strong> and the GST to the government</span>
       <small>(a preview; the saved figures are worked out exactly)</small></p>
   </div>
 
-  <div class="card form-grid" style="margin-bottom:16px;">
+  <div class="card form-grid mb-16">
     <label class="field"><span class="field-label">Bill photo or PDF (optional)</span>
       <input type="file" name="attachment" accept=".pdf,.jpg,.jpeg,.png" class="field-input">
       {% if expense and expense.attachment_id %}<span class="field-help">A bill is already attached - choose a file only to replace it.</span>{% endif %}</label>
     <label class="field"><span class="field-label">Notes</span>
       <input type="text" name="notes" class="field-input" value="{{ form.get('notes', '') }}"></label>
   </div>
-  <div class="row" style="justify-content:flex-end; gap:8px;">
+  <div class="row justify-end gap-8">
     <a href="{{ url_for('expenses.index') }}" class="btn btn-quiet">Cancel</a>
     <button name="action" value="draft" class="btn btn-secondary">Save as draft</button>
     <button name="action" value="post" class="btn btn-primary">Post expense</button>

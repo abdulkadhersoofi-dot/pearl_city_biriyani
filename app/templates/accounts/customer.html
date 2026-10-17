@@ -20,7 +20,7 @@
 </div>
 {% include "accounts/_nav.html" %}
 
-<div class="card" style="margin-bottom:16px;">
+<div class="card mb-16">
   <div class="form-grid">
     {% for name, _, _ in buckets %}<div><strong>{{ name }} days</strong><p>{{ '%.2f'|format(ageing[name]) }}</p></div>{% endfor %}
     <div><strong>On account</strong><p>{{ '%.2f'|format(ageing.on_account) }}</p></div>
@@ -31,11 +31,11 @@
 <h2>Open bills</h2>
 {% with items=account.open_items, inputs=False %}{% include "accounts/_open_items.html" %}{% endwith %}
 
-<div class="row" style="justify-content:space-between; align-items:flex-end; margin-top:16px;">
+<div class="row justify-between items-end mt-16">
   <h2 class="mt-0">Ledger</h2>
-  <form method="get" action="{{ url_for('accounts.customer_statement', customer_id=customer.id) }}" target="_blank" class="row" style="gap:8px; align-items:flex-end;">
-    <label class="field" style="margin:0;"><span class="field-label">Statement from</span><input type="date" name="start" value="{{ statement_start.isoformat() }}" class="field-input"></label>
-    <label class="field" style="margin:0;"><span class="field-label">to</span><input type="date" name="end" value="{{ today.isoformat() }}" class="field-input"></label>
+  <form method="get" action="{{ url_for('accounts.customer_statement', customer_id=customer.id) }}" target="_blank" class="row gap-8 items-end">
+    <label class="field m-0"><span class="field-label">Statement from</span><input type="date" name="start" value="{{ statement_start.isoformat() }}" class="field-input"></label>
+    <label class="field m-0"><span class="field-label">to</span><input type="date" name="end" value="{{ today.isoformat() }}" class="field-input"></label>
     <button class="btn btn-secondary">Statement PDF</button>
   </form>
 </div>

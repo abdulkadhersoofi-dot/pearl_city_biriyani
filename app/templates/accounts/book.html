@@ -9,12 +9,12 @@
 </div>
 {% include "accounts/_nav.html" %}
 <form class="search-bar" method="get">
-  <label class="field" style="margin:0;"><span class="field-label">From</span><input type="date" name="start" value="{{ start.isoformat() }}" class="field-input"></label>
-  <label class="field" style="margin:0;"><span class="field-label">To</span><input type="date" name="end" value="{{ end.isoformat() }}" class="field-input"></label>
+  <label class="field m-0"><span class="field-label">From</span><input type="date" name="start" value="{{ start.isoformat() }}" class="field-input"></label>
+  <label class="field m-0"><span class="field-label">To</span><input type="date" name="end" value="{{ end.isoformat() }}" class="field-input"></label>
   <button class="btn btn-secondary">Show</button>
 </form>
 {% if data.before_opening %}<p class="text-muted">Your books here start on {{ data.opening_date.strftime('%d %b %Y') }} - nothing before that is counted.</p>{% endif %}
-<div class="table-wrap card" style="margin-bottom:16px;">
+<div class="table-wrap card mb-16">
   <table>
     <thead><tr><th>Date</th><th>Particulars</th><th>Document</th><th class="num">In</th><th class="num">Out</th><th class="num">Balance</th></tr></thead>
     <tbody>

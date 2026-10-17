@@ -13,7 +13,7 @@
   </div>
 </div>
 
-<div class="card" style="margin-bottom:16px;">
+<div class="card mb-16">
   <div class="form-grid">
     <div><strong>Billed to</strong><p>{{ invoice.bill_to.name }}{% if invoice.bill_to.gstin %}<br>GSTIN: {{ invoice.bill_to.gstin }}{% endif %}{% if invoice.bill_to.email %}<br>{{ invoice.bill_to.email }}{% endif %}</p></div>
     <div><strong>Invoice date</strong><p>{{ invoice.invoice_date.strftime('%d %b %Y') }}</p></div>
@@ -40,8 +40,8 @@
 </div>
 
 {% if upi_link %}
-<div class="card" style="margin-top:16px; text-align:center;">
-  <h2 style="margin-top:0;">Pay by UPI</h2>
+<div class="card mt-16 text-center">
+  <h2 class="mt-0">Pay by UPI</h2>
   <img src="{{ upi_qr }}" alt="UPI QR code" width="200" height="200">
   <p><a href="{{ upi_link }}" class="btn btn-primary">Pay Rs. {{ '%.2f'|format(invoice.grand_total) }} with a UPI app</a></p>
   <p class="text-muted">Scan with any UPI app, or tap on a phone. The firm marks the invoice paid once the money arrives.</p>
@@ -49,20 +49,20 @@
 {% endif %}
 
 {% if invoice.status.value == 'paid' %}
-<div class="card" style="margin-top:16px;"><p style="margin:0;"><strong>Paid</strong> {{ invoice.paid_at|ist }}{% if invoice.payment_reference %} - ref. {{ invoice.payment_reference }}{% endif %}.</p></div>
+<div class="card mt-16"><p class="m-0"><strong>Paid</strong> {{ invoice.paid_at|ist }}{% if invoice.payment_reference %} - ref. {{ invoice.payment_reference }}{% endif %}.</p></div>
 {% elif invoice.status.value == 'void' %}
-<div class="card" style="margin-top:16px;"><p style="margin:0;"><strong>Voided</strong> {{ invoice.voided_at|ist }} by {{ invoice.voided_by.name if invoice.voided_by else '-' }} - {{ invoice.void_reason }}</p></div>
+<div class="card mt-16"><p class="m-0"><strong>Voided</strong> {{ invoice.voided_at|ist }} by {{ invoice.voided_by.name if invoice.voided_by else '-' }} - {{ invoice.void_reason }}</p></div>
 {% elif current_user.is_super_admin %}
-<div class="card stack" style="margin-top:16px;">
-  <form method="post" action="{{ url_for('subscriptions.mark_paid', invoice_id=invoice.id) }}" class="row" style="flex-wrap:wrap;">
+<div class="card stack mt-16">
+  <form method="post" action="{{ url_for('subscriptions.mark_paid', invoice_id=invoice.id) }}" class="row flex-wrap">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <input name="reference" class="field-input" placeholder="UPI / bank reference (optional)" style="max-width:260px;">
+    <input name="reference" class="field-input maxw-260" placeholder="UPI / bank reference (optional)">
     <button class="btn btn-primary">Mark paid</button>
   </form>
-  <form method="post" action="{{ url_for('subscriptions.void', invoice_id=invoice.id) }}" class="row" style="flex-wrap:wrap;"
+  <form method="post" action="{{ url_for('subscriptions.void', invoice_id=invoice.id) }}" class="row flex-wrap"
         onsubmit="return confirm('Void {{ invoice.number }}? It stays on record as voided.');">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <input name="reason" class="field-input" placeholder="Reason to void" required style="max-width:260px;">
+    <input name="reason" class="field-input maxw-260" placeholder="Reason to void" required>
     <button class="btn btn-quiet">Void</button>
   </form>
 </div>

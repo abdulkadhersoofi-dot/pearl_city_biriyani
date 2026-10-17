@@ -15,7 +15,7 @@
   </div>
 </div>
 
-<div class="card" style="margin-bottom:20px;">
+<div class="card mb-20">
   <div class="form-grid">
     <div><strong>Customer</strong><p>{{ note.customer_snapshot.name }}<br>
       {% if note.customer_snapshot.gstin %}GSTIN: {{ note.customer_snapshot.gstin }}<br>{% endif %}
@@ -58,18 +58,18 @@
 {% with doc=note %}{% include "einvoice/_irn_panel.html" %}{% endwith %}
 
 {% if note.status.value == 'issued' and not (note.irn and not note.irn_cancelled_at) %}
-<div class="card" style="margin-top:20px;">
-  <h2 style="margin-top:0;">Void this {{ document_label|lower }}</h2>
+<div class="card mt-20">
+  <h2 class="mt-0">Void this {{ document_label|lower }}</h2>
   <p class="text-muted">Notes are never deleted - voiding keeps it on record with the reason, for audit.</p>
   <form method="post" action="{{ url_for('notes.void_note_route', note_id=note.id) }}"
         onsubmit="return confirm('Void {{ note.note_number }}? This cannot be undone.');" class="row">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <input type="text" name="reason" placeholder="Reason for voiding" required class="field-input" style="flex:1; min-width:200px;">
+    <input type="text" name="reason" placeholder="Reason for voiding" required class="field-input grow minw-200">
     <button class="btn btn-danger">Void</button>
   </form>
 </div>
 {% elif note.status.value == 'void' %}
-<div class="card" style="margin-top:20px;">
+<div class="card mt-20">
   <p><strong>Voided</strong> on {{ note.voided_at.strftime('%d %b %Y %H:%M') }} by {{ note.voided_by.name if note.voided_by else '-' }}.</p>
   <p class="text-muted">Reason: {{ note.void_reason }}</p>
 </div>

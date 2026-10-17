@@ -218,9 +218,9 @@
   <div class="card day-open-card">
     <h2 class="mt-0">Open the day</h2>
     <p class="text-muted mt-0">Count the cash in the drawer before the first bill.</p>
-    <form method="post" action="{{ url_for('pos.day_open') }}" class="row" style="gap:10px; align-items:flex-end;">
+    <form method="post" action="{{ url_for('pos.day_open') }}" class="row gap-10 items-end">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <label class="field" style="margin:0;">
+      <label class="field m-0">
         <span class="field-label">Opening cash (Rs.)</span>
         <input type="number" name="opening_cash" min="0" step="0.01" class="field-input" value="0" required>
       </label>
@@ -236,9 +236,9 @@
     </div>
   </template>
 
-  <details class="card" style="margin-bottom:16px;" x-show="stock.length > 0" x-cloak>
+  <details class="card mb-16" x-show="stock.length > 0" x-cloak>
     <summary>Today's stock ({{ stock_status|length }} item{{ 's' if stock_status|length != 1 }})</summary>
-    <table style="margin-top:10px;">
+    <table class="mt-10">
       <thead><tr><th>Item</th><th>Remaining</th></tr></thead>
       <tbody>
         <template x-for="s in stock" :key="s.product_id">
@@ -256,7 +256,7 @@
          plain sight here instead of behind a toggle, so it never gets
          forgotten. -->
     <div class="held-bills-panel">
-      <h2 style="margin:0 0 4px;">Held bills ({{ held_bills|length }})</h2>
+      <h2 class="m-0 mb-4">Held bills ({{ held_bills|length }})</h2>
       {% for hb in held_bills %}
       <div class="held-bill-card">
         <div class="held-bill-label">{{ hb.hold_label or ('Bill #' ~ hb.id) }}</div>
@@ -273,17 +273,17 @@
         </div>
       </div>
       {% else %}
-      <p class="text-muted" style="margin:0;">No bills held right now.</p>
+      <p class="text-muted m-0">No bills held right now.</p>
       {% endfor %}
     </div>
 
     <div>
-      <div class="row" style="align-items:center; gap:10px;">
-        <input type="text" class="field-input pos-search" placeholder="Search / scan"
-               x-model="search" x-ref="search" autofocus style="flex:1; margin-bottom:0;"
+      <div class="row items-center gap-10">
+        <input type="text" class="field-input pos-search grow mb-0" placeholder="Search / scan"
+               x-model="search" x-ref="search" autofocus
                @keydown.enter.prevent="searchEnter()">
         <template x-if="categoryWise && !search">
-          <div class="row" style="gap:8px; flex-shrink:0;">
+          <div class="row gap-8 shrink-0">
             <button type="button" class="btn btn-quiet btn-sm" @click="expandAllCategories()">Expand all</button>
             <button type="button" class="btn btn-quiet btn-sm" @click="collapseAllCategories()">Collapse all</button>
           </div>
@@ -307,7 +307,7 @@
            always the flat filtered grid below, same as non-category
            tenants always see). -->
       <template x-if="categoryWise && !search">
-        <div class="category-tree" style="margin-top:16px;">
+        <div class="category-tree mt-16">
           <template x-for="cat in categoryTree" :key="'cat-'+cat.id">
             <div class="category-group">
               <button type="button" class="category-header" @click="toggleGroup('cat-'+cat.id)">
@@ -316,7 +316,7 @@
               </button>
               <div class="category-body" x-show="isExpanded('cat-'+cat.id)" x-cloak>
                 <template x-if="cat.loose_products.length">
-                  <div class="product-grid" style="margin-bottom:12px;">
+                  <div class="product-grid mb-12">
                     <template x-for="p in cat.loose_products" :key="p.id">
                       <button type="button" class="product-tile" :class="p.sold_out ? 'sold-out' : ''" @click="addToCart(p)">
                         <div class="tile-image">
@@ -336,7 +336,7 @@
                       <span x-text="sub.name"></span>
                       <span x-text="isExpanded('sub-'+sub.id) ? '−' : '+'"></span>
                     </button>
-                    <div class="product-grid" x-show="isExpanded('sub-'+sub.id)" x-cloak style="margin-top:10px;">
+                    <div class="product-grid mt-10" x-show="isExpanded('sub-'+sub.id)" x-cloak>
                       <template x-for="p in sub.products" :key="p.id">
                         <button type="button" class="product-tile" :class="p.sold_out ? 'sold-out' : ''" @click="addToCart(p)">
                           <div class="tile-image">
@@ -381,7 +381,7 @@
       </template>
 
       <template x-if="!categoryWise || search">
-        <div style="margin-top:16px;">
+        <div class="mt-16">
           <div class="product-grid">
             <template x-for="p in filteredProducts()" :key="p.id">
               <button type="button" class="product-tile" :class="p.sold_out ? 'sold-out' : ''" @click="addToCart(p)">
@@ -395,7 +395,7 @@
               </button>
             </template>
           </div>
-          <p class="text-muted" x-show="filteredProducts().length === 0" style="margin-top:20px;">
+          <p class="text-muted mt-20" x-show="filteredProducts().length === 0">
             No items match "<span x-text="search"></span>".
           </p>
         </div>
@@ -403,8 +403,8 @@
     </div>
 
     <div class="cart-panel">
-      <div class="row" style="justify-content:space-between; align-items:center;">
-        <h2 style="margin:0;">Cart</h2>
+      <div class="row justify-between items-center">
+        <h2 class="m-0">Cart</h2>
         <button type="button" class="btn btn-quiet" x-show="cart.length > 0" @click="clearCart()">Clear all</button>
       </div>
 
@@ -422,7 +422,7 @@
           </template>
           <a :href="MODULES.restaurant.tables_url" class="btn btn-quiet btn-sm">Tables</a>
           <template x-if="orderType === 'dine_in' && MODULES.restaurant.service_pct > 0">
-            <label class="text-muted" style="font-size:0.9rem;"><input type="checkbox" x-model="serviceCharge"> Service charge <span x-text="MODULES.restaurant.service_pct + '%'"></span></label>
+            <label class="text-muted fs-sm2"><input type="checkbox" x-model="serviceCharge"> Service charge <span x-text="MODULES.restaurant.service_pct + '%'"></span></label>
           </template>
         </div>
       </template>
@@ -493,14 +493,14 @@
       <template x-for="c in charges" :key="'chg-'+c.description">
         <div class="charge-row"><span x-text="c.description"></span><span x-text="'Rs. ' + chargeAmount(c).toFixed(2)"></span></div>
       </template>
-      <p class="text-muted" x-show="quoteError" x-text="quoteError" style="color:var(--color-danger); margin:4px 0;"></p>
+      <p class="text-muted text-danger m-0 mt-4 mb-4" x-show="quoteError" x-text="quoteError"></p>
       <div class="cart-total-row">
         <span>Total</span>
         <span x-text="'Rs. ' + cartTotal().toFixed(2)"></span>
       </div>
 
       <template x-if="MODULES.restaurant && MODULES.restaurant.table">
-        <button type="button" class="btn btn-secondary btn-lg btn-block" style="margin-bottom:8px;" :disabled="cart.length === 0 || submitting"
+        <button type="button" class="btn btn-secondary btn-lg btn-block mb-8" :disabled="cart.length === 0 || submitting"
                 @click="sendKot()">Send KOT &amp; save order</button>
       </template>
       <button type="button" class="btn btn-primary btn-lg btn-block" :disabled="cart.length === 0"
@@ -548,9 +548,9 @@
           <label class="field"><span class="field-label">Doctor's registration no.<span x-show="!needsRegister()"> (optional)</span></span><input type="text" class="field-input" x-model="rx.doctor_reg_no"></label>
           <label class="field"><span class="field-label">Patient's name</span><input type="text" class="field-input" x-model="rx.patient"></label>
           <label class="field"><span class="field-label">Patient's address<span x-show="!needsRegister()"> (optional)</span></span><input type="text" class="field-input" x-model="rx.patient_address"></label>
-          <p class="text-muted" x-show="checkoutError" x-text="checkoutError" style="color:var(--color-danger);"></p>
+          <p class="text-muted text-danger" x-show="checkoutError" x-text="checkoutError"></p>
           <button type="button" class="btn btn-primary btn-lg btn-block" @click="rxDone()">Next</button>
-          <button type="button" class="btn btn-quiet" style="margin-top:10px;" @click="checkoutStep = 'idle'">Cancel</button>
+          <button type="button" class="btn btn-quiet mt-10" @click="checkoutStep = 'idle'">Cancel</button>
         </div>
       </template>
       <template x-if="checkoutStep === 'payment'">
@@ -562,18 +562,18 @@
                 <div class="charge-row"><span x-text="c.label"></span><span><span x-text="'- Rs. ' + Number(c.amount).toFixed(2)"></span> <button type="button" class="btn btn-quiet btn-sm" @click="credits.splice(ci, 1)">&times;</button></span></div>
               </template>
               <template x-if="MODULES.jewellery">
-                <div class="row" style="gap:6px; margin-top:6px;">
-                  <input type="text" class="field-input" style="margin:0; flex:1;" placeholder="Old gold voucher no. (OG/...)" x-model="creditInput.voucher">
+                <div class="row gap-6 mt-6">
+                  <input type="text" class="field-input m-0 grow" placeholder="Old gold voucher no. (OG/...)" x-model="creditInput.voucher">
                   <button type="button" class="btn btn-secondary btn-sm" @click="addOldGold()">Use old gold</button>
                 </div>
               </template>
               <template x-if="MODULES.loyalty && customer">
-                <div class="row" style="gap:6px; margin-top:6px;">
-                  <input type="number" class="field-input" style="margin:0; flex:1;" min="0" step="1" :placeholder="'Points to use (' + (customer.points || 0) + ' held)'" x-model="creditInput.points">
+                <div class="row gap-6 mt-6">
+                  <input type="number" class="field-input m-0 grow" min="0" step="1" :placeholder="'Points to use (' + (customer.points || 0) + ' held)'" x-model="creditInput.points">
                   <button type="button" class="btn btn-secondary btn-sm" @click="addPoints()">Use points</button>
                 </div>
               </template>
-              <p class="text-muted" x-show="creditInput.error" x-text="creditInput.error" style="color:var(--color-danger); margin:4px 0 0;"></p>
+              <p class="text-muted text-danger m-0 mt-4" x-show="creditInput.error" x-text="creditInput.error"></p>
             </div>
           </template>
           <p class="text-muted mt-0" x-show="exchangeApplied() > 0"
@@ -587,7 +587,7 @@
             <button type="button" class="btn btn-primary btn-block" @click="selectPayment('exchange')">Paid in full by credits</button>
           </template>
           <template x-if="paymentModes.length > 1">
-            <button type="button" class="btn btn-secondary btn-block" style="margin-bottom:10px;" @click="startSplit()">Split payment</button>
+            <button type="button" class="btn btn-secondary btn-block mb-10" @click="startSplit()">Split payment</button>
           </template>
           <button type="button" class="btn btn-quiet" @click="checkoutStep = 'idle'">Cancel</button>
         </div>
@@ -616,11 +616,11 @@
               <input type="number" class="field-input" min="0" step="0.01" x-model="cashTendered">
             </label>
           </template>
-          <p class="text-muted" x-show="checkoutError" x-text="checkoutError" style="color:var(--color-danger);"></p>
+          <p class="text-muted text-danger" x-show="checkoutError" x-text="checkoutError"></p>
           <button type="button" class="btn btn-primary btn-lg btn-block" :disabled="submitting || splitRemaining() !== 0" @click="confirmCheckout()">
             <span x-text="submitting ? 'Please wait...' : 'Confirm'"></span>
           </button>
-          <button type="button" class="btn btn-quiet" style="margin-top:10px;" @click="checkoutStep = 'payment'" :disabled="submitting">Back</button>
+          <button type="button" class="btn btn-quiet mt-10" @click="checkoutStep = 'payment'" :disabled="submitting">Back</button>
         </div>
       </template>
 
@@ -631,7 +631,7 @@
           <p class="text-muted">Paid via <span x-text="modeLabel(paymentMode).toUpperCase()"></span><span x-show="exchangeApplied() > 0 && paymentMode !== 'exchange'" x-text="' + exchange credit Rs. ' + exchangeApplied().toFixed(2)"></span></p>
           <template x-if="paymentMode === 'cash'">
             <div class="tender-box">
-              <label class="field" style="margin:0;">
+              <label class="field m-0">
                 <span class="field-label">Cash received (optional)</span>
                 <input type="number" class="field-input tender-input" min="0" step="0.01" x-model="cashTendered" x-ref="tender">
               </label>
@@ -653,11 +653,11 @@
           <template x-if="paymentMode === 'credit'">
             <p class="text-muted" x-text="customer ? 'On ' + customer.name + '\'s account - to be paid later.' : 'Add a customer to the bill first.'"></p>
           </template>
-          <p class="text-muted" x-show="checkoutError" x-text="checkoutError" style="color:var(--color-danger);"></p>
+          <p class="text-muted text-danger" x-show="checkoutError" x-text="checkoutError"></p>
           <button type="button" class="btn btn-primary btn-lg btn-block" :disabled="submitting || (paymentMode === 'cash' && changeDue() !== null && changeDue() < 0)" @click="confirmCheckout()">
             <span x-text="submitting ? 'Please wait...' : 'Confirm'"></span>
           </button>
-          <button type="button" class="btn btn-quiet" style="margin-top:10px;" @click="checkoutStep = 'payment'" :disabled="submitting">Back</button>
+          <button type="button" class="btn btn-quiet mt-10" @click="checkoutStep = 'payment'" :disabled="submitting">Back</button>
         </div>
       </template>
 
@@ -669,11 +669,11 @@
           <p class="change-due" x-show="completedChange !== null && completedChange > 0" x-text="'Give change: Rs. ' + (completedChange || 0).toFixed(2)"></p>
           <p class="text-muted" x-show="creditWarning" x-text="creditWarning" style="color:#8a5a00; font-weight:600;"></p>
           <button type="button" class="btn btn-secondary btn-block" @click="printReceipt(DEFAULT_RECEIPT_FORMAT, false)">Reprint</button>
-          <button type="button" class="btn btn-secondary btn-block" style="margin-top:10px;" @click="shareBill()" x-show="!offlineQueued">Share on WhatsApp</button>
+          <button type="button" class="btn btn-secondary btn-block mt-10" @click="shareBill()" x-show="!offlineQueued">Share on WhatsApp</button>
           <template x-if="completedKotPdf">
-            <button type="button" class="btn btn-secondary btn-block" style="margin-top:10px;" @click="printUrl(completedKotPdf)">Print KOT</button>
+            <button type="button" class="btn btn-secondary btn-block mt-10" @click="printUrl(completedKotPdf)">Print KOT</button>
           </template>
-          <button type="button" class="btn btn-primary btn-block" style="margin-top:10px;" @click="newSale()">New sale</button>
+          <button type="button" class="btn btn-primary btn-block mt-10" @click="newSale()">New sale</button>
         </div>
       </template>
     </div>
@@ -704,7 +704,7 @@
       <template x-if="lineEditor.altUnit">
         <div class="field">
           <span class="field-label">Sold by</span>
-          <div class="row" style="gap:6px;">
+          <div class="row gap-6">
             <button type="button" class="btn btn-sm" :class="!lineEditor.alt ? 'btn-primary' : 'btn-quiet'" @click="lineEditor.alt = false" x-text="lineEditor.baseUnit"></button>
             <button type="button" class="btn btn-sm" :class="lineEditor.alt ? 'btn-primary' : 'btn-quiet'" @click="lineEditor.alt = true" x-text="lineEditor.altUnit + ' of ' + lineEditor.altFactor"></button>
           </div>
@@ -752,9 +752,9 @@
           </div>
         </div>
       </template>
-      <p class="text-muted" x-show="lineEditor.error" x-text="lineEditor.error" style="color:var(--color-danger);"></p>
+      <p class="text-muted text-danger" x-show="lineEditor.error" x-text="lineEditor.error"></p>
       <button type="button" class="btn btn-primary btn-lg btn-block" @click="saveLine()">Done</button>
-      <button type="button" class="btn btn-quiet" style="margin-top:10px;" @click="lineEditor.open = false">Cancel</button>
+      <button type="button" class="btn btn-quiet mt-10" @click="lineEditor.open = false">Cancel</button>
     </div>
   </div>
 
@@ -770,9 +770,9 @@
         </select>
         <input type="number" class="field-input" min="0" step="0.01" x-model="billDiscEditor.value">
       </div>
-      <p class="text-muted" x-show="billDiscEditor.error" x-text="billDiscEditor.error" style="color:var(--color-danger);"></p>
-      <button type="button" class="btn btn-primary btn-lg btn-block" style="margin-top:16px;" @click="saveBillDiscount()">Apply</button>
-      <button type="button" class="btn btn-quiet" style="margin-top:10px;" @click="billDisc = {kind: 'percent', value: 0}; billDiscEditor.open = false">Remove discount</button>
+      <p class="text-muted text-danger" x-show="billDiscEditor.error" x-text="billDiscEditor.error"></p>
+      <button type="button" class="btn btn-primary btn-lg btn-block mt-16" @click="saveBillDiscount()">Apply</button>
+      <button type="button" class="btn btn-quiet mt-10" @click="billDisc = {kind: 'percent', value: 0}; billDiscEditor.open = false">Remove discount</button>
     </div>
   </div>
 
@@ -797,12 +797,12 @@
         <input type="text" class="field-input" placeholder="GSTIN (only for a business)" x-model="customerEditor.gstin">
         <button type="button" class="btn btn-primary btn-block" @click="addCustomer()">Add to bill</button>
       </details>
-      <p class="text-muted" x-show="customerEditor.error" x-text="customerEditor.error" style="color:var(--color-danger);"></p>
-      <button type="button" class="btn btn-quiet" style="margin-top:10px;" @click="customerEditor.open = false">Close</button>
+      <p class="text-muted text-danger" x-show="customerEditor.error" x-text="customerEditor.error"></p>
+      <button type="button" class="btn btn-quiet mt-10" @click="customerEditor.open = false">Close</button>
     </div>
   </div>
 
-  <iframe id="receipt-print-frame" style="display:none;"></iframe>
+  <iframe class="d-none" id="receipt-print-frame"></iframe>
   <p class="pos-version">ARFA POS &middot; version {{ app_version }}</p>
 </div>
 {% endblock %}

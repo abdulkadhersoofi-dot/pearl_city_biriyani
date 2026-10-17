@@ -80,10 +80,9 @@ def _client_groups() -> list[Group]:
             Link("POS", "pos.terminal", "monitor", blueprints=("pos",), keywords="counter billing bill till"),
             Link("Tables", "restaurant.tables", "utensils-crossed", feature="restaurant_mode",
                  blueprints=("restaurant",), keywords="restaurant dine kot"),
-            Link("Invoices", "invoicing.list_invoices", "receipt-text", blueprints=("invoicing",),
-                 keywords="tax invoice b2b bill of supply"),
-            Link("Credit & debit notes", "notes.list_notes", "file-minus", blueprints=("notes",),
-                 keywords="credit note debit note return"),
+            # Credit / debit notes are a tab inside Invoices (invoicing/_tabs.html).
+            Link("Invoices", "invoicing.list_invoices", "receipt-text", blueprints=("invoicing", "notes"),
+                 keywords="tax invoice b2b bill of supply credit note debit note"),
             Link("Quotes & orders", "sales.documents", "file-text", feature="sales_documents",
                  blueprints=("sales",), keywords="quotation proforma sales order challan recurring"),
             # Only when quotes are off - otherwise Recurring sits inside
@@ -211,7 +210,7 @@ def _new_actions() -> list[Link]:
     return [
         Link("Counter bill", "pos.terminal", "monitor", keywords="pos sale"),
         Link("Tax invoice", "invoicing.new_invoice", "receipt-text", keywords="invoice"),
-        Link("Credit or debit note", "notes.new_note", "file-minus"),
+        # (Credit / debit notes start from an issued invoice, not from here.)
         Link("Quotation or order", "sales.new_document", "file-text", feature="sales_documents",
              keywords="proforma sales order challan"),
         Link("Job card", "jobs.new", "wrench", feature="job_cards", keywords="repair"),
@@ -238,6 +237,7 @@ def _more_screens() -> list[tuple[str, Link]]:
     from search so nobody has to remember where a tab sits."""
     s, b, r, p = "Sell", "Stock & buying", "Reports & GST", "People & money"
     return [
+        (s, Link("Credit & debit notes", "notes.list_notes", "file-minus", keywords="credit note debit note return")),
         (s, Link("Day-book", "pos.day_book", "list", keywords="today bills reprint refund")),
         (s, Link("Z-report", "pos.z_report_view", "file-text", keywords="end of day x report")),
         (s, Link("Close the day", "pos.day_close", "clock", feature="day_close", keywords="cash count drawer")),

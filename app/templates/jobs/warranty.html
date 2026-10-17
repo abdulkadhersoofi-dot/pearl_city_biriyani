@@ -2,12 +2,12 @@
 {% block title %}Warranty check - {{ firm_name }}{% endblock %}
 {% block content %}
 <div class="page-header"><div><h1>Warranty check</h1><p class="text-muted mt-0">Scan or type the IMEI / serial number.</p></div></div>
-<form method="get" class="row" style="gap:8px; margin-bottom:16px;">
-  <input type="text" name="q" value="{{ q }}" placeholder="IMEI / serial" class="field-input" style="margin:0; flex:1;" autofocus>
+<form method="get" class="row gap-8 mb-16">
+  <input type="text" name="q" value="{{ q }}" placeholder="IMEI / serial" class="field-input m-0 grow" autofocus>
   <button class="btn btn-primary">Check</button>
 </form>
 {% if q %}
-<div class="card" style="margin-bottom:16px;">
+<div class="card mb-16">
   {% if unit %}
   <h2 class="mt-0">{{ unit.product.name }}</h2>
   <p><strong>{{ unit.serial_no }}</strong> &middot; {{ unit.status.value|replace('_', ' ')|title }}</p>

@@ -4,10 +4,10 @@
 <div class="line-items table-wrap" x-data="stockLines()">
   <table class="stock-lines">
     <thead><tr>
-      <th style="min-width:220px;">Item</th>
-      <th style="width:120px;">{{ qty_label }}</th>
-      {% if show_cost %}<th style="width:130px;">Cost / unit <small class="text-muted">(optional)</small></th>{% endif %}
-      {% if show_batch %}<th style="width:140px;">Batch</th><th style="width:150px;">Expiry</th>{% endif %}
+      <th class="minw-220">Item</th>
+      <th class="w-120">{{ qty_label }}</th>
+      {% if show_cost %}<th class="w-130">Cost / unit <small class="text-muted">(optional)</small></th>{% endif %}
+      {% if show_batch %}<th class="w-140">Batch</th><th class="w-150">Expiry</th>{% endif %}
       <th style="width:40px;"></th>
     </tr></thead>
     <tbody>

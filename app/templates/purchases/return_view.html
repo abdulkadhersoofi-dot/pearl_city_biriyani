@@ -9,7 +9,7 @@
   <a href="{{ url_for('purchases.view_bill', bill_id=ret.purchase_bill_id) }}" class="btn btn-quiet">Purchase bill {{ ret.bill.number }}</a>
 </div>
 {% include "purchases/_nav.html" %}
-<div class="card" style="margin-bottom:16px;">
+<div class="card mb-16">
   <div class="form-grid">
     <div><strong>Supplier</strong><p>{{ ret.supplier_snapshot.name }}{% if ret.supplier_snapshot.gstin %}<br>GSTIN: {{ ret.supplier_snapshot.gstin }}{% endif %}</p></div>
     <div><strong>Date</strong><p>{{ ret.return_date.strftime('%d %b %Y') }}</p></div>
@@ -37,9 +37,9 @@
   <div class="totals-row"><span>ITC reversed</span><span>{{ '%.2f'|format(ret.itc_cgst + ret.itc_sgst + ret.itc_igst) }}</span></div>
 </div></div>
 {% if ret.status.value == 'posted' %}
-<form method="post" action="{{ url_for('purchases.void_return', return_id=ret.id) }}" class="card row void-box" style="gap:10px; align-items:flex-end;">
+<form method="post" action="{{ url_for('purchases.void_return', return_id=ret.id) }}" class="card row void-box gap-10 items-end">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  <label class="field" style="margin:0; flex:1;"><span class="field-label">Void this debit note - reason</span>
+  <label class="field m-0 grow"><span class="field-label">Void this debit note - reason</span>
     <input type="text" name="reason" class="field-input" required></label>
   <button class="btn btn-danger" onclick="return confirm('Void {{ ret.number }}? The goods come back into stock.');">Void</button>
 </form>

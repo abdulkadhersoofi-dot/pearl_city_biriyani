@@ -16,17 +16,17 @@
 {% with active_kind=doc.kind.value %}{% include "sales/_nav.html" %}{% endwith %}
 
 {% if doc.status.value == 'open' %}
-<div class="card row" style="gap:10px; align-items:flex-end; margin-bottom:16px;">
-  <form method="post" action="{{ url_for('sales.convert_document', doc_id=doc.id) }}" class="row" style="gap:10px; align-items:flex-end;">
+<div class="card row gap-10 items-end mb-16">
+  <form method="post" action="{{ url_for('sales.convert_document', doc_id=doc.id) }}" class="row gap-10 items-end">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <label class="field" style="margin:0;"><span class="field-label">Invoice date</span><input type="date" name="invoice_date" value="{{ today.isoformat() }}" class="field-input"></label>
+    <label class="field m-0"><span class="field-label">Invoice date</span><input type="date" name="invoice_date" value="{{ today.isoformat() }}" class="field-input"></label>
     <button class="btn btn-primary">Convert to {{ doc_type_labels[doc.invoice_document_type] }}</button>
   </form>
   <a href="{{ url_for('invoicing.new_invoice', from_document=doc.id) }}" class="btn btn-secondary">Edit &amp; invoice</a>
 </div>
 {% endif %}
 
-<div class="card" style="margin-bottom:16px;">
+<div class="card mb-16">
   <div class="form-grid">
     <div><strong>Date</strong><p>{{ doc.doc_date.strftime('%d %b %Y') }}</p></div>
     {% if doc.valid_until %}<div><strong>Valid until</strong><p>{{ doc.valid_until.strftime('%d %b %Y') }}</p></div>{% endif %}
@@ -39,7 +39,7 @@
   {% if doc.cancel_reason %}<p><strong>{{ 'Returned' if doc.status.value == 'returned' else 'Cancelled' }}:</strong> {{ doc.cancel_reason }}</p>{% endif %}
 </div>
 
-<div class="table-wrap card" style="margin-bottom:16px;">
+<div class="table-wrap card mb-16">
   <table>
     <thead><tr><th>#</th><th>Item</th><th>HSN/SAC</th><th class="num">Qty</th><th class="num">Rate</th><th class="num">Taxable</th><th class="num">GST</th><th class="num">Amount</th></tr></thead>
     <tbody>
@@ -56,15 +56,15 @@
 {% if doc.kind.value == 'delivery_challan' %}{% with source=doc %}{% include "einvoice/_eway_panel.html" %}{% endwith %}{% endif %}
 {% if doc.status.value == 'open' %}
 {% if doc.kind.value == 'delivery_challan' %}
-<form method="post" action="{{ url_for('sales.document_returned', doc_id=doc.id) }}" class="card row" style="gap:10px; align-items:flex-end; margin-bottom:16px;">
+<form method="post" action="{{ url_for('sales.document_returned', doc_id=doc.id) }}" class="card row gap-10 items-end mb-16">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  <label class="field" style="margin:0; flex:1;"><span class="field-label">Goods came back (job work done, approval goods refused) - note</span><input type="text" name="note" class="field-input"></label>
+  <label class="field m-0 grow"><span class="field-label">Goods came back (job work done, approval goods refused) - note</span><input type="text" name="note" class="field-input"></label>
   <button class="btn btn-secondary">Mark returned</button>
 </form>
 {% endif %}
-<form method="post" action="{{ url_for('sales.cancel_document', doc_id=doc.id) }}" class="card row void-box" style="gap:10px; align-items:flex-end;">
+<form method="post" action="{{ url_for('sales.cancel_document', doc_id=doc.id) }}" class="card row void-box gap-10 items-end">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  <label class="field" style="margin:0; flex:1;"><span class="field-label">Cancel this {{ doc.label|lower }} - reason</span><input type="text" name="reason" class="field-input" required></label>
+  <label class="field m-0 grow"><span class="field-label">Cancel this {{ doc.label|lower }} - reason</span><input type="text" name="reason" class="field-input" required></label>
   <button class="btn btn-danger" onclick="return confirm('Cancel {{ doc.number }}?');">Cancel</button>
 </form>
 {% endif %}

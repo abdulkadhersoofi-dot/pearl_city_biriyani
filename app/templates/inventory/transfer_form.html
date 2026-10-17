@@ -6,7 +6,7 @@
 {% include "inventory/_nav.html" %}
 <form method="post">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  <div class="card" style="margin-bottom:16px;">
+  <div class="card mb-16">
     <div class="form-grid">
       <label class="field"><span class="field-label">From</span>
         <select name="from_location_id" class="field-input">
@@ -30,7 +30,7 @@
     <p class="field-help">Goods moved between your own places aren't a sale - no GST is charged. A Delivery Challan is made for the goods to travel with.{% if has_feature('batch_expiry') %} Batch-tracked items leave earliest-expiry first.{% endif %}</p>
   </div>
   {{ stock_lines(products_json, rows or [], qty_label='Qty') }}
-  <div class="row" style="margin-top:16px; justify-content:flex-end;">
+  <div class="row mt-16 justify-end">
     <a href="{{ url_for('inventory.transfers') }}" class="btn btn-quiet">Cancel</a>
     <button class="btn btn-primary">Save transfer</button>
   </div>

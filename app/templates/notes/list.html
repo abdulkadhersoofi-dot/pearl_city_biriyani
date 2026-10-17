@@ -4,10 +4,11 @@
 <div class="page-header">
   <h1>Credit/Debit notes</h1>
 </div>
+{% include "invoicing/_tabs.html" %}
 <p class="text-muted mt-0">Notes are created from an invoice - open an issued invoice and use "Credit note" or "Debit note" there.</p>
 
 <form class="search-bar" method="get">
-  <select name="status" class="field-input" style="max-width:180px;">
+  <select name="status" class="field-input maxw-180">
     <option value="">All statuses</option>
     {% for s in NoteStatus %}
       <option value="{{ s.value }}" {{ 'selected' if status == s.value }}>{{ s.value|title }}</option>

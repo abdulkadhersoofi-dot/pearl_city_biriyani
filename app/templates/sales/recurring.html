@@ -11,7 +11,7 @@
 {% with active_kind=None %}{% include "sales/_nav.html" %}{% endwith %}
 
 <h2>Waiting to be issued{% if new_runs %} <small class="text-muted">({{ new_runs }} new)</small>{% endif %}</h2>
-<div class="table-wrap card" style="margin-bottom:16px;">
+<div class="table-wrap card mb-16">
   <table>
     <thead><tr><th>Due</th><th>Contract</th><th>Customer</th><th class="num">Approx. amount</th><th></th></tr></thead>
     <tbody>
@@ -23,13 +23,13 @@
         <td>{{ rec.customer.name }}</td>
         <td class="num">{% set ns = namespace(t=0) %}{% for l in rec.lines %}{% set ns.t = ns.t + (l.qty|float) * (l.rate|float) %}{% endfor %}{{ '%.2f'|format(ns.t) }}</td>
         <td>
-          <div class="row" style="gap:6px; justify-content:flex-end;">
+          <div class="row gap-6 justify-end">
             <form method="post" action="{{ url_for('sales.issue_run', run_id=run.id) }}">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-primary btn-sm">Issue</button></form>
             <a href="{{ url_for('invoicing.new_invoice', from_run=run.id) }}" class="btn btn-secondary btn-sm">Edit &amp; issue</a>
-            <form method="post" action="{{ url_for('sales.skip_run', run_id=run.id) }}" class="row" style="gap:4px;">
+            <form method="post" action="{{ url_for('sales.skip_run', run_id=run.id) }}" class="row gap-4">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <input type="text" name="reason" placeholder="Why skip?" class="field-input" style="max-width:140px;" required>
+              <input type="text" name="reason" placeholder="Why skip?" class="field-input maxw-140" required>
               <button class="btn btn-quiet btn-sm">Skip</button></form>
           </div>
         </td>
@@ -42,7 +42,7 @@
 </div>
 
 <h2>Contracts</h2>
-<div class="table-wrap card" style="margin-bottom:16px;">
+<div class="table-wrap card mb-16">
   <table>
     <thead><tr><th>Name</th><th>Customer</th><th>Repeats</th><th>Next</th><th>Ends</th><th></th></tr></thead>
     <tbody>

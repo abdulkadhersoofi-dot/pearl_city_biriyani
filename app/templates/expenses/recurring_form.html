@@ -43,7 +43,7 @@
   </div>
   <label class="field"><span class="field-label">Notes</span>
     <input type="text" name="notes" class="field-input" value="{{ form.get('notes', '') }}"></label>
-  <div class="row" style="justify-content:flex-end; gap:8px;">
+  <div class="row justify-end gap-8">
     <a href="{{ url_for('expenses.recurring') }}" class="btn btn-quiet">Cancel</a>
     <button class="btn btn-primary">Save</button>
   </div>

@@ -410,6 +410,16 @@ this list is just the index.
   stays the weighing/loyalty setup page). Templates under
   `templates/settings/` extend `settings/_layout.html`;
   `settingsForm` in `static/js/shell.js` drives the save bar.
+- **Interface redesign, stage 3: page patterns.** Shared CSS in
+  `static/css/app.css` ("Page patterns" and "Utilities" sections) and two
+  scripts at the end of `static/js/shell.js` (header actions into a
+  "More" menu - opt out with `data-keep` / `data-no-more`; list tables
+  labelled for phone stacking). Inline styles were converted to utility
+  classes by a one-off script (not in the repo); keep new templates on
+  the classes - `tests/test_redesign_pages.py` caps inline styles and
+  checks every utility class exists. Notes are a tab in Invoices
+  (`invoicing/_tabs.html`). GSTR-1/3B views default to the primary
+  active GSTIN when no `gstin_id` is given (`reports.routes._resolve_gstin`).
 
 ## 5. Chronological development history (this session)
 

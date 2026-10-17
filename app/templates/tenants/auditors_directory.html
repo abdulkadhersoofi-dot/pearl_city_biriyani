@@ -9,8 +9,8 @@
 </div>
 
 {% if current_user.is_super_admin and pending_tenants %}
-<div class="card" style="margin-bottom:20px; border-color: var(--color-danger, #b23b3b);">
-  <h2 style="margin-top:0;">Awaiting verification ({{ pending_tenants|length }})</h2>
+<div class="card card-danger mb-20">
+  <h2 class="mt-0">Awaiting verification ({{ pending_tenants|length }})</h2>
   <table>
     <thead><tr><th>Business</th><th>Onboarded by</th><th>Created</th><th></th></tr></thead>
     <tbody>
@@ -28,8 +28,8 @@
 {% endif %}
 
 {% if current_user.is_super_admin and pending_auditors %}
-<div class="card" style="margin-bottom:20px; border-color: var(--color-danger, #b23b3b);">
-  <h2 style="margin-top:0;">Auditors awaiting verification ({{ pending_auditors|length }})</h2>
+<div class="card card-danger mb-20">
+  <h2 class="mt-0">Auditors awaiting verification ({{ pending_auditors|length }})</h2>
   <table>
     <thead><tr><th>Name</th><th>Role</th><th>Created</th><th></th></tr></thead>
     <tbody>
@@ -47,8 +47,8 @@
 {% endif %}
 
 {% if current_user.is_super_admin and unallocated_tenants %}
-<div class="card" style="margin-bottom:20px;">
-  <h2 style="margin-top:0;">Unallocated clients ({{ unallocated_tenants|length }})</h2>
+<div class="card mb-20">
+  <h2 class="mt-0">Unallocated clients ({{ unallocated_tenants|length }})</h2>
   <table>
     <thead><tr><th>Business</th><th></th></tr></thead>
     <tbody>

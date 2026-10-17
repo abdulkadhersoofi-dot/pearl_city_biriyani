@@ -30,8 +30,15 @@ def _current_period() -> str:
     return f"{today.year:04d}-{today.month:02d}"
 
 
-def _resolve_gstin(gstin_id):
-    gstin = Gstin.query.filter_by(id=gstin_id, tenant_id=current_user.tenant_id).first()
+def _resolve_gstin(gstin_id, default=False):
+    """The signed-in client's GSTIN by id (404 for another client's). With
+    default=True and no id given - the menu's "GST returns" link - their
+    primary active GSTIN, else their first active one."""
+    if gstin_id is None and default:
+        active = Gstin.query.filter_by(tenant_id=current_user.tenant_id, is_active=True)
+        gstin = active.filter_by(is_primary=True).first() or active.order_by(Gstin.id).first()
+    else:
+        gstin = Gstin.query.filter_by(id=gstin_id, tenant_id=current_user.tenant_id).first()
     if not gstin:
         abort(404)
     return gstin
@@ -112,7 +119,7 @@ def gstr1_view():
     if tenant.registration_type != RegistrationType.REGULAR:
         flash("GSTR-1 applies to Regular scheme GSTINs - composition and unregistered clients don't file it.", "error")
         return redirect(url_for("reports.index"))
-    gstin = _resolve_gstin(request.args.get("gstin_id", type=int))
+    gstin = _resolve_gstin(request.args.get("gstin_id", type=int), default=True)
     period = request.args.get("period", _current_period())
     try:
         data = gstr1_data(tenant, gstin, period)
@@ -125,7 +132,7 @@ def gstr1_view():
 @reports_bp.route("/gstr1.xlsx")
 @roles_required(UserRole.CLIENT_ADMIN)
 def gstr1_xlsx():
-    data = gstr1_data(current_user.tenant, _resolve_gstin(request.args.get("gstin_id", type=int)), request.args.get("period", _current_period()))
+    data = gstr1_data(current_user.tenant, _resolve_gstin(request.args.get("gstin_id", type=int), default=True), request.args.get("period", _current_period()))
     buf = build_gstr1_workbook(data)
     return send_file(buf, as_attachment=True, download_name=f"GSTR1_{data['period']}.xlsx", mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
@@ -133,7 +140,7 @@ def gstr1_xlsx():
 @reports_bp.route("/gstr1.pdf")
 @roles_required(UserRole.CLIENT_ADMIN)
 def gstr1_pdf():
-    data = gstr1_data(current_user.tenant, _resolve_gstin(request.args.get("gstin_id", type=int)), request.args.get("period", _current_period()))
+    data = gstr1_data(current_user.tenant, _resolve_gstin(request.args.get("gstin_id", type=int), default=True), request.args.get("period", _current_period()))
     pdf_bytes = render_gstr1_pdf(data)
     return send_file(BytesIO(pdf_bytes), as_attachment=False, download_name=f"GSTR1_{data['period']}.pdf", mimetype="application/pdf")
 
@@ -141,7 +148,7 @@ def gstr1_pdf():
 @reports_bp.route("/gstr1.json")
 @roles_required(UserRole.CLIENT_ADMIN)
 def gstr1_json():
-    data = gstr1_data(current_user.tenant, _resolve_gstin(request.args.get("gstin_id", type=int)), request.args.get("period", _current_period()))
+    data = gstr1_data(current_user.tenant, _resolve_gstin(request.args.get("gstin_id", type=int), default=True), request.args.get("period", _current_period()))
     return send_file(BytesIO(to_json_bytes(data)), as_attachment=True, download_name=f"GSTR1_{data['period']}.json", mimetype="application/json")
 
 
@@ -152,7 +159,7 @@ def gstr3b_view():
     if tenant.registration_type != RegistrationType.REGULAR:
         flash("GSTR-3B applies to Regular scheme GSTINs - composition and unregistered clients don't file it.", "error")
         return redirect(url_for("reports.index"))
-    gstin = _resolve_gstin(request.args.get("gstin_id", type=int))
+    gstin = _resolve_gstin(request.args.get("gstin_id", type=int), default=True)
     period = request.args.get("period", _current_period())
     try:
         data = gstr3b_data(tenant, gstin, period)
@@ -165,7 +172,7 @@ def gstr3b_view():
 @reports_bp.route("/gstr3b.xlsx")
 @roles_required(UserRole.CLIENT_ADMIN)
 def gstr3b_xlsx():
-    data = gstr3b_data(current_user.tenant, _resolve_gstin(request.args.get("gstin_id", type=int)), request.args.get("period", _current_period()))
+    data = gstr3b_data(current_user.tenant, _resolve_gstin(request.args.get("gstin_id", type=int), default=True), request.args.get("period", _current_period()))
     buf = build_gstr3b_workbook(data)
     return send_file(buf, as_attachment=True, download_name=f"GSTR3B_{data['period']}.xlsx", mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
@@ -173,7 +180,7 @@ def gstr3b_xlsx():
 @reports_bp.route("/gstr3b.pdf")
 @roles_required(UserRole.CLIENT_ADMIN)
 def gstr3b_pdf():
-    data = gstr3b_data(current_user.tenant, _resolve_gstin(request.args.get("gstin_id", type=int)), request.args.get("period", _current_period()))
+    data = gstr3b_data(current_user.tenant, _resolve_gstin(request.args.get("gstin_id", type=int), default=True), request.args.get("period", _current_period()))
     pdf_bytes = render_gstr3b_pdf(data)
     return send_file(BytesIO(pdf_bytes), as_attachment=False, download_name=f"GSTR3B_{data['period']}.pdf", mimetype="application/pdf")
 
@@ -181,7 +188,7 @@ def gstr3b_pdf():
 @reports_bp.route("/gstr3b.json")
 @roles_required(UserRole.CLIENT_ADMIN)
 def gstr3b_json():
-    data = gstr3b_data(current_user.tenant, _resolve_gstin(request.args.get("gstin_id", type=int)), request.args.get("period", _current_period()))
+    data = gstr3b_data(current_user.tenant, _resolve_gstin(request.args.get("gstin_id", type=int), default=True), request.args.get("period", _current_period()))
     return send_file(BytesIO(to_json_bytes(data)), as_attachment=True, download_name=f"GSTR3B_{data['period']}.json", mimetype="application/json")
 
 

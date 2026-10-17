@@ -4,10 +4,10 @@
 <div class="page-header">
   <div><h1>Scheduled drug register</h1>
     <p class="text-muted mt-0">Every counter sale of a Schedule H1 / X drug (and H if you tick it) with the prescriber, patient and batch - the register the Drugs and Cosmetics Rules ask you to keep.</p></div>
-  <form method="get" class="row" style="gap:8px; align-items:flex-end; flex-wrap:wrap;">
-    <label class="field" style="margin:0;"><span class="field-label">From</span><input type="date" name="start" value="{{ start.isoformat() }}" class="field-input"></label>
-    <label class="field" style="margin:0;"><span class="field-label">To</span><input type="date" name="end" value="{{ end.isoformat() }}" class="field-input"></label>
-    {% for key, label in all_schedules.items() %}<label style="margin:0;"><input type="checkbox" name="schedule" value="{{ key }}" {{ 'checked' if key in schedules }}> {{ key }}</label>{% endfor %}
+  <form method="get" class="row gap-8 items-end flex-wrap">
+    <label class="field m-0"><span class="field-label">From</span><input type="date" name="start" value="{{ start.isoformat() }}" class="field-input"></label>
+    <label class="field m-0"><span class="field-label">To</span><input type="date" name="end" value="{{ end.isoformat() }}" class="field-input"></label>
+    {% for key, label in all_schedules.items() %}<label class="m-0"><input type="checkbox" name="schedule" value="{{ key }}" {{ 'checked' if key in schedules }}> {{ key }}</label>{% endfor %}
     <button class="btn btn-secondary">Show</button>
     <a class="btn btn-quiet" href="{{ url_for('pharmacy.register_xlsx', start=start.isoformat(), end=end.isoformat(), schedule=schedules) }}">Excel</a>
   </form>

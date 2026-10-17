@@ -6,8 +6,8 @@
     <h1>e-Way bills</h1>
     <p class="text-muted mt-0">Make one from an invoice, delivery challan or stock transfer worth more than the e-way bill limit - the button is on the document.</p>
   </div>
-  <form method="get" class="row" style="gap:8px; align-items:flex-end;">
-    <label class="field" style="margin:0;"><span class="field-label">Status</span>
+  <form method="get" class="row gap-8 items-end">
+    <label class="field m-0"><span class="field-label">Status</span>
       <select name="status" class="field-input"><option value="">All</option>{% for s in ('draft', 'generated', 'cancelled') %}<option value="{{ s }}" {{ 'selected' if s == status }}>{{ s|title }}</option>{% endfor %}</select></label>
     <button class="btn btn-secondary">Show</button>
   </form>

@@ -3,12 +3,12 @@
 {% block content %}
 <div class="page-header"><div><h1>{{ c.name }}</h1><p class="text-muted mt-0">{{ c.phone or '' }}</p></div>
   <a href="{{ url_for('customers.edit_customer', customer_id=c.id) }}" class="btn btn-quiet">Customer details</a></div>
-<div class="card" style="margin-bottom:16px;"><div class="form-grid">
-  <div><strong>Points</strong><p class="totals-row grand" style="margin:0;">{{ points }}</p></div>
-  <div><strong>Bought from you</strong><p class="totals-row grand" style="margin:0;">Rs. {{ '%.2f'|format(spent) }}</p></div>
-  <div><strong>Visits</strong><p class="totals-row grand" style="margin:0;">{{ bills|length + invoices|length }}</p></div>
+<div class="card mb-16"><div class="form-grid">
+  <div><strong>Points</strong><p class="totals-row grand m-0">{{ points }}</p></div>
+  <div><strong>Bought from you</strong><p class="totals-row grand m-0">Rs. {{ '%.2f'|format(spent) }}</p></div>
+  <div><strong>Visits</strong><p class="totals-row grand m-0">{{ bills|length + invoices|length }}</p></div>
 </div></div>
-<div class="card" style="margin-bottom:16px;"><h2 class="mt-0">Purchases</h2><div class="table-wrap"><table>
+<div class="card mb-16"><h2 class="mt-0">Purchases</h2><div class="table-wrap"><table>
   <thead><tr><th>Date</th><th>Bill</th><th>Items</th><th class="num">Amount</th><th>Status</th></tr></thead><tbody>
   {% for b in bills %}<tr><td>{{ b.completed_at|ist('%d %b %Y') }}</td><td>{{ b.bill_number }}</td><td>{{ b.lines|map(attribute='description')|join(', ')|truncate(70) }}</td><td class="num">{{ '%.2f'|format(b.grand_total) }}</td><td>{{ b.status.value|title }}</td></tr>{% endfor %}
   {% for i in invoices %}<tr><td>{{ i.invoice_date.strftime('%d %b %Y') }}</td><td><a href="{{ url_for('invoicing.view_invoice', invoice_id=i.id) }}">{{ i.invoice_number }}</a></td><td>{{ i.lines|map(attribute='description')|join(', ')|truncate(70) }}</td><td class="num">{{ '%.2f'|format(i.grand_total) }}</td><td>{{ i.status.value|title }}</td></tr>{% endfor %}

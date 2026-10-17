@@ -3,7 +3,7 @@
 {% block content %}
 <div class="page-header"><div><h1>Loyalty points</h1>
   <p class="text-muted mt-0">{{ s.points_per_100|qty }} point(s) per Rs. 100 spent &middot; one point = Rs. {{ s.point_value|qty }} &middot; spendable from {{ s.min_redeem }} points. <a href="{{ url_for('settings.modules') }}">Change</a></p></div>
-  <form method="get" class="row" style="gap:8px;"><input type="text" name="q" value="{{ q }}" placeholder="Name or phone" class="field-input" style="margin:0;"><button class="btn btn-secondary">Find</button></form></div>
+  <form method="get" class="row gap-8"><input type="text" name="q" value="{{ q }}" placeholder="Name or phone" class="field-input m-0"><button class="btn btn-secondary">Find</button></form></div>
 <div class="table-wrap card"><table>
   <thead><tr><th>Customer</th><th>Phone</th><th class="num">Points</th></tr></thead>
   <tbody>{% for c, pts in rows %}<tr><td><a href="{{ url_for('loyalty.customer', customer_id=c.id) }}">{{ c.name }}</a></td><td>{{ c.phone or '-' }}</td><td class="num">{{ pts }}</td></tr>

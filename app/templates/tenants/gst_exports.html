@@ -5,7 +5,7 @@
   <h1>Bulk GST exports</h1>
 </div>
 
-<div class="card" style="max-width:640px;">
+<div class="card maxw-640">
   <p class="text-muted mt-0">
     Download each client's monthly pack for several clients in one go, zipped into one file with a
     folder per client: GSTR-1 and GSTR-3B (Excel, PDF and JSON, per GSTIN), the HSN summary split
@@ -28,7 +28,7 @@
       <label class="field-label">Clients</label>
       <div class="table-wrap" style="max-height:320px; overflow-y:auto;">
         <table>
-          <thead><tr><th style="width:36px;"><input type="checkbox" onclick="document.querySelectorAll('.client-check').forEach(c => c.checked = this.checked)"></th><th>Client</th><th>GSTIN</th></tr></thead>
+          <thead><tr><th class="w-36"><input type="checkbox" onclick="document.querySelectorAll('.client-check').forEach(c => c.checked = this.checked)"></th><th>Client</th><th>GSTIN</th></tr></thead>
           <tbody>
           {% for t in tenants %}
             <tr>

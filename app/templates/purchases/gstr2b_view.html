@@ -1,9 +1,9 @@
 {% extends "base.html" %}
 {% block title %}GSTR-2B {{ imp.period }} - {{ firm_name }}{% endblock %}
 {% macro entry_table(entries, show_match=True) %}
-<div class="table-wrap card" style="margin-bottom:20px;">
+<div class="table-wrap card mb-20">
   <table>
-    <thead><tr><th>Supplier</th><th>Invoice</th><th class="num">Value</th><th class="num">Taxable</th><th class="num">Tax</th><th>ITC</th><th>In your books</th><th style="min-width:230px;"></th></tr></thead>
+    <thead><tr><th>Supplier</th><th>Invoice</th><th class="num">Value</th><th class="num">Taxable</th><th class="num">Tax</th><th>ITC</th><th>In your books</th><th class="minw-230"></th></tr></thead>
     <tbody>
     {% for e in entries %}
       <tr>
@@ -21,7 +21,7 @@
           <form method="post" action="{{ url_for('purchases.gstr2b_unmatch', entry_id=e.id) }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-quiet btn-sm">Unmatch</button></form>
           {% else %}
-          <form method="post" action="{{ url_for('purchases.gstr2b_match', entry_id=e.id) }}" class="row" style="gap:4px;">
+          <form method="post" action="{{ url_for('purchases.gstr2b_match', entry_id=e.id) }}" class="row gap-4">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <select name="bill_id" class="field-input" style="min-height:32px; max-width:180px;">
               <option value="">Match to bill...</option>
@@ -40,7 +40,7 @@
 </div>
 {% endmacro %}
 {% macro books_table(bills) %}
-<div class="table-wrap card" style="margin-bottom:20px;">
+<div class="table-wrap card mb-20">
   <table>
     <thead><tr><th>Bill</th><th>Supplier</th><th>Their invoice</th><th class="num">Total</th><th class="num">ITC</th></tr></thead>
     <tbody>
@@ -66,7 +66,7 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-secondary">Match again</button></form>
 </div>
 {% include "purchases/_nav.html" %}
-<div class="form-grid" style="margin-bottom:16px;">
+<div class="form-grid mb-16">
   <div class="card"><strong>{{ groups[MatchStatus.MATCHED]|length }}</strong> matched</div>
   <div class="card"><strong>{{ groups[MatchStatus.MISMATCH]|length }}</strong> mismatch</div>
   <div class="card"><strong>{{ groups[MatchStatus.ONLY_IN_2B]|length }}</strong> only in 2B</div>

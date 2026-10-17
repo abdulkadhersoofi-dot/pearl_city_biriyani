@@ -11,7 +11,7 @@
   <a href="{{ url_for('accounts.payment_pdf', payment_id=payment.id) }}" target="_blank" class="btn btn-secondary">Print</a>
 </div>
 {% include "accounts/_nav.html" %}
-<div class="card" style="margin-bottom:16px;">
+<div class="card mb-16">
   <div class="form-grid">
     <div><strong>Date</strong><p>{{ payment.voucher_date.strftime('%d %b %Y') }}</p></div>
     <div><strong>Amount</strong><p>Rs. {{ '%.2f'|format(payment.amount) }}</p></div>
@@ -23,22 +23,22 @@
   {% if payment.void_reason %}<p><strong>Voided:</strong> {{ payment.void_reason }}</p>{% endif %}
 </div>
 {% if payment.status.value == 'posted' and payment.cheque_status and payment.cheque_status.value == 'pending' %}
-<form method="post" action="{{ url_for('accounts.payment_cheque', payment_id=payment.id) }}" class="card row" style="gap:10px; align-items:flex-end; margin-bottom:16px;">
+<form method="post" action="{{ url_for('accounts.payment_cheque', payment_id=payment.id) }}" class="card row gap-10 items-end mb-16">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  <label class="field" style="margin:0;"><span class="field-label">Cheque status on</span><input type="date" name="on" value="{{ today.isoformat() }}" class="field-input"></label>
+  <label class="field m-0"><span class="field-label">Cheque status on</span><input type="date" name="on" value="{{ today.isoformat() }}" class="field-input"></label>
   <button name="status" value="cleared" class="btn btn-primary">Cleared</button>
   <button name="status" value="bounced" class="btn btn-danger" onclick="return confirm('Mark the cheque bounced? The bills it paid become unpaid again.');">Bounced</button>
 </form>
 {% endif %}
 <h2>Set against</h2>
-<div class="table-wrap card" style="margin-bottom:16px;">
+<div class="table-wrap card mb-16">
   <table>
     <tbody>
     {% for a in payment.allocations %}
       <tr>
         <td>{% if a.purchase_bill %}<a href="{{ url_for('purchases.view_bill', bill_id=a.purchase_bill_id) }}">{{ a.purchase_bill.number }} ({{ a.purchase_bill.supplier_invoice_no }})</a>{% elif a.expense %}<a href="{{ url_for('expenses.view_expense', expense_id=a.expense_id) }}">{{ a.expense.number }}</a>{% else %}Opening balance{% endif %}</td>
         <td class="num">{{ '%.2f'|format(a.amount) }}</td>
-        <td>{% if payment.status.value == 'posted' %}<form method="post" action="{{ url_for('accounts.remove_payment_allocation', payment_id=payment.id, allocation_id=a.id) }}" style="display:inline;">
+        <td>{% if payment.status.value == 'posted' %}<form class="d-inline" method="post" action="{{ url_for('accounts.remove_payment_allocation', payment_id=payment.id, allocation_id=a.id) }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-quiet btn-sm" onclick="return confirm('Take this amount off the bill?');">Remove</button></form>{% endif %}</td>
       </tr>
     {% else %}
@@ -48,7 +48,7 @@
   </table>
 </div>
 {% if can_allocate and account.open_items %}
-<form method="post" action="{{ url_for('accounts.allocate_payment', payment_id=payment.id) }}" class="card" style="margin-bottom:16px;">
+<form method="post" action="{{ url_for('accounts.allocate_payment', payment_id=payment.id) }}" class="card mb-16">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <h2 class="mt-0">Set the rest (Rs. {{ '%.2f'|format(unused) }}) against bills</h2>
   <input type="hidden" id="voucher-amount" data-unused="{{ '%.2f'|format(unused) }}">
@@ -58,9 +58,9 @@
 </form>
 {% endif %}
 {% if payment.status.value == 'posted' %}
-<form method="post" action="{{ url_for('accounts.void_payment', payment_id=payment.id) }}" class="card row void-box" style="gap:10px; align-items:flex-end;">
+<form method="post" action="{{ url_for('accounts.void_payment', payment_id=payment.id) }}" class="card row void-box gap-10 items-end">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  <label class="field" style="margin:0; flex:1;"><span class="field-label">Void this payment - reason</span><input type="text" name="reason" class="field-input" required></label>
+  <label class="field m-0 grow"><span class="field-label">Void this payment - reason</span><input type="text" name="reason" class="field-input" required></label>
   <button class="btn btn-danger" onclick="return confirm('Void {{ payment.number }}?');">Void</button>
 </form>
 {% endif %}

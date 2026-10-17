@@ -16,7 +16,7 @@
     <tbody>
     {% for entry in lines %}
       <tr>
-        <td>{{ entry.line.description }}<div class="text-muted" style="font-size:0.85rem;">Rs. {{ '%.2f'|format(entry.line.line_total) }} for {{ entry.line.qty|qty }}</div></td>
+        <td>{{ entry.line.description }}<div class="text-muted fs-sm">Rs. {{ '%.2f'|format(entry.line.line_total) }} for {{ entry.line.qty|qty }}</div></td>
         <td>{{ entry.line.qty|qty }} {{ entry.line.unit }}</td>
         <td>{{ entry.returned_qty|qty if entry.returned_qty else '-' }}</td>
         <td>
@@ -31,7 +31,7 @@
     </tbody>
   </table>
 
-  <div class="form-grid" style="margin-top:16px;">
+  <div class="form-grid mt-16">
     <label class="field">
       <span class="field-label">Money goes back as</span>
       <select name="refund_mode" class="field-input">

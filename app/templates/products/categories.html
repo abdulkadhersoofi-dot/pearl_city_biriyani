@@ -7,8 +7,8 @@
   <a href="{{ url_for('products.list_products') }}" class="btn btn-quiet">Back to Items</a>
 </div>
 
-<div class="card" style="margin-bottom:20px;">
-  <h2 style="margin-top:0;">New category</h2>
+<div class="card mb-20">
+  <h2 class="mt-0">New category</h2>
   <form method="post" action="{{ url_for('products.new_category') }}" class="row">
     {{ category_form.hidden_tag() }}
     {{ category_form.name(class="field-input", placeholder="e.g. Biriyani") }}
@@ -17,9 +17,9 @@
 </div>
 
 {% for category in categories %}
-<div class="card" style="margin-bottom:16px;">
-  <div class="page-header" style="margin-bottom:12px;">
-    <h2 style="margin:0; font-size:1.1rem;">{{ category.name }}</h2>
+<div class="card mb-16">
+  <div class="page-header mb-12">
+    <h2 class="m-0 fs-lg">{{ category.name }}</h2>
     <form method="post" action="{{ url_for('products.deactivate_category', category_id=category.id) }}"
           onsubmit="return confirm('Remove {{ category.name }} and all its sub-categories? Items already using them keep working, just grouped under Uncategorized in the POS.');">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -27,7 +27,7 @@
     </form>
   </div>
 
-  <ul style="margin:0 0 12px;">
+  <ul class="m-0 mb-12">
     {% for sub in category.sub_categories if sub.is_active %}
     <li class="row" style="justify-content:space-between; align-items:center; padding:4px 0;">
       <span>{{ sub.name }}</span>

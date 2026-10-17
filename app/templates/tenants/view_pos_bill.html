@@ -15,7 +15,7 @@
   </div>
 </div>
 
-<div class="card" style="margin-bottom:20px;">
+<div class="card mb-20">
   <div class="form-grid">
     <div><strong>Billed</strong><p>{{ bill.completed_at|ist if bill.completed_at else '-' }}</p></div>
     <div><strong>Counter</strong><p>{{ bill.created_by.name if bill.created_by else '-' }}
@@ -56,8 +56,8 @@
   </div>
 </div>
 
-<div class="card" style="margin-top:20px;">
-  <h2 style="margin-top:0;">Paid</h2>
+<div class="card mt-20">
+  <h2 class="mt-0">Paid</h2>
   <table>
     {% for p in bill.payments %}
     <tr><td>{{ p.label }}{% if p.reference %} <span class="text-muted">({{ p.reference }})</span>{% endif %}</td><td class="num">Rs. {{ '%.2f'|format(p.amount) }}</td></tr>
@@ -68,12 +68,12 @@
 </div>
 
 {% if bill.status.value == 'voided' %}
-<div class="card" style="margin-top:20px;">
+<div class="card mt-20">
   <p><strong>Voided</strong> {{ bill.voided_at|ist if bill.voided_at else '' }} by {{ bill.voided_by.name if bill.voided_by else '-' }}.</p>
   <p class="text-muted">Reason: {{ bill.void_reason }}</p>
 </div>
 {% elif bill.status.value == 'refunded' %}
-<div class="card" style="margin-top:20px;">
+<div class="card mt-20">
   <p><strong>Refunded</strong> Rs. {{ '%.2f'|format(bill.refunded_amount or 0) }} {{ bill.refunded_at|ist if bill.refunded_at else '' }}.</p>
   <p class="text-muted">Reason: {{ bill.refund_reason }}</p>
 </div>

@@ -14,9 +14,9 @@
 </div>
 {% include "reports/_period_location.html" %}
 {% if cur.basis == 'cash' %}
-<div class="flash flash-info" style="margin-bottom:16px;">Cash-basis estimate - without the Inventory module there is no stock value, so this is sales less everything bought and spent in the period, not a true gross profit.</div>
+<div class="flash flash-info mb-16">Cash-basis estimate - without the Inventory module there is no stock value, so this is sales less everything bought and spent in the period, not a true gross profit.</div>
 {% endif %}
-<div class="form-grid" style="margin-bottom:16px;">
+<div class="form-grid mb-16">
   <div class="card"><span class="text-muted">Revenue</span><h2 class="mt-0">Rs. {{ '{:,.2f}'.format(cur.net_revenue) }}</h2></div>
   <div class="card"><span class="text-muted">Gross profit</span><h2 class="mt-0">Rs. {{ '{:,.2f}'.format(cur.gross_profit) }}{% if cur.gp_pct is not none %} <small class="text-muted">({{ cur.gp_pct }}%)</small>{% endif %}</h2></div>
   <div class="card"><span class="text-muted">Expenses</span><h2 class="mt-0">Rs. {{ '{:,.2f}'.format(cur.expense_total) }}</h2></div>

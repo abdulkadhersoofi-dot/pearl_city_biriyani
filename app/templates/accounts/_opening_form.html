@@ -1,4 +1,4 @@
-<details class="card" style="margin-top:16px;">
+<details class="card mt-16">
   <summary><strong>Books start date</strong>{% if current_user.tenant.books_opening_date %} - {{ current_user.tenant.books_opening_date.strftime('%d %b %Y') }}{% else %} - not set{% endif %}</summary>
   <form method="post" action="{{ url_for('accounts.books_opening') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

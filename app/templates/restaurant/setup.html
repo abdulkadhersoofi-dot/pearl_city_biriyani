@@ -5,7 +5,7 @@
   <p class="text-muted mt-0">Tables, order types and their prices, packing and service charges.</p></div>
   <a href="{{ url_for('restaurant.tables') }}" class="btn btn-secondary">Tables</a></div>
 
-<div class="card" style="margin-bottom:16px;">
+<div class="card mb-16">
   <h2 class="mt-0">Tables</h2>
   <form method="post" class="form-grid">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -15,9 +15,9 @@
     <div class="field"><span class="field-label">&nbsp;</span><button class="btn btn-primary" name="action" value="add_table">Add tables</button></div>
   </form>
   {% if tables %}
-  <div class="row" style="gap:8px; flex-wrap:wrap; margin-top:10px;">
+  <div class="row gap-8 flex-wrap mt-10">
     {% for t in tables %}
-    <form method="post" style="display:inline;">
+    <form class="d-inline" method="post">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="table_id" value="{{ t.id }}">
       <button class="btn btn-sm {{ 'btn-secondary' if t.is_active else 'btn-quiet' }}" name="action" value="toggle_table"
               title="{{ 'Tap to take this table out of use' if t.is_active else 'Tap to use this table again' }}">{{ t.name }}{% if t.section %} &middot; {{ t.section }}{% endif %}{% if not t.is_active %} (off){% endif %}</button>
@@ -38,7 +38,7 @@
     <tr>
       <td><input type="checkbox" name="type_{{ key }}" value="1" {{ 'checked' if key in s.order_types }}></td>
       <td>{{ label }}</td>
-      <td><select name="list_{{ key }}" class="field-input" style="margin:0;"><option value="">Normal prices</option>
+      <td><select name="list_{{ key }}" class="field-input m-0"><option value="">Normal prices</option>
         {% for pl in price_lists %}<option value="{{ pl.id }}" {{ 'selected' if s.price_lists.get(key) == pl.id }}>{{ pl.name }}</option>{% endfor %}</select></td>
       <td><input type="checkbox" name="packing_{{ key }}" value="1" {{ 'checked' if key in s.packing_on }}></td>
     </tr>

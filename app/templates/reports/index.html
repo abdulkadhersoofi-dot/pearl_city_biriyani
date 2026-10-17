@@ -5,7 +5,7 @@
   <h1>Reports &amp; GST exports</h1>
 </div>
 {% if has_feature('pharmacy') or has_feature('wholesale') or has_feature('loyalty') or has_feature('jewellery') or has_feature('electronics') %}
-<div class="row" style="gap:8px; flex-wrap:wrap; margin-bottom:16px;">
+<div class="row gap-8 flex-wrap mb-16">
   {% if has_feature('pharmacy') %}<a href="{{ url_for('pharmacy.register') }}" class="btn btn-secondary">Scheduled drug register</a>{% endif %}
   {% if has_feature('wholesale') %}<a href="{{ url_for('wholesale.salesmen_report') }}" class="btn btn-secondary">Sales by salesman</a>{% endif %}
   {% if has_feature('loyalty') %}<a href="{{ url_for('loyalty.index') }}" class="btn btn-secondary">Loyalty points</a>{% endif %}
@@ -15,42 +15,42 @@
 {% endif %}
 
 {% if has_feature('business_reports') %}
-<div class="form-grid" style="margin-bottom:20px;">
+<div class="form-grid mb-20">
   <div class="card">
-    <h2 style="margin-top:0;">Profit &amp; loss</h2>
+    <h2 class="mt-0">Profit &amp; loss</h2>
     <p class="text-muted">Revenue, cost of goods sold, gross profit and expenses for any period - all locations or one - with last period or last year beside it. Excel or PDF.</p>
     <a href="{{ url_for('reports.profit_loss') }}" class="btn btn-primary">View profit &amp; loss</a>
   </div>
   <div class="card">
-    <h2 style="margin-top:0;">Gross profit by item</h2>
+    <h2 class="mt-0">Gross profit by item</h2>
     <p class="text-muted">What each item and category sold for against what it cost you.</p>
     <a href="{{ url_for('reports.item_profit') }}" class="btn btn-primary">View gross profit</a>
   </div>
   <div class="card">
-    <h2 style="margin-top:0;">GST filing</h2>
+    <h2 class="mt-0">GST filing</h2>
     <p class="text-muted">Tell your accountant a month's data is complete, and see when GSTR-1 and GSTR-3B were filed.</p>
     <a href="{{ url_for('reports.filing_status') }}" class="btn btn-primary">Filing status</a>
   </div>
   <div class="card">
-    <h2 style="margin-top:0;">Daily sales summary</h2>
+    <h2 class="mt-0">Daily sales summary</h2>
     <p class="text-muted">Payment modes, sales by hour and by cashier, discounts, voids and returns.</p>
     <a href="{{ url_for('reports.daily_summary_view') }}" class="btn btn-primary">View daily summary</a>
   </div>
 </div>
 {% endif %}
 {% if has_feature('purchases') or has_feature('expenses') %}
-<form method="get" class="card row" style="gap:12px; align-items:flex-end; margin-bottom:20px;">
-  <div><h2 style="margin:0 0 6px;">Registers for your auditor</h2><p class="text-muted mt-0" style="margin-bottom:0;">Excel, one month.</p></div>
+<form method="get" class="card row gap-12 items-end mb-20">
+  <div><h2 class="m-0 mb-6">Registers for your auditor</h2><p class="text-muted mt-0 mb-0">Excel, one month.</p></div>
   <input type="hidden" name="mode" value="month">
-  <label class="field" style="margin:0;"><span class="field-label">Month</span><input type="month" name="month" value="{{ period }}" class="field-input"></label>
+  <label class="field m-0"><span class="field-label">Month</span><input type="month" name="month" value="{{ period }}" class="field-input"></label>
   {% if has_feature('purchases') %}<button formaction="{{ url_for('reports.register_xlsx', kind='purchase') }}" class="btn btn-secondary">Purchase register</button>{% endif %}
   {% if has_feature('expenses') %}<button formaction="{{ url_for('reports.register_xlsx', kind='expense') }}" class="btn btn-secondary">Expense register</button>{% endif %}
 </form>
 {% endif %}
 
-<div class="form-grid" style="margin-bottom:20px;">
+<div class="form-grid mb-20">
   <div class="card">
-    <h2 style="margin-top:0;">Sales report</h2>
+    <h2 class="mt-0">Sales report</h2>
     <p class="text-muted">
       Every invoice and POS bill, across all your GSTINs - downloadable as Excel or PDF. Filter by
       day, month or any date range, and by one or more branches.
@@ -59,7 +59,7 @@
   </div>
   {% if has_feature('margin_scheme') %}
   <div class="card">
-    <h2 style="margin-top:0;">Margin register</h2>
+    <h2 class="mt-0">Margin register</h2>
     <p class="text-muted">
       Every second-hand unit sold under the margin scheme (Rule 32(5)): purchase date and price,
       sale date and price, margin, taxable margin and GST - Excel or PDF.
@@ -68,7 +68,7 @@
   </div>
   {% endif %}
   <div class="card">
-    <h2 style="margin-top:0;">Stock report</h2>
+    <h2 class="mt-0">Stock report</h2>
     <p class="text-muted">
       How much stock was allocated to each branch and how much it actually sold, over any period
       and any branch selection.
@@ -76,7 +76,7 @@
     <a href="{{ url_for('reports.stock_view') }}" class="btn btn-primary">View stock report</a>
   </div>
   <div class="card">
-    <h2 style="margin-top:0;">Sales by item</h2>
+    <h2 class="mt-0">Sales by item</h2>
     <p class="text-muted">
       Which items sold, how many, and for how much - the same period and branch filters as the
       other two reports.
@@ -86,19 +86,19 @@
 </div>
 
 {% if not_regular %}
-<div class="card" style="margin-bottom:20px;">
-  <p class="text-muted mt-0" style="margin-bottom:0;">
+<div class="card mb-20">
+  <p class="text-muted mt-0 mb-0">
     GSTR-1 and GSTR-3B apply to Regular scheme GSTINs. {{ tenant.legal_name }} is registered as
     <strong>{{ tenant.registration_type.value|title }}</strong>, which doesn't file these returns.
   </p>
 </div>
 {% elif not gstins %}
-<div class="card" style="margin-bottom:20px;">
-  <p class="text-muted mt-0" style="margin-bottom:0;">No active GSTIN on file yet - ask the firm to add one before running a GST report.</p>
+<div class="card mb-20">
+  <p class="text-muted mt-0 mb-0">No active GSTIN on file yet - ask the firm to add one before running a GST report.</p>
 </div>
 {% else %}
-<div class="card" style="max-width:480px;">
-  <h2 style="margin-top:0;">GST return working papers</h2>
+<div class="card maxw-480">
+  <h2 class="mt-0">GST return working papers</h2>
   <p class="text-muted">
     Taxable value, tax and HSN figures below come straight from your own invoices, POS bills and
     notes. They're a working paper to make filing easier, not an auto-filer - always check the

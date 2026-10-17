@@ -6,9 +6,9 @@
     <h1>e-Invoice - {{ period }}</h1>
     <p class="text-muted mt-0">B2B and export invoices and their credit / debit notes that still need an IRN.</p>
   </div>
-  <form method="get" class="row" style="gap:8px; align-items:flex-end;">
-    <label class="field" style="margin:0;"><span class="field-label">Month</span><input type="month" name="period" value="{{ period }}" class="field-input"></label>
-    {% if gstins|length > 1 %}<label class="field" style="margin:0;"><span class="field-label">GSTIN</span>
+  <form method="get" class="row gap-8 items-end">
+    <label class="field m-0"><span class="field-label">Month</span><input type="month" name="period" value="{{ period }}" class="field-input"></label>
+    {% if gstins|length > 1 %}<label class="field m-0"><span class="field-label">GSTIN</span>
       <select name="gstin_id" class="field-input"><option value="">All</option>{% for g in gstins %}<option value="{{ g.id }}" {{ 'selected' if g.id == gstin_id }}>{{ g.gstin }}</option>{% endfor %}</select></label>{% endif %}
     <button class="btn btn-secondary">Show</button>
   </form>
@@ -18,9 +18,9 @@
 <div class="card"><p class="empty-state">Your AATO (set in Settings) is not above the e-invoicing limit, so no document needs an IRN.</p></div>
 {% else %}
 {% set ready = rows|rejectattr('problems')|list %}
-<div class="card" style="margin-bottom:16px;">
-  <div class="row" style="justify-content:space-between; align-items:center;">
-    <p style="margin:0;"><strong>{{ rows|length }}</strong> document{{ '' if rows|length == 1 else 's' }} without an IRN &middot; <strong>{{ ready|length }}</strong> ready.</p>
+<div class="card mb-16">
+  <div class="row justify-between items-center">
+    <p class="m-0"><strong>{{ rows|length }}</strong> document{{ '' if rows|length == 1 else 's' }} without an IRN &middot; <strong>{{ ready|length }}</strong> ready.</p>
     {% if ready %}<a class="btn btn-secondary" href="{{ url_for('einvoice.bulk_json', period=period, gstin_id=gstin_id or '') }}">Download JSON for the IRP offline tool ({{ ready|length }})</a>{% endif %}
   </div>
   <p class="field-help">Upload the file with the IRP's bulk / offline tool, then open each document and record the IRN it gives back - or save a login under Settings and generate them here.</p>

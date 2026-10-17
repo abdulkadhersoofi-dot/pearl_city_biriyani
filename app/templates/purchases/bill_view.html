@@ -13,7 +13,7 @@
   </div>
 </div>
 {% include "purchases/_nav.html" %}
-<div class="card" style="margin-bottom:16px;">
+<div class="card mb-16">
   <div class="form-grid">
     <div><strong>Supplier</strong><p>{{ bill.supplier_snapshot.name }}<br>{% if bill.supplier_snapshot.gstin %}GSTIN: {{ bill.supplier_snapshot.gstin }}<br>{% endif %}{{ bill.supplier_snapshot.state_name or '' }}</p></div>
     <div><strong>Their invoice</strong><p>{{ bill.supplier_invoice_no }}<br>{{ bill.supplier_invoice_date.strftime('%d %b %Y') }}</p></div>
@@ -74,9 +74,9 @@
 {% endif %}
 
 {% if bill.status.value == 'posted' %}
-<form method="post" action="{{ url_for('purchases.void_bill', bill_id=bill.id) }}" class="card row void-box" style="gap:10px; align-items:flex-end;">
+<form method="post" action="{{ url_for('purchases.void_bill', bill_id=bill.id) }}" class="card row void-box gap-10 items-end">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  <label class="field" style="margin:0; flex:1;"><span class="field-label">Void this bill - reason</span>
+  <label class="field m-0 grow"><span class="field-label">Void this bill - reason</span>
     <input type="text" name="reason" class="field-input" required></label>
   <button class="btn btn-danger" onclick="return confirm('Void {{ bill.number }}? Its goods come out of stock and its ITC is dropped.');">Void</button>
 </form>

@@ -42,9 +42,11 @@ def test_client_admin_gets_grouped_menu_with_only_core_screens(client, db, tenan
     _login(client, "admin@acme.example.com", "ClientSecret123")
     html = _page(client)
     labels = _menu_labels(html)
-    for core in ("POS", "Invoices", "Credit & debit notes", "Items", "Customers", "Reports", "GST returns",
+    for core in ("POS", "Invoices", "Items", "Customers", "Reports", "GST returns",
                  "Branches", "Settings", "Live"):
         assert core in labels
+    # Credit / debit notes are a tab inside Invoices now, not their own entry.
+    assert "Credit & debit notes" not in labels and "/notes/" in html
     for module in ("Stock", "Purchases", "Expenses", "Accounts", "Job cards", "Tables", "Old gold", "Wholesale",
                    "Loyalty", "e-Invoice & e-Way bills", "Quotes & orders", "Dashboard"):
         assert module not in labels

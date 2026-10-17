@@ -12,16 +12,16 @@
     <a href="{{ url_for('reports.index') }}" class="btn btn-quiet">Back</a>
   </div>
 </div>
-<form method="get" class="card row" style="gap:12px; align-items:flex-end; flex-wrap:wrap; margin-bottom:16px;">
+<form method="get" class="card row gap-12 items-end flex-wrap mb-16">
   <input type="hidden" name="mode" value="range">
-  <label class="field" style="margin:0;"><span class="field-label">From</span><input type="date" name="start" value="{{ data.start.isoformat() }}" class="field-input"></label>
-  <label class="field" style="margin:0;"><span class="field-label">To</span><input type="date" name="end" value="{{ data.end.isoformat() }}" class="field-input"></label>
+  <label class="field m-0"><span class="field-label">From</span><input type="date" name="start" value="{{ data.start.isoformat() }}" class="field-input"></label>
+  <label class="field m-0"><span class="field-label">To</span><input type="date" name="end" value="{{ data.end.isoformat() }}" class="field-input"></label>
   <button class="btn btn-primary">Show</button>
 </form>
-<div class="form-grid" style="margin-bottom:16px;">
-  <div class="card"><div class="text-muted">Sold for</div><div style="font-size:1.4rem; font-weight:800;">Rs. {{ '%.2f'|format(data.totals.sale_value) }}</div><div class="text-muted">{{ data.totals.qty|qty }} unit(s)</div></div>
-  <div class="card"><div class="text-muted">Bought for</div><div style="font-size:1.4rem; font-weight:800;">Rs. {{ '%.2f'|format(data.totals.purchase_value) }}</div></div>
-  <div class="card"><div class="text-muted">Taxable margin</div><div style="font-size:1.4rem; font-weight:800;">Rs. {{ '%.2f'|format(data.totals.taxable_value) }}</div><div class="text-muted">GST Rs. {{ '%.2f'|format(data.totals.tax) }}</div></div>
+<div class="form-grid mb-16">
+  <div class="card"><div class="text-muted">Sold for</div><div class="figure-sm">Rs. {{ '%.2f'|format(data.totals.sale_value) }}</div><div class="text-muted">{{ data.totals.qty|qty }} unit(s)</div></div>
+  <div class="card"><div class="text-muted">Bought for</div><div class="figure-sm">Rs. {{ '%.2f'|format(data.totals.purchase_value) }}</div></div>
+  <div class="card"><div class="text-muted">Taxable margin</div><div class="figure-sm">Rs. {{ '%.2f'|format(data.totals.taxable_value) }}</div><div class="text-muted">GST Rs. {{ '%.2f'|format(data.totals.tax) }}</div></div>
 </div>
 <div class="table-wrap card">
   <table>

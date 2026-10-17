@@ -11,17 +11,17 @@
 {% include "expenses/_nav.html" %}
 
 {% if drafts and status != 'draft' %}
-<div class="card" style="margin-bottom:16px;">
+<div class="card mb-16">
   <strong>{{ drafts }} draft expense{{ 's' if drafts != 1 }} waiting</strong>{% if new_drafts %} ({{ new_drafts }} new from your recurring expenses){% endif %} -
   check and post {{ 'them' if drafts != 1 else 'it' }} once paid. <a href="{{ url_for('expenses.index', status='draft') }}">Show drafts</a>
 </div>
 {% endif %}
 
 <form class="search-bar" method="get">
-  <select name="status" class="field-input" style="max-width:150px;">
+  <select name="status" class="field-input maxw-150">
     {% for value, label in (('posted', 'Posted'), ('draft', 'Drafts'), ('voided', 'Voided')) %}<option value="{{ value }}" {{ 'selected' if value == status }}>{{ label }}</option>{% endfor %}
   </select>
-  <select name="category" class="field-input" style="max-width:220px;">
+  <select name="category" class="field-input maxw-220">
     <option value="">All categories</option>
     {% for c in categories %}<option value="{{ c.id }}" {{ 'selected' if c.id == category_id }}>{{ c.name }}</option>{% endfor %}
   </select>

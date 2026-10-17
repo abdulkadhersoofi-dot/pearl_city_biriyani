@@ -24,9 +24,9 @@
 
   {% set low_items = stock_low_items() %}
   {% if low_items %}
-  <div class="card" style="margin-bottom:20px;">
-    <h2 style="margin-top:0;">Low stock <span class="tag tag-low">{{ low_items|length }}</span></h2>
-    <p class="text-muted" style="margin-top:0;">At or below the minimum stock level set on the item.
+  <div class="card mb-20">
+    <h2 class="mt-0">Low stock <span class="tag tag-low">{{ low_items|length }}</span></h2>
+    <p class="text-muted mt-0">At or below the minimum stock level set on the item.
       <a href="{{ url_for('inventory.reorder') }}">Reorder list</a></p>
     <table>
       <thead><tr><th>Item</th><th class="num">On hand</th><th class="num">Minimum</th></tr></thead>
@@ -42,9 +42,9 @@
   </div>
   {% endif %}
 
-  <div class="card" style="margin-bottom:20px;">
-    <h2 style="margin-top:0;">Branch leaderboard</h2>
-    <p class="text-muted" style="margin-top:0;">Ranked by today's total sales revenue - the best performer rises to the top, the quietest branch sinks to the bottom.</p>
+  <div class="card mb-20">
+    <h2 class="mt-0">Branch leaderboard</h2>
+    <p class="text-muted mt-0">Ranked by today's total sales revenue - the best performer rises to the top, the quietest branch sinks to the bottom.</p>
     <div class="leaderboard" :style="`height: ${Math.max(branches.length, 1) * rowHeight}px`">
       <template x-for="(b, idx) in branches" :key="b.id">
         <div class="leaderboard-row" :class="{ 'leaderboard-row-top': idx === 0 && b.revenue > 0, 'leaderboard-row-idle': b.revenue === 0 }" :style="`top: ${idx * rowHeight}px`">
@@ -64,9 +64,9 @@
 
   <div class="form-grid" style="margin-bottom:20px; grid-template-columns: 1fr 1fr;">
     <div class="card">
-      <h2 style="margin-top:0;">Best-selling items</h2>
-      <p class="text-muted" style="margin-top:0;">Today's POS sales, by revenue share.</p>
-      <div class="row" style="align-items:center; gap:24px; flex-wrap:wrap;">
+      <h2 class="mt-0">Best-selling items</h2>
+      <p class="text-muted mt-0">Today's POS sales, by revenue share.</p>
+      <div class="row items-center gap-24 flex-wrap">
         {# Alpine's x-for template cloning doesn't play well with the SVG
            namespace (it fails on document.importNode for SVG children),
            so the donut's <circle> segments are built as a markup string
@@ -89,8 +89,8 @@
     </div>
 
     <div class="card">
-      <h2 style="margin-top:0;">Stock today</h2>
-      <p class="text-muted" style="margin-top:0;">Allocated vs. sold, across every branch.</p>
+      <h2 class="mt-0">Stock today</h2>
+      <p class="text-muted mt-0">Allocated vs. sold, across every branch.</p>
       <div class="table-wrap" style="max-height:320px; overflow-y:auto;">
         <table>
           <thead><tr><th>Item</th><th>Allocated</th><th>Sold</th><th>Remaining</th></tr></thead>

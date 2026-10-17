@@ -12,7 +12,7 @@
   </div>
 </div>
 {% include "inventory/_nav.html" %}
-<div class="card" style="margin-bottom:16px;">
+<div class="card mb-16">
   <div class="form-grid">
     <div><strong>From</strong><p>{{ transfer.from_location.name }}</p></div>
     <div><strong>To</strong><p>{{ transfer.to_location.name }}</p></div>
@@ -35,9 +35,9 @@
 </div>
 {% with source=transfer %}{% include "einvoice/_eway_panel.html" %}{% endwith %}
 {% if transfer.status.value == 'completed' %}
-<form method="post" action="{{ url_for('inventory.void_transfer', transfer_id=transfer.id) }}" class="card row void-box" style="gap:10px; align-items:flex-end;">
+<form method="post" action="{{ url_for('inventory.void_transfer', transfer_id=transfer.id) }}" class="card row void-box gap-10 items-end">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  <label class="field" style="margin:0; flex:1;"><span class="field-label">Void this transfer - reason</span>
+  <label class="field m-0 grow"><span class="field-label">Void this transfer - reason</span>
     <input type="text" name="reason" class="field-input" required></label>
   <button class="btn btn-danger" onclick="return confirm('Void {{ transfer.number }}? The goods go back to {{ transfer.from_location.name }}.');">Void</button>
 </form>

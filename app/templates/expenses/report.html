@@ -28,9 +28,9 @@
 </div>
 {% include "expenses/_nav.html" %}
 {% include "reports/_filter_bar.html" %}
-<form method="get" class="card row" style="gap:12px; align-items:flex-end; flex-wrap:wrap; margin-bottom:16px;">
+<form method="get" class="card row gap-12 items-end flex-wrap mb-16">
   {% for key, values in request.args.to_dict(flat=False).items() if key != 'category_id' %}{% for v in values %}<input type="hidden" name="{{ key }}" value="{{ v }}">{% endfor %}{% endfor %}
-  <label class="field" style="margin:0; min-width:240px;"><span class="field-label">Categories</span>
+  <label class="field m-0 minw-240"><span class="field-label">Categories</span>
   <select name="category_id" multiple size="5" class="field-input" style="height:auto;" aria-label="Categories">
     {% for c in categories %}<option value="{{ c.id }}" {{ 'selected' if c.id in category_ids }}>{{ c.name }}</option>{% endfor %}
   </select></label>
@@ -38,16 +38,16 @@
   {% if category_ids %}<a href="{{ all_categories_url }}" class="btn btn-quiet">All categories</a>{% endif %}
 </form>
 
-<div class="form-grid" style="margin-bottom:16px;">
-  <div class="card"><div class="text-muted">Total spent</div><div style="font-size:1.5rem; font-weight:800;">Rs. {{ '%.2f'|format(data.totals.amount) }}</div><div class="text-muted">{{ data.totals.count }} expense(s)</div></div>
-  <div class="card"><div class="text-muted">GST on bills</div><div style="font-size:1.5rem; font-weight:800;">Rs. {{ '%.2f'|format(data.totals.tax) }}</div></div>
-  <div class="card"><div class="text-muted">Input tax credit</div><div style="font-size:1.5rem; font-weight:800;">Rs. {{ '%.2f'|format(data.totals.itc) }}</div><div class="text-muted">goes to GSTR-3B table 4</div></div>
+<div class="form-grid mb-16">
+  <div class="card"><div class="text-muted">Total spent</div><div class="figure-md">Rs. {{ '%.2f'|format(data.totals.amount) }}</div><div class="text-muted">{{ data.totals.count }} expense(s)</div></div>
+  <div class="card"><div class="text-muted">GST on bills</div><div class="figure-md">Rs. {{ '%.2f'|format(data.totals.tax) }}</div></div>
+  <div class="card"><div class="text-muted">Input tax credit</div><div class="figure-md">Rs. {{ '%.2f'|format(data.totals.itc) }}</div><div class="text-muted">goes to GSTR-3B table 4</div></div>
 </div>
-<div class="form-grid" style="margin-bottom:16px;">
+<div class="form-grid mb-16">
   {{ bucket_table('By category', data.by_category, 'Category') }}
   {{ bucket_table('By branch', data.by_branch, 'Branch') }}
 </div>
-<div style="margin-bottom:16px;">{{ bucket_table('By month', data.by_month, 'Month') }}</div>
+<div class="mb-16">{{ bucket_table('By month', data.by_month, 'Month') }}</div>
 <div class="table-wrap card">
   <h2 class="mt-0">Every expense</h2>
   <table>

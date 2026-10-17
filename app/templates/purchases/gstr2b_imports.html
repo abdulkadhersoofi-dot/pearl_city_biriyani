@@ -5,20 +5,20 @@
 {% include "purchases/_nav.html" %}
 <p class="text-muted">Download your GSTR-2B from the GST portal (Returns &rarr; GSTR-2B &rarr; Download, as JSON or Excel) and upload it here. Every supplier invoice in it is matched to your purchase bills by supplier GSTIN, invoice number (allowing small differences in how it's written) and value.</p>
 {% if gstins %}
-<form method="post" enctype="multipart/form-data" class="card row" style="gap:10px; align-items:flex-end; flex-wrap:wrap;">
+<form method="post" enctype="multipart/form-data" class="card row gap-10 items-end flex-wrap">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  <label class="field" style="margin:0;"><span class="field-label">GSTIN</span>
+  <label class="field m-0"><span class="field-label">GSTIN</span>
     <select name="gstin_id" class="field-input">{% for g in gstins %}<option value="{{ g.id }}">{{ g.gstin }}</option>{% endfor %}</select></label>
-  <label class="field" style="margin:0;"><span class="field-label">Month</span>
+  <label class="field m-0"><span class="field-label">Month</span>
     <input type="month" name="period" class="field-input" value="{{ default_period }}"></label>
-  <label class="field" style="margin:0; flex:1; min-width:220px;"><span class="field-label">GSTR-2B file (.json or .xlsx)</span>
+  <label class="field m-0 grow minw-220"><span class="field-label">GSTR-2B file (.json or .xlsx)</span>
     <input type="file" name="file" accept=".json,.xlsx" class="field-input"></label>
   <button class="btn btn-primary">Upload and match</button>
 </form>
 {% else %}
 <div class="card"><p>GSTR-2B is only for GST-registered businesses - none of your business locations has a GSTIN.</p></div>
 {% endif %}
-<div class="table-wrap card" style="margin-top:16px;">
+<div class="table-wrap card mt-16">
   <table>
     <thead><tr><th>Month</th><th>GSTIN</th><th>File</th><th class="num">Invoices</th><th class="num">Matched</th><th>Uploaded</th></tr></thead>
     <tbody>

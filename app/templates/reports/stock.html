@@ -11,18 +11,18 @@
 
 {% include "reports/_filter_bar.html" %}
 
-<div class="form-grid" style="margin-bottom:20px;">
+<div class="form-grid mb-20">
   <div class="card">
     <p class="text-muted mt-0">Allocated</p>
-    <p style="font-size:1.6rem; font-weight:800; margin:0;">{{ '%.2f'|format(data.totals.allocated) }}</p>
+    <p class="figure m-0">{{ '%.2f'|format(data.totals.allocated) }}</p>
   </div>
   <div class="card">
     <p class="text-muted mt-0">Sold</p>
-    <p style="font-size:1.6rem; font-weight:800; margin:0;">{{ '%.2f'|format(data.totals.sold) }}</p>
+    <p class="figure m-0">{{ '%.2f'|format(data.totals.sold) }}</p>
   </div>
   <div class="card">
     <p class="text-muted mt-0">Remaining</p>
-    <p style="font-size:1.6rem; font-weight:800; margin:0;">{{ '%.2f'|format(data.totals.remaining) }}</p>
+    <p class="figure m-0">{{ '%.2f'|format(data.totals.remaining) }}</p>
   </div>
 </div>
 

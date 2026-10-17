@@ -10,24 +10,24 @@
 </div>
 {% include "inventory/_nav.html" %}
 
-<div class="card" style="margin-bottom:16px;">
+<div class="card mb-16">
   <strong>On hand by location:</strong>
   {% for loc in locations %}{% set q = by_location.get((product.id, loc.id)) %}{% if q is not none and q != 0 %}
     <span class="tag" style="margin-left:6px;">{{ loc.name }}: {{ q|qty }}</span>
   {% endif %}{% endfor %}
   {% if batches %}
-  <p style="margin-bottom:0;"><strong>Batches (earliest expiry first):</strong>
+  <p class="mb-0"><strong>Batches (earliest expiry first):</strong>
   {% for b, q in batches %}<span class="tag" style="margin-left:6px;">{{ b.batch_no }}{% if b.expiry_date %} · exp {{ b.expiry_date.strftime('%d %b %Y') }}{% endif %}: {{ q|qty }}</span>{% endfor %}</p>
   {% endif %}
 </div>
 
 <form class="search-bar" method="get">
-  <select name="location" class="field-input" style="max-width:220px;">
+  <select name="location" class="field-input maxw-220">
     <option value="">All locations</option>
     {% for loc in locations %}<option value="{{ loc.id }}" {{ 'selected' if loc.id == location_id }}>{{ loc.name }}</option>{% endfor %}
   </select>
-  <input type="date" name="from" value="{{ date_from or '' }}" class="field-input" style="max-width:170px;">
-  <input type="date" name="to" value="{{ date_to or '' }}" class="field-input" style="max-width:170px;">
+  <input type="date" name="from" value="{{ date_from or '' }}" class="field-input maxw-170">
+  <input type="date" name="to" value="{{ date_to or '' }}" class="field-input maxw-170">
   <button class="btn btn-secondary">Show</button>
 </form>
 

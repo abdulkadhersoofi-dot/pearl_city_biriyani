@@ -11,7 +11,7 @@
 </div>
 {% include "accounts/_nav.html" %}
 <form class="search-bar" method="get">
-  <label class="field" style="margin:0;"><span class="field-label">As on</span><input type="date" name="as_of" value="{{ as_of.isoformat() }}" class="field-input"></label>
+  <label class="field m-0"><span class="field-label">As on</span><input type="date" name="as_of" value="{{ as_of.isoformat() }}" class="field-input"></label>
   <button class="btn btn-secondary">Show</button>
 </form>
 {% with party_label='Supplier', party_key='supplier', party_endpoint='accounts.supplier_ledger', empty_text='Nothing owed to any supplier right now.' %}

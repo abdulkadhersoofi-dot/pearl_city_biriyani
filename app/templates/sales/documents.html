@@ -8,7 +8,7 @@
 {% with active_kind=kind.value %}{% include "sales/_nav.html" %}{% endwith %}
 <form class="search-bar" method="get">
   <input type="hidden" name="kind" value="{{ kind.value }}">
-  <select name="status" class="field-input" style="max-width:200px;" onchange="this.form.submit()">
+  <select name="status" class="field-input maxw-200" onchange="this.form.submit()">
     {% for value, text in (('open', 'Open'), ('converted', 'Invoiced'), ('returned', 'Returned'), ('cancelled', 'Cancelled'), ('all', 'All')) %}
       {% if value != 'returned' or kind.value == 'delivery_challan' %}<option value="{{ value }}" {{ 'selected' if status == value }}>{{ text }}</option>{% endif %}
     {% endfor %}

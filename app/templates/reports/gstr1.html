@@ -14,27 +14,27 @@
   </div>
 </div>
 
-<div class="form-grid" style="margin-bottom:20px;">
+<div class="form-grid mb-20">
   <div class="card">
     <p class="text-muted mt-0">Taxable value</p>
-    <p style="font-size:1.6rem; font-weight:800; margin:0;">Rs. {{ '%.2f'|format(data.totals.taxable_value) }}</p>
+    <p class="figure m-0">Rs. {{ '%.2f'|format(data.totals.taxable_value) }}</p>
   </div>
   <div class="card">
     <p class="text-muted mt-0">CGST + SGST</p>
-    <p style="font-size:1.6rem; font-weight:800; margin:0;">Rs. {{ '%.2f'|format(data.totals.cgst + data.totals.sgst) }}</p>
+    <p class="figure m-0">Rs. {{ '%.2f'|format(data.totals.cgst + data.totals.sgst) }}</p>
   </div>
   <div class="card">
     <p class="text-muted mt-0">IGST</p>
-    <p style="font-size:1.6rem; font-weight:800; margin:0;">Rs. {{ '%.2f'|format(data.totals.igst) }}</p>
+    <p class="figure m-0">Rs. {{ '%.2f'|format(data.totals.igst) }}</p>
   </div>
   <div class="card">
     <p class="text-muted mt-0">Total</p>
-    <p style="font-size:1.6rem; font-weight:800; margin:0;">Rs. {{ '%.2f'|format(data.totals.total) }}</p>
+    <p class="figure m-0">Rs. {{ '%.2f'|format(data.totals.total) }}</p>
   </div>
 </div>
 
-<div class="card" style="margin-bottom:20px;">
-  <h2 style="margin-top:0;">B2B - invoices to GSTIN holders</h2>
+<div class="card mb-20">
+  <h2 class="mt-0">B2B - invoices to GSTIN holders</h2>
   <div class="table-wrap">
     <table>
       <thead><tr><th>Customer</th><th>GSTIN</th><th>Document</th><th>Date</th><th>Place of supply</th><th>Taxable</th><th>CGST</th><th>SGST</th><th>IGST</th></tr></thead>
@@ -61,8 +61,8 @@
   </div>
 </div>
 
-<div class="card" style="margin-bottom:20px;">
-  <h2 style="margin-top:0;">B2C Small - aggregated by place of supply &amp; rate</h2>
+<div class="card mb-20">
+  <h2 class="mt-0">B2C Small - aggregated by place of supply &amp; rate</h2>
   <div class="table-wrap">
     <table>
       <thead><tr><th>Place of supply</th><th>Rate</th><th>Taxable</th><th>CGST</th><th>SGST</th><th>IGST</th></tr></thead>
@@ -84,8 +84,8 @@
   </div>
 </div>
 
-<div class="card" style="margin-bottom:20px;">
-  <h2 style="margin-top:0;">Credit / Debit notes</h2>
+<div class="card mb-20">
+  <h2 class="mt-0">Credit / Debit notes</h2>
   <div class="table-wrap">
     <table>
       <thead><tr><th>Note</th><th>Date</th><th>Type</th><th>Against</th><th>Customer</th><th>Total</th></tr></thead>
@@ -107,8 +107,8 @@
   </div>
 </div>
 
-<div class="card" style="margin-bottom:20px;">
-  <h2 style="margin-top:0;">HSN/SAC summary</h2>
+<div class="card mb-20">
+  <h2 class="mt-0">HSN/SAC summary</h2>
   <div class="table-wrap">
     <table>
       <thead><tr><th>HSN/SAC</th><th>Rate</th><th>Unit</th><th>Qty</th><th>Taxable</th><th>CGST</th><th>SGST</th><th>IGST</th><th>Total</th></tr></thead>
@@ -133,20 +133,20 @@
   </div>
 </div>
 
-<div class="card" style="margin-bottom:20px;">
-  <h2 style="margin-top:0;">B2C Large and HSN by B2B / B2C</h2>
+<div class="card mb-20">
+  <h2 class="mt-0">B2C Large and HSN by B2B / B2C</h2>
   <div class="table-wrap">{% include "reports/_b2cl_hsn.html" %}</div>
 </div>
 
 {% if data.advances is defined %}
-<div class="card" style="margin-bottom:20px;">
-  <h2 style="margin-top:0;">Advances (tables 11A / 11B)</h2>
+<div class="card mb-20">
+  <h2 class="mt-0">Advances (tables 11A / 11B)</h2>
   <div class="table-wrap">{% include "reports/_advances.html" %}</div>
 </div>
 {% endif %}
 
 <div class="card">
-  <h2 style="margin-top:0;">Documents issued</h2>
+  <h2 class="mt-0">Documents issued</h2>
   <div class="table-wrap">
     <table>
       <thead><tr><th>Type</th><th>Series</th><th>From</th><th>To</th><th>Issued</th><th>Cancelled</th></tr></thead>

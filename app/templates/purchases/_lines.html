@@ -5,12 +5,12 @@
 <div class="line-items table-wrap">
   <table class="stock-lines">
     <thead><tr>
-      <th style="min-width:230px;">Item</th><th style="width:100px;">HSN</th><th style="width:90px;">Qty</th>
-      <th style="width:90px;">Unit</th><th style="width:110px;">Rate</th>
+      <th class="minw-230">Item</th><th class="w-100">HSN</th><th class="w-90">Qty</th>
+      <th class="w-90">Unit</th><th class="w-110">Rate</th>
       {% if itc_labels %}<th style="width:75px;">Disc %</th>{% endif %}
-      <th style="width:100px;">GST %</th>
-      {% if itc_labels %}<th style="width:150px;">ITC</th>{% endif %}
-      <th class="num" style="width:110px;">Amount</th><th style="width:36px;"></th>
+      <th class="w-100">GST %</th>
+      {% if itc_labels %}<th class="w-150">ITC</th>{% endif %}
+      <th class="num w-110">Amount</th><th class="w-36"></th>
     </tr></thead>
     <template x-for="(row, i) in rows" :key="row.key">
       <tbody>
@@ -21,7 +21,7 @@
               <template x-for="p in catalog" :key="p.id"><option :value="String(p.id)" x-text="p.name" :selected="String(p.id) === row.product_id"></option></template>
             </select>
             <input type="hidden" name="line_product_id[]" :value="row.product_id">
-            <input type="text" name="line_description[]" class="field-input" x-model="row.description" placeholder="Description" style="margin-top:4px;">
+            <input type="text" name="line_description[]" class="field-input mt-4" x-model="row.description" placeholder="Description">
           </td>
           <td><input type="text" name="line_hsn[]" maxlength="8" class="field-input" x-model="row.hsn"></td>
           <td><input type="number" name="line_qty[]" step="0.001" min="0" class="field-input" x-model="row.qty"></td>
@@ -40,16 +40,16 @@
         {% if with_stock %}
         <tr x-show="needsBatch(row) || needsSerial(row)">
           <td colspan="10" style="background:var(--color-bg, #fafaf7);">
-            <div class="row" style="gap:8px; flex-wrap:wrap; align-items:flex-end;">
-              <label class="field" style="margin:0;" x-show="needsBatch(row)"><span class="field-label">Batch no.</span>
+            <div class="row gap-8 flex-wrap items-end">
+              <label class="field m-0" x-show="needsBatch(row)"><span class="field-label">Batch no.</span>
                 <input type="text" name="line_batch[]" maxlength="50" class="field-input" x-model="row.batch"></label>
-              <label class="field" style="margin:0;" x-show="needsBatch(row)"><span class="field-label">Mfg date</span>
+              <label class="field m-0" x-show="needsBatch(row)"><span class="field-label">Mfg date</span>
                 <input type="date" name="line_mfg[]" class="field-input" x-model="row.mfg"></label>
-              <label class="field" style="margin:0;" x-show="needsBatch(row)"><span class="field-label">Expiry</span>
+              <label class="field m-0" x-show="needsBatch(row)"><span class="field-label">Expiry</span>
                 <input type="date" name="line_expiry[]" class="field-input" x-model="row.expiry"></label>
-              <label class="field" style="margin:0;" x-show="needsBatch(row)"><span class="field-label">Batch MRP</span>
+              <label class="field m-0" x-show="needsBatch(row)"><span class="field-label">Batch MRP</span>
                 <input type="number" step="0.01" min="0" name="line_mrp[]" class="field-input" x-model="row.mrp"></label>
-              <label class="field" style="margin:0; flex:1; min-width:240px;" x-show="needsSerial(row)"><span class="field-label">Serial / IMEI numbers - one per unit, comma or new line</span>
+              <label class="field m-0 grow minw-240" x-show="needsSerial(row)"><span class="field-label">Serial / IMEI numbers - one per unit, comma or new line</span>
                 <textarea name="line_serials[]" rows="2" class="field-input" x-model="row.serials"></textarea></label>
             </div>
           </td>

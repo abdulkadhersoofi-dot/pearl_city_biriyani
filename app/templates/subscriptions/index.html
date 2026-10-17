@@ -14,14 +14,14 @@
 </div>
 
 {% if not profile %}
-<div class="card" style="margin-bottom:16px; border-left:4px solid var(--color-danger);">
-  <p style="margin:0;">Fill in the firm's <a href="{{ url_for('subscriptions.profile') }}">billing profile</a> (name, state, GSTIN, UPI ID) before raising any invoice.</p>
+<div class="card callout-danger mb-16">
+  <p class="m-0">Fill in the firm's <a href="{{ url_for('subscriptions.profile') }}">billing profile</a> (name, state, GSTIN, UPI ID) before raising any invoice.</p>
 </div>
 {% endif %}
 
 {% if due %}
-<div class="card" style="margin-bottom:16px;">
-  <h2 style="margin-top:0;">Due to invoice ({{ due|length }})</h2>
+<div class="card mb-16">
+  <h2 class="mt-0">Due to invoice ({{ due|length }})</h2>
   <p class="text-muted">Renewals within {{ profile.days_before_due }} days that have no invoice yet. <code>flask platform-invoices-generate</code> raises these daily from cron.</p>
   <div class="table-wrap">
     <table>
@@ -38,14 +38,14 @@
       </tbody>
     </table>
   </div>
-  <form method="post" action="{{ url_for('subscriptions.raise_due') }}" style="margin-top:12px;">
+  <form class="mt-12" method="post" action="{{ url_for('subscriptions.raise_due') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <button class="btn btn-primary">Raise {{ due|length }} invoice{{ 's' if due|length != 1 }}</button>
   </form>
 </div>
 {% endif %}
 
-<div class="subnav" style="margin-bottom:12px;">
+<div class="subnav mb-12">
   {% for value, label in [(none, 'All'), ('issued', 'Unpaid'), ('paid', 'Paid'), ('void', 'Voided')] %}
   <a href="{{ url_for('subscriptions.index', status=value, kind=request.args.get('kind'), subject_id=request.args.get('subject_id')) }}" class="{{ 'active' if status == value }}">{{ label }}</a>
   {% endfor %}

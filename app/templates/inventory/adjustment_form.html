@@ -6,7 +6,7 @@
 {% include "inventory/_nav.html" %}
 <form method="post" x-data='{ reason: {{ (form.get('reason') or 'count')|tojson }} }'>
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  <div class="card" style="margin-bottom:16px;">
+  <div class="card mb-16">
     <div class="form-grid">
       <label class="field"><span class="field-label">Why</span>
         <select name="reason" class="field-input" x-model="reason">
@@ -31,7 +31,7 @@
     <p class="field-help" x-show="reason === 'other'">Enter + to add or - to take out (e.g. -2).</p>
   </div>
   {{ stock_lines(products_json, rows or [], qty_label='Qty', show_cost=True, show_batch=has_feature('batch_expiry')) }}
-  <div class="row" style="margin-top:16px; justify-content:flex-end;">
+  <div class="row mt-16 justify-end">
     <a href="{{ url_for('inventory.adjustments') }}" class="btn btn-quiet">Cancel</a>
     <button class="btn btn-primary">Save adjustment</button>
   </div>

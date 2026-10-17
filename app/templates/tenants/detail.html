@@ -32,8 +32,8 @@
 
 {% if current_user.is_super_admin %}
 {% if tenant.billing_cycle is none %}
-<div class="card" style="margin-bottom:20px; border-color: var(--color-danger, #b23b3b);">
-  <h2 style="margin-top:0;">Awaiting verification</h2>
+<div class="card card-danger mb-20">
+  <h2 class="mt-0">Awaiting verification</h2>
   <p class="text-muted mt-0">This client cannot sign in until you pick a billing cycle.
     {% if tenant.onboarded_by_id and tenant.auditor %}Onboarded by {{ tenant.auditor.name }} ({{ tenant.auditor.role_label }}).{% endif %}</p>
   <form method="post" action="{{ url_for('tenants.set_billing_cycle', tenant_id=tenant.id) }}" class="row">
@@ -44,16 +44,16 @@
 </div>
 {% endif %}
 
-<div class="card" style="margin-bottom:20px;">
-  <h2 style="margin-top:0;">Access &amp; billing</h2>
+<div class="card mb-20">
+  <h2 class="mt-0">Access &amp; billing</h2>
   {% if access_status.blocked %}
-  <p class="flash flash-error" style="margin-top:0;">{{ access_status.message }}</p>
+  <p class="flash flash-error mt-0">{{ access_status.message }}</p>
   {% elif access_status.billing_notice %}
-  <p class="flash flash-info" style="margin-top:0;">{{ access_status.billing_notice_message }}</p>
+  <p class="flash flash-info mt-0">{{ access_status.billing_notice_message }}</p>
   {% endif %}
   <div class="form-grid">
     <div>
-      <p class="text-muted" style="margin:0 0 4px;">Billing cycle</p>
+      <p class="text-muted m-0 mb-4">Billing cycle</p>
       {% if tenant.billing_cycle is not none %}
       <form method="post" action="{{ url_for('tenants.set_billing_cycle', tenant_id=tenant.id) }}" class="row">
         {{ billing_form.hidden_tag() }}
@@ -61,37 +61,37 @@
         <button type="submit" class="btn btn-secondary">Change</button>
       </form>
       {% else %}
-      <p style="margin:0;"><strong>Not set</strong></p>
+      <p class="m-0"><strong>Not set</strong></p>
       {% endif %}
     </div>
     <div>
-      <p class="text-muted" style="margin:0 0 4px;">Cycle started</p>
-      <p style="margin:0;"><strong>{{ tenant.cycle_anchor_date.strftime('%d %b %Y') if tenant.cycle_anchor_date else 'Not yet - starts on first login after password change' }}</strong></p>
+      <p class="text-muted m-0 mb-4">Cycle started</p>
+      <p class="m-0"><strong>{{ tenant.cycle_anchor_date.strftime('%d %b %Y') if tenant.cycle_anchor_date else 'Not yet - starts on first login after password change' }}</strong></p>
     </div>
     <div>
-      <p class="text-muted" style="margin:0 0 4px;">Renewal due</p>
-      <p style="margin:0;"><strong>{{ tenant.next_billing_due.strftime('%d %b %Y') if tenant.next_billing_due else 'Not tracked yet' }}</strong></p>
-      <p class="text-muted" style="margin:4px 0 0;">Last paid: {{ tenant.last_paid_on.strftime('%d %b %Y') if tenant.last_paid_on else 'Never' }}</p>
-      <form method="post" action="{{ url_for('tenants.mark_billing_paid', tenant_id=tenant.id) }}" style="margin-top:8px;">
+      <p class="text-muted m-0 mb-4">Renewal due</p>
+      <p class="m-0"><strong>{{ tenant.next_billing_due.strftime('%d %b %Y') if tenant.next_billing_due else 'Not tracked yet' }}</strong></p>
+      <p class="text-muted m-0 mt-4">Last paid: {{ tenant.last_paid_on.strftime('%d %b %Y') if tenant.last_paid_on else 'Never' }}</p>
+      <form class="mt-8" method="post" action="{{ url_for('tenants.mark_billing_paid', tenant_id=tenant.id) }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="btn btn-secondary">Mark this period paid</button>
       </form>
-      <form method="post" action="{{ url_for('tenants.resync_billing_cycle', tenant_id=tenant.id) }}" style="margin-top:6px;">
+      <form class="mt-6" method="post" action="{{ url_for('tenants.resync_billing_cycle', tenant_id=tenant.id) }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="btn btn-quiet" title="Recomputes the renewal date from the live calendar - use this if the cycle ever looks wrong.">Resync to live calendar</button>
       </form>
     </div>
     {% with kind='tenant', subject=tenant %}{% include "subscriptions/_fee.html" %}{% endwith %}
     <div>
-      <p class="text-muted" style="margin:0 0 4px;">Manual reminder</p>
-      <p style="margin:0;"><strong>{{ 'On' if tenant.manual_alarm_active else 'Off' }}</strong></p>
+      <p class="text-muted m-0 mb-4">Manual reminder</p>
+      <p class="m-0"><strong>{{ 'On' if tenant.manual_alarm_active else 'Off' }}</strong></p>
       {% if tenant.manual_alarm_active %}
-      <form method="post" action="{{ url_for('tenants.mute_alarm', tenant_id=tenant.id) }}" style="margin-top:8px;">
+      <form class="mt-8" method="post" action="{{ url_for('tenants.mute_alarm', tenant_id=tenant.id) }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="btn btn-secondary">Turn off reminder</button>
       </form>
       {% else %}
-      <form method="post" action="{{ url_for('tenants.trigger_alarm', tenant_id=tenant.id) }}" style="margin-top:8px;">
+      <form class="mt-8" method="post" action="{{ url_for('tenants.trigger_alarm', tenant_id=tenant.id) }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="btn btn-secondary">Trigger reminder now</button>
       </form>
@@ -100,8 +100,8 @@
   </div>
 </div>
 
-<div class="card" style="margin-bottom:20px;">
-  <h2 style="margin-top:0;">Allocation</h2>
+<div class="card mb-20">
+  <h2 class="mt-0">Allocation</h2>
   <form method="post" action="{{ url_for('tenants.reassign_auditor', tenant_id=tenant.id) }}" class="row">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <select name="auditor_id" class="field-input">
@@ -114,8 +114,8 @@
   </form>
 </div>
 {% elif current_user.is_auditor and tenant.auditor_id == current_user.id and current_user.sub_auditors %}
-<div class="card" style="margin-bottom:20px;">
-  <h2 style="margin-top:0;">Allocate to Sub-Auditor</h2>
+<div class="card mb-20">
+  <h2 class="mt-0">Allocate to Sub-Auditor</h2>
   <form method="post" action="{{ url_for('tenants.allocate_client_to_sub_auditor', tenant_id=tenant.id) }}" class="row">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <select name="sub_auditor_id" class="field-input" required>
@@ -128,9 +128,9 @@
 </div>
 {% endif %}
 
-<div class="card" style="margin-bottom:20px;">
-  <h2 style="margin-top:0;">Branding</h2>
-  <div class="row" style="align-items:center; gap:16px;">
+<div class="card mb-20">
+  <h2 class="mt-0">Branding</h2>
+  <div class="row items-center gap-16">
     {% if tenant.logo_image_id %}
       <img src="{{ url_for('main.media', image_id=tenant.logo_image_id) }}" alt="{{ tenant.legal_name }}"
            style="width:72px; height:72px; object-fit:contain; border-radius:var(--radius); border:1px solid var(--color-border); background:#fff;">
@@ -140,15 +140,15 @@
     {% endif %}
   </div>
   <form method="post" action="{{ url_for('tenants.update_logo', tenant_id=tenant.id) }}"
-        enctype="multipart/form-data" style="margin-top:12px;" class="row">
+        enctype="multipart/form-data" class="row mt-12">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="file" name="logo" accept=".png,.jpg,.jpeg,.gif,.webp" class="field-input" required>
     <button type="submit" class="btn btn-secondary">{{ 'Replace logo' if tenant.logo_image_id else 'Upload logo' }}</button>
   </form>
 </div>
 
-<div class="card" style="margin-bottom:20px;">
-  <h2 style="margin-top:0;">Business locations</h2>
+<div class="card mb-20">
+  <h2 class="mt-0">Business locations</h2>
   <ul>
     {% for g in tenant.gstins %}
       <li>{{ g.display_label }}{% if g.is_primary %} (primary){% endif %}</li>
@@ -156,7 +156,7 @@
       <li class="text-muted">No business location on file yet - POS and invoicing need at least one to bill from.</li>
     {% endfor %}
   </ul>
-  <form method="post" action="{{ url_for('tenants.add_gstin', tenant_id=tenant.id) }}" class="form-grid" style="margin-top:12px;">
+  <form method="post" action="{{ url_for('tenants.add_gstin', tenant_id=tenant.id) }}" class="form-grid mt-12">
     {{ gstin_form.hidden_tag() }}
     {{ field(gstin_form.gstin, help="Leave blank if this client isn't GST-registered.") }}
     {{ field(gstin_form.state_code) }}
@@ -165,8 +165,8 @@
   </form>
 </div>
 
-<div class="card" style="margin-bottom:20px;">
-  <h2 style="margin-top:0;">Users</h2>
+<div class="card mb-20">
+  <h2 class="mt-0">Users</h2>
   <p class="text-muted mt-0">"Act as" signs you in as that login - the client admin's own invoicing, or a
     branch's own POS - so you can bill on their behalf exactly as they would. "Return to admin console" at the
     top of the page switches you back.</p>
@@ -215,16 +215,16 @@
   </table>
 </div>
 
-<form method="get" class="card row" style="gap:10px; align-items:flex-end; margin-bottom:20px;">
-  <div><h2 style="margin:0 0 4px;">Month-end</h2><p class="text-muted mt-0" style="margin-bottom:0;">GSTR-1/3B, HSN, registers, P&amp;L and Tally files in one ZIP.</p></div>
-  <label class="field" style="margin:0;"><span class="field-label">Month</span><input type="month" name="period" value="{{ request.args.get('period') or default_period }}" class="field-input" required></label>
+<form method="get" class="card row gap-10 items-end mb-20">
+  <div><h2 class="m-0 mb-4">Month-end</h2><p class="text-muted mt-0 mb-0">GSTR-1/3B, HSN, registers, P&amp;L and Tally files in one ZIP.</p></div>
+  <label class="field m-0"><span class="field-label">Month</span><input type="month" name="period" value="{{ request.args.get('period') or default_period }}" class="field-input" required></label>
   <button formaction="{{ url_for('tenants.monthly_pack', tenant_id=tenant.id) }}" class="btn btn-primary">Monthly pack</button>
   <button formaction="{{ url_for('tenants.tally_export', tenant_id=tenant.id) }}" class="btn btn-secondary">Tally export</button>
   <a href="{{ url_for('tenants.filing_tracker') }}" class="btn btn-quiet">Filing tracker</a>
 </form>
 
-<div class="card" style="margin-bottom:20px;">
-  <h2 style="margin-top:0;">Recent invoices (read-only)</h2>
+<div class="card mb-20">
+  <h2 class="mt-0">Recent invoices (read-only)</h2>
   <table>
     <thead><tr><th>Number</th><th>Date</th><th>Customer</th><th>Status</th><th>Total</th></tr></thead>
     <tbody>
@@ -243,8 +243,8 @@
   </table>
 </div>
 
-<div class="card" style="margin-bottom:20px;">
-  <h2 style="margin-top:0;">Recent POS bills (read-only - open one for its lines)</h2>
+<div class="card mb-20">
+  <h2 class="mt-0">Recent POS bills (read-only - open one for its lines)</h2>
   <table>
     <thead><tr><th>Bill</th><th>Date</th><th>Payment</th><th>Status</th><th>Total</th></tr></thead>
     <tbody>
@@ -268,7 +268,7 @@
 </div>
 
 <div class="card">
-  <h2 style="margin-top:0;">Recent notes (read-only - open one for its lines)</h2>
+  <h2 class="mt-0">Recent notes (read-only - open one for its lines)</h2>
   <table>
     <thead><tr><th>Number</th><th>Date</th><th>Type</th><th>Against</th><th>Status</th><th>Total</th></tr></thead>
     <tbody>

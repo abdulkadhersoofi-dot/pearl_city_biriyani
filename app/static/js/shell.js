@@ -176,3 +176,101 @@ document.addEventListener("DOMContentLoaded", function () {
     requestAnimationFrame(frame);
   });
 });
+
+// Page patterns (redesign stage 3), applied to every page without
+// touching its template:
+//  - a page header with three or more actions keeps its main one (the
+//    green button, else the first) in view and folds the rest into "More";
+//    data-keep on an action keeps it out, data-more sends it in;
+//  - list tables (no inputs inside) get each cell's column name, so on a
+//    phone their rows stack into cards (app.css, table.is-stack).
+// The counter (POS) is left alone; it gets its own layout.
+(function () {
+  function isAction(el) {
+    if (el.hasAttribute("data-keep")) return false;
+    if (el.matches("a.btn, button.btn")) return true;
+    if (el.tagName === "FORM") {
+      var controls = el.querySelectorAll("input:not([type=hidden]), select, textarea");
+      return controls.length === 0 && el.querySelectorAll(".btn").length === 1;
+    }
+    return false;
+  }
+
+  function closeAll(except) {
+    document.querySelectorAll(".more-wrap.is-open").forEach(function (w) {
+      if (w === except) return;
+      w.classList.remove("is-open");
+      w.querySelector(".more-pop").hidden = true;
+      w.querySelector(".more-btn").setAttribute("aria-expanded", "false");
+    });
+  }
+
+  function foldHeader(header) {
+    var spots = [header];
+    Array.prototype.forEach.call(header.children, function (child, i) {
+      if (i > 0 && child.tagName === "DIV") spots.push(child);
+    });
+    var actions = [];
+    spots.forEach(function (spot) {
+      Array.prototype.forEach.call(spot.children, function (el) { if (isAction(el)) actions.push(el); });
+    });
+    var forced = actions.filter(function (el) { return el.hasAttribute("data-more"); });
+    if (actions.length < 3 && !forced.length) return;
+    var primary = actions.filter(function (el) {
+      return !el.hasAttribute("data-more") && (el.matches(".btn-primary") || el.querySelector(".btn-primary"));
+    })[0] || actions.filter(function (el) { return !el.hasAttribute("data-more"); })[0];
+    var folded = actions.filter(function (el) { return el !== primary; });
+    if (!folded.length) return;
+
+    var wrap = document.createElement("div");
+    wrap.className = "pop-wrap more-wrap";
+    var sprite = document.getElementById("icon-sprite");
+    var href = (sprite ? sprite.dataset.href : "") + "#i-chevron-down";
+    wrap.innerHTML = '<button type="button" class="btn btn-secondary more-btn" aria-haspopup="menu" aria-expanded="false">' +
+      'More <svg class="icon" aria-hidden="true"><use href="' + href + '"></use></svg></button>' +
+      '<div class="pop pop-right more-pop" role="menu" hidden></div>';
+    var pop = wrap.querySelector(".more-pop");
+    folded.forEach(function (el) {
+      el.classList.remove("btn-lg");
+      el.querySelectorAll(".btn").forEach(function (b) { b.classList.remove("btn-lg"); });
+      pop.appendChild(el);
+    });
+    if (primary) { primary.parentNode.insertBefore(wrap, primary); } else { spots[spots.length - 1].appendChild(wrap); }
+    var button = wrap.querySelector(".more-btn");
+    button.addEventListener("click", function (ev) {
+      ev.stopPropagation();
+      var open = !wrap.classList.contains("is-open");
+      closeAll(wrap);
+      wrap.classList.toggle("is-open", open);
+      pop.hidden = !open;
+      button.setAttribute("aria-expanded", open ? "true" : "false");
+    });
+  }
+
+  function labelTable(table) {
+    if (table.closest(".no-stack") || table.querySelector("input:not([type=hidden]), select, textarea")) return;
+    var heads = Array.prototype.map.call(table.querySelectorAll("thead th"), function (th) { return th.textContent.trim(); });
+    if (heads.length < 3) return;
+    table.classList.add("is-stack");
+    table.querySelectorAll("tbody tr").forEach(function (tr) {
+      var col = 0;
+      Array.prototype.forEach.call(tr.children, function (cell) {
+        var span = cell.colSpan || 1;
+        if (span === 1 && heads[col]) cell.setAttribute("data-label", heads[col]);
+        col += span;
+      });
+    });
+  }
+
+  document.addEventListener("DOMContentLoaded", function () {
+    if (document.body.classList.contains("is-counter")) return;
+    document.querySelectorAll(".app-main .page-header").forEach(function (header) {
+      if (!header.hasAttribute("data-no-more")) foldHeader(header);
+    });
+    document.querySelectorAll(".app-main table").forEach(labelTable);
+    document.addEventListener("click", function (ev) {
+      if (!ev.target.closest || !ev.target.closest(".more-pop")) closeAll(null);
+    });
+    document.addEventListener("keydown", function (ev) { if (ev.key === "Escape") closeAll(null); });
+  });
+})();

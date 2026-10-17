@@ -9,8 +9,8 @@
   </div>
 </div>
 
-<div class="card" style="max-width:640px;">
-  <h2 style="margin-top:0;">Two-step sign-in</h2>
+<div class="card maxw-640">
+  <h2 class="mt-0">Two-step sign-in</h2>
   {% if current_user.has_two_factor %}
     <p><span class="tag tag-ok">On</span> since {{ current_user.totp_enabled_at|ist('%d %b %Y') }} -
       {{ codes_left }} recovery code{{ 's' if codes_left != 1 }} left.</p>

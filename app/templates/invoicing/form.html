@@ -29,7 +29,7 @@
   {{ form.hidden_tag() }}
   {% block hidden_extras %}{% if source_doc %}<input type="hidden" name="from_document" value="{{ source_doc.id }}">{% endif %}{% if source_run %}<input type="hidden" name="from_run" value="{{ source_run.id }}">{% endif %}{% endblock %}
 
-  <div class="card" style="margin-bottom:20px;">
+  <div class="card mb-20">
     <div class="form-grid">
       <div class="field {{ 'field-error' if form.gstin_id.errors }}">
         {{ form.gstin_id.label(class="field-label") }}
@@ -49,13 +49,13 @@
     </div>
   </div>
 
-  <div class="card" style="margin-bottom:20px;">
+  <div class="card mb-20">
     {% block bill_to_toggle %}
     <div class="field">
       <span class="field-label">Bill to</span>
       <div class="row">
-        <label class="row" style="gap:6px;"><input type="radio" value="customer" x-model="billTo" @change="recalc()"> Customer</label>
-        <label class="row" style="gap:6px;"><input type="radio" value="branch" x-model="billTo" @change="onBranchChange()"> Branch</label>
+        <label class="row gap-6"><input type="radio" value="customer" x-model="billTo" @change="recalc()"> Customer</label>
+        <label class="row gap-6"><input type="radio" value="branch" x-model="billTo" @change="onBranchChange()"> Branch</label>
       </div>
     </div>
     {% endblock %}
@@ -84,7 +84,7 @@
       {% endif %}
     </div>
     <template x-if="billTo === 'customer' && customerId === 'new'">
-      <div class="form-grid" style="margin-top:12px;">
+      <div class="form-grid mt-12">
         {{ field(form.new_customer_name) }}
         {{ field(form.new_customer_gstin) }}
         {{ field(form.new_customer_address) }}
@@ -94,19 +94,19 @@
   </div>
 
   <div class="card">
-    <h2 style="margin-top:0;">Items</h2>
+    <h2 class="mt-0">Items</h2>
     <div class="line-items table-wrap">
       <table>
         <thead>
           <tr>
-            <th style="min-width:220px;">Item / description</th>
+            <th class="minw-220">Item / description</th>
             <th>HSN/SAC</th>
-            <th style="width:90px;">Qty</th>
-            <th style="width:110px;">Rate</th>
-            <th style="width:90px;">Disc %</th>
-            <th style="width:90px;">GST %</th>
-            <th style="width:70px;" title="Tick when the rate you entered already includes GST">Incl. GST</th>
-            <th style="width:110px;">Amount</th>
+            <th class="w-90">Qty</th>
+            <th class="w-110">Rate</th>
+            <th class="w-90">Disc %</th>
+            <th class="w-90">GST %</th>
+            <th class="w-70" title="Tick when the rate you entered already includes GST">Incl. GST</th>
+            <th class="w-110">Amount</th>
             <th></th>
           </tr>
         </thead>
@@ -122,7 +122,7 @@
               <td><input type="number" step="0.01" min="0" x-model.number="line.rate" @input="recalc()" name="line_rate[]"></td>
               <td><input type="number" step="0.01" min="0" x-model.number="line.discount" @input="recalc()" name="line_discount[]"></td>
               <td><input type="number" step="0.01" min="0" x-model.number="line.gst_rate" @input="recalc()" name="line_gst_rate[]"></td>
-              <td style="text-align:center;">
+              <td class="text-center">
                 <input type="checkbox" x-model="line.incl" @change="recalc()" aria-label="Rate includes GST">
                 <input type="hidden" name="line_incl[]" :value="line.incl ? '1' : '0'">
               </td>
@@ -140,7 +140,7 @@
     <datalist id="product-names">
       {% for p in products %}<option value="{{ p.name }}">{% endfor %}
     </datalist>
-    <button type="button" class="btn btn-secondary" style="margin-top:12px;" @click="addLine()">+ Add item</button>
+    <button type="button" class="btn btn-secondary mt-12" @click="addLine()">+ Add item</button>
   </div>
 
   <div class="totals-panel">

@@ -7,13 +7,13 @@
     <p class="text-muted mt-0">Print a sample receipt to check the paper size and that the text is sharp and fits.</p>
   </div>
 </div>
-<div class="card stack" style="max-width:640px;" x-data="{format: '{{ tenant.default_receipt_format }}'}">
+<div class="card stack maxw-640" x-data="{format: '{{ tenant.default_receipt_format }}'}">
   <div class="field">
     <span class="field-label">Paper</span>
     <div class="row">
-      <label class="row" style="gap:6px;"><input type="radio" value="2in" x-model="format"> 2 inch roll (58 mm)</label>
-      <label class="row" style="gap:6px;"><input type="radio" value="3in" x-model="format"> 3 inch roll (80 mm)</label>
-      <label class="row" style="gap:6px;"><input type="radio" value="a4" x-model="format"> A4</label>
+      <label class="row gap-6"><input type="radio" value="2in" x-model="format"> 2 inch roll (58 mm)</label>
+      <label class="row gap-6"><input type="radio" value="3in" x-model="format"> 3 inch roll (80 mm)</label>
+      <label class="row gap-6"><input type="radio" value="a4" x-model="format"> A4</label>
     </div>
   </div>
   <div class="row">
@@ -31,5 +31,5 @@
   </form>
   <p class="text-muted">The paper size bills print on by default is set under <a href="{{ url_for('settings.index') }}">Settings</a>.</p>
 </div>
-<iframe id="test-print-frame" style="display:none;"></iframe>
+<iframe class="d-none" id="test-print-frame"></iframe>
 {% endblock %}

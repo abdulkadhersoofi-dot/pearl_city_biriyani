@@ -11,7 +11,7 @@
   <a href="{{ url_for('accounts.refund_pdf', refund_id=refund.id) }}" target="_blank" class="btn btn-secondary">Print</a>
 </div>
 {% include "accounts/_nav.html" %}
-<div class="card" style="margin-bottom:16px;">
+<div class="card mb-16">
   <div class="form-grid">
     <div><strong>Date</strong><p>{{ refund.voucher_date.strftime('%d %b %Y') }}</p></div>
     <div><strong>Amount</strong><p>Rs. {{ '%.2f'|format(refund.amount) }}</p></div>
@@ -22,9 +22,9 @@
   {% if refund.void_reason %}<p><strong>Voided:</strong> {{ refund.void_reason }}</p>{% endif %}
 </div>
 {% if refund.status.value == 'posted' %}
-<form method="post" action="{{ url_for('accounts.void_refund', refund_id=refund.id) }}" class="card row void-box" style="gap:10px; align-items:flex-end;">
+<form method="post" action="{{ url_for('accounts.void_refund', refund_id=refund.id) }}" class="card row void-box gap-10 items-end">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  <label class="field" style="margin:0; flex:1;"><span class="field-label">Void this refund voucher - reason</span><input type="text" name="reason" class="field-input" required></label>
+  <label class="field m-0 grow"><span class="field-label">Void this refund voucher - reason</span><input type="text" name="reason" class="field-input" required></label>
   <button class="btn btn-danger" onclick="return confirm('Void {{ refund.number }}?');">Void</button>
 </form>
 {% endif %}

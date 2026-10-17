@@ -2,8 +2,8 @@
 {% if current_user.is_authenticated and current_user.is_client_admin %}
 {% set fr = first_run_checklist() %}
 {% if fr %}
-<div class="card first-run" style="margin-bottom:16px;">
-  <div class="page-header" style="margin-bottom:8px;">
+<div class="card first-run mb-16">
+  <div class="page-header mb-8">
     <div>
       <h2 class="mt-0">Getting started - {{ fr.done }} of {{ fr.total }} done</h2>
       <p class="text-muted mt-0">{{ 'All set - you can close this list.' if fr.complete else 'A few steps and you\'re billing.' }}</p>

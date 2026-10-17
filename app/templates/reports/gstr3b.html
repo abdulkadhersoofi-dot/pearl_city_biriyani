@@ -14,8 +14,8 @@
   </div>
 </div>
 
-<div class="card" style="margin-bottom:20px;">
-  <h2 style="margin-top:0;">3.1 Outward supplies</h2>
+<div class="card mb-20">
+  <h2 class="mt-0">3.1 Outward supplies</h2>
   <div class="table-wrap">
     <table>
       <thead><tr><th>Nature of supply</th><th>Taxable value</th><th>CGST</th><th>SGST</th><th>IGST</th></tr></thead>
@@ -58,16 +58,16 @@
 
 {% if data.itc is defined %}
 {% set itc = data.itc %}
-<div class="card" style="margin-top:20px;">
-  <h2 style="margin-top:0;">3.1(d) Inward supplies liable to reverse charge</h2>
+<div class="card mt-20">
+  <h2 class="mt-0">3.1(d) Inward supplies liable to reverse charge</h2>
   <div class="table-wrap"><table>
     <thead><tr><th></th><th class="num">Taxable value</th><th class="num">CGST</th><th class="num">SGST</th><th class="num">IGST</th></tr></thead>
     <tbody><tr><td>Reverse-charge purchases (tax you pay in cash)</td><td class="num">{{ '%.2f'|format(itc.rcm_inward.taxable_value) }}</td>
       <td class="num">{{ '%.2f'|format(itc.rcm_inward.cgst) }}</td><td class="num">{{ '%.2f'|format(itc.rcm_inward.sgst) }}</td><td class="num">{{ '%.2f'|format(itc.rcm_inward.igst) }}</td></tr></tbody>
   </table></div>
 </div>
-<div class="card" style="margin-top:20px;">
-  <h2 style="margin-top:0;">4. Eligible ITC</h2>
+<div class="card mt-20">
+  <h2 class="mt-0">4. Eligible ITC</h2>
   <div class="table-wrap"><table>
     <thead><tr><th>Details</th><th class="num">CGST</th><th class="num">SGST</th><th class="num">IGST</th></tr></thead>
     <tbody>
@@ -77,29 +77,29 @@
       <tr><td><strong>(C) Net ITC available (A) - (B)</strong></td><td class="num"><strong>{{ '%.2f'|format(itc.net.cgst) }}</strong></td><td class="num"><strong>{{ '%.2f'|format(itc.net.sgst) }}</strong></td><td class="num"><strong>{{ '%.2f'|format(itc.net.igst) }}</strong></td></tr>
     </tbody>
   </table></div>
-  <p class="text-muted" style="margin-bottom:0;">From {{ itc.bill_count }} purchase bill(s) and {{ itc.expense_count }} expense(s) with a GST bill this month. Claim only what your GSTR-2B shows{% if has_feature('purchases') %} -
+  <p class="text-muted mb-0">From {{ itc.bill_count }} purchase bill(s) and {{ itc.expense_count }} expense(s) with a GST bill this month. Claim only what your GSTR-2B shows{% if has_feature('purchases') %} -
     check it under <a href="{{ url_for('purchases.gstr2b_imports') }}">Purchases &rarr; GSTR-2B match</a>{% endif %}.</p>
 </div>
 {% if data.payment is defined %}
-<div class="card" style="margin-top:20px;">
-  <h2 style="margin-top:0;">6.1 Tax payable - after setting off credit</h2>
+<div class="card mt-20">
+  <h2 class="mt-0">6.1 Tax payable - after setting off credit</h2>
   <div class="table-wrap">{% include "reports/_payment.html" %}</div>
 </div>
 {% endif %}
-<div class="card" style="margin-top:20px;">
-  <p class="text-muted mt-0" style="margin-bottom:0;">
+<div class="card mt-20">
+  <p class="text-muted mt-0 mb-0">
     Reverse Charge Invoices you <em>issued</em> are excluded from the output tax above - under reverse charge the
     recipient pays that tax directly. Tax on reverse-charge <em>purchases</em> (3.1(d), Rs. {{ '%.2f'|format(itc.rcm_tax_payable) }}) is yours to pay in cash.
   </p>
 </div>
 {% else %}
-<div class="card" style="margin-top:20px;">
-  <p class="text-muted mt-0" style="margin-bottom:0;">
+<div class="card mt-20">
+  <p class="text-muted mt-0 mb-0">
     <strong>Before computing net cash payable:</strong> Input Tax Credit isn't tracked in this
     system - it only records sales, not purchases. Add your eligible ITC from purchase records
     (table 4 of GSTR-3B) before arriving at the amount actually payable in cash.
   </p>
-  <p class="text-muted" style="margin-bottom:0;">
+  <p class="text-muted mb-0">
     Reverse Charge Invoices are excluded from the figure above - under reverse charge the
     recipient pays that tax directly, not this tenant, so it was never this tenant's own output
     tax payable. See the invoice (or GSTR-1, where it's still disclosed) for that amount.

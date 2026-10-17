@@ -2,8 +2,8 @@
 {% from "macros.html" import field %}
 {% macro checkbox(f, help=None) %}
 <div class="field {{ 'field-error' if f.errors }}">
-  <label class="row" style="align-items:center; gap:8px; font-weight:600;">{{ f() }} {{ f.label.text }}</label>
-  {% if help %}<p class="field-help" style="margin:4px 0 0;">{{ help }}</p>{% endif %}
+  <label class="row items-center gap-8 fw-600">{{ f() }} {{ f.label.text }}</label>
+  {% if help %}<p class="field-help m-0 mt-4">{{ help }}</p>{% endif %}
   {% for error in f.errors %}<p class="field-error-msg">{{ error }}</p>{% endfor %}
 </div>
 {% endmacro %}
@@ -39,7 +39,7 @@
   {% set more_has_errors = form.mrp.errors or form.wholesale_price.errors or form.purchase_rate.errors or form.cost_price.errors or form.sku.errors or form.barcode.errors or form.alt_unit.errors or form.alt_unit_factor.errors or form.min_stock_level.errors %}
   <details class="more-details" {% if more_has_errors %}open{% endif %}>
     <summary>More details (optional) - MRP, other prices, codes, pack size, stock alert</summary>
-    <div class="stack" style="margin-top:12px;">
+    <div class="stack mt-12">
       <div class="form-grid">
         {{ field(form.mrp, help="Always includes GST. The sale price can't go above it.") }}
         {{ field(form.wholesale_price) }}
@@ -83,7 +83,7 @@
     </div>
   </details>
   {% if has_feature('jewellery') %}
-  <details class="card" style="margin-bottom:16px;" {{ 'open' if form.metal.data else '' }}>
+  <details class="card mb-16" {{ 'open' if form.metal.data else '' }}>
     <summary><strong>Jewellery</strong> - priced from today's metal rate</summary>
     <p class="field-help">Price = net weight x today's rate for the purity + making charges + stones; GST {{ jewellery_gst_rate }}% on the whole. The sale price above isn't used for these.</p>
     <div class="form-grid">
@@ -101,14 +101,14 @@
   <button type="submit" class="btn btn-primary btn-lg">Save</button>
 </form>
 {% if product and has_feature('wholesale') %}
-<p style="margin-top:12px;"><a href="{{ url_for('wholesale.slabs', product_id=product.id) }}" class="btn btn-secondary">Quantity prices (slabs)</a></p>
+<p class="mt-12"><a href="{{ url_for('wholesale.slabs', product_id=product.id) }}" class="btn btn-secondary">Quantity prices (slabs)</a></p>
 {% endif %}
 {% if product and has_feature('variants') and not product.parent_id %}
-<p style="margin-top:12px;"><a href="{{ url_for('products.variants', product_id=product.id) }}" class="btn btn-secondary">Sizes / colours (variants){% if product.has_variants %} - {{ product.variants|length }}{% endif %}</a></p>
+<p class="mt-12"><a href="{{ url_for('products.variants', product_id=product.id) }}" class="btn btn-secondary">Sizes / colours (variants){% if product.has_variants %} - {{ product.variants|length }}{% endif %}</a></p>
 {% endif %}
 {% if product %}
-<form method="post" action="{{ url_for('products.deactivate_product', product_id=product.id) }}"
-      style="margin-top:12px;"
+<form class="mt-12" method="post" action="{{ url_for('products.deactivate_product', product_id=product.id) }}"
+     
       onsubmit="return confirm('Remove {{ product.name }} from the active list?');">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <button class="btn btn-quiet">Remove</button>

@@ -3,18 +3,18 @@
 {% block content %}
 <div class="page-header"><div><h1>{{ v.number }}</h1><p class="text-muted mt-0">Old gold purchase voucher &middot; {{ v.status.value|title }}</p></div>
   <div class="row"><a href="{{ url_for('jewellery.old_gold_pdf', voucher_id=v.id) }}" target="_blank" class="btn btn-secondary">Print</a><a href="{{ url_for('jewellery.old_gold_list') }}" class="btn btn-quiet">All vouchers</a></div></div>
-<div class="card" style="margin-bottom:16px;"><div class="form-grid">
+<div class="card mb-16"><div class="form-grid">
   <div><strong>Seller</strong><p>{{ v.seller_name }}{% if v.seller_phone %}<br>{{ v.seller_phone }}{% endif %}{% if v.seller_address %}<br>{{ v.seller_address }}{% endif %}{% if v.id_proof %}<br>ID: {{ v.id_proof }}{% endif %}</p></div>
   <div><strong>Item</strong><p>{{ v.description }}<br>{{ v.purity }} {{ v.metal }} &middot; gross {{ v.gross_weight }} g, net {{ v.net_weight }} g<br>@ Rs. {{ '%.2f'|format(v.rate_per_gram) }}/g</p></div>
-  <div><strong>Value</strong><p class="totals-row grand" style="margin:0;">Rs. {{ '%.2f'|format(v.value) }}</p><p class="text-muted">Used Rs. {{ '%.2f'|format(v.used_amount) }} &middot; left Rs. {{ '%.2f'|format(v.balance) }}</p></div>
+  <div><strong>Value</strong><p class="totals-row grand m-0">Rs. {{ '%.2f'|format(v.value) }}</p><p class="text-muted">Used Rs. {{ '%.2f'|format(v.used_amount) }} &middot; left Rs. {{ '%.2f'|format(v.balance) }}</p></div>
 </div></div>
 {% if v.status.value == 'void' %}
 <div class="card"><p class="mt-0"><strong>Voided</strong> {{ v.voided_at|ist }}</p><p class="text-muted">{{ v.void_reason }}</p></div>
 {% elif current_user.is_client_admin and not v.used_amount %}
-<form method="post" action="{{ url_for('jewellery.old_gold_void', voucher_id=v.id) }}" class="card row void-box" style="gap:10px; align-items:flex-end;"
+<form method="post" action="{{ url_for('jewellery.old_gold_void', voucher_id=v.id) }}" class="card row void-box gap-10 items-end"
       onsubmit="return confirm('Void {{ v.number }}?');">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  <label class="field" style="margin:0; flex:1;"><span class="field-label">Void this voucher - reason</span><input type="text" name="reason" required class="field-input"></label>
+  <label class="field m-0 grow"><span class="field-label">Void this voucher - reason</span><input type="text" name="reason" required class="field-input"></label>
   <button class="btn btn-danger">Void</button>
 </form>
 {% endif %}

@@ -9,10 +9,10 @@
   <a href="{{ url_for('products.edit_product', product_id=product.id) }}" class="btn btn-quiet">Back to item</a>
 </div>
 
-<form method="post" class="card" style="margin-bottom:16px;">
+<form method="post" class="card mb-16">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <input type="hidden" name="action" value="generate">
-  <h2 style="margin-top:0;">{{ 'Add more sizes / colours' if rows else 'Make the size / colour matrix' }}</h2>
+  <h2 class="mt-0">{{ 'Add more sizes / colours' if rows else 'Make the size / colour matrix' }}</h2>
   {% for i in range(2) %}
   {% set attr = attributes[i] if i < attributes|length else none %}
   <div class="form-grid">
@@ -39,7 +39,7 @@
           <td><a href="{{ url_for('products.edit_product', product_id=v.id) }}">{{ v.variant_attributes.values()|join(' / ') if v.variant_attributes else v.name }}</a></td>
           <td><input type="text" name="sku_{{ v.id }}" value="{{ v.sku or '' }}" maxlength="64" class="field-input"></td>
           <td><input type="text" name="barcode_{{ v.id }}" value="{{ v.barcode or '' }}" maxlength="64" class="field-input"></td>
-          <td><input type="number" step="0.01" min="0" name="price_{{ v.id }}" value="{{ '%.2f'|format(v.sale_price) }}" class="field-input" style="max-width:120px;"></td>
+          <td><input type="number" step="0.01" min="0" name="price_{{ v.id }}" value="{{ '%.2f'|format(v.sale_price) }}" class="field-input maxw-120"></td>
           {% if has_feature('inventory') %}<td class="num">{{ (stock.get(v.id) or 0)|qty }}</td>{% endif %}
           <td><input type="checkbox" name="active_{{ v.id }}" value="1" {{ 'checked' if v.is_active }}></td>
         </tr>
@@ -47,7 +47,7 @@
       </tbody>
     </table>
   </div>
-  <div class="row" style="margin-top:12px; justify-content:flex-end;"><button class="btn btn-primary">Save variants</button></div>
+  <div class="row mt-12 justify-end"><button class="btn btn-primary">Save variants</button></div>
 </form>
 {% endif %}
 {% endblock %}

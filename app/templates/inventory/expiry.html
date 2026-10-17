@@ -4,15 +4,15 @@
 <div class="page-header"><h1>Expired and near-expiry stock</h1></div>
 {% include "inventory/_nav.html" %}
 <form class="search-bar" method="get">
-  <label class="row" style="gap:6px; align-items:center; white-space:nowrap;">Expiring within
-    <select name="within" class="field-input" style="max-width:120px;">
+  <label class="row gap-6 items-center nowrap">Expiring within
+    <select name="within" class="field-input maxw-120">
       {% for d in (7, 15, 30, 60, 90) %}<option value="{{ d }}" {{ 'selected' if d == within }}>{{ d }} days</option>{% endfor %}
     </select></label>
   <button class="btn btn-secondary">Show</button>
 </form>
 {% for title, rows, cls in (('Expired - can\'t be sold', expired, 'expired'), ('Expiring soon', soon, 'soon')) %}
 <h2>{{ title }}</h2>
-<div class="table-wrap card" style="margin-bottom:20px;">
+<div class="table-wrap card mb-20">
   <table>
     <thead><tr><th>Item</th><th>Batch</th><th>Expiry</th><th>Location</th><th class="num">Qty</th></tr></thead>
     <tbody>

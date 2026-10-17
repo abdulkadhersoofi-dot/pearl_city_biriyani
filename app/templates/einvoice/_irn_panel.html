@@ -1,11 +1,11 @@
 {# Included by invoice and note pages: doc = the invoice / note. #}
 {% set p = irn_panel(doc) %}
 {% if doc.irn %}
-<div class="card" style="margin-top:20px;">
-  <h2 style="margin-top:0;">e-Invoice</h2>
-  <div class="row" style="justify-content:space-between; align-items:flex-start; gap:16px;">
+<div class="card mt-20">
+  <h2 class="mt-0">e-Invoice</h2>
+  <div class="row justify-between items-start gap-16">
     <div style="min-width:0; flex:1;">
-      <p style="word-break:break-all;"><strong>IRN:</strong> {{ doc.irn }}</p>
+      <p class="break-all"><strong>IRN:</strong> {{ doc.irn }}</p>
       {% if doc.irn_ack_number %}<p><strong>Ack No:</strong> {{ doc.irn_ack_number }}{% if doc.irn_ack_date %} &middot; {{ doc.irn_ack_date|ist }}{% endif %}</p>{% endif %}
       {% if doc.irn_cancelled_at %}<p><span class="tag tag-warn">IRN cancelled {{ doc.irn_cancelled_at|ist }}</span> <span class="text-muted">{{ doc.irn_cancel_reason }}</span></p>{% endif %}
     </div>
@@ -13,7 +13,7 @@
   </div>
   {% if p and not doc.irn_cancelled_at %}
     {% if p.can_cancel %}
-    <details style="margin-top:8px;">
+    <details class="mt-8">
       <summary>Cancel this IRN</summary>
       <p class="text-muted">The IRP lets you cancel within {{ irn_cancel_hours }} hours of generating it. The {{ 'invoice' if p.kind == 'invoice' else 'note' }} is then voided with the same reason.</p>
       <form method="post" action="{{ url_for('einvoice.cancel', kind=p.kind, doc_id=doc.id) }}" class="form-grid"
@@ -28,13 +28,13 @@
       </form>
     </details>
     {% else %}
-    <p class="text-muted" style="margin-bottom:0;">The {{ irn_cancel_hours }}-hour window to cancel this IRN has passed. To reduce or reverse it, issue a credit note{% if p.credit_note_url %} - <a href="{{ p.credit_note_url }}">make a credit note</a>{% endif %}.</p>
+    <p class="text-muted mb-0">The {{ irn_cancel_hours }}-hour window to cancel this IRN has passed. To reduce or reverse it, issue a credit note{% if p.credit_note_url %} - <a href="{{ p.credit_note_url }}">make a credit note</a>{% endif %}.</p>
     {% endif %}
   {% endif %}
 </div>
 {% elif p and p.needs %}
-<div class="card" style="margin-top:20px;">
-  <h2 style="margin-top:0;">IRN needed</h2>
+<div class="card mt-20">
+  <h2 class="mt-0">IRN needed</h2>
   <p class="text-muted mt-0">This {{ 'invoice' if p.kind == 'invoice' else 'note' }} must be reported to the IRP. Without an IRN it is not a valid document for your buyer.</p>
   {% if p.warning %}<p class="flash flash-warning">{{ p.warning }}</p>{% endif %}
   {% if p.problems %}
@@ -53,9 +53,9 @@
   </div>
   {% if not p.has_login %}<p class="field-help">No IRP login saved - upload the JSON with the IRP's offline tool and record the IRN below, or <a href="{{ url_for('einvoice.settings') }}">add a login</a>.</p>{% endif %}
   {% endif %}
-  <details style="margin-top:10px;">
+  <details class="mt-10">
     <summary>Record an IRN got from the IRP portal / offline tool</summary>
-    <form method="post" action="{{ url_for('einvoice.record', kind=p.kind, doc_id=doc.id) }}" class="form-grid" style="margin-top:8px;">
+    <form method="post" action="{{ url_for('einvoice.record', kind=p.kind, doc_id=doc.id) }}" class="form-grid mt-8">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <label class="field"><span class="field-label">IRN (64 characters)</span><input type="text" name="irn" required maxlength="64" class="field-input"></label>
       <label class="field"><span class="field-label">Ack No</span><input type="text" name="ack_no" required inputmode="numeric" class="field-input"></label>

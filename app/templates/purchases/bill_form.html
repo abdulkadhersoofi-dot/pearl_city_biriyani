@@ -11,7 +11,7 @@
 <form method="post" enctype="multipart/form-data" x-data='purchaseLines({ other: {{ (form.get('other_charges') or '0')|tojson }}, rcm: {{ (form.get('is_rcm') == '1')|tojson }} })'>
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   {% if order %}<input type="hidden" name="order" value="{{ order.id }}">{% endif %}
-  <div class="card" style="margin-bottom:16px;">
+  <div class="card mb-16">
     <div class="form-grid">
       <label class="field"><span class="field-label">Supplier</span>
         <select name="supplier_id" class="field-input" required>
@@ -38,12 +38,12 @@
         </select></label>
     </div>
     {% if not claims_itc %}<p class="field-help">Your business isn't a regular GST registration, so GST paid on purchases can't be claimed as input tax credit - it's counted in the cost of the goods.</p>{% endif %}
-    <label class="row" style="gap:6px; align-items:center; margin-top:8px;"><input type="checkbox" name="is_rcm" value="1" x-model="rcm"> Reverse charge - the supplier charges no GST; you pay it to the government</label>
+    <label class="row gap-6 items-center mt-8"><input type="checkbox" name="is_rcm" value="1" x-model="rcm"> Reverse charge - the supplier charges no GST; you pay it to the government</label>
   </div>
 
   {{ purchase_lines(catalog, rows, slabs, itc_labels=itc_labels, with_stock=True) }}
 
-  <div class="form-grid" style="margin-top:16px;">
+  <div class="form-grid mt-16">
     <div class="card">
       <label class="field"><span class="field-label">Freight / other charges on the bill</span>
         <input type="number" step="0.01" min="0" name="other_charges" class="field-input" x-model="other"></label>
@@ -65,7 +65,7 @@
       <p class="field-help">A preview - the saved bill is computed exactly on the server. CGST+SGST or IGST is decided by the supplier's state.</p>
     </div>
   </div>
-  <div class="row" style="margin-top:16px; justify-content:flex-end;">
+  <div class="row mt-16 justify-end">
     <a href="{{ url_for('purchases.bills') }}" class="btn btn-quiet">Cancel</a>
     <button class="btn btn-primary btn-lg">Post purchase bill</button>
   </div>

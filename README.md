@@ -1881,6 +1881,52 @@ How saving works:
   effect on another client, search entries). One older test now looks
   for the print sizes on the Documents & printing section.
 
+### Interface redesign - stage 3 (page patterns)
+
+Every page now follows one of three shapes - a list, a single record or a
+form - with the same header, toolbar, cards and tables, so people stop
+hunting for buttons. Mostly shared CSS plus two small scripts, so all 200
+screens changed without rewriting each one:
+
+- **One main action per page.** A page header with three or more actions
+  keeps its green (main) button in view and folds the others into a
+  "More" menu (`shell.js`). On a template, `data-keep` keeps an action
+  out of More and `data-more` sends one in; `data-no-more` on the header
+  turns it off. The counter (POS) is left for stage 5.
+- **Toolbars**: the search/filter bar above a list is one card with a
+  search icon in its box.
+- **Tabs** (Stock, Purchases, Accounts...) are underlined tabs that
+  scroll sideways on a phone instead of wrapping. **Credit & debit notes**
+  are now a tab inside **Invoices** (`invoicing/_tabs.html`) rather than
+  their own menu entry; search still finds them.
+- **Records**: "label / value" details in a card read as small labels
+  over bold values.
+- **Tables**: quieter headers, row hover, status dots. On a phone a list
+  table (one without inputs) becomes a stack of cards, each value with its
+  column name (`shell.js` adds the labels); a table that holds inputs
+  scrolls inside its own box instead of widening the page.
+- **Empty lists** show a small illustration above their message.
+- **Form controls** (checkboxes, radios, file pickers) use the client's
+  button colour.
+- **Inline styles**: 775 one-off `style="..."` attributes became shared
+  classes with exactly the same values (`!important`, so each wins where
+  its inline style did) - spacing (`mt-16`, `mb-20`, `gap-10`...),
+  layout (`grow`, `items-end`, `justify-between`...), sizes (`maxw-180`
+  ...) and figures (`figure`, `figure-xl` for big totals). 46 one-offs
+  remain on screen templates; printed documents (PDFs, receipts, KOTs)
+  and the two partials shared with the GSTR-1 PDF are untouched, since
+  WeasyPrint never loads app.css.
+- Fixed on the way: the menu's "GST returns" (and search's GSTR-1 /
+  GSTR-3B) opened a 404 because those pages needed a GSTIN in the
+  address - they now open the client's primary active GSTIN when none is
+  given (an explicit one, or another client's, behaves as before). "New
+  credit or debit note" came off the New menu: a note always starts from
+  an issued invoice, so that link was a 404.
+- Tests: `tests/test_redesign_pages.py` (inline styles stay retired,
+  every utility class used exists in app.css, notes tab, no dead New
+  action, GST returns opens the primary GSTIN and still refuses another
+  client's, every menu and search link opens with all modules on).
+
 ## Roadmap
 
 - **Platform build (ARFA general-purpose POS), phase by phase.**
@@ -1935,9 +1981,10 @@ How saving works:
     Counter, Documents & printing, Sign-in & security, Subscription),
     module switches grouped by purpose with "Set up" links, per-section
     save with a sliding save bar.
-  - Stage 3: list / record / form page patterns on every template, one
+  - Stage 3 (done): list / record / form patterns on every template, one
     primary action per page with the rest under More, the inline styles
-    replaced by shared components, empty states, phone-friendly tables.
+    replaced by shared classes, empty states, phone-friendly tables,
+    notes as a tab inside Invoices.
   - Stage 4: Home dashboard and the Reports hub (grouped, searchable).
   - Stage 5: the counter - full screen, category chips, larger tiles,
     held bills in a drawer, Counter menu, one-tap payment buttons, paid
@@ -1945,9 +1992,9 @@ How saving works:
   - Stage 6: firm console, sign-in pages, dark mode, accessibility pass.
 
   Stage 1 limits:
-  - Pages inside the frame keep their current layout (and their inline
-    styles) until stage 3; Credit & debit notes keep their own menu entry
-    rather than a tab inside Invoices until then.
+  - Stage 3 changed pages through shared CSS and two small scripts, not
+    template by template, so a page's content order is as it was; pages
+    that need more than that are reworked in stages 4 and 5.
   - The bell counts what the modules already know (offline bills, low
     stock, expiry, recurring drafts); overdue customer balances stay on
     the dashboard.

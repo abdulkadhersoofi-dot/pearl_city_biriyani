@@ -7,17 +7,17 @@
 </div>
 <p class="text-muted">A price list sells chosen items at a different price - wholesale, a delivery app, a particular branch. Items not in a list sell at their normal price. Pick which list each counter bills from under Branches &rarr; Permissions.</p>
 
-<form method="post" action="{{ url_for('products.new_price_list') }}" class="card row" style="gap:10px; align-items:flex-end; flex-wrap:wrap;">
+<form method="post" action="{{ url_for('products.new_price_list') }}" class="card row gap-10 items-end flex-wrap">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  <label class="field" style="margin:0; flex:1; min-width:200px;">
+  <label class="field m-0 grow minw-200">
     <span class="field-label">New price list</span>
     <input type="text" name="name" class="field-input" maxlength="100" placeholder="e.g. Wholesale" required>
   </label>
-  <label class="row" style="gap:6px; align-items:center;"><input type="checkbox" name="copy_wholesale" value="1"> Start from items' wholesale prices</label>
+  <label class="row gap-6 items-center"><input type="checkbox" name="copy_wholesale" value="1"> Start from items' wholesale prices</label>
   <button class="btn btn-primary">Create</button>
 </form>
 
-<div class="card table-wrap" style="margin-top:16px;">
+<div class="card table-wrap mt-16">
   <table>
     <thead><tr><th>Name</th><th>Items priced</th><th>Status</th><th></th></tr></thead>
     <tbody>

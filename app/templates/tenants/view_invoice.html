@@ -15,7 +15,7 @@
   </div>
 </div>
 
-<div class="card" style="margin-bottom:20px;">
+<div class="card mb-20">
   <div class="form-grid">
     <div><strong>Customer</strong><p>{{ invoice.customer_snapshot.name }}<br>
       {% if invoice.customer_snapshot.gstin %}GSTIN: {{ invoice.customer_snapshot.gstin }}<br>{% endif %}
@@ -58,9 +58,9 @@
 </div>
 
 {% if invoice.irn %}
-<div class="card" style="margin-top:20px;">
-  <h2 style="margin-top:0;">e-Invoice</h2>
-  <p style="word-break:break-all;"><strong>IRN:</strong> {{ invoice.irn }}</p>
+<div class="card mt-20">
+  <h2 class="mt-0">e-Invoice</h2>
+  <p class="break-all"><strong>IRN:</strong> {{ invoice.irn }}</p>
   {% if invoice.irn_ack_number %}<p><strong>Ack No:</strong> {{ invoice.irn_ack_number }}{% if invoice.irn_ack_date %} &middot; {{ invoice.irn_ack_date|ist }}{% endif %}</p>{% endif %}
   {% if invoice.irn_cancelled_at %}<p><span class="tag tag-warn">IRN cancelled {{ invoice.irn_cancelled_at|ist }}</span> {{ invoice.irn_cancel_reason }}</p>{% endif %}
   {% set qr = irn_qr(invoice) %}{% if qr %}<img src="{{ qr }}" alt="e-Invoice QR code" style="width:140px; height:140px;">{% endif %}
@@ -68,15 +68,15 @@
 {% endif %}
 
 {% if invoice.status.value == 'void' %}
-<div class="card" style="margin-top:20px;">
+<div class="card mt-20">
   <p><strong>Voided</strong> on {{ invoice.voided_at.strftime('%d %b %Y %H:%M') }} by {{ invoice.voided_by.name if invoice.voided_by else '-' }}.</p>
   <p class="text-muted">Reason: {{ invoice.void_reason }}</p>
 </div>
 {% endif %}
 
 {% if invoice.credit_debit_notes %}
-<div class="card" style="margin-top:20px;">
-  <h2 style="margin-top:0;">Notes issued against this invoice</h2>
+<div class="card mt-20">
+  <h2 class="mt-0">Notes issued against this invoice</h2>
   <table>
     <thead><tr><th>Number</th><th>Type</th><th>Date</th><th>Status</th><th>Total</th></tr></thead>
     <tbody>
@@ -94,5 +94,5 @@
 </div>
 {% endif %}
 
-<p class="text-muted" style="margin-top:16px;">Read-only - the firm's console views client records but never edits them. This view was recorded in the audit log.</p>
+<p class="text-muted mt-16">Read-only - the firm's console views client records but never edits them. This view was recorded in the audit log.</p>
 {% endblock %}

@@ -34,10 +34,10 @@
   {% endif %}
   <button type="submit" class="btn btn-primary btn-lg">Save</button>
 </form>
-{% if customer and has_feature('loyalty') %}<p style="margin-top:12px;"><a href="{{ url_for('loyalty.customer', customer_id=customer.id) }}" class="btn btn-secondary">Purchase history &amp; points</a></p>{% endif %}
+{% if customer and has_feature('loyalty') %}<p class="mt-12"><a href="{{ url_for('loyalty.customer', customer_id=customer.id) }}" class="btn btn-secondary">Purchase history &amp; points</a></p>{% endif %}
 {% if customer %}
-<form method="post" action="{{ url_for('customers.deactivate_customer', customer_id=customer.id) }}"
-      style="margin-top:12px;"
+<form class="mt-12" method="post" action="{{ url_for('customers.deactivate_customer', customer_id=customer.id) }}"
+     
       onsubmit="return confirm('Remove {{ customer.name }} from the active list?');">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <button class="btn btn-quiet">Remove</button>

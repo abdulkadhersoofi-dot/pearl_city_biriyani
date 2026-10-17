@@ -4,8 +4,8 @@
 <div class="page-header"><h1>Fast, slow and dead stock</h1></div>
 {% include "inventory/_nav.html" %}
 <form class="search-bar" method="get">
-  <label class="row" style="gap:6px; align-items:center; white-space:nowrap;">Sales over the last
-    <select name="days" class="field-input" style="max-width:120px;">
+  <label class="row gap-6 items-center nowrap">Sales over the last
+    <select name="days" class="field-input maxw-120">
       {% for d in (30, 60, 90, 180, 365) %}<option value="{{ d }}" {{ 'selected' if d == days }}>{{ d }} days</option>{% endfor %}
     </select></label>
   <button class="btn btn-secondary">Show</button>

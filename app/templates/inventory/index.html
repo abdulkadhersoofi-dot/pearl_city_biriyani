@@ -11,7 +11,7 @@
 {% include "inventory/_nav.html" %}
 
 {% if low_count %}
-<div class="card" style="margin-bottom:16px;">
+<div class="card mb-16">
   <strong>{{ low_count }} item{{ 's' if low_count != 1 }} at or below minimum stock.</strong>
   <a href="{{ url_for('inventory.index', low=1) }}">Show them</a> · <a href="{{ url_for('inventory.reorder') }}">Reorder list</a>
 </div>
@@ -19,11 +19,11 @@
 
 <form class="search-bar" method="get">
   <input type="text" name="q" value="{{ search }}" placeholder="Search name, SKU or barcode" class="field-input">
-  <select name="location" class="field-input" style="max-width:220px;">
+  <select name="location" class="field-input maxw-220">
     <option value="">All locations</option>
     {% for loc in locations %}<option value="{{ loc.id }}" {{ 'selected' if loc.id == location_id }}>{{ loc.name }}</option>{% endfor %}
   </select>
-  <label class="row" style="gap:6px; align-items:center; white-space:nowrap;"><input type="checkbox" name="low" value="1" {{ 'checked' if low_only }}> Low only</label>
+  <label class="row gap-6 items-center nowrap"><input type="checkbox" name="low" value="1" {{ 'checked' if low_only }}> Low only</label>
   <button class="btn btn-secondary">Show</button>
 </form>
 

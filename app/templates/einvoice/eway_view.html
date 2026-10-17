@@ -14,7 +14,7 @@
 {% if editing %}
 <form method="post" action="{{ url_for('einvoice.eway_view', ewb_id=ewb.id) if ewb.id else request.path }}">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  <div class="card" style="margin-bottom:16px;">
+  <div class="card mb-16">
     <h2 class="mt-0">Part A - the goods</h2>
     <div class="form-grid">
       <label class="field"><span class="field-label">Sub-supply type</span>
@@ -39,7 +39,7 @@
         <select name="to_state_code" class="field-input"><option value="">-</option>{% for code, name in states.items() %}<option value="{{ code }}" {{ 'selected' if code == t.state_code }}>{{ code }} {{ name }}</option>{% endfor %}<option value="99" {{ 'selected' if t.state_code == '99' }}>99 Other country (export)</option></select></label>
     </div>
   </div>
-  <div class="card" style="margin-bottom:16px;">
+  <div class="card mb-16">
     <h2 class="mt-0">Part B - transport</h2>
     <p class="field-help mt-0">Give the vehicle number, or just the transporter ID - the transporter then adds the vehicle on the portal.</p>
     <div class="form-grid">
@@ -60,7 +60,7 @@
 </form>
 {% else %}
 
-<div class="card" style="margin-bottom:16px;">
+<div class="card mb-16">
   <div class="form-grid">
     <div><strong>From</strong><p>{{ f.name }}<br>{{ f.gstin }}<br>{{ f.addr1 }}<br>{{ f.place }} {{ f.pincode }} ({{ f.state_code }})</p></div>
     <div><strong>To</strong><p>{{ t.name }}<br>{{ t.gstin }}<br>{{ t.addr1 }}{% if t.addr2 %}, {{ t.addr2 }}{% endif %}<br>{{ t.place }} {{ t.pincode }} ({{ t.state_code }})</p></div>
@@ -73,14 +73,14 @@
 </div>
 
 {% if ewb.status.value == 'draft' %}
-<div class="card" style="margin-bottom:16px;">
+<div class="card mb-16">
   {% if problems %}
   <p><strong>Fix these first:</strong></p>
   <ul>{% for p in problems %}<li>{{ p }}</li>{% endfor %}</ul>
   {% else %}
   <p class="text-muted mt-0">Valid for {{ days }} day{{ '' if days == 1 else 's' }} once generated with a vehicle ({{ ewb.distance_km }} km).</p>
   {% endif %}
-  <div class="row" style="gap:8px;">
+  <div class="row gap-8">
     <a href="{{ url_for('einvoice.eway_view', ewb_id=ewb.id, edit=1) }}" class="btn btn-secondary">Edit</a>
     {% if not problems %}
       {% if has_login %}
@@ -93,33 +93,33 @@
     {% endif %}
   </div>
   {% if not has_login %}<p class="field-help">No API login saved - upload the JSON on the e-way bill portal (Bulk generation), then record the number below.</p>{% endif %}
-  <details style="margin-top:10px;">
+  <details class="mt-10">
     <summary>Record the e-way bill number from the portal</summary>
-    <form method="post" action="{{ url_for('einvoice.eway_record', ewb_id=ewb.id) }}" class="form-grid" style="margin-top:8px;">
+    <form method="post" action="{{ url_for('einvoice.eway_record', ewb_id=ewb.id) }}" class="form-grid mt-8">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <label class="field"><span class="field-label">EWB number (12 digits)</span><input type="text" name="ewb_no" required inputmode="numeric" maxlength="14" class="field-input"></label>
       <label class="field"><span class="field-label">Generated on</span><input type="datetime-local" name="ewb_date" required class="field-input"></label>
       <div class="field"><span class="field-label">&nbsp;</span><button class="btn btn-secondary">Save number</button></div>
     </form>
   </details>
-  <details style="margin-top:6px;">
+  <details class="mt-6">
     <summary>Discard this draft</summary>
-    <form method="post" action="{{ url_for('einvoice.eway_cancel', ewb_id=ewb.id) }}" class="row" style="gap:8px; margin-top:8px;">
+    <form method="post" action="{{ url_for('einvoice.eway_cancel', ewb_id=ewb.id) }}" class="row gap-8 mt-8">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <input type="text" name="remark" placeholder="Reason" required class="field-input" style="flex:1;">
+      <input type="text" name="remark" placeholder="Reason" required class="field-input grow">
       <button class="btn btn-danger">Discard draft</button>
     </form>
   </details>
 </div>
 {% elif ewb.status.value == 'generated' %}
-<div class="card" style="margin-bottom:16px;">
+<div class="card mb-16">
   <p class="mt-0"><strong>EWB No {{ ewb.ewb_no }}</strong> &middot; generated {{ ewb.ewb_date|ist }}
     {% if ewb.generated_via == 'portal' %}on the portal{% elif ewb.generated_via == 'irn' %}from the IRN{% else %}through the API{% endif %}.</p>
   <p>{% if ewb.valid_upto %}Valid until <strong>{{ ewb.valid_upto|ist }}</strong>{% if ewb.valid_upto < now %} <span class="tag tag-warn">Expired</span>{% endif %}
      {% else %}<span class="tag tag-warn">Part A only</span> - not valid for movement until the vehicle is added.{% endif %}</p>
   <details>
     <summary>{{ 'Update vehicle (Part B)' if ewb.vehicle_no or ewb.trans_doc_no else 'Add vehicle (Part B)' }}</summary>
-    <form method="post" action="{{ url_for('einvoice.eway_part_b', ewb_id=ewb.id) }}" class="form-grid" style="margin-top:8px;">
+    <form method="post" action="{{ url_for('einvoice.eway_part_b', ewb_id=ewb.id) }}" class="form-grid mt-8">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <label class="field"><span class="field-label">Reason</span>
         <select name="reason_code" class="field-input">{% for code, label in part_b_reasons.items() %}<option value="{{ code }}" {{ 'selected' if code == ('4' if not ewb.vehicle_no else '1') }}>{{ label }}</option>{% endfor %}</select></label>
@@ -139,7 +139,7 @@
     </form>
   </details>
   {% if can_cancel %}
-  <details style="margin-top:6px;">
+  <details class="mt-6">
     <summary>Cancel this e-way bill</summary>
     <p class="field-help">Allowed within {{ ewb_cancel_hours }} hours of generating it, if the goods haven't moved.</p>
     <form method="post" action="{{ url_for('einvoice.eway_cancel', ewb_id=ewb.id) }}" class="form-grid" onsubmit="return confirm('Cancel e-way bill {{ ewb.ewb_no }}?');">
@@ -156,7 +156,7 @@
   {% endif %}
 </div>
 {% else %}
-<div class="card" style="margin-bottom:16px;"><p class="mt-0"><strong>Cancelled</strong> {{ ewb.cancelled_at|ist }}</p><p class="text-muted">{{ ewb.cancel_reason }}</p></div>
+<div class="card mb-16"><p class="mt-0"><strong>Cancelled</strong> {{ ewb.cancelled_at|ist }}</p><p class="text-muted">{{ ewb.cancel_reason }}</p></div>
 {% endif %}
 {% endif %}
 
