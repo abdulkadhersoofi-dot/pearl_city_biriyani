@@ -173,16 +173,20 @@ def onboard():
 
 def _onboarding_packages(form):
     """The package picker on the onboarding form - for the Ultra Admin, and
-    for an auditor allowed to choose packages (their allowed ones only)."""
+    for an auditor allowed to choose packages (their allowed ones only) -
+    and the trade packs each business type brings."""
+    from app.utils.catalogue import business_types
+
     ensure_starting_packages()
     db.session.commit()
+    type_packs = {b["value"]: b["packs"] for b in business_types()}
     packages = allowed_packages(current_user)
     if not packages:
-        return {"packages": []}
+        return {"packages": [], "type_packs": type_packs}
     by_key = {p.key: p.id for p in packages if p.key}
     suggest = {bt: by_key[key] for bt, key in BUSINESS_TYPE_PACKAGE.items() if key in by_key}
     chosen = request.form.get("package_id", type=int) or suggest.get(form.business_type.data or "retail")
-    return {"packages": packages, "package_suggest": suggest, "package_default": chosen}
+    return {"packages": packages, "package_suggest": suggest, "package_default": chosen, "type_packs": type_packs}
 
 
 @tenants_bp.route("/clients/<int:tenant_id>")

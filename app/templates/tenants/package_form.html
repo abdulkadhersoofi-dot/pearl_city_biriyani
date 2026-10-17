@@ -61,13 +61,26 @@
         {% for value, label in states.items() %}<button type="button" class="btn btn-quiet btn-sm" @click="setAll('{{ value }}')">{{ label }}</button>{% endfor %}
       </div>
     </div>
-    {% for group, features in groups %}
-    <h3 class="module-group-title">{{ group }}</h3>
+    {# Sorted as the one catalogue sorts it (app/utils/catalogue.py): trade
+       packs, modules in six areas, counter options. An add-on sits under the
+       module it needs and warns when that one is Off. #}
+    {% for group in groups %}
+    {% if group.first %}
+    <h3 class="kind-heading">{{ group.kind_title }}<small>{{ group.kind_hint }}</small></h3>
+    {% endif %}
+    {% if group.kind == 'module' %}<h4 class="module-group-title">{{ group.title }}</h4>{% endif %}
     <div class="state-list">
-      {% for f in features %}
+      {% for row in group['items'] %}
+      {% set f = row.feature %}
       {% set current = state_of(package, f.key) %}
-      <div class="state-row">
-        <div class="state-name"><strong id="lbl_{{ f.key }}">{{ f.label }}</strong><small>{{ f.description }}</small></div>
+      <div class="state-row{{ ' is-addon' if row.depth }}">
+        <div class="state-name"><strong id="lbl_{{ f.key }}">{{ f.label }}</strong><small>{{ f.description }}</small>
+          {% if row.entry.needs %}
+          {% set needs_js = "['" ~ row.entry.needs|join("','") ~ "']" %}
+          <span class="needs-note" :class="{ 'is-off': {{ needs_js }}.some(k => s[k] === 'off') && s['{{ f.key }}'] !== 'off' }">
+            {{ icon('triangle-alert', 'icon-sm') }}Works with {{ row.needs|join(', ') }}<span x-show="{{ needs_js }}.some(k => s[k] === 'off') && s['{{ f.key }}'] !== 'off'" x-cloak> - which is Off in this package</span></span>
+          {% endif %}
+        </div>
         <div class="state-seg" role="radiogroup" aria-labelledby="lbl_{{ f.key }}">
           {% for value, label in states.items() %}
           <input type="radio" name="mod_{{ f.key }}" value="{{ value }}" id="mod_{{ f.key }}_{{ value }}" {% if current == value %}checked{% endif %}>
@@ -162,11 +175,14 @@
 function packageEditor() {
   return {
     n: { inc: 0, choice: 0, off: 0 },
+    s: {},
     init() { this.count(); },
     count() {
-      const n = { inc: 0, choice: 0, off: 0 };
-      this.$root.querySelectorAll('input[type=radio][name^="mod_"]:checked').forEach(r => { n[r.value]++; });
-      this.n = n;
+      const n = { inc: 0, choice: 0, off: 0 }, s = {};
+      this.$root.querySelectorAll('input[type=radio][name^="mod_"]:checked').forEach(r => {
+        n[r.value]++; s[r.name.slice(4)] = r.value;
+      });
+      this.n = n; this.s = s;
     },
     setAll(value) {
       this.$root.querySelectorAll('input[type=radio][name^="mod_"][value="' + value + '"]').forEach(r => { r.checked = true; });

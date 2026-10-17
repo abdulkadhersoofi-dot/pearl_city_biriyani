@@ -58,17 +58,24 @@
   {# The client's own-choice modules, switched for them (Ultra Admin, or an auditor with that power). #}
   {% if pkg.can_switch %}
   {% set choices = [] %}
-  {% for group, items in pkg.module_rows %}{% for row in items if row.state == 'choice' %}{% set _ = choices.append(row) %}{% endfor %}{% endfor %}
+  {% for group in pkg.module_rows %}{% for row in group['items'] if row.state == 'choice' %}{% set _ = choices.append(row) %}{% endfor %}{% endfor %}
   {% if choices %}
   <form method="post" action="{{ url_for('tenants.save_client_choices', tenant_id=tenant.id) }}" class="mt-20">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <h3 class="m-0">Modules {{ tenant.display_name }} switches</h3>
     <p class="text-muted mt-0">The ones their package leaves to them - switch them here on their behalf.</p>
+    {# One row of chips per kind - trade packs, modules, counter options. #}
+    {% for kind, title in pkg.kinds.items() %}
+    {% set mine = choices|selectattr('kind', 'equalto', kind)|list %}
+    {% if mine %}
+    <p class="chip-kind">{{ title }}</p>
     <div class="chip-checks">
-      {% for row in choices %}
+      {% for row in mine %}
       <label class="chip-check"><input type="checkbox" name="module" value="{{ row.feature.key }}" {% if row.on %}checked{% endif %}><span>{{ icon('check', 'icon-sm') }}{{ row.feature.label }}</span></label>
       {% endfor %}
     </div>
+    {% endif %}
+    {% endfor %}
     <button type="submit" class="btn btn-secondary mt-12">Save their modules</button>
   </form>
   {% endif %}
@@ -85,12 +92,14 @@
       <div class="table-wrap mt-12">
         <table class="exceptions-table no-stack">
           <thead><tr><th>Module</th><th>Package says</th><th>For {{ tenant.display_name }}</th><th>Now</th></tr></thead>
-          {% for group, items in pkg.module_rows %}
+          {% for group in pkg.module_rows %}
           <tbody>
-            <tr class="group-row"><th colspan="4" scope="colgroup">{{ group }}</th></tr>
-            {% for row in items %}
-            <tr class="{{ 'has-exception' if row.exception }}">
-              <td><label for="mod_{{ row.feature.key }}">{{ row.feature.label }}</label></td>
+            {% if group.first %}<tr class="kind-row"><th colspan="4" scope="colgroup">{{ group.kind_title }}</th></tr>{% endif %}
+            {% if group.kind == 'module' %}<tr class="group-row"><th colspan="4" scope="colgroup">{{ group.title }}</th></tr>{% endif %}
+            {% for row in group['items'] %}
+            <tr class="{{ 'has-exception' if row.exception }}{{ ' is-addon' if row.depth }}">
+              <td><label for="mod_{{ row.feature.key }}">{{ row.feature.label }}</label>
+                {% if row.needs_off %}<small class="needs-note is-off">{{ icon('triangle-alert', 'icon-sm') }}Works with {{ row.needs_off|join(', ') }} - off for them</small>{% endif %}</td>
               <td><span class="pill {{ state_pill[row.package_state] }}">{{ pkg.module_states[row.package_state] }}</span></td>
               <td>
                 <select name="mod_{{ row.feature.key }}" id="mod_{{ row.feature.key }}" class="field-input">

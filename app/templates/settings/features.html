@@ -10,17 +10,26 @@
 <form method="post" class="settings-form" novalidate x-data="settingsForm({{ form.errors|tojson }})"
       @input="touch($event)" @change="touch($event)" @submit="saving()">
   {{ form.hidden_tag() }}
+  {# The business type isn't a switch: it's set in Business, and brings its trade pack(s). #}
+  <p class="business-type-note">{{ icon('store', 'icon-sm') }}<span>Business type: <strong>{{ business_type.label }}</strong>
+    {%- if business_type.packs %} - comes with the {{ business_type.packs|join(', ') }} pack{{ 's' if business_type.packs|length > 1 }}{% endif %}.
+    <a href="{{ url_for('settings.index') }}">Change it in Business</a></span></p>
   <div x-data="{ q: '' }" @module-filter.window="q = $event.detail">
+    {% set shown = namespace(kinds=[]) %}
     {% for group in groups %}
     {% set mine = group['items']|rejectattr('state', 'equalto', 'off')|list %}
     {% if mine %}
+    {% if group.kind not in shown.kinds %}{% set shown.kinds = shown.kinds + [group.kind] %}
+    <h2 class="kind-heading" x-show="!q">{{ group.kind_title }}<small>{{ group.kind_hint }}</small></h2>
+    {% endif %}
     <section class="module-group" x-show="!q || [...$el.querySelectorAll('.module-card')].some(c => c.dataset.hay.includes(q))">
-      <h2 class="module-group-title">{{ group.label }}
-        <span class="module-count">{{ mine|selectattr('on')|list|length }} of {{ mine|length }} on</span></h2>
+      {% if group.kind == 'module' %}<h3 class="module-group-title">{{ group.label }}
+        <span class="module-count">{{ mine|selectattr('on')|list|length }} of {{ mine|length }} on</span></h3>
+      {% else %}<p class="module-count kind-count">{{ mine|selectattr('on')|list|length }} of {{ mine|length }} on</p>{% endif %}
       <div class="module-grid">
         {% for item in mine %}
         {% set f = form[field_name(item.key)] %}
-        <div class="module-card{{ ' is-included' if item.state == 'inc' }}" data-hay="{{ (item.label ~ ' ' ~ item.description)|lower }}"
+        <div class="module-card{{ ' is-included' if item.state == 'inc' }}{{ ' is-addon' if item.depth }}" data-hay="{{ (item.label ~ ' ' ~ item.description)|lower }}"
              x-show="!q || $el.dataset.hay.includes(q)">
           {% if item.state == 'inc' %}
           {# Part of the package: always on, the Ultra Admin's to change. #}
@@ -41,6 +50,9 @@
             </span>
             <span class="switch">{{ f(role="switch") }}<span class="switch-track"></span></span>
           </label>
+          {% endif %}
+          {% if item.needs_off %}
+          <span class="module-needs">{{ icon('triangle-alert', 'icon-sm') }}Works with {{ item.needs_off|join(', ') }} - switch {{ 'it' if item.needs_off|length == 1 else 'them' }} on too</span>
           {% endif %}
           {% if item.setup_url %}
           <a href="{{ item.setup_url }}" class="module-setup">{{ item.setup_label }} {{ icon('arrow-right', 'icon-sm') }}</a>

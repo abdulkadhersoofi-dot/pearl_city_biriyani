@@ -547,13 +547,14 @@ def preview_package(tenant, package, keep_exceptions: bool = False) -> list[dict
     """What changes for this client if they move to `package`: each module
     whose on/off would differ, given the client's own switches. Their
     records are never touched either way."""
-    from app.utils.features import AVAILABLE_FEATURES
+    from app.utils.catalogue import ordered_keys
+    from app.utils.features import FEATURES
 
     grant = grant_of(tenant)
     overrides = dict(grant.module_overrides or {}) if (grant is not None and keep_exceptions) else {}
     changes = []
-    for feature in AVAILABLE_FEATURES:
-        key = feature.key
+    for key in ordered_keys():   # in the catalogue's order, as every screen lists them
+        feature = FEATURES[key]
         state = overrides.get(key) if overrides.get(key) in MODULE_STATES else package_module_state(package, key)
         after = state == INCLUDED or (state == CHOICE and bool((tenant.features or {}).get(key)))
         before = tenant.has_feature(key)
@@ -579,12 +580,15 @@ def package_price_for(package, billing_cycle):
     return package.price_yearly if cycle == "yearly" else package.price_monthly
 
 
-# Which starting package a new client of each type is offered first.
-BUSINESS_TYPE_PACKAGE = {
-    "retail": "retail", "wholesale": "wholesale", "restaurant": "restaurant", "mobile_electronics": "electronics",
-    "pharmacy": "pharmacy", "apparel": "retail", "hardware": "wholesale", "jewellery": "retail", "bakery": "retail",
-    "services": "billing", "other": "current",
-}
+# Which starting package a new client of each type is offered first, by
+# business type value - kept in the one catalogue (app/utils/catalogue.py).
+def _business_type_package():
+    from app.utils.catalogue import BUSINESS_TYPE_PACKAGE as by_type
+
+    return {bt.value: key for bt, key in by_type.items()}
+
+
+BUSINESS_TYPE_PACKAGE = _business_type_package()
 
 
 # --- the packages ARFA ships -------------------------------------------------------------------------

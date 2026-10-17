@@ -2450,6 +2450,42 @@ change yet.
   that was on the form (a module switched on while the page was open stays
   shown); the "Acting as" banner names the role when acting as an auditor.
 
+### Console cleanup - stage 1 (one catalogue)
+
+The Ultra Admin's module list mixed four different kinds of thing - the
+business type, trade add-ons, everyday modules and counter switches - and
+put suppliers under two different headings. Stage 1 sorts every switch
+once, in `app/utils/catalogue.py`, and every screen reads that list:
+
+- **Four kinds.** *Business type* (what the client is - a setting, not a
+  switch), *trade packs* (Restaurant, Pharmacy, Mobiles & electronics,
+  Repairs, Jewellery, Wholesale, Weighing scale, Second-hand goods),
+  *modules* in six areas (Selling; Buying & suppliers; Stock; Accounts;
+  Reports; GST compliance) and *counter options* (favourites row, day
+  open / close, cashier PINs, offline billing).
+- **Add-ons under what they need.** Batch & expiry and Serial / IMEI sit
+  under Inventory; Pharmacy works with Batch & expiry, Mobiles &
+  electronics with Serial / IMEI. A screen warns when one is on (or, in
+  the package editor, set to anything but Off) while what it needs is
+  off. It's a warning only - nothing is switched for anyone.
+- **Business type -> trade pack -> package.** Each business type lists
+  the trade pack(s) it brings (all already in its preset) and the
+  starting package it suggests (`BUSINESS_TYPE_PACKAGE`, moved here from
+  the rules; `entitlements.BUSINESS_TYPE_PACKAGE` reads it). Onboarding
+  says what the chosen type brings as you pick it.
+- **Who reads it.** The package editor (kind headings, area titles,
+  indented add-ons with a live warning), a client's Package & modules in
+  the console (the client's own-choice chips by kind; the exceptions table
+  by kind and area, with "works with ... - off for them"), the package
+  preview (in catalogue order), onboarding, and the client's own Settings
+  > Modules (same kinds and areas, the business type and its pack at the
+  top, the same warning).
+- A switch added to `features.py` without a place in the catalogue still
+  shows, under Modules > Other; `tests/test_catalogue.py` fails until it
+  is placed.
+- Nothing stored changed: no migration, every client's modules, packages
+  and settings as they were. The client's own side menu is unchanged.
+
 ### Packages and powers - how to run it (hand-over)
 
 For the Ultra Admin. Everything below is in the console.
@@ -2582,7 +2618,26 @@ before packages.
   - Stage 6 (done): change history per client and auditor, checks across
     every layer, walk-through as each role, hand-over guide.
 
-  Stage 1 limits:
+- **Console cleanup** (plan approved with the recommendations: the
+  business type pre-sets its trade pack but stays editable, any number of
+  trade packs per client, tabs on the client page, sign-in lands on a
+  Today page, the same cleanup for auditors), in five stages:
+  - Stage 1 (done): one catalogue - business type, trade packs, modules
+    in six areas, counter options, add-ons under what they need; the
+    package editor, client page, onboarding and Settings > Modules read
+    it.
+  - Stage 2: a Today page to land on, the shorter side menu (Today ·
+    Clients · Auditors · Filing & GST · Packages · Billing · Audit log),
+    clients-list filters, a plain Auditors list.
+  - Stage 3: the client page in tabs (Overview, Package & modules, Users
+    & branches, Billing, Documents, Changes).
+  - Stage 4: the package editor in tabs (Business type, Trade packs,
+    Modules, Counter options, Settings & locks, Logins & limits, Name &
+    price) and a compare-packages table.
+  - Stage 5: auditor page in tabs, onboarding in three steps, audit-log
+    filters and pages, walk-through, hand-over.
+
+  Interface redesign limits:
   - Stage 3 changed pages through shared CSS and two small scripts, not
     template by template, so a page's content order is as it was; pages
     that need more than that are reworked in stages 4 and 5.

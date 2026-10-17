@@ -21,7 +21,6 @@ from app.extensions import db
 from app.models.package import ModuleRequest, Package, TenantPackage
 from app.models.tenant import Tenant
 from app.models.user import UserRole
-from app.settings.sections import MODULE_GROUPS
 from app.tenants import tenants_bp
 from app.utils.audit import record_audit
 from app.utils.auditor_scope import assert_auditor_owns_tenant
@@ -36,23 +35,16 @@ from app.utils.entitlements import (
     IDLE_MINUTE_CHOICES, LOCK_MINUTE_CHOICES, SECURITY_MINIMUMS, security_from_form, set_counter_permissions_exception,
     set_security_exception,
 )
+from app.utils import catalogue
 from app.utils.features import AVAILABLE_FEATURES, FEATURES
 from app.utils.permissions import PERMISSION_COLUMNS, PERMISSION_LABELS
 
 
 def module_rows():
-    """[(group label, [Feature, ...])] in the Settings > Modules order;
-    any module not in a group goes last."""
-    seen = set()
-    out = []
-    for label, items in MODULE_GROUPS:
-        features = [FEATURES[key] for key, *_ in items if key in FEATURES and FEATURES[key].available]
-        seen.update(f.key for f in features)
-        out.append((label, features))
-    rest = [f for f in AVAILABLE_FEATURES if f.key not in seen]
-    if rest:
-        out.append(("Other", rest))
-    return out
+    """Every switch, sorted as the one catalogue sorts it (console cleanup,
+    stage 1): trade packs, modules in six areas, counter options - each
+    group a dict from app.utils.catalogue.groups()."""
+    return catalogue.groups()
 
 
 def _money(raw):
@@ -254,13 +246,17 @@ def client_package_context(tenant, viewer=None):
     grant = grant_of(tenant)
     current = grant.package if grant is not None else None
     rows = []
-    for label, features in module_rows():
+    for group in module_rows():
         items = []
-        for f in features:
+        for row in group["items"]:
+            f = row["feature"]
             exception = (grant.module_overrides or {}).get(f.key) if grant is not None else None
+            on = tenant.has_feature(f.key)
             items.append({"feature": f, "package_state": package_module_state(current, f.key) if current else CHOICE,
-                          "exception": exception, "state": module_state(tenant, f.key), "on": tenant.has_feature(f.key)})
-        rows.append((label, items))
+                          "exception": exception, "state": module_state(tenant, f.key), "on": on,
+                          "depth": row["depth"], "kind": group["kind"],
+                          "needs_off": catalogue.missing_needs(f.key, tenant.has_feature) if on else []})
+        rows.append({**group, "items": items})
     setting_rows = [{"key": key, "label": label,
                      "package_state": (current.settings or {}).get(key, "client") if current else "client",
                      "exception": (grant.setting_overrides or {}).get(key) if grant is not None else None,
@@ -283,7 +279,7 @@ def client_package_context(tenant, viewer=None):
         "counter_exception": grant.counter_permissions_override if grant is not None else None,
         "counter_package": current.counter_permissions if current else None,
         "is_ultra": is_ultra, "can_assign": can_assign, "can_switch": can_switch,
-        "module_rows": rows, "setting_rows": setting_rows, "limit_rows": limit_rows,
+        "module_rows": rows, "kinds": {k: v[0] for k, v in catalogue.KINDS.items()}, "setting_rows": setting_rows, "limit_rows": limit_rows,
         "branding_exception": grant.own_branding_override if grant is not None else None,
         "branding_now": own_branding(tenant), "branding_package": current.own_branding if current else True,
         "exception_count": (len(grant.module_overrides or {}) + len(grant.setting_overrides or {})

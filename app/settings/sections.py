@@ -1,12 +1,13 @@
 """Settings in sections (redesign stage 2): the sections' menu, and the
-module switches grouped by purpose with each module's "Set up" link.
+module switches sorted as the one catalogue sorts them (console cleanup,
+stage 1) with each module's "Set up" link.
 
 A "Set up" link only shows once its module is on - its screen is a 404
 until then, like every switched-off module."""
 
 from flask import url_for
 
-from app.utils.features import AVAILABLE_FEATURES
+from app.utils import catalogue
 
 # key, label, icon, endpoint, one-line description
 SECTIONS = [
@@ -26,54 +27,6 @@ SECTIONS = [
      "Your invoices for this software."),
 ]
 
-# (group label, [(feature key, icon, set-up endpoint or None, set-up kwargs, set-up label)])
-MODULE_GROUPS = [
-    ("Selling", [
-        ("credit_sales", "users", None, {}, None),
-        ("sales_documents", "file-text", "sales.documents", {}, "Quotes & orders"),
-        ("recurring_invoices", "repeat", "sales.recurring", {}, "Recurring invoices"),
-        ("multi_price_list", "list", "products.price_lists", {}, "Price lists"),
-        ("loyalty", "gift", "settings.modules", {}, "Points rules"),
-    ]),
-    ("Stock & buying", [
-        ("categories", "list", "products.categories", {}, "Categories"),
-        ("inventory", "warehouse", "inventory.locations", {}, "Stock locations"),
-        ("purchases", "truck", "purchases.suppliers", {}, "Suppliers"),
-        ("expenses", "wallet", "expenses.categories", {}, "Expense categories"),
-        ("variants", "package", None, {}, None),
-        ("batch_expiry", "calendar-clock", "inventory.expiry", {}, "Expiry"),
-        ("serial_imei", "scan-line", "inventory.serials", {}, "Serial numbers"),
-    ]),
-    ("Money & reports", [
-        ("receivables", "landmark", "accounts.receivables_index", {}, "Customer accounts"),
-        ("payables", "landmark", "accounts.payables_index", {}, "Supplier accounts"),
-        ("cash_bank_book", "wallet", "accounts.book", {"book": "cash"}, "Cash book"),
-        ("business_reports", "chart-column", "reports.dashboard", {}, "Dashboard"),
-        ("daily_summary", "file-text", "reports.owner_summary", {}, "Today's summary"),
-    ]),
-    ("GST", [
-        ("einvoice", "file-check", "einvoice.settings", {}, "e-Invoice login"),
-        ("eway_bill", "truck", "einvoice.settings", {}, "e-Way Bill login"),
-        ("margin_scheme", "coins", "margin.index", {}, "Second-hand goods"),
-    ]),
-    ("Your industry", [
-        ("restaurant_mode", "utensils-crossed", "restaurant.setup", {}, "Tables, order types & charges"),
-        ("weighing", "scale", "settings.modules", {}, "Scale label format"),
-        ("pharmacy", "pill", "pharmacy.register", {}, "Drug register"),
-        ("electronics", "monitor", "jobs.warranty", {}, "Warranty check"),
-        ("jewellery", "gem", "jewellery.rates", {}, "Today's rates"),
-        ("job_cards", "wrench", "jobs.index", {}, "Job cards"),
-        ("wholesale", "boxes", "wholesale.index", {}, "Customer groups & salesmen"),
-    ]),
-    ("At the counter", [
-        ("favourites", "sparkles", None, {}, None),
-        ("day_close", "clock", None, {}, None),
-        ("offline_pos", "cloud-off", "pos.offline_bills", {}, "Counter devices & offline bills"),
-        ("cashier_pin", "key-round", "branches.cashiers", {}, "Cashiers & PINs"),
-    ]),
-]
-
-
 # Set-up screens guarded by more than their own module's flag.
 SETUP_ALSO_NEEDS = {"batch_expiry": ("inventory",), "serial_imei": ("inventory",)}
 
@@ -92,33 +45,27 @@ def section_info(key: str) -> dict:
 
 
 def module_groups(tenant) -> list[dict]:
-    """The Modules section: every built module once, in its group. A module
-    added to app.utils.features without a group here still shows, under
-    "Other", so a switch can never go missing."""
-    features = {f.key: f for f in AVAILABLE_FEATURES}
-    placed = set()
-    groups = []
-    for label, entries in MODULE_GROUPS:
+    """The Modules section: every built switch once, sorted as the one
+    catalogue sorts it (app/utils/catalogue.py) - trade packs, modules in
+    six areas, counter options - each with its "Set up" link once on."""
+    out = []
+    for group in catalogue.groups():
         items = []
-        for key, icon, endpoint, kwargs, setup_label in entries:
-            feature = features.get(key)
-            if feature is None:
-                continue
-            placed.add(key)
+        for row in group["items"]:
+            feature, entry = row["feature"], row["entry"]
+            key = feature.key
             on = tenant.has_feature(key)
             reachable = on and all(tenant.has_feature(k) for k in SETUP_ALSO_NEEDS.get(key, ()))
-            items.append({"key": key, "label": feature.label, "description": feature.description, "icon": icon,
-                          "on": on, "setup_url": url_for(endpoint, **kwargs) if (endpoint and reachable) else None,
-                          "setup_label": setup_label, **_package_bits(tenant, key)})
-        if items:
-            groups.append({"label": label, "items": items})
-    rest = [f for f in AVAILABLE_FEATURES if f.key not in placed]
-    if rest:
-        groups.append({"label": "Other", "items": [
-            {"key": f.key, "label": f.label, "description": f.description, "icon": "layout-grid",
-             "on": tenant.has_feature(f.key), "setup_url": None, "setup_label": None, **_package_bits(tenant, f.key)}
-            for f in rest]})
-    return groups
+            items.append({"key": key, "label": feature.label, "description": feature.description, "icon": entry.icon,
+                          "on": on, "depth": row["depth"],
+                          "setup_url": url_for(entry.setup, **dict(entry.setup_kwargs)) if (entry.setup and reachable)
+                          else None,
+                          "setup_label": entry.setup_label,
+                          "needs_off": catalogue.missing_needs(key, tenant.has_feature) if on else [],
+                          **_package_bits(tenant, key)})
+        out.append({"label": group["title"], "kind": group["kind"], "kind_title": group["kind_title"],
+                    "kind_hint": group["kind_hint"], "first": group["first"], "items": items})
+    return out
 
 
 def _package_bits(tenant, key) -> dict:

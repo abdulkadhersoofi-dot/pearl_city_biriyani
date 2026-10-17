@@ -1850,3 +1850,27 @@ a.cat-chip { text-decoration: none; display: inline-flex; align-items: center; }
 .law-note { font-size: 0.9rem; }
 a.stat-tile { display: block; color: inherit; text-decoration: none; }
 a.stat-tile .stat-label, a.stat-tile .stat-sub { text-decoration: none; }
+
+/* The one catalogue (console cleanup, stage 1): kind headings, area
+   titles under them, add-ons indented under the module they need. */
+.kind-heading { display: flex; flex-direction: column; gap: 2px; margin: 26px 0 10px; padding-top: 16px; border-top: 1px solid var(--color-border); font-size: 1.15rem; }
+.kind-heading small { font-family: var(--font-body); font-size: 0.84rem; font-weight: 500; color: var(--color-text-muted); }
+.card .kind-heading:first-of-type, .settings-form .kind-heading:first-of-type { border-top: none; padding-top: 0; margin-top: 8px; }
+h4.module-group-title { font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-muted); margin: 14px 0 2px; }
+.kind-count { margin: -4px 0 10px; }
+.state-row.is-addon { padding-left: 22px; position: relative; }
+.state-row.is-addon::before { content: ""; position: absolute; left: 6px; top: 0; bottom: 50%; width: 10px; border-left: 2px solid var(--color-border-strong); border-bottom: 2px solid var(--color-border-strong); border-bottom-left-radius: 6px; }
+.needs-note { display: inline-flex; align-items: center; gap: 5px; margin-top: 4px; font-size: 0.78rem; font-weight: 600; color: var(--color-text-muted); }
+.needs-note.is-off { color: var(--color-warn-text); }
+.module-card.is-addon { border-left: 3px solid var(--color-border-strong); }
+.module-needs { display: flex; align-items: center; gap: 6px; margin: 0 14px 10px 64px; font-size: 0.82rem; font-weight: 600; color: var(--color-warn-text); }
+.business-type-note { display: flex; align-items: center; gap: 8px; margin: 0 0 6px; padding: 10px 14px; border-radius: var(--radius); background: var(--color-surface-2); border: 1px solid var(--color-border); font-size: 0.9rem; }
+.business-type-note a { margin-left: 6px; font-weight: 700; }
+.type-brings { display: flex; align-items: center; gap: 8px; margin: -4px 0 4px; font-size: 0.88rem; color: var(--color-text-muted); }
+.exceptions-table .kind-row th { background: var(--color-surface-2); padding-top: 12px; color: var(--color-text); font-size: 0.95rem; text-transform: none; letter-spacing: 0; }
+.exceptions-table tr.is-addon td:first-child { padding-left: 26px; }
+.exceptions-table .needs-note { display: flex; }
+.chip-kind { margin: 12px 0 6px; font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-muted); }
+@media (max-width: 640px) {
+  .module-needs { margin-left: 14px; }
+}

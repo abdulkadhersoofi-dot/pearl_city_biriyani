@@ -261,8 +261,11 @@ def features():
 
     pending = {r.feature_key: r for r in ModuleRequest.query.filter_by(tenant_id=tenant.id,
                                                                      status=ModuleRequest.PENDING)}
+    from app.utils.catalogue import business_types
+
+    business_type = next(b for b in business_types() if b["value"] == tenant.business_type.value)
     return _section("settings/features.html", "modules", form=form, groups=module_groups(tenant),
-                    field_name=feature_field_name, requests=pending)
+                    field_name=feature_field_name, requests=pending, business_type=business_type)
 
 
 @settings_bp.route("/features/ask/<key>", methods=["POST"])

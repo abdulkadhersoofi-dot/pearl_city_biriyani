@@ -528,6 +528,19 @@ this list is just the index.
   Postgres stores `document_type` by member NAME - add enum values in
   migrations by name (`'MARGIN_PURCHASE'`).
 
+- **One catalogue (console cleanup, stage 1).** `app/utils/catalogue.py`
+  sorts every feature flag into a kind (`TRADE` / `MODULE` / `COUNTER`;
+  the business type is the fourth kind but a tenant setting), modules
+  into six `AREAS`, with `needs` (add-ons shown under their first need,
+  warned when it's off - never enforced), icons and set-up links (moved
+  from `settings/sections.py`'s old `MODULE_GROUPS`), the trade packs each
+  business type brings (`BUSINESS_TYPE_PACKS`, all inside its preset) and
+  its suggested package (`BUSINESS_TYPE_PACKAGE`). `groups()` /
+  `ordered_keys()` are what the package editor, client page, preview,
+  onboarding and Settings > Modules iterate. A new flag must get an
+  `Entry` there (`tests/test_catalogue.py`). Plan for stages 2-5: the
+  "Console cleanup" Roadmap entry in the README.
+
 ## 5. Chronological development history (this session)
 
 This is the part README.md doesn't capture — the actual sequence of
