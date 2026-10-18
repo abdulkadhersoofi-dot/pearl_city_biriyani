@@ -22,6 +22,16 @@
     <button type="button" class="btn btn-primary capp-btn mt-16" @click="start()">Try again</button>
   </section>
 
+  <section x-show="state === 'mode'" x-cloak class="pair-card" aria-labelledby="mode-title">
+    <p class="m-0"><strong id="mode-title">Paired! What is this phone for?</strong></p>
+    <p class="text-muted mt-6">The app opens straight on it. You can change this later on the app's home screen.</p>
+    <div class="mode-picks">
+      <button type="button" class="mode-pick" @click="pickMode('counter')">{{ icon('receipt-text') }}<strong>Counter</strong><small>Bills and payments</small></button>
+      <button type="button" class="mode-pick" @click="pickMode('waiter')">{{ icon('utensils-crossed') }}<strong>Waiter</strong><small>Tables and KOTs</small></button>
+      <button type="button" class="mode-pick" @click="pickMode('kitchen')">{{ icon('monitor') }}<strong>Kitchen</strong><small>KOTs to cook</small></button>
+    </div>
+  </section>
+
   <form x-show="state === 'code'" x-cloak class="pair-card" @submit.prevent="submit()" novalidate>
     <p class="pair-lead">Ask the owner to open <strong>Branches</strong> on the website and tap <strong>Pair a phone</strong>
       next to your counter. Type the 6-digit code they see.</p>

@@ -5,7 +5,7 @@
    phone is online, and one big tile per job. The tiles open the counter
    screens this branch already has; later stages give each its own
    phone-sized screen. #}
-<div class="capp-shell capp-tabbed" x-data="counterHome({{ (device_id or 'null')|tojson }})" x-init="start()">
+<div class="capp-shell capp-tabbed" x-data="counterHome({{ device_id|tojson }}, {{ tables_on|tojson }})" x-init="start()">
   <header class="capp-top">
     <div class="capp-who">
       <span class="capp-avatar" aria-hidden="true">{{ current_user.name[:1]|upper }}</span>
@@ -50,6 +50,22 @@
       {% if offline_on %}No internet - billing still works; bills go to the books when you're back online.
       {% else %}No internet - billing needs the connection here (offline billing is off for this business).{% endif %}</p>
   </main>
+
+  <section class="capp-setup" aria-label="This phone" x-show="inApp || {{ tables_on|tojson }}" {% if not tables_on %}x-cloak{% endif %}>
+    {% if tables_on %}
+    <div class="capp-setup-row">
+      <span>Opens on <strong x-text="modeLabel()">Counter</strong></span>
+      <button type="button" class="btn btn-quiet btn-sm" @click="choosing = !choosing" :aria-expanded="choosing">Change</button>
+    </div>
+    <div class="mode-picks is-small" x-show="choosing" x-cloak>
+      <button type="button" class="mode-pick" :class="mode === 'counter' && 'is-on'" @click="pickMode('counter')">{{ icon('receipt-text') }}<strong>Counter</strong></button>
+      <button type="button" class="mode-pick" :class="mode === 'waiter' && 'is-on'" @click="pickMode('waiter')">{{ icon('utensils-crossed') }}<strong>Waiter</strong></button>
+      <button type="button" class="mode-pick" :class="mode === 'kitchen' && 'is-on'" @click="pickMode('kitchen')">{{ icon('monitor') }}<strong>Kitchen</strong></button>
+    </div>
+    {% endif %}
+    <button type="button" class="capp-setup-row capp-setup-btn" x-show="inApp" x-cloak @click="appSettings()">
+      <span>{{ icon('printer', 'icon-sm') }}Printer, cash drawer &amp; app settings</span>{{ icon('chevron-right', 'icon-sm') }}</button>
+  </section>
 
   <footer class="capp-foot">
     <span class="text-muted" x-text="device ? ('This phone: ' + device.name + ' · ' + device.code) : ''"></span>

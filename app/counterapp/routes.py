@@ -78,7 +78,9 @@ def _device_payload(device, token=None) -> dict:
     user = device.user
     payload = {"device_id": device.id, "code": device.code, "name": device.name, "tenant_id": user.tenant_id,
                "user_id": user.id, "branch": user.name, "business": user.tenant.display_name,
-               "home": url_for("counterapp.index")}
+               "home": url_for("counterapp.index"),
+               # A restaurant's phone can be its Counter, a Waiter's or the Kitchen's.
+               "restaurant": current_tenant_has("restaurant_mode")}
     try:
         state = offline.device_state(user.tenant, device)
         payload["fy"], payload["next_number"] = state["fy"], state["next_number"]

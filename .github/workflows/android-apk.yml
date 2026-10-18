@@ -1,4 +1,4 @@
-name: Build ARFA POS Android APK
+name: Build ARFA Counter Android APK
 
 # This builds only the android/ project - it never touches the Flask
 # app, and nothing in this workflow runs as part of (or can break) the
@@ -41,12 +41,29 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      # Every build is signed with the same key, so it installs over the
+      # last one. That is the shared key in android/app/ unless the repo has
+      # its own in secrets (ANDROID_KEYSTORE_BASE64 = the .keystore file in
+      # base64, plus ANDROID_KEYSTORE_PASSWORD / ANDROID_KEY_ALIAS /
+      # ANDROID_KEY_PASSWORD).
+      - name: Use the repo's own signing key, if it has one
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/arfa.keystore"
+            echo "ANDROID_KEYSTORE_FILE=$RUNNER_TEMP/arfa.keystore" >> "$GITHUB_ENV"
+          fi
+
       - name: Build debug APK
         working-directory: android
         # Every published build gets a higher versionCode (the run number),
         # which the app's update check compares against.
         env:
           ANDROID_VERSION_CODE: ${{ github.run_number }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon --stacktrace
@@ -55,9 +72,11 @@ jobs:
         working-directory: android
         run: |
           mkdir -p dist
-          cp app/build/outputs/apk/debug/app-debug.apk dist/ARFA-POS-debug.apk
+          cp app/build/outputs/apk/debug/app-debug.apk dist/ARFA-Counter.apk
+          # The old file name too, for links handed out before the rename.
+          cp dist/ARFA-Counter.apk dist/ARFA-POS-debug.apk
           # What the app's update check reads (android/app/.../UpdateChecker.kt).
-          printf '{"versionCode": %s, "versionName": "1.%s", "commit": "%s", "apk": "https://github.com/%s/releases/download/android-latest/ARFA-POS-debug.apk"}\n' \
+          printf '{"versionCode": %s, "versionName": "1.%s", "commit": "%s", "apk": "https://github.com/%s/releases/download/android-latest/ARFA-Counter.apk"}\n' \
             "${{ github.run_number }}" "${{ github.run_number }}" "${{ github.sha }}" "${{ github.repository }}" > dist/version.json
 
       # Always available from this run's "Summary" page, even for a
@@ -65,8 +84,8 @@ jobs:
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ARFA-POS-debug-apk
-          path: android/dist/ARFA-POS-debug.apk
+          name: ARFA-Counter-apk
+          path: android/dist/ARFA-Counter.apk
           retention-days: 90
 
       # A stable, permanent download link (unlike an Actions artifact,
@@ -77,17 +96,19 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: android-latest
-          name: "ARFA POS (branch login app) - latest build"
+          name: "ARFA Counter (branch phone app) - latest build"
           body: |
             Auto-built from commit ${{ github.sha }} on branch `${{ github.ref_name }}`.
 
-            Debug-signed APK for direct installation (not a Play Store release).
+            APK for direct installation (not a Play Store release).
             On the phone: enable "install from unknown sources" for your
-            browser/file manager, download ARFA-POS-debug.apk, open it, install.
+            browser/file manager, download ARFA-Counter.apk, open it, install.
+            Then ask the owner for a pairing code (Branches > Pair a phone).
 
             Points at: see android/README.md for the server URL this build
             talks to and how to change it.
           prerelease: true
           files: |
+            android/dist/ARFA-Counter.apk
             android/dist/ARFA-POS-debug.apk
             android/dist/version.json

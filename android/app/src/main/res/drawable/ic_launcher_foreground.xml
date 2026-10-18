@@ -1,23 +1,50 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- A plain receipt/bill glyph - white body with the brand green used
-     for the "printed lines", sized to sit inside the adaptive icon's
-     safe zone (the inner ~66dp circle of the 108dp canvas) so it isn't
-     clipped on launchers that mask icons to a circle or squircle. -->
+<!-- ARFA Counter's icon: the smiling receipt from the app's own screens
+     (app/static/img/counter-icon.svg), drawn on its 96-unit grid and
+     scaled into the adaptive icon's safe zone (the inner ~66dp of the
+     108dp canvas) so a round or squircle mask never clips it. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M30,25 L78,25 L78,85 L71,80 L64,85 L57,80 L50,85 L43,80 L36,85 L30,80 Z" />
-    <path
-        android:fillColor="#1F7A4D"
-        android:pathData="M39,38 L69,38 L69,43 L39,43 Z" />
-    <path
-        android:fillColor="#1F7A4D"
-        android:pathData="M39,50 L69,50 L69,55 L39,55 Z" />
-    <path
-        android:fillColor="#1F7A4D"
-        android:pathData="M39,62 L58,62 L58,67 L39,67 Z" />
+    <group
+        android:scaleX="0.85"
+        android:scaleY="0.85"
+        android:translateX="13.2"
+        android:translateY="11.5">
+        <!-- The receipt, torn edge at the bottom. -->
+        <path
+            android:fillColor="#FFFDF7"
+            android:pathData="M28,20h40a4,4 0,0 1,4 4v52l-6,-4 -6,4 -6,-4 -6,4 -6,-4 -6,4 -6,-4 -6,4V24a4,4 0,0 1,4 -4z" />
+        <!-- Printed lines. -->
+        <path
+            android:fillColor="#CFE5D6"
+            android:pathData="M36,31h24a2,2 0,0 1,0 4h-24a2,2 0,0 1,0 -4z" />
+        <path
+            android:fillColor="#CFE5D6"
+            android:pathData="M36,40h14a2,2 0,0 1,0 4h-14a2,2 0,0 1,0 -4z" />
+        <!-- Eyes. -->
+        <path
+            android:fillColor="#1F3A2C"
+            android:pathData="M37.4,54a2.6,2.6 0,1 0,5.2 0a2.6,2.6 0,1 0,-5.2 0z" />
+        <path
+            android:fillColor="#1F3A2C"
+            android:pathData="M53.4,54a2.6,2.6 0,1 0,5.2 0a2.6,2.6 0,1 0,-5.2 0z" />
+        <!-- Smile. -->
+        <path
+            android:pathData="M41,60.5c2,2.6 4.3,3.9 7,3.9s5,-1.3 7,-3.9"
+            android:strokeColor="#1F3A2C"
+            android:strokeWidth="2.6"
+            android:strokeLineCap="round" />
+        <!-- Cheeks. -->
+        <path
+            android:fillAlpha="0.7"
+            android:fillColor="#F6B3A4"
+            android:pathData="M32,60a3,3 0,1 0,6 0a3,3 0,1 0,-6 0z" />
+        <path
+            android:fillAlpha="0.7"
+            android:fillColor="#F6B3A4"
+            android:pathData="M58,60a3,3 0,1 0,6 0a3,3 0,1 0,-6 0z" />
+    </group>
 </vector>

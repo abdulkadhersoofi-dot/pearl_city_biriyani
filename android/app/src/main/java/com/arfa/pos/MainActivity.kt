@@ -28,6 +28,7 @@ import android.provider.Settings
 import android.text.InputType
 import android.util.Base64
 import android.view.View
+import android.view.WindowManager
 import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
 import android.webkit.SslErrorHandler
@@ -51,21 +52,26 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 /**
- * Single-screen shell: a full-screen WebView locked to this app's own
- * ARFA server, for counter (POS) logins. Everything a cashier does - sign
- * in, bill, hold/resume, Day-book, Z-report, bill offline - is the same
- * server-rendered UI as the website; this activity is the native frame
- * around it (splash, offline screen, back button), the "branch logins
- * only" gate, and the things a web page can't do on its own:
+ * ARFA Counter: a full-screen WebView locked to this app's own ARFA
+ * server, opening the app's phone screens (/app/ - pairing with the
+ * owner's code, Bill, Tables & KOT, Held, Today, Kitchen). Everything a
+ * cashier, waiter or kitchen does is the server-rendered UI; this activity
+ * is the native frame around it (splash, offline screen, back button),
+ * the "branch logins only" gate, and the things a web page can't do on
+ * its own:
  *
  *  - direct ESC/POS printing to a Bluetooth / USB thermal printer, with
  *    the system print dialog (PDF) as the fallback, and the cash drawer
  *  - kiosk mode (Android lock task) so the tablet stays on the POS
  *  - the in-app update check against the "android-latest" release.
  *
- * Offline billing itself lives in the web page (service worker + queue,
- * app/static/js/pos_offline.js); this app just opens the POS screen when
- * there's no connection so the cached copy can load.
+ * The app opens /app/?start=1: the web page then signs the phone back in
+ * with its device secret if needed and goes to what this phone is for
+ * (Counter, Waiter or Kitchen - chosen after pairing). Offline billing and
+ * KOTs live in the web page (service worker + queues, pos_offline.js,
+ * counter_tables.js); with no connection the page's saved copy opens.
+ * The WebView's user agent carries "ARFACounter/<version>" so the server
+ * sends a branch login here rather than to the website's counter.
  */
 class MainActivity : AppCompatActivity() {
 
@@ -78,7 +84,8 @@ class MainActivity : AppCompatActivity() {
     // Paths a counter login is allowed to be on. Anything else means the
     // account that just signed in isn't a counter login - see
     // handlePageFinished().
-    private val allowedPrefixes = listOf("/auth/", "/pos/", "/media/", "/static/", "/healthz", "/restaurant/")
+    private val allowedPrefixes = listOf("/app/", "/auth/", "/pos/", "/media/", "/static/", "/healthz", "/restaurant/")
+    private val startUrl: String get() = "$baseUrl/app/?start=1"
 
     private var isHandlingBlockedRole = false
     private var hasLoadedOnce = false
@@ -115,7 +122,7 @@ class MainActivity : AppCompatActivity() {
 
         setupWebView()
         binding.retryButton.setOnClickListener { reload() }
-        binding.offlineButton.setOnClickListener { openPos() }
+        binding.offlineButton.setOnClickListener { openApp() }
         ContextCompat.registerReceiver(
             this, usbPermissionReceiver, IntentFilter(ACTION_USB_PERMISSION), ContextCompat.RECEIVER_NOT_EXPORTED
         )
@@ -123,15 +130,16 @@ class MainActivity : AppCompatActivity() {
         onBackPressedDispatcher.addCallback(this) {
             when {
                 binding.webView.canGoBack() -> binding.webView.goBack()
-                isAtLoginPage() -> confirmExitOnDoubleBack()
-                else -> binding.webView.loadUrl("$baseUrl/auth/login")
+                isAtHome() -> confirmExitOnDoubleBack()
+                else -> binding.webView.loadUrl("$baseUrl/app/")
             }
         }
 
         if (savedInstanceState == null) {
-            // Signed in before: straight to the POS - which also lets the
-            // cached copy open when there's no connection.
-            if (hasSession()) openPos() else binding.webView.loadUrl("$baseUrl/auth/login")
+            // Always the app's start: the page pairs a new phone, signs a
+            // paired one back in, and opens what this phone is for - its
+            // saved copy when there's no connection.
+            openApp()
         }
         UpdateChecker.check(this, settings, manual = false)
     }
@@ -149,18 +157,15 @@ class MainActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
-    private fun hasSession(): Boolean =
-        CookieManager.getInstance().getCookie(baseUrl)?.contains("gstapp_session=") == true
-
-    private fun openPos() {
+    private fun openApp() {
         binding.errorView.visibility = View.GONE
         binding.loadingSpinner.visibility = View.VISIBLE
-        binding.webView.loadUrl("$baseUrl/pos/")
+        binding.webView.loadUrl(startUrl)
     }
 
-    private fun isAtLoginPage(): Boolean {
+    private fun isAtHome(): Boolean {
         val path = Uri.parse(binding.webView.url ?: "").path ?: ""
-        return path.startsWith("/auth/login") || path.isEmpty()
+        return path == "/app/" || path == "/app" || path.startsWith("/auth/login") || path.isEmpty()
     }
 
     private fun confirmExitOnDoubleBack() {
@@ -184,6 +189,9 @@ class MainActivity : AppCompatActivity() {
         webSettings.useWideViewPort = true
         webSettings.loadWithOverviewMode = true
         webSettings.cacheMode = android.webkit.WebSettings.LOAD_DEFAULT
+        // Tells the server this is the ARFA Counter app (app/auth/routes.py
+        // APP_AGENT): a branch login lands on the app's screens.
+        webSettings.userAgentString = webSettings.userAgentString + " ARFACounter/" + BuildConfig.VERSION_NAME
 
         CookieManager.getInstance().setAcceptCookie(true)
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, false)
@@ -197,7 +205,7 @@ class MainActivity : AppCompatActivity() {
         binding.loadingSpinner.visibility = View.VISIBLE
         val current = binding.webView.url
         if (current.isNullOrBlank()) {
-            binding.webView.loadUrl("$baseUrl/auth/login")
+            binding.webView.loadUrl(startUrl)
         } else {
             binding.webView.reload()
         }
@@ -207,7 +215,9 @@ class MainActivity : AppCompatActivity() {
         binding.webView.visibility = View.INVISIBLE
         binding.loadingSpinner.visibility = View.GONE
         binding.errorView.visibility = View.VISIBLE
-        binding.offlineButton.visibility = if (hasSession()) View.VISIBLE else View.GONE
+        // A paired phone opens its saved screens without internet; one that
+        // never paired just sees the same error again.
+        binding.offlineButton.visibility = View.VISIBLE
         hasLoadedOnce = true // stop the splash from hanging forever offline
     }
 
@@ -226,6 +236,12 @@ class MainActivity : AppCompatActivity() {
         hasLoadedOnce = true
 
         val path = Uri.parse(url).path ?: ""
+        // The kitchen screen stays lit on its tablet.
+        if (path.startsWith("/app/kitchen")) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
         val isAllowed = allowedPrefixes.any { path.startsWith(it) } || path == "/"
         if (isAllowed) {
             isHandlingBlockedRole = false

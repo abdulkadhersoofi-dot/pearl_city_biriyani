@@ -10,6 +10,12 @@
 (function () {
   var KEY = "arfa.app.device";
   var CART_KEY = "arfa.app.cart";  // the Bill screen's cart in progress (counter_bill.js)
+  // What this phone is for (stage 5) - where the app opens: the counter's
+  // Bill screen, a waiter's Tables, or the Kitchen screen.
+  var MODE_KEY = "arfa.app.mode";
+  var MODES = {counter: "/app/bill", waiter: "/app/tables", kitchen: "/app/kitchen"};
+  function mode() { try { return localStorage.getItem(MODE_KEY) || "counter"; } catch (e) { return "counter"; } }
+  function setMode(m) { try { localStorage.setItem(MODE_KEY, m); } catch (e) {} }
 
   function load() {
     try { return JSON.parse(localStorage.getItem(KEY) || "null"); } catch (e) { return null; }
@@ -29,6 +35,7 @@
     try {
       localStorage.removeItem(KEY);
       localStorage.removeItem(CART_KEY);
+      localStorage.removeItem(MODE_KEY);
       if (d) localStorage.removeItem("arfa.device." + d.tenant_id + "." + d.user_id);
     } catch (e) {}
     // The screens kept for offline use belong to this branch - drop them.
@@ -82,17 +89,21 @@
   }
 
   window.ArfaApp = {load: load, save: save, forget: forget, post: post, platform: platform, resume: resume,
-                    keepForOffline: keepForOffline, CART_KEY: CART_KEY};
+                    keepForOffline: keepForOffline, CART_KEY: CART_KEY, mode: mode, setMode: setMode};
 
   window.pairScreen = function () {
     return {
       state: "code", code: "", name: "", error: "", busy: false,
+      pickMode: function (m) { setMode(m); window.location.replace("/app/?start=1"); },
       start: function () {
         var d = load(), self = this;
         if (!d) { this.state = "code"; return; }
         this.state = "resuming";
         post("/app/resume", {device_id: d.id, token: d.token}).then(function (r) {
-          if (r.ok) { window.location.replace(r.data.home || "/app/"); return; }
+          // Signed back in: on to where the app was opening (?start=1 -
+          // what this phone is for), else home.
+          var start = /[?&]start=1/.test(window.location.search) ? "?start=1" : "";
+          if (r.ok) { window.location.replace((r.data.home || "/app/") + start); return; }
           if (r.status === 403) { forget(); }
           self.error = (r.data && r.data.error) || "";
           self.state = "code";
@@ -108,21 +119,34 @@
           var d = r.data;
           save({id: d.device_id, token: d.token, code: d.code, name: d.name, tenant_id: d.tenant_id,
                 user_id: d.user_id, fy: d.fy, next_number: d.next_number});
-          window.location.replace(d.home || "/app/");
+          // A restaurant's phone says what it's for; any other is the counter.
+          if (d.restaurant) { self.state = "mode"; return; }
+          setMode("counter");
+          window.location.replace((d.home || "/app/") + "?start=1");
         }).catch(function () { self.busy = false; self.error = "No internet - connect and try again."; });
       }
     };
   };
 
-  window.counterHome = function (deviceId) {
+  window.counterHome = function (deviceId, tablesOn) {
     return {
-      online: navigator.onLine, device: null,
+      online: navigator.onLine, device: null, mode: mode(), choosing: false,
+      inApp: !!(window.AndroidPrint && window.AndroidPrint.openSettings),
       start: function () {
         var self = this, d = load();
+        // The app opening (/app/?start=1): straight to what this phone is for.
+        if (/[?&]start=1/.test(window.location.search)) {
+          var target = tablesOn ? MODES[this.mode] : MODES.counter;
+          window.location.replace(target || MODES.counter);
+          return;
+        }
         this.device = d && (!deviceId || d.id === deviceId) ? d : null;
         window.addEventListener("online", function () { self.online = true; });
         window.addEventListener("offline", function () { self.online = false; });
       },
+      modeLabel: function () { return {counter: "Counter", waiter: "Waiter", kitchen: "Kitchen"}[this.mode] || "Counter"; },
+      pickMode: function (m) { setMode(m); this.mode = m; this.choosing = false; },
+      appSettings: function () { if (this.inApp) window.AndroidPrint.openSettings(); },
       unpair: function () {
         if (!window.confirm("Unpair this phone? It stops billing for this counter until the owner gives a new code.")) return;
         post("/app/unpair").finally(function () { forget(); window.location.replace("/app/"); });

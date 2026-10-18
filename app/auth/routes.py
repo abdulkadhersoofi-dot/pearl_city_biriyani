@@ -18,6 +18,14 @@ from app.utils.billing import advance_billing_cycle, auditor_access_status, tena
 
 # Set on a phone paired with the ARFA Counter app (app/counterapp).
 APP_COOKIE = "arfa_app"
+# The ARFA Counter Android app adds this to its WebView's user agent.
+APP_AGENT = "ARFACounter/"
+
+
+def in_counter_app() -> bool:
+    """A paired phone (its cookie) or the ARFA Counter app itself: a branch
+    login belongs on the app's screens (/app/), not the website's counter."""
+    return bool(request.cookies.get(APP_COOKIE)) or APP_AGENT in (request.user_agent.string or "")
 
 
 def _recent_failed_logins(email: str, window_minutes: int) -> int:
@@ -38,17 +46,17 @@ def _post_login_redirect(user: User):
         if user.tenant and user.tenant.has_feature("business_reports"):
             return redirect(url_for("reports.dashboard"))
         return redirect(url_for("invoicing.list_invoices"))
-    return redirect(url_for("pos.terminal"))
+    return redirect(url_for("counterapp.index") if in_counter_app() else url_for("pos.terminal"))
 
 
 def _login_view(login_tenant=None):
     if current_user.is_authenticated:
         return _post_login_redirect(current_user)
     # A phone paired with the ARFA Counter app signs itself back in from
-    # /app/ (its device secret) - send it there instead of asking for an
-    # email and password. ?web=1 still shows this form.
-    if (request.method == "GET" and request.cookies.get(APP_COOKIE) and not request.args.get("web")
-            and login_tenant is None):
+    # /app/ (its device secret), and the app pairs a new phone there - send
+    # it there instead of asking for an email and password. ?web=1 still
+    # shows this form.
+    if request.method == "GET" and in_counter_app() and not request.args.get("web") and login_tenant is None:
         return redirect(url_for("counterapp.index"))
 
     form = LoginForm()

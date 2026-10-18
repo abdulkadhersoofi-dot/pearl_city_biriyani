@@ -3,6 +3,13 @@ plugins {
     id 'org.jetbrains.kotlin.android'
 }
 
+// An environment value, or the fallback when it's unset or empty (GitHub
+// passes an empty string for a secret the repo doesn't have).
+def envOr = { String name, String fallback ->
+    def value = System.getenv(name)
+    return (value == null || value.isEmpty()) ? fallback : value
+}
+
 android {
     namespace 'com.arfa.pos'
     compileSdk 34
@@ -34,12 +41,28 @@ android {
         buildConfigField "String", "RELEASE_REPO", "\"abdulkadhersoofi-dot/pearl_city_biriyani\""
     }
 
+    // One signing key for every build, so a new APK installs over the last
+    // one (Android refuses an update signed with a different key - and a
+    // fresh GitHub runner would otherwise make a new debug key each time,
+    // forcing an uninstall that loses bills waiting on the phone). The
+    // shared debug key lives next to this file; a shop that wants its own
+    // sets the ANDROID_KEYSTORE_* secrets (.github/workflows/android-apk.yml).
+    signingConfigs {
+        shared {
+            storeFile file(envOr("ANDROID_KEYSTORE_FILE", "arfa-counter-debug.keystore"))
+            storePassword envOr("ANDROID_KEYSTORE_PASSWORD", "android")
+            keyAlias envOr("ANDROID_KEY_ALIAS", "arfacounter")
+            keyPassword envOr("ANDROID_KEY_PASSWORD", "android")
+        }
+    }
+
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
         debug {
+            signingConfig signingConfigs.shared
             // Built and distributed via GitHub Actions (see
             // .github/workflows/android-apk.yml) as a debug-signed APK,
             // meant for direct sideloading - not a Play Store release,

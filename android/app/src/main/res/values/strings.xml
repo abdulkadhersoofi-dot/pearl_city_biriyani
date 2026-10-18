@@ -1,14 +1,14 @@
 <resources>
-    <string name="app_name">ARFA POS</string>
+    <string name="app_name">ARFA Counter</string>
     <string name="error_title">Can\'t reach the server</string>
     <string name="error_body">Check your internet connection and try again.</string>
     <string name="retry">Retry</string>
     <string name="branch_only_title">Branch logins only</string>
-    <string name="branch_only_body">This app is for branch (POS) staff logins only. Sign in with a branch account, or use the website for other logins.</string>
+    <string name="branch_only_body">ARFA Counter is for a branch\'s counter. Ask the owner for a pairing code (Branches &gt; Pair a phone on the website), or use the website for other logins.</string>
     <string name="ok">OK</string>
     <string name="exit_confirm">Press back again to exit</string>
     <string name="no_app_to_share">WhatsApp isn\'t installed on this device.</string>
-    <string name="bill_offline">Open billing without internet</string>
+    <string name="bill_offline">Open the counter without internet</string>
     <string name="receipt_load_failed">Could not load the receipt. Check your connection.</string>
     <string name="printer_failed">The printer didn\'t respond - check it\'s on and paired.</string>
 
@@ -20,7 +20,7 @@
     <string name="setting_test">Print a test page</string>
     <string name="setting_open_drawer">Open the cash drawer now</string>
     <string name="setting_kiosk_on">Kiosk mode: on - tap to unlock</string>
-    <string name="setting_kiosk_off">Kiosk mode: off - keep this tablet on the POS</string>
+    <string name="setting_kiosk_off">Kiosk mode: off - keep this tablet on ARFA Counter</string>
     <string name="setting_update">Check for an app update (this is %1$s)</string>
     <string name="close">Close</string>
     <string name="later">Later</string>
@@ -40,13 +40,13 @@
     <string name="no_paired_title">No paired printer</string>
     <string name="no_paired_body">Pair the receipt printer in Android\'s Bluetooth settings first (its PIN is usually 0000 or 1234), then come back here.</string>
     <string name="open_bluetooth_settings">Bluetooth settings</string>
-    <string name="bt_permission_needed">ARFA POS needs the Nearby devices permission to print over Bluetooth.</string>
+    <string name="bt_permission_needed">ARFA Counter needs the Nearby devices permission to print over Bluetooth.</string>
     <string name="no_usb">No USB printer found - plug it in (with an OTG cable on a phone) and try again.</string>
     <string name="usb_ready">USB printer ready.</string>
-    <string name="usb_permission_needed">ARFA POS wasn\'t allowed to use the USB printer.</string>
+    <string name="usb_permission_needed">ARFA Counter wasn\'t allowed to use the USB printer.</string>
 
     <string name="kiosk_lock_title">Kiosk mode</string>
-    <string name="kiosk_lock_body">Keeps this tablet on the POS: no home screen, no other apps. Pick a code of 4 or more digits - it\'s needed to unlock again.</string>
+    <string name="kiosk_lock_body">Keeps this tablet on ARFA Counter: no home screen, no other apps. Pick a code of 4 or more digits - it\'s needed to unlock again.</string>
     <string name="kiosk_unlock_title">Unlock kiosk mode</string>
     <string name="kiosk_unlock_body">Enter the kiosk code.</string>
     <string name="kiosk_pin_hint">Kiosk code</string>
@@ -57,6 +57,6 @@
     <string name="update_title">App update available</string>
     <string name="update_body">Version %1$s is ready (this is %2$s). Download it, then open the file to install.</string>
     <string name="update_download">Download</string>
-    <string name="update_none">ARFA POS is up to date (%1$s).</string>
+    <string name="update_none">ARFA Counter is up to date (%1$s).</string>
     <string name="update_failed">Couldn\'t check for updates - try again when online.</string>
 </resources>

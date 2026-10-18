@@ -42,7 +42,7 @@ object UpdateChecker {
                 settings.lastUpdateCheck = now
                 val latest = json.optInt("versionCode", 0)
                 val name = json.optString("versionName", latest.toString())
-                val apk = json.optString("apk", latestUrl("ARFA-POS-debug.apk"))
+                val apk = json.optString("apk", latestUrl("ARFA-Counter.apk"))
                 activity.runOnUiThread {
                     if (activity.isFinishing) return@runOnUiThread
                     if (latest > BuildConfig.VERSION_CODE) {

@@ -1,42 +1,46 @@
-# ARFA POS - Android branch app
+# ARFA Counter - the Android app for a branch's counter
 
-A thin native Android wrapper around the same POS screens branch (Staff)
-logins already see on the website - not a reimplementation. It is a
-full-screen WebView locked to this one app's server, so billing, GST
-math, held bills, Day-book, Z-report and receipt printing are exactly
-the server-rendered pages already built and tested in `app/`. Nothing
-in this directory, or in the one CSS/one JS change made elsewhere in
-this repo to support it (see below), changes how the website behaves
-for a browser.
+A small native Android app around the ARFA Counter screens the server
+renders at `/app/` (pairing, Bill, Tables & KOT, Held, Today, Kitchen) -
+not a reimplementation. It is a full-screen WebView locked to this one
+app's server, so billing, GST, numbering, KOTs and offline queues are the
+server-rendered pages and scripts in `app/` (see "Counter app" in the
+main README). This directory adds the native frame and what a web page
+can't do on its own.
 
 ## What it does
 
-- Opens straight to `/auth/login` on the configured server.
-- After a successful sign-in, the app checks which page the server
-  actually sent the user to. A branch (Staff) login lands on `/pos/`
-  and the app lets them stay; any other role (Client Admin, Super
-  Admin, Auditor, ...) lands somewhere else (Invoices, the admin
-  console, ...), and the app immediately signs them back out with a
-  "branch logins only" message. This mirrors the server's own
-  `_post_login_redirect` in `app/auth/routes.py` - the app doesn't
-  duplicate that logic, it just reads its result.
-- Everything else (cart, checkout, hold/resume, Day-book, Z-report) is
-  the same pages a branch login already has, full-screen, with no
-  browser chrome (no address bar, no tabs).
-- Receipts print **straight to a Bluetooth or USB thermal printer**
-  (ESC/POS) when one is set up, with Android's print dialog as the
-  fallback - see "Printing" below. A cash drawer wired to the printer
-  opens after a cash sale.
-- **Kiosk mode** keeps a counter tablet on the POS (Android lock task).
-- **Offline billing**: signed in before, the app opens straight on the
-  POS, so the copy the web page keeps on the device (service worker)
-  opens without internet and bills are queued with the device's own
-  numbers - see "Offline" below.
-- **Update check**: tells the cashier when a newer APK is on the
-  `android-latest` release.
-- A native splash screen, offline/"can't reach the server" screen, and
-  back-button handling, so it reads as a normal installed app rather
-  than a bookmarked website.
+- **Opens on the app's start, `/app/?start=1`.** A phone that isn't
+  paired sees the pairing screen: the owner taps *Pair a phone* on the
+  website's Branches page and the 6-digit code is typed once - no email
+  or password at the counter. A paired phone signs itself back in with
+  its own secret and opens what it is for.
+- **Counter, Waiter or Kitchen.** A restaurant's phone is asked, once,
+  what it is for; the app then opens straight on the Bill screen, the
+  Tables, or the Kitchen screen (changeable on the app's home screen).
+  Any other business's phone is the counter.
+- **Tells the server it is the app**: the WebView's user agent ends with
+  `ARFACounter/<version>`, so a branch login that signs in by email
+  inside the app still lands on the app's screens (`/app/`), not the
+  website's counter. Any other login (owner, auditor...) is signed out
+  with a "this app is for a branch's counter" message.
+- **Works without internet**: the app's screens, items and the bills /
+  KOTs made offline are kept by the web page (service worker, IndexedDB,
+  localStorage) - the app enables DOM storage and its "can't reach the
+  server" screen offers **Open the counter without internet**.
+- **The kitchen tablet stays lit** while the Kitchen screen is open.
+- Receipts and KOT slips print **straight to a Bluetooth or USB thermal
+  printer** (ESC/POS), with Android's print dialog as the fallback; a
+  cash drawer on the printer opens after a cash sale. *Printer, cash
+  drawer & app settings* is on the app's home screen.
+- **Kiosk mode** keeps a counter tablet on the app (Android lock task).
+- **Update check** against the `android-latest` release.
+- Native splash screen, launcher icon (the smiling receipt), offline
+  screen and back-button handling.
+
+It is the same Android app as before ("ARFA POS", `com.arfa.pos`) under
+its new name, so a phone with the old app takes the new one as an
+update - see "Signing" below for the one-time reinstall.
 
 ## Server URL
 
@@ -77,8 +81,9 @@ Profile, UUID 00001101-...) to a *paired* printer, or over USB to the
 printer's bulk OUT endpoint (with an OTG cable on a phone). Nothing
 scans for devices.
 
-Set it up from the POS screen's **Printer** button (only shown inside
-the app) - Printer & app settings:
+Set it up from **Printer, cash drawer & app settings** on the app's home
+screen (or the full counter's Printer button) - only shown inside the
+app:
 
 - *Receipt printer*: Bluetooth (pick from paired printers - pair it in
   Android's Bluetooth settings first; Android 12+ asks for "Nearby
@@ -104,11 +109,13 @@ app while it's on.
 ### Offline
 
 Offline billing is a web feature (flag `offline_pos`, see the main
-README): the POS page registers a service worker and queues bills in
-IndexedDB, each numbered in this device's own series (O1/2026-27/0001).
-The app's part: it enables DOM storage, starts on `/pos/` when a session
-cookie exists (so the cached screen loads with no connection), and its
-"can't reach the server" screen offers **Open billing without internet**.
+README): the app's screens register a service worker (`/app/sw.js`),
+queue bills in IndexedDB - each numbered in this phone's own series
+(O1/2026-27/0001) - and KOTs in localStorage (the phone's own slip
+number, O1-1), and send them when the connection is back, KOTs first.
+The app's part: it enables DOM storage, always opens `/app/?start=1`
+(so the saved screens load with no connection), and its "can't reach the
+server" screen offers **Open the counter without internet**.
 
 ### Update check
 
@@ -135,21 +142,42 @@ this project happens in CI.
 
 `.github/workflows/android-apk.yml` builds a debug-signed APK on every
 push that touches `android/**`, or on demand (Actions tab -> "Build
-ARFA POS Android APK" -> Run workflow). It:
+ARFA Counter Android APK" -> Run workflow). It:
 
 1. Builds `app-debug.apk` with the pinned Android SDK platform 34 /
    build-tools 34.0.0.
 2. Uploads it as a run artifact (Actions tab -> the run -> Artifacts;
    expires after 90 days).
 3. Publishes/updates a GitHub Release tagged `android-latest` with the
-   APK attached - a stable, permanent link, replaced by the APK from
-   whichever push built it most recently.
+   APK attached as `ARFA-Counter.apk` (and, for links handed out before
+   the rename, `ARFA-POS-debug.apk`) - a stable, permanent link, replaced
+   by the APK from whichever push built it most recently.
 
-This is a **debug-signed build**, meant for direct installation
-("sideloading"), not a Play Store release - there's no separate release
-keystore to manage. To install: on the phone, enable "install unknown
-apps" for whichever browser/file manager downloads it, download
-`ARFA-POS-debug.apk` from the release, open it, install.
+### Signing
+
+Android only installs an update signed with the same key as the app on
+the phone. A fresh GitHub runner makes a new debug key every build, so
+every build is now signed with one shared key kept in
+`app/arfa-counter-debug.keystore` (`app/build.gradle`, `signingConfigs.shared`):
+each new APK installs over the last one, keeping the phone's pairing
+and anything waiting to be sent.
+
+- **Once, for phones with an APK built before this change**: it was
+  signed with a throw-away key, so Android won't update it. On that
+  phone, first let any offline bills go (open the app online until
+  "waiting to be sent" is gone), then uninstall it and install
+  `ARFA-Counter.apk`; pair it again with a new code.
+- **Your own key** (recommended before handing the app to many shops -
+  anyone with this repository could sign an "update" with the shared
+  key): make a keystore, then add repository secrets
+  `ANDROID_KEYSTORE_BASE64` (the file, base64), `ANDROID_KEYSTORE_PASSWORD`,
+  `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`. The workflow uses them
+  instead (phones then need the one-time reinstall again).
+
+To install: on the phone, enable "install unknown apps" for whichever
+browser/file manager downloads it, download `ARFA-Counter.apk` from the
+`android-latest` release, open it, install, then pair it with the
+owner's code.
 
 ## Building locally (if you have Android Studio / the SDK already)
 
@@ -173,8 +201,9 @@ Output: `app/build/outputs/apk/debug/app-debug.apk`.
   (SharedPreferences).
 - `UpdateChecker.kt` - the `android-latest` version check.
 - `app/src/main/res/` - native chrome only (splash, launcher icon,
-  offline screen strings/colors/theme). All POS UI itself is server-
-  rendered HTML from `app/templates/pos/` - nothing here duplicates it.
+  offline screen strings/colors/theme). All the app's screens are
+  server-rendered HTML from `app/templates/counterapp/` (and the full
+  counter, `app/templates/pos/`) - nothing here duplicates them.
 - `minSdk 26` (Android 8.0+, 2017 onward) - chosen so the launcher icon
   can be a single adaptive vector (no separate legacy PNG fallback set)
   and so the real AndroidX SplashScreen API is available rather than

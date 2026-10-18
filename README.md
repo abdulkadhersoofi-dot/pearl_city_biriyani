@@ -2780,6 +2780,78 @@ and numbering are the website's. Stage 1 is how a phone gets in.
   drops off. `kitchen_tickets.ready_at` / `ready_by_id` (migration
   c2f4a8e6b913).
 
+### Counter app - stage 5 (the Android app, hand-over)
+
+- **The Android app is ARFA Counter** (`android/`, same app id
+  `com.arfa.pos`, so it replaces the old "ARFA POS" app): its name, the
+  smiling-receipt icon, and it opens on the app's own screens
+  (`/app/?start=1`) instead of the website's sign-in and counter.
+- **What this phone is for**: right after pairing, a restaurant's phone
+  is asked - Counter (opens on Bill), Waiter (Tables) or Kitchen (the
+  Kitchen screen). The choice lives on the phone and can be changed on
+  the app's home screen ("Opens on ... Change"); any other business's
+  phone is the counter. Kept with the phone's pairing; unpairing clears it.
+- **The server knows the app**: its user agent ends with
+  `ARFACounter/<version>` (`auth.routes.in_counter_app`, as does a
+  paired phone's cookie). Inside the app, `/auth/login` opens the app's
+  start, and a branch login signing in by email lands on `/app/`; in a
+  browser nothing changes (the website's counter, as before).
+- The home screen has **Printer, cash drawer & app settings** inside the
+  app; the kitchen tablet's screen stays on while the Kitchen screen is
+  open.
+- **Every build is signed with the same key** (`android/app/arfa-counter-debug.keystore`),
+  so a new APK installs over the last one and keeps what's waiting on
+  the phone. Before this, each GitHub build had its own throw-away key -
+  a phone with one of those needs a one-time uninstall and reinstall
+  (send its waiting bills first). A repository can use its own key
+  through secrets (see `android/README.md`, "Signing").
+- The build publishes **`ARFA-Counter.apk`** (and the old
+  `ARFA-POS-debug.apk` name) on the `android-latest` release; the app's
+  update check follows.
+- Fixed on the way: the home screen passed the text "null" for a phone
+  signed in without a paired device, hiding the device line.
+
+### Counter app - how to run it (hand-over)
+
+**The owner, once per phone**
+1. Website -> **Branches** -> **Pair a phone** next to the branch. A
+   6-digit code shows for 15 minutes.
+2. Optional: **Settings > Modules > Offline billing** on, so phones keep
+   billing without internet.
+
+**On the phone or tablet**
+1. Install **ARFA Counter**: on the phone, open the `android-latest`
+   release on GitHub, download `ARFA-Counter.apk`, allow "install unknown
+   apps" for the browser, open the file, install.
+2. Open it, type the owner's code (and a name, like "Front counter").
+3. A restaurant picks what the phone is for: **Counter**, **Waiter** or
+   **Kitchen**. From then on the app opens straight on it, and signs
+   itself in.
+4. Printer: home screen -> **Printer, cash drawer & app settings** ->
+   Bluetooth (pair it in Android first) or USB; paper size; cash drawer;
+   test page. Kiosk mode is there too.
+
+**Every day**
+- **Bill**: tap items -> the bar at the bottom -> Cash / UPI / Card ->
+  Paid. Print, WhatsApp, New bill. **Hold** puts a bill aside; **Held**
+  brings it back.
+- **Tables**: tap a table -> add items -> **Send KOT** -> the slip
+  prints / the kitchen screen chimes -> later **Bill** the table.
+- **Kitchen** (a tablet): KOTs appear oldest first, minutes waiting
+  shown; tap **Ready** when it goes out.
+- **Today**: the counter's sales, how they were paid, the drawer, bills
+  to print again; Z-report and Close day.
+- **No internet**: carry on - bills and KOTs are numbered on the phone
+  (O1/..., O1-1) and go to the books by themselves when the connection
+  is back. "Waiting to be sent" shows until they have.
+
+**The owner, any time**
+- **Branches -> Counter phones & tablets**: every phone, its series,
+  last seen; **Switch off** stops one at once (lost or stolen phone).
+- Bills from phones are ordinary bills - Day-book, reports, GST returns.
+  An offline bill the server couldn't book waits under **Settings > Counter >
+  Counter devices & offline bills** to be retried or cancelled.
+
 ### Console cleanup - how to run it (hand-over)
 
 For the Ultra Admin; an Auditor sees the same pages for their own clients,
@@ -2978,9 +3050,11 @@ before packages.
     billed offline.
   - Stage 4 (done): bottom tabs, Held bills (server, or the phone offline), Today,
     cashier switch from home, the kitchen screen with Ready.
-  - Stage 5: the Android shell as "ARFA Counter" (name, icon, pairing
-    screen, Counter / Waiter / Kitchen mode), CI build, walk-through,
-    hand-over.
+  - Stage 5 (done - the plan is finished): the Android app as "ARFA
+    Counter" (name, icon, opens on the app's screens, Counter / Waiter /
+    Kitchen, kitchen stays lit, one signing key), CI build as
+    `ARFA-Counter.apk`, walk-through, hand-over ("Counter app - how to
+    run it").
 
   Interface redesign limits:
   - Stage 3 changed pages through shared CSS and two small scripts, not

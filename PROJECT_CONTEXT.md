@@ -626,6 +626,18 @@ this list is just the index.
   (`active`, `tables_on`; layout class `capp-tabbed`). Phone-held bills:
   localStorage `arfa.app.held.<tenant>.<user>`.
 
+- **Counter app, stage 5 (done - the plan is finished).** `android/` is
+  now "ARFA Counter" (same `com.arfa.pos` id): opens `/app/?start=1`,
+  user agent `... ARFACounter/<version>` (server: `auth.routes.in_counter_app`
+  - with `APP_COOKIE` - sends a branch login to `/app/`), allows `/app/`,
+  keeps the screen on for `/app/kitchen`. Mode (counter / waiter /
+  kitchen) is localStorage `arfa.app.mode` (`ArfaApp.mode()`), asked on
+  pairing when the pair reply says `restaurant`; `counterHome` sends
+  `?start=1` to the mode's screen. Signing: `signingConfigs.shared`
+  with `android/app/arfa-counter-debug.keystore` (or ANDROID_KEYSTORE_*
+  secrets). CI publishes `ARFA-Counter.apk` (+ old name) and version.json
+  pointing at it. README has "Counter app - how to run it".
+
 ## 5. Chronological development history (this session)
 
 This is the part README.md doesn't capture — the actual sequence of

@@ -301,3 +301,22 @@ body.capp-kitchen { background: var(--color-bg); }
 .kitchen-empty { grid-column: 1 / -1; display: flex; flex-direction: column; align-items: center; gap: 8px; margin: 48px 0;
   color: var(--color-text-muted); font-weight: 700; }
 .kitchen-empty .icon { width: 40px; height: 40px; color: var(--color-primary); }
+
+/* What this phone is for, app settings (counter app, stage 5) */
+.mode-picks { display: grid; gap: 10px; margin-top: 14px; }
+.mode-pick { display: grid; grid-template-columns: 40px minmax(0, 1fr); grid-template-rows: auto auto; align-items: center; column-gap: 12px;
+  padding: 14px 16px; border-radius: 18px; border: 1px solid var(--color-border); background: var(--color-surface); color: var(--color-text);
+  font: inherit; text-align: left; cursor: pointer; transition: transform 0.12s var(--ease-out), border-color 0.15s; }
+.mode-pick:active { transform: scale(0.97); }
+.mode-pick .icon { grid-row: 1 / span 2; width: 28px; height: 28px; color: var(--color-primary); }
+.mode-pick strong { font-size: 1.05rem; }
+.mode-pick small { color: var(--color-text-muted); }
+.mode-pick.is-on { border-color: var(--color-primary); background: var(--color-primary-soft); }
+.mode-picks.is-small { grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 4px 0 10px; }
+.mode-picks.is-small .mode-pick { grid-template-columns: 1fr; justify-items: center; text-align: center; padding: 10px 6px; row-gap: 4px; }
+.mode-picks.is-small .mode-pick .icon { grid-row: auto; }
+.capp-setup { margin: 0 18px 12px; padding: 4px 14px; border-radius: 18px; background: var(--color-surface); border: 1px solid var(--color-border); }
+.capp-setup-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 48px; }
+.capp-setup-row + .capp-setup-row { border-top: 1px solid var(--color-border); }
+.capp-setup-btn { width: 100%; border: none; background: none; color: var(--color-text); font: inherit; cursor: pointer; padding: 0; }
+.capp-setup-btn > span { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; }
