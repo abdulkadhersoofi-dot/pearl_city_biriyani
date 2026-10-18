@@ -15,7 +15,8 @@
    no internet - in this phone's own series (counter_bill.js). For a
    restaurant it also holds the tables (stage 3, counter_tables.js): the
    tables, one table's order, Send KOT, Bill the table. #}
-<div class="capp-shell bill" x-data="counterBill(JSON.parse(document.getElementById('bill-config').textContent))" x-init="start()">
+<div class="capp-shell bill" x-data="counterBill(JSON.parse(document.getElementById('bill-config').textContent))" x-init="start()"
+     :class="view !== 'table' && 'capp-tabbed'">
   <header class="bill-top">
     <a href="{{ url_for('counterapp.index') }}" class="bill-back" aria-label="Back to the app's home" x-show="view !== 'table'">{{ icon('chevron-right', 'icon-flip') }}</a>
     <button type="button" class="bill-back" aria-label="Back to the tables" x-show="view === 'table'" x-cloak @click="leaveTable()">{{ icon('chevron-right', 'icon-flip') }}</button>
@@ -23,6 +24,8 @@
       <h1 class="m-0" x-text="view === 'tables' ? 'Tables' : (view === 'table' && table ? 'Table ' + table.name : 'Bill')">{{ 'Tables' if config.view == 'tables' else 'Bill' }}</h1>
       <p class="m-0 text-muted" x-show="cashier" x-cloak x-text="cashier ? 'Cashier: ' + cashier.name : ''"></p>
     </div>
+    <button type="button" class="held-btn" x-show="view === 'bill'" x-cloak @click="openHeld()" aria-label="Held bills">
+      {{ icon('clock', 'icon-sm') }}<span>Held</span><span class="held-count" x-show="heldCount()" x-text="heldCount()"></span></button>
     <button type="button" class="btn btn-quiet btn-sm" x-show="cfg.cashier && cashier" x-cloak @click="lockCounter()">Switch</button>
     <span class="capp-status" :class="net.online ? 'is-on' : 'is-off'" role="status">
       <span class="dot" aria-hidden="true"></span><span x-text="net.online ? 'Online' : 'Offline'">Online</span></span>
@@ -152,7 +155,10 @@
     <div class="bsheet-grip" aria-hidden="true"></div>
     <div class="bsheet-head">
       <h2 class="m-0" x-text="table ? 'Table ' + table.name : 'This bill'">This bill</h2>
-      <button type="button" class="btn btn-quiet btn-sm" x-show="!table" @click="clearBill()">Clear</button>
+      <div class="row gap-6" x-show="!table">
+        <button type="button" class="btn btn-quiet btn-sm" @click="holdBill()">{{ icon('clock', 'icon-sm') }}Hold</button>
+        <button type="button" class="btn btn-quiet btn-sm" @click="clearBill()">Clear</button>
+      </div>
     </div>
     <ul class="bill-lines">
       <template x-for="(line, i) in cart" :key="line.product_id + '|' + (line.note || '')">
@@ -265,6 +271,27 @@
   </section>
   {% endif %}
 
+  <section class="bsheet" x-show="sheet === 'held'" x-cloak x-transition:enter="bsheet-in" x-transition:leave="bsheet-out" aria-label="Held bills">
+    <div class="bsheet-grip" aria-hidden="true"></div>
+    <div class="bsheet-head"><h2 class="m-0">Held bills</h2>
+      <button type="button" class="btn btn-quiet btn-sm" @click="sheet = ''">Close</button></div>
+    <p class="text-muted" x-show="!heldCount()">Nothing held. Tap Hold on a bill to put it aside while the customer gets
+      one more thing.</p>
+    <ul class="held-list">
+      <template x-for="h in localHeld.concat(heldList)" :key="h.id">
+        <li class="held-row">
+          <button type="button" class="held-open" @click="resumeHeld(h)">
+            <strong x-text="h.label || ('Bill at ' + h.at)"></strong>
+            <small class="text-muted" x-text="h.count + (h.count === 1 ? ' item' : ' items') + ' · ' + money(h.total) + ' · ' + h.at"></small>
+            <small class="held-here" x-show="String(h.id).charAt(0) === 'p'">Held on this phone</small>
+          </button>
+          <button type="button" class="btn btn-quiet btn-sm" @click="discardHeld(h)" :aria-label="'Throw away ' + (h.label || 'this bill')">{{ icon('x', 'icon-sm') }}</button>
+        </li>
+      </template>
+    </ul>
+    <p class="text-muted held-note" x-show="!net.online">No internet - bills held on the counter open when you're back online.</p>
+  </section>
+
   <div class="capp-toast" x-show="toast" x-cloak x-transition.opacity role="status" x-text="toast"></div>
 
   <div class="pin-cover" x-show="cfg.cashier && !cashier" x-cloak>
@@ -284,5 +311,6 @@
     </div>
   </div>
   <iframe id="receipt-print-frame" title="Receipt printing" class="d-none" aria-hidden="true" tabindex="-1"></iframe>
+  {% with active=config.view, tables_on=config.tables_on, tabs_attrs='x-show="view !== \'table\' && !sheet"' %}{% include "counterapp/_tabs.html" %}{% endwith %}
 </div>
 {% endblock %}

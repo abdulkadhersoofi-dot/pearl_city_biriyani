@@ -5,3 +5,4 @@ from flask import Blueprint
 counterapp_bp = Blueprint("counterapp", __name__, url_prefix="/app")
 
 from app.counterapp import routes  # noqa: E402,F401
+from app.counterapp import counter_routes  # noqa: E402,F401

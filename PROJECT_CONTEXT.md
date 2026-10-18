@@ -615,6 +615,17 @@ this list is just the index.
   payloads carry `order_type` / `table_id` and `offline._book` calls
   `restaurant.services.settle_offline_bill`.
 
+- **Counter app, stage 4 (Held, Today, kitchen).** `counterapp/counter.py`
+  (held bills: `held_bills` / `hold` / `own_held` - this login's HELD
+  bills without a table; `today()`), routes in `counterapp/counter_routes.py`
+  (`/app/held`, `/app/held/<id>/resume|discard`, `/app/today`,
+  `/app/kitchen`, `/app/kitchen/state`, `/app/kitchen/<id>/ready`). Kitchen
+  data: `restaurant.services.kitchen_state` / `mark_ready` (today's
+  tickets created by this branch login; migration c2f4a8e6b913 adds
+  `ready_at`, `ready_by_id`). Bottom tabs: `counterapp/_tabs.html`
+  (`active`, `tables_on`; layout class `capp-tabbed`). Phone-held bills:
+  localStorage `arfa.app.held.<tenant>.<user>`.
+
 ## 5. Chronological development history (this session)
 
 This is the part README.md doesn't capture — the actual sequence of

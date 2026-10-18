@@ -64,11 +64,14 @@ class KitchenTicket(db.Model, TenantScopedMixin):
     # without internet, the number the phone printed on the slip (O1-3).
     client_uuid = db.Column(db.String(36))
     device_ref = db.Column(db.String(20))
+    # The kitchen screen: when the kitchen marked it ready (None = cooking).
+    ready_at = db.Column(db.DateTime(timezone=True))
+    ready_by_id = db.Column(db.Integer, db.ForeignKey("users.id", name="fk_kitchen_tickets_ready_by"))
     created_by_id = db.Column(db.Integer, db.ForeignKey("users.id", name="fk_kitchen_tickets_created_by"), nullable=False)
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow)
 
     table = db.relationship("DiningTable")
-    created_by = db.relationship("User")
+    created_by = db.relationship("User", foreign_keys=[created_by_id])
 
 
 # --- jewellery -------------------------------------------------------------------------

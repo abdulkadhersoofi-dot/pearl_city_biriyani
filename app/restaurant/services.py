@@ -424,3 +424,49 @@ def settle_offline_bill(tenant, user, bill, payload: dict) -> None:
     for ticket in open_tickets(tenant.id, bill.table_id):
         ticket.status = KotStatus.BILLED
         ticket.pos_bill_id = bill.id
+
+
+# --- the kitchen screen (counter app, stage 4) --------------------------------------------------
+
+KITCHEN_READY_SHOWN = 12
+
+
+def kitchen_state(tenant, user) -> dict:
+    """The kitchen screen: today's tickets from this branch, oldest first,
+    still cooking - and the last few marked ready (to undo a slip of the
+    finger). A cancelled order's tickets drop off."""
+    from app.einvoice.providers.common import IST
+    from app.models.mixins import utcnow
+
+    tickets = (KitchenTicket.query.filter(KitchenTicket.tenant_id == tenant.id, KitchenTicket.kot_date == date.today(),
+                                          KitchenTicket.created_by_id == user.id,
+                                          KitchenTicket.status != KotStatus.CANCELLED)
+               .order_by(KitchenTicket.id).all())
+    now = utcnow()
+
+    def row(t):
+        if t.table_id:
+            label = f"Table {t.table.name}"
+        else:
+            label = ORDER_TYPES.get(t.order_type, t.order_type) + (f" - {t.order_ref}" if t.order_ref else "")
+        return {"id": t.id, "kot_no": t.kot_no, "phone_ref": t.device_ref if t.client_uuid else "", "label": label,
+                "at": t.created_at.astimezone(IST).strftime("%H:%M"),
+                "minutes": int((now - t.created_at).total_seconds() // 60),
+                "items": [{"name": i["name"], "qty": f"{abs(Decimal(str(i['qty']))).normalize():f}",
+                           "note": i.get("note") or "", "cancel": Decimal(str(i["qty"])) < 0} for i in t.items],
+                "ready_at": t.ready_at.astimezone(IST).strftime("%H:%M") if t.ready_at else ""}
+
+    cooking = [row(t) for t in tickets if t.ready_at is None]
+    ready = [row(t) for t in sorted((t for t in tickets if t.ready_at), key=lambda t: t.ready_at, reverse=True)]
+    return {"cooking": cooking, "ready": ready[:KITCHEN_READY_SHOWN]}
+
+
+def mark_ready(tenant, user, ticket_id: int, ready: bool = True) -> KitchenTicket:
+    from app.models.mixins import utcnow
+
+    ticket = KitchenTicket.query.filter_by(id=ticket_id, tenant_id=tenant.id, created_by_id=user.id).first()
+    if ticket is None:
+        raise RestaurantError("That KOT isn't on this kitchen's screen.")
+    ticket.ready_at = utcnow() if ready else None
+    ticket.ready_by_id = user.id if ready else None
+    return ticket

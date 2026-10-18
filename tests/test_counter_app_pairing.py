@@ -97,7 +97,7 @@ def test_a_phone_pairs_and_is_signed_in_as_the_branch(client, db, tenant, staff,
     assert device.user_id == staff.id and device.platform == "android" and device.name == "Front phone"
     assert DevicePairing.query.one().used_at is not None and DevicePairing.query.one().device_id == device.id
     home = client.get("/app/").get_data(as_text=True)
-    assert "What's next?" in home and "Cashier" in home and "/pos/" in home
+    assert "What's next?" in home and "Cashier" in home and "/app/bill" in home
     assert AuditLog.query.filter_by(action="counter_device_paired").count() == 1
 
 

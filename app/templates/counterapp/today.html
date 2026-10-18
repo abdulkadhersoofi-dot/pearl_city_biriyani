@@ -1,0 +1,77 @@
+{% extends "counterapp/_layout.html" %}
+{% block title %}Today - ARFA Counter{% endblock %}
+{% block head %}
+<script src="{{ url_for('static', filename='js/escpos.js') }}"></script>
+<script src="{{ url_for('static', filename='js/print.js') }}"></script>
+<script src="{{ url_for('static', filename='js/counter_bill.js') }}"></script>
+{% endblock %}
+{% block body %}
+{# Today at this counter (counter app, stage 4): what it billed since
+   midnight, how it was paid, the cash that should be in the drawer, and
+   its bills to print again. Only this counter's bills - the owner sees the
+   whole business on the website. #}
+<div class="capp-shell capp-tabbed" x-data='todayScreen({{ {'receipt_json_url': url_for('pos.receipt_json', bill_id=0), 'receipt_pdf_url': url_for('pos.receipt_pdf', bill_id=0), 'receipt_format': tenant.default_receipt_format}|tojson }})'>
+  <header class="bill-top">
+    <a href="{{ url_for('counterapp.index') }}" class="bill-back" aria-label="Back to the app's home">{{ icon('chevron-right', 'icon-flip') }}</a>
+    <div class="bill-title">
+      <h1 class="m-0">Today</h1>
+      <p class="m-0 text-muted">{{ current_user.name }} · {{ t.date.strftime('%d %b %Y') }}</p>
+    </div>
+  </header>
+
+  <main class="today">
+    <div class="today-stats">
+      <div class="today-stat is-main"><small>Sales</small><strong>₹{{ t.total|inr }}</strong></div>
+      <div class="today-stat"><small>Bills</small><strong>{{ t.count }}</strong>
+        {% if t.voided %}<span class="text-muted">{{ t.voided }} voided</span>{% endif %}</div>
+    </div>
+
+    {% if t.modes %}
+    <section class="today-card" aria-label="How it was paid">
+      <h2>How it was paid</h2>
+      <dl class="today-modes">
+        {% for label, amount in t.modes %}<div><dt>{{ label }}</dt><dd>₹{{ amount|inr }}</dd></div>{% endfor %}
+      </dl>
+    </section>
+    {% endif %}
+
+    {% if t.drawer %}
+    <section class="today-card today-drawer" aria-label="Cash drawer">
+      <h2>Cash drawer</h2>
+      <p class="m-0">Should hold <strong>₹{{ t.drawer.expected|inr }}</strong>
+        <span class="text-muted">(opened with ₹{{ t.drawer.opening|inr }})</span></p>
+    </section>
+    {% endif %}
+
+    <section class="today-card" aria-label="Bills">
+      <h2>Bills</h2>
+      {% if t.bills %}
+      <ul class="today-bills">
+        {% for b in t.bills %}
+        <li class="{{ 'is-void' if b.status.value == 'voided' }}">
+          <div><strong class="mono">{{ b.bill_number }}</strong>
+            <small class="text-muted">{{ b.completed_at|ist('%H:%M') }}{% if b.table %} · Table {{ b.table.name }}{% endif %}{% if b.status.value == 'voided' %} · voided{% elif b.status.value == 'refunded' %} · refunded{% endif %}</small></div>
+          <span class="today-amt">₹{{ b.grand_total|inr }}</span>
+          {% if b.status.value != 'voided' %}
+          <button type="button" class="btn btn-quiet btn-sm" @click="reprint({{ b.id }})" aria-label="Print {{ b.bill_number }} again">{{ icon('printer', 'icon-sm') }}</button>
+          {% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+      {% if t.more %}<p class="text-muted m-0">and {{ t.more }} earlier - the full list is on the website's Day-book.</p>{% endif %}
+      {% else %}
+      <p class="text-muted m-0">No bills yet today.</p>
+      {% endif %}
+    </section>
+
+    <div class="today-links">
+      <a href="{{ url_for('pos.z_report_view') }}" class="btn btn-secondary capp-btn">{{ icon('file-text', 'icon-sm') }}Z-report</a>
+      {% if day_close and t.drawer %}
+      <a href="{{ url_for('pos.day_close') }}" class="btn btn-secondary capp-btn">{{ icon('clock', 'icon-sm') }}Cash in / out · Close day</a>
+      {% endif %}
+    </div>
+  </main>
+  <iframe id="receipt-print-frame" title="Receipt printing" class="d-none" aria-hidden="true" tabindex="-1"></iframe>
+  {% with active='today' %}{% include "counterapp/_tabs.html" %}{% endwith %}
+</div>
+{% endblock %}

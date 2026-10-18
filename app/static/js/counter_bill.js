@@ -71,6 +71,9 @@
       // "tables" the restaurant's tables, "table" one table's order.
       view: cfg.view || "bill",
       table: null,
+      // Held bills (stage 4): this counter's on the server, and any held on
+      // the phone while offline.
+      heldList: [], localHeld: [],
 
       // --- start ------------------------------------------------------------------------------
       start: function () {
@@ -102,6 +105,12 @@
         window.addEventListener("online", function () { self.refreshSession(); self.askQuote(); });
         if (navigator.onLine) this.refreshSession();
         if (cfg.tables_on) this.startTables();
+        if (this.view === "bill") this.loadHeld();
+        // "Switch cashier" on the home screen lands here to show the PIN pad.
+        if (cfg.cashier && /[?&]lock=1/.test(window.location.search)) {
+          this.lockCounter();
+          history.replaceState(null, "", window.location.pathname);
+        }
         this.askQuote();
       },
       // A fresh CSRF token (a screen opened from the phone's copy holds an
@@ -452,6 +461,98 @@
         clearTimeout(this._toastTimer);
         this._toastTimer = setTimeout(function () { self.toast = ""; }, 3200);
       },
+      // --- held bills -------------------------------------------------------------------------------
+      heldKey: function () { return "arfa.app.held." + cfg.tenant_id + "." + cfg.user_id; },
+      heldCount: function () { return this.heldList.length + this.localHeld.length; },
+      loadHeld: function () {
+        var self = this;
+        try { this.localHeld = JSON.parse(localStorage.getItem(this.heldKey()) || "[]"); } catch (e) { this.localHeld = []; }
+        if (!navigator.onLine) return Promise.resolve();
+        return fetch(cfg.held_url, {credentials: "same-origin", headers: {"X-Requested-With": "XMLHttpRequest"}})
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (data) { if (data) self.heldList = data.held; })
+          .catch(function () {});
+      },
+      saveLocalHeld: function () {
+        try { localStorage.setItem(this.heldKey(), JSON.stringify(this.localHeld)); } catch (e) {}
+      },
+      postJson: function (url, body) {
+        return fetch(url, {method: "POST", credentials: "same-origin",
+                           headers: {"Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest", "X-CSRFToken": this.csrf},
+                           body: JSON.stringify(body || {})})
+          .then(function (r) {
+            return r.json().then(function (data) { return {ok: r.ok, data: data}; }, function () { return {ok: false, data: null}; });
+          });
+      },
+      // Puts the bill on screen aside. Online it is held on the server (the
+      // full counter sees it too); offline, on this phone.
+      holdBill: function (label) {
+        var self = this;
+        if (!this.cart.length) return Promise.resolve(false);
+        if (label === undefined) {
+          label = window.prompt("A name for this bill (optional) - a customer's name, or what they're waiting for:", "");
+          if (label === null) return Promise.resolve(false);
+        }
+        var lines = this.cart.map(function (l) { return {product_id: l.product_id, qty: l.qty, note: l.note || ""}; });
+        var keepHere = function () {
+          self.localHeld.unshift({id: "p" + uuid4(), label: label, lines: self.cart.slice(), total: self.totals().grand,
+                                  count: self.cart.length, at: new Date().toTimeString().slice(0, 5), order_type: self.orderType});
+          self.saveLocalHeld();
+          return true;
+        };
+        var done = function (ok) {
+          if (ok) { self.cart = []; self.sheet = ""; self.checkoutId = ""; self.say("Bill held."); }
+          return ok;
+        };
+        if (!navigator.onLine) return Promise.resolve(done(keepHere()));
+        var send = function (firstTry) {
+          return self.postJson(cfg.held_url, {lines: lines, label: label, order_type: self.orderType}).then(function (r) {
+            if (r.ok) { self.heldList.unshift(r.data.held); return true; }
+            if (r.data && r.data.error) { self.say(r.data.error); return false; }
+            if (firstTry) return self.refreshSession().then(function () { return send(false); });
+            return keepHere();
+          });
+        };
+        return send(true).catch(keepHere).then(done);
+      },
+      openHeld: function () { this.loadHeld(); this.sheet = "held"; },
+      resumeHeld: function (h) {
+        var self = this;
+        var load = function (lines, orderType) {
+          self.cart = lines.filter(function (l) { return byId[l.product_id]; }).map(function (l) {
+            return self.lineFor(byId[l.product_id], Number(l.qty), l.note);
+          });
+          if (orderType && cfg.order_types.some(function (t) { return t.value === orderType; })) self.orderType = orderType;
+          self.sheet = self.cart.length ? "cart" : "";
+        };
+        var first = this.cart.length ? this.holdBill("Bill at " + new Date().toTimeString().slice(0, 5)) : Promise.resolve(true);
+        return first.then(function () {
+          if (h.id && String(h.id).charAt(0) === "p") {
+            self.localHeld = self.localHeld.filter(function (x) { return x.id !== h.id; });
+            self.saveLocalHeld();
+            load(h.lines, h.order_type);
+            return;
+          }
+          return self.postJson(cfg.held_url + "/" + h.id + "/resume").then(function (r) {
+            self.heldList = self.heldList.filter(function (x) { return x.id !== h.id; });
+            if (!r.ok) { self.say((r.data && r.data.error) || "That bill couldn't be opened."); return; }
+            load(r.data.held.lines, r.data.held.order_type);
+          }).catch(function () { self.say("No internet - a bill held on the server opens when you're back online."); });
+        });
+      },
+      discardHeld: function (h) {
+        var self = this;
+        if (!window.confirm("Throw away this held bill?")) return;
+        if (String(h.id).charAt(0) === "p") {
+          this.localHeld = this.localHeld.filter(function (x) { return x.id !== h.id; });
+          this.saveLocalHeld();
+          return;
+        }
+        this.postJson(cfg.held_url + "/" + h.id + "/discard").then(function () {
+          self.heldList = self.heldList.filter(function (x) { return x.id !== h.id; });
+        }).catch(function () { self.say("No internet - try again when you're connected."); });
+      },
+
       // Stand-ins for a shop without tables (counter_tables.js replaces them).
       counterKot: function () { return null; },
       printKot: function () {},
@@ -460,6 +561,24 @@
       flushKots: function () { return Promise.resolve(); }
     };
   }
+
+  // The Today screen (stage 4): a bill printed again - always as a copy.
+  window.todayScreen = function (cfg) {
+    return {
+      reprint: function (billId) {
+        var pdf = cfg.receipt_pdf_url.replace("/0/", "/" + billId + "/") + "?format=" + cfg.receipt_format;
+        var viaPdf = function () {
+          if (window.AndroidPrint && window.AndroidPrint.printReceipt) window.AndroidPrint.printReceipt(pdf);
+          else window.ArfaPrint.pdf(pdf);
+        };
+        if (!thermalReady()) { viaPdf(); return; }
+        fetch(cfg.receipt_json_url.replace("/0/", "/" + billId + "/"), {credentials: "same-origin"})
+          .then(function (r) { if (!r.ok) throw new Error("receipt"); return r.json(); })
+          .then(function (doc) { if (!printDocThermal(doc)) viaPdf(); })
+          .catch(viaPdf);
+      }
+    };
+  };
 
   window.ArfaBillPrint = {thermalReady: thermalReady, printDocThermal: printDocThermal, money: money, qtyText: qtyText, uuid4: uuid4};
 })();

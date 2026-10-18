@@ -2749,6 +2749,37 @@ and numbering are the website's. Stage 1 is how a phone gets in.
   `kitchen_tickets.client_uuid`, `device_ref`). The counter's own Tables
   screen and Send KOT work as before.
 
+### Counter app - stage 4 (Held, Today, cashier, kitchen screen)
+
+- **Bottom tabs** on the app's screens: Home, Bill, Tables (a
+  restaurant), Today (a login that may see reports). Inside a table's
+  order they step aside; the back arrow leads out.
+- **Held bills** - Hold on the bill puts it aside under a name ("Ravi -
+  getting change"); **Held** at the top of the Bill screen lists them with
+  a count, tap one to bring it back (a bill already on screen is held
+  first), or throw it away. Online they are held on the server, as at the
+  full counter (this counter's own, not a table's order); without
+  internet they are kept on the phone and say so.
+- **Today** - this counter's sales since midnight (Indian time), bills,
+  how they were paid, what the cash drawer should hold (with day
+  open / close), and today's bills to print again (always as a copy);
+  links to the Z-report and Cash in / out - Close day. Only this
+  counter's bills; the owner sees the whole business on the website.
+  Needs "view reports" for the login, as the Day-book does.
+- **Cashier** - with cashier PINs, the home screen shows who is at the
+  counter and "Switch cashier" (or "Enter PIN"), which opens the Bill
+  screen's PIN pad.
+- **Kitchen screen** (`/app/kitchen`, a restaurant, online) - a tablet in
+  the kitchen paired with the branch shows today's KOTs from that branch,
+  oldest first: table or order type, KOT number (and the phone's slip
+  number for one sent offline), minutes waiting (amber at 15, red at 25),
+  items with notes, CANCEL lines struck through. A new KOT chimes and
+  glows; Ready moves it to the Ready list (with "Not ready" to undo). It
+  looks for new KOTs every 6 seconds and keeps the screen awake where the
+  browser allows. Takeaway and delivery KOTs show too; a cancelled order
+  drops off. `kitchen_tickets.ready_at` / `ready_by_id` (migration
+  c2f4a8e6b913).
+
 ### Console cleanup - how to run it (hand-over)
 
 For the Ultra Admin; an Auditor sees the same pages for their own clients,
@@ -2945,7 +2976,8 @@ before packages.
   - Stage 3 (done): Tables & KOT on the phone - KOTs as changes, kept offline
     with the phone's own slip number and sent when back online; tables
     billed offline.
-  - Stage 4: Held bills, Today, cashier PIN switch, the kitchen screen.
+  - Stage 4 (done): bottom tabs, Held bills (server, or the phone offline), Today,
+    cashier switch from home, the kitchen screen with Ready.
   - Stage 5: the Android shell as "ARFA Counter" (name, icon, pairing
     screen, Counter / Waiter / Kitchen mode), CI build, walk-through,
     hand-over.

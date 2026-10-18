@@ -1,0 +1,14 @@
+{# The app's bottom tabs (counter app, stage 4): Home, Bill, Tables (a
+   restaurant), Today (a login that may see reports). `active` names the
+   one shown; on a table's order the screen hides them (its back arrow
+   leads out). #}
+{% set app_tabs = [('home', url_for('counterapp.index'), 'house', 'Home', true),
+                   ('bill', url_for('counterapp.bill'), 'receipt-text', 'Bill', true),
+                   ('tables', url_for('counterapp.tables') if tables_on else '', 'utensils-crossed', 'Tables', tables_on),
+                   ('today', url_for('counterapp.today'), 'calendar-clock', 'Today', can('view_reports'))] %}
+<nav class="app-tabs" aria-label="ARFA Counter" {{ tabs_attrs|default('')|safe }}>
+  {% for key, href, ic, label, shown in app_tabs if shown %}
+  <a href="{{ href }}" class="app-tab {{ 'is-on' if key == active }}" {% if key == active %}aria-current="page"{% endif %}>
+    {{ icon(ic) }}<span>{{ label }}</span></a>
+  {% endfor %}
+</nav>

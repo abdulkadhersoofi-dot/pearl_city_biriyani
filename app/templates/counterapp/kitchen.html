@@ -1,0 +1,65 @@
+{% extends "counterapp/_layout.html" %}
+{% block title %}Kitchen - ARFA Counter{% endblock %}
+{% block body_class %}capp-kitchen{% endblock %}
+{% block head %}
+<script src="{{ url_for('static', filename='js/counter_kitchen.js') }}"></script>
+{% endblock %}
+{% block body %}
+{# The kitchen screen (counter app, stage 4): a tablet in the kitchen shows
+   this branch's KOTs as they come in, oldest first; a tap marks one ready
+   (Undo for a slip of the finger). Needs the internet - it asks the server
+   every few seconds. #}
+<div class="kitchen-screen" x-data='kitchenScreen({{ {'state_url': url_for('counterapp.kitchen_state'), 'ready_url': url_for('counterapp.kitchen_ready', ticket_id=0), 'csrf': csrf}|tojson }})' x-init="start()">
+  <header class="kitchen-top">
+    <a href="{{ url_for('counterapp.index') }}" class="bill-back" aria-label="Back to the app's home">{{ icon('chevron-right', 'icon-flip') }}</a>
+    <div class="bill-title">
+      <h1 class="m-0">Kitchen</h1>
+      <p class="m-0 text-muted">{{ current_user.name }} · <span x-text="cooking.length + (cooking.length === 1 ? ' to cook' : ' to cook')"></span></p>
+    </div>
+    <button type="button" class="btn btn-quiet btn-sm" @click="showReady = !showReady" x-text="showReady ? 'To cook' : 'Ready (' + ready.length + ')'">Ready</button>
+    <span class="capp-status" :class="online ? 'is-on' : 'is-off'" role="status">
+      <span class="dot" aria-hidden="true"></span><span x-text="online ? 'Live' : 'Offline'">Live</span></span>
+  </header>
+  <p class="bill-banner is-off kitchen-banner" x-show="!online" x-cloak>{{ icon('cloud-off', 'icon-sm') }}
+    <span>No internet - new KOTs show again when the connection is back. Slips printed at the counter still arrive.</span></p>
+
+  <main class="kitchen-grid" x-show="!showReady" aria-live="polite">
+    <template x-for="k in cooking" :key="k.id">
+      <article class="kot-card" :class="{'is-new': fresh.includes(k.id), 'is-late': k.minutes >= 15, 'is-very-late': k.minutes >= 25}">
+        <header class="kot-card-head">
+          <strong class="kot-card-label" x-text="k.label"></strong>
+          <span class="kot-card-no" x-text="'KOT ' + k.kot_no + (k.phone_ref ? ' · ' + k.phone_ref : '')"></span>
+          <span class="kot-card-age" x-text="k.minutes < 1 ? 'just now' : k.minutes + ' min'"></span>
+        </header>
+        <ul class="kot-items">
+          <template x-for="(i, n) in k.items" :key="n">
+            <li :class="i.cancel && 'is-cancel'"><b x-text="i.qty"></b><span x-text="(i.cancel ? 'CANCEL ' : '') + i.name"></span>
+              <small x-show="i.note" x-text="i.note"></small></li>
+          </template>
+        </ul>
+        <button type="button" class="kot-ready" @click="markReady(k)">{{ icon('check', 'icon-sm') }}Ready</button>
+      </article>
+    </template>
+    <p class="kitchen-empty" x-show="loaded && !cooking.length">{{ icon('circle-check') }}<span>All caught up - new KOTs appear here.</span></p>
+  </main>
+
+  <main class="kitchen-grid" x-show="showReady" x-cloak>
+    <template x-for="k in ready" :key="k.id">
+      <article class="kot-card is-ready">
+        <header class="kot-card-head">
+          <strong class="kot-card-label" x-text="k.label"></strong>
+          <span class="kot-card-no" x-text="'KOT ' + k.kot_no"></span>
+          <span class="kot-card-age" x-text="'ready ' + k.ready_at"></span>
+        </header>
+        <ul class="kot-items">
+          <template x-for="(i, n) in k.items" :key="n">
+            <li :class="i.cancel && 'is-cancel'"><b x-text="i.qty"></b><span x-text="i.name"></span></li>
+          </template>
+        </ul>
+        <button type="button" class="btn btn-quiet btn-sm" @click="undo(k)">Not ready - back to cooking</button>
+      </article>
+    </template>
+    <p class="kitchen-empty" x-show="!ready.length">Nothing marked ready yet today.</p>
+  </main>
+</div>
+{% endblock %}

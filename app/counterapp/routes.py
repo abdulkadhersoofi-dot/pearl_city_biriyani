@@ -101,10 +101,15 @@ def index():
         return render_template("counterapp/pair.html")
     if current_user.role != UserRole.STAFF:
         return render_template("counterapp/not_branch.html")
+    from app.pos import cashiers
+
     tenant = current_user.tenant
+    cashier = None
+    if cashiers.uses_pins(tenant, current_user):
+        cashier = {"current": cashiers.current_cashier(tenant, current_user)}
     return _screen(render_template("counterapp/home.html", tenant=tenant, now_hour=datetime.now(IST).hour,
                                    tables_on=current_tenant_has("restaurant_mode"),
-                                   offline_on=current_tenant_has("offline_pos"),
+                                   offline_on=current_tenant_has("offline_pos"), cashier=cashier,
                                    device_id=session.get("counter_device_id")))
 
 

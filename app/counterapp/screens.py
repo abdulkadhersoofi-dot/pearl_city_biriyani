@@ -152,6 +152,7 @@ def bill_context(tenant, user) -> dict:
         "user_id": user.id, "tenant_id": tenant.id,
         "business": tenant.display_name, "branch": user.name,
         "view": "bill",
+        "held_url": url_for("counterapp.held"),
         # Tables & KOT (stage 3), for a restaurant.
         "tables_on": current_tenant_has("restaurant_mode"),
         "tables_url": url_for("counterapp.tables") if current_tenant_has("restaurant_mode") else "",
