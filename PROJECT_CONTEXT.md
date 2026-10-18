@@ -603,6 +603,18 @@ this list is just the index.
   responses with `X-Counter-Screen: 1`. `pos.day_open` honours
   `back=app`.
 
+- **Counter app, stage 3 (Tables & KOT).** `/app/tables` renders the Bill
+  template with `config.view = "tables"`; `static/js/counter_tables.js`
+  is merged into the Bill component (`counterTables(cfg, byId)`) when
+  `config.tables_on`. `/app/tables/state` = `restaurant.services.tables_state`;
+  `POST /app/kot {kots: [...]}` = `apply_kot` (deltas onto the server's
+  running order, idempotent on `KitchenTicket.client_uuid`, phone slip
+  number in `device_ref`; migration b7e1c93d5a20). Offline: KOT queue in
+  localStorage `arfa.app.kots.<tenant>.<user>`, flushed through
+  `ArfaOffline`'s new `beforeSync` hook before queued bills; offline bill
+  payloads carry `order_type` / `table_id` and `offline._book` calls
+  `restaurant.services.settle_offline_bill`.
+
 ## 5. Chronological development history (this session)
 
 This is the part README.md doesn't capture — the actual sequence of

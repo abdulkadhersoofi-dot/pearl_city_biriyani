@@ -5,20 +5,20 @@
  * app (app.counterapp.routes.service_worker).
  *
  * Keeps the billing screens working without a connection: the screens
- * (the counter's /pos/; the app's home /app/ and Bill /app/bill), their
- * scripts and styles (/static/) and item photos (/media/) are fetched from
- * the network as usual and a copy kept; when the network is gone, the copy
- * is used. Nothing else is cached - no bill, report or other page - and
- * nothing is ever sent from here: queued bills are sent by the page itself
- * (pos_offline.js). The app only keeps a screen that says it may be kept
- * (the X-Counter-Screen header), so a signed-out phone's pairing screen is
- * never what opens offline.
+ * (the counter's /pos/; the app's home /app/, Bill /app/bill and Tables
+ * /app/tables), their scripts and styles (/static/) and item photos
+ * (/media/) are fetched from the network as usual and a copy kept; when
+ * the network is gone, the copy is used. Nothing else is cached - no bill,
+ * report or other page - and nothing is ever sent from here: queued bills
+ * are sent by the page itself (pos_offline.js). The app only keeps a
+ * screen that says it may be kept (the X-Counter-Screen header), so a
+ * signed-out phone's pairing screen is never what opens offline.
  */
 var SCOPE = new URL(self.registration.scope).pathname;
 var IN_APP = SCOPE !== "/pos/";
 var CACHE = IN_APP ? "arfa-app-v1" : "arfa-pos-v1";
-var SCREENS = IN_APP ? [SCOPE, SCOPE + "bill"] : [SCOPE];
-var BILLING = SCREENS[SCREENS.length - 1];
+var SCREENS = IN_APP ? [SCOPE, SCOPE + "bill", SCOPE + "tables"] : [SCOPE];
+var BILLING = IN_APP ? SCOPE + "bill" : SCOPE;
 
 self.addEventListener("install", function () { self.skipWaiting(); });
 self.addEventListener("activate", function (event) { event.waitUntil(self.clients.claim()); });

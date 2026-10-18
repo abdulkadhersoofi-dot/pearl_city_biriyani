@@ -157,7 +157,10 @@
   function flush() {
     if (syncing || !device || !navigator.onLine) { notify(); return Promise.resolve(); }
     syncing = true;
-    return allBills().then(function (rows) {
+    // Whatever must reach the server before the bills (the app's KOTs:
+    // a table's order before the bill that settles it).
+    var first = cfg.beforeSync ? Promise.resolve().then(cfg.beforeSync).catch(function () {}) : Promise.resolve();
+    return first.then(allBills).then(function (rows) {
       var queued = rows.filter(function (r) { return r.status === "queued"; });
       if (!queued.length) return getJson(cfg.state_url).then(function (s) { if (s.ok) mergeNext(s.data.fy, s.data.next_number); });
       return getJson(cfg.state_url).then(function (s) {
@@ -265,7 +268,9 @@
         uuid: opts.uuid || uuid4(), number: n.number, fy: n.fy, seq: n.seq, billed_at: now.toISOString(),
         lines: lines.map(function (l) { return {product_id: l.product_id, qty: String(l.qty), rate: String(l.rate)}; }),
         payment_mode: opts.mode, cash_tendered: opts.cash_tendered || null, total: total.toFixed(2),
-        customer: opts.customer || null, cashier_id: opts.cashier_id || null
+        customer: opts.customer || null, cashier_id: opts.cashier_id || null,
+        // A restaurant's order type / table (the ARFA Counter app).
+        order_type: opts.order_type || null, table_id: opts.table_id || null
       };
       var bill = {number: n.number, billed_label: now.toLocaleString("en-IN", {day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: false}),
                   lines: lines, total: total, taxable: GstCalc.round2(taxable), cgst: GstCalc.round2(cgst), sgst: GstCalc.round2(sgst),

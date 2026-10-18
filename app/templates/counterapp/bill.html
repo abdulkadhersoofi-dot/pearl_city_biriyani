@@ -1,5 +1,5 @@
 {% extends "counterapp/_layout.html" %}
-{% block title %}Bill - ARFA Counter{% endblock %}
+{% block title %}{{ 'Tables' if config.view == 'tables' else 'Bill' }} - ARFA Counter{% endblock %}
 {% block head %}
 <script type="application/json" id="bill-config">{{ config|tojson }}</script>
 <script src="{{ url_for('static', filename='js/gst_calc.js') }}"></script>
@@ -7,16 +7,20 @@
 <script src="{{ url_for('static', filename='js/print.js') }}"></script>
 {% if config.offline %}<script src="{{ url_for('static', filename='js/pos_offline.js') }}"></script>{% endif %}
 <script src="{{ url_for('static', filename='js/counter_bill.js') }}"></script>
+{% if config.tables_on %}<script src="{{ url_for('static', filename='js/counter_tables.js') }}"></script>{% endif %}
 {% endblock %}
 {% block body %}
 {# The app's Bill screen (counter app, stage 2): tap items, take the money,
    print. Bills through the counter's own checkout, or - offline billing on,
-   no internet - in this phone's own series (counter_bill.js). #}
+   no internet - in this phone's own series (counter_bill.js). For a
+   restaurant it also holds the tables (stage 3, counter_tables.js): the
+   tables, one table's order, Send KOT, Bill the table. #}
 <div class="capp-shell bill" x-data="counterBill(JSON.parse(document.getElementById('bill-config').textContent))" x-init="start()">
   <header class="bill-top">
-    <a href="{{ url_for('counterapp.index') }}" class="bill-back" aria-label="Back to the app's home">{{ icon('chevron-right', 'icon-flip') }}</a>
+    <a href="{{ url_for('counterapp.index') }}" class="bill-back" aria-label="Back to the app's home" x-show="view !== 'table'">{{ icon('chevron-right', 'icon-flip') }}</a>
+    <button type="button" class="bill-back" aria-label="Back to the tables" x-show="view === 'table'" x-cloak @click="leaveTable()">{{ icon('chevron-right', 'icon-flip') }}</button>
     <div class="bill-title">
-      <h1 class="m-0">Bill</h1>
+      <h1 class="m-0" x-text="view === 'tables' ? 'Tables' : (view === 'table' && table ? 'Table ' + table.name : 'Bill')">{{ 'Tables' if config.view == 'tables' else 'Bill' }}</h1>
       <p class="m-0 text-muted" x-show="cashier" x-cloak x-text="cashier ? 'Cashier: ' + cashier.name : ''"></p>
     </div>
     <button type="button" class="btn btn-quiet btn-sm" x-show="cfg.cashier && cashier" x-cloak @click="lockCounter()">Switch</button>
@@ -38,9 +42,46 @@
       {{ icon('triangle-alert', 'icon-sm') }}<span x-text="net.problems.length + (net.problems.length === 1 ? ' bill' : ' bills') + ' couldn\'t be sent - the owner sees why on the website.'"></span>
     </p>
     <p class="bill-banner is-bad" x-show="net.lastError" x-cloak>{{ icon('triangle-alert', 'icon-sm') }}<span x-text="net.lastError"></span></p>
+    {% if config.tables_on %}
+    <p class="bill-banner is-wait" x-show="waitingKots().length" x-cloak>
+      {{ icon('utensils-crossed', 'icon-sm') }}<span x-text="waitingKots().length + (waitingKots().length === 1 ? ' KOT' : ' KOTs') + ' waiting to be sent'"></span>
+      <button type="button" class="btn btn-quiet btn-sm" x-show="net.online" @click="flushKots().then(() => refreshTables())">Send now</button>
+    </p>
+    <template x-for="k in stuckKots()" :key="k.uuid">
+      <p class="bill-banner is-bad">{{ icon('triangle-alert', 'icon-sm') }}
+        <span x-text="'KOT ' + k.ref + ' (table ' + k.table_name + ') wasn\'t taken: ' + k.error"></span>
+        <button type="button" class="btn btn-quiet btn-sm" @click="dropKot(k)">Drop</button></p>
+    </template>
+    {% endif %}
   </div>
 
-  {% if needs_day %}
+  {% if config.tables_on %}
+  <main class="tables-view" x-show="view === 'tables'" {% if config.view != 'tables' %}x-cloak{% endif %}>
+    <div class="bill-chips" role="tablist" aria-label="Sections" x-show="sections().length > 1" x-cloak>
+      <button type="button" class="bchip" role="tab" :aria-selected="!section" :class="!section && 'is-on'" @click="section = ''">All</button>
+      <template x-for="sec in sections()" :key="sec">
+        <button type="button" class="bchip" role="tab" :aria-selected="section === sec" :class="section === sec && 'is-on'" @click="section = sec" x-text="sec"></button>
+      </template>
+    </div>
+    <div class="table-cards">
+      <template x-for="t in shownTables()" :key="t.id">
+        <button type="button" class="table-card" :class="t.busy ? 'is-busy' : 'is-free'" @click="openTable(t)">
+          <span class="table-card-name" x-text="t.name"></span>
+          <span class="table-card-sec" x-show="t.section" x-text="t.section"></span>
+          <strong class="table-card-amt" x-show="t.busy" x-text="money(t.total)"></strong>
+          <span class="table-card-meta" x-text="t.busy ? (t.lines.length + (t.lines.length === 1 ? ' item' : ' items') + (t.since ? ' · ' + t.since : '')) : 'Free'"></span>
+          <span class="table-card-wait" x-show="tableWaiting(t.id)">{{ icon('cloud-off', 'icon-sm') }} KOT waiting</span>
+        </button>
+      </template>
+    </div>
+    <p class="bill-empty" x-show="!tables.length" x-cloak>
+      <span x-show="net.online">No tables yet - the owner adds them on the website (Tables &gt; Setup).</span>
+      <span x-show="!net.online">No internet, and this phone hasn't seen the tables yet - connect once.</span></p>
+    <p class="bill-full"><a href="{{ url_for('counterapp.bill') }}">Takeaway, delivery and app orders</a> are billed on the Bill screen.</p>
+  </main>
+  {% endif %}
+
+  {% if needs_day and config.view == 'bill' %}
   <form method="post" action="{{ url_for('pos.day_open') }}" class="bill-day card">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="back" value="app">
@@ -51,10 +92,10 @@
     <button type="submit" class="btn btn-primary capp-btn mt-16">Open day</button>
   </form>
   {% else %}
-  <div class="bill-find">
+  <div class="bill-find" x-show="view !== 'tables'" {% if config.view == 'tables' %}x-cloak{% endif %}>
     <label class="bill-search">{{ icon('search', 'icon-sm') }}
       <input type="search" x-model="q" placeholder="Search items" aria-label="Search items" autocomplete="off"></label>
-    <div class="bill-chips" role="tablist" aria-label="Order type" x-show="cfg.order_types.length > 1" x-cloak>
+    <div class="bill-chips" role="tablist" aria-label="Order type" x-show="cfg.order_types.length > 1 && !table" x-cloak>
       <template x-for="t in cfg.order_types" :key="t.value">
         <button type="button" class="bchip" role="tab" :aria-selected="orderType === t.value" :class="orderType === t.value && 'is-on'"
                 @click="orderType = t.value" x-text="t.label"></button>
@@ -69,7 +110,7 @@
     </div>
   </div>
 
-  <main class="bill-items" :class="cart.length && 'has-bar'">
+  <main class="bill-items" :class="cart.length && 'has-bar'" x-show="view !== 'tables'" {% if config.view == 'tables' %}x-cloak{% endif %}>
     <div class="bill-grid">
       <template x-for="it in shown()" :key="it.id">
         <button type="button" class="bill-tile" @click="tap(it)"
@@ -89,12 +130,18 @@
     <p class="bill-full"><a href="{{ counter_url }}">Open the full counter</a> for discounts, customers, returns and the rest.</p>
   </main>
 
-  <div class="bill-bar" x-show="cart.length && !sheet" x-cloak x-transition.opacity>
-    <button type="button" class="bill-bar-btn" @click="sheet = 'cart'">
-      <span class="bill-bar-count" x-text="count() + (count() === 1 ? ' item' : ' items')"></span>
-      <strong x-text="money(totals().grand)"></strong>
-      <span class="bill-bar-go">Pay {{ icon('chevron-right', 'icon-sm') }}</span>
-    </button>
+  <div class="bill-bar" x-show="view !== 'tables' && !sheet && (cart.length || (table && unsent().length))" x-cloak x-transition.opacity>
+    <div class="bill-bar-row">
+      {% if config.tables_on %}
+      <button type="button" class="bill-kot-btn" x-show="table && unsent().length" @click="sendKot()" :disabled="kotBusy">
+        {{ icon('utensils-crossed', 'icon-sm') }}<span>Send KOT</span></button>
+      {% endif %}
+      <button type="button" class="bill-bar-btn" @click="sheet = 'cart'" x-show="cart.length">
+        <span class="bill-bar-count" x-text="count() + (count() === 1 ? ' item' : ' items')"></span>
+        <strong x-text="money(totals().grand)"></strong>
+        <span class="bill-bar-go"><span x-text="table ? 'Bill' : 'Pay'">Pay</span> {{ icon('chevron-right', 'icon-sm') }}</span>
+      </button>
+    </div>
   </div>
   {% endif %}
 
@@ -104,14 +151,17 @@
   <section class="bsheet" x-show="sheet === 'cart'" x-cloak x-transition:enter="bsheet-in" x-transition:leave="bsheet-out" aria-label="This bill">
     <div class="bsheet-grip" aria-hidden="true"></div>
     <div class="bsheet-head">
-      <h2 class="m-0">This bill</h2>
-      <button type="button" class="btn btn-quiet btn-sm" @click="clearBill()">Clear</button>
+      <h2 class="m-0" x-text="table ? 'Table ' + table.name : 'This bill'">This bill</h2>
+      <button type="button" class="btn btn-quiet btn-sm" x-show="!table" @click="clearBill()">Clear</button>
     </div>
     <ul class="bill-lines">
-      <template x-for="(line, i) in cart" :key="line.product_id">
+      <template x-for="(line, i) in cart" :key="line.product_id + '|' + (line.note || '')">
         <li class="bill-line">
           <div class="bill-line-name"><span x-text="line.description"></span>
-            <small class="text-muted" x-text="line.loose ? qtyText(line.qty) + ' ' + line.unit + ' × ' + money(rateOf(i)) : money(rateOf(i)) + ' each'"></small></div>
+            <small class="text-muted" x-text="line.loose ? qtyText(line.qty) + ' ' + line.unit + ' × ' + money(rateOf(i)) : money(rateOf(i)) + ' each'"></small>
+            <small class="text-muted" x-show="line.note" x-text="'* ' + line.note"></small>
+            <small class="line-kot" x-show="table" :class="table && sentOf(line) < line.qty && 'is-new'"
+                   x-text="table ? (sentOf(line) >= line.qty ? 'In the kitchen' : (sentOf(line) ? qtyText(line.qty - sentOf(line)) + ' more not sent' : 'Not sent yet')) : ''"></small></div>
           <div class="bill-step">
             <button type="button" class="step-btn" @click="step(i, -1)" :aria-label="'One less ' + line.description">{{ icon('minus', 'icon-sm') }}</button>
             <span class="step-qty" x-text="line.loose ? qtyText(line.qty) : line.qty"></span>
@@ -128,6 +178,10 @@
       <div class="bill-grand"><dt>To pay</dt><dd x-text="money(totals().grand)"></dd></div>
     </dl>
     <p class="bill-note" x-show="!net.online && cfg.packing_on.includes(orderType)" x-cloak>No packing charge while offline - it's added on bills made online.</p>
+    {% if config.tables_on %}
+    <button type="button" class="btn btn-secondary capp-btn mt-16" x-show="table && unsent().length" @click="sheet = ''; sendKot()" :disabled="kotBusy">
+      {{ icon('utensils-crossed', 'icon-sm') }}Send KOT first</button>
+    {% endif %}
     <div class="pay-modes">
       <template x-for="m in cfg.modes" :key="m.value">
         <button type="button" class="pay-mode" :class="'pay-' + m.value" @click="pay(m.value)">
@@ -187,12 +241,29 @@
     <p class="done-amt" x-text="done ? money(done.total) : ''"></p>
     <p class="done-change" x-show="done && done.change !== null && done.change > 0">Give change <strong x-text="done ? money(done.change) : ''"></strong></p>
     <p class="text-muted m-0" x-show="done && done.offline">Kept on this phone - it goes to the books when you're back online.</p>
+    <p class="text-muted m-0" x-show="done && done.table" x-text="done && done.table ? 'Table ' + done.table + ' is free again.' : ''"></p>
     <div class="done-actions">
       <button type="button" class="btn btn-secondary capp-btn" @click="print()">{{ icon('printer', 'icon-sm') }}<span x-text="done && done.printed ? 'Print again' : 'Print'"></span></button>
+      <button type="button" class="btn btn-secondary capp-btn" x-show="done && done.kot" @click="printKot(done.kot)">{{ icon('utensils-crossed', 'icon-sm') }}Print KOT</button>
       <button type="button" class="btn btn-secondary capp-btn" x-show="done && !done.offline && net.online" @click="share()">Send on WhatsApp</button>
-      <button type="button" class="btn btn-primary capp-btn" @click="newBill()">New bill</button>
+      <button type="button" class="btn btn-primary capp-btn" @click="newBill()" x-text="view === 'table' ? 'Back to tables' : 'New bill'">New bill</button>
     </div>
   </section>
+
+  {% if config.tables_on %}
+  <section class="bsheet bsheet-done" x-show="sheet === 'kot'" x-cloak x-transition:enter="bsheet-in" aria-label="KOT sent">
+    <div class="done-tick is-kot" aria-hidden="true">{{ icon('utensils-crossed') }}</div>
+    <h2 class="m-0 done-no" x-text="kotDone && kotDone.number ? 'KOT ' + kotDone.number : 'Order saved'"></h2>
+    <p class="m-0" x-text="kotDone ? 'Table ' + kotDone.table : ''"></p>
+    <p class="text-muted m-0" x-show="kotDone && !kotDone.offline">Sent to the kitchen.</p>
+    <p class="text-muted m-0" x-show="kotDone && kotDone.offline">No internet - the slip printed here; the order goes to the books when you're back online.</p>
+    <div class="done-actions">
+      <button type="button" class="btn btn-secondary capp-btn" x-show="kotDone && kotDone.doc" @click="printKot(kotDone.doc)">{{ icon('printer', 'icon-sm') }}Print KOT</button>
+      <button type="button" class="btn btn-secondary capp-btn" @click="sheet = ''">Keep adding</button>
+      <button type="button" class="btn btn-primary capp-btn" @click="showTables()">Back to tables</button>
+    </div>
+  </section>
+  {% endif %}
 
   <div class="capp-toast" x-show="toast" x-cloak x-transition.opacity role="status" x-text="toast"></div>
 

@@ -164,6 +164,7 @@ def after_checkout(tenant, user, bill, cart, used_vouchers) -> dict:
         kot = restaurant_after(tenant, user, bill, cart)
         if kot is not None:
             extras["kot_id"] = kot.id
+            extras["kot_no"] = kot.kot_no
     return extras
 
 

@@ -150,5 +150,12 @@ def bill_context(tenant, user) -> dict:
         "offline": offline,
         "cashier": cashier,
         "user_id": user.id, "tenant_id": tenant.id,
+        "business": tenant.display_name, "branch": user.name,
+        "view": "bill",
+        # Tables & KOT (stage 3), for a restaurant.
+        "tables_on": current_tenant_has("restaurant_mode"),
+        "tables_url": url_for("counterapp.tables") if current_tenant_has("restaurant_mode") else "",
+        "tables_state_url": url_for("counterapp.tables_state") if current_tenant_has("restaurant_mode") else "",
+        "kot_url": url_for("counterapp.send_kots") if current_tenant_has("restaurant_mode") else "",
     }
     return {"config": config, "needs_day": needs_day, "counter_url": url_for("pos.terminal")}

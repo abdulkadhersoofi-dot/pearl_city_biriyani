@@ -46,7 +46,8 @@ class KitchenTicket(db.Model, TenantScopedMixin):
     the next ticket - nothing printed is ever changed."""
 
     __tablename__ = "kitchen_tickets"
-    __table_args__ = (db.Index("ix_kitchen_tickets_tenant_table", "tenant_id", "table_id", "status"),)
+    __table_args__ = (db.Index("ix_kitchen_tickets_tenant_table", "tenant_id", "table_id", "status"),
+                      db.Index("uq_kitchen_tickets_tenant_uuid", "tenant_id", "client_uuid", unique=True))
 
     id = db.Column(db.Integer, primary_key=True)
     kot_date = db.Column(db.Date, nullable=False)
@@ -58,6 +59,11 @@ class KitchenTicket(db.Model, TenantScopedMixin):
     items = db.Column(db.JSON, nullable=False)
     status = db.Column(db.Enum(KotStatus, name="kot_status"), nullable=False, default=KotStatus.SENT)
     pos_bill_id = db.Column(db.Integer, db.ForeignKey("pos_bills.id", name="fk_kitchen_tickets_pos_bill"))
+    # Sent from the ARFA Counter app: the phone's id for this ticket (it is
+    # booked once however often the phone sends it) and, for a ticket made
+    # without internet, the number the phone printed on the slip (O1-3).
+    client_uuid = db.Column(db.String(36))
+    device_ref = db.Column(db.String(20))
     created_by_id = db.Column(db.Integer, db.ForeignKey("users.id", name="fk_kitchen_tickets_created_by"), nullable=False)
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow)
 

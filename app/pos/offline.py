@@ -17,7 +17,9 @@ deleted meanwhile, ...) waits there for the Client Admin, its number still
 accounted for, to be retried or cancelled with a reason.
 
 What can be billed offline is deliberately plain: catalog items at the
-price the device had, one payment by cash, UPI or card. No discounts,
+price the device had, one payment by cash, UPI or card - and, for a
+restaurant, its order type or the table it billed (the table's running
+order then loses what was billed: restaurant.services.settle_offline_bill). No discounts,
 credit, returns, loyalty, serial / IMEI items, margin-scheme goods,
 jewellery or Schedule H drugs - those need the server's checks, so the
 counter says so and waits for the connection. Stock is taken off as
@@ -304,13 +306,14 @@ def _book(tenant, device, record, fy, seq) -> POSBill:
         snapshot = {"name": customer["name"].strip()[:100], "phone": (customer.get("phone") or "").strip()[:20]}
     cashier_id = _cashier_id(tenant, user, payload.get("cashier_id"))
     session = current_session(tenant, user) if day_close_on(tenant) else None
+    order_type, table_id = _restaurant_order(tenant, payload)
 
     bill = POSBill(
         tenant_id=tenant.id, gstin_id=gstin.id, invoice_series_id=series.id, bill_number=bill_number,
         customer_snapshot=snapshot, status=POSBillStatus.COMPLETED, payment_mode=mode, created_by_id=user.id,
         completed_at=record.billed_at, bill_discount_value=Decimal("0"), cash_tendered=cash_tendered,
         change_due=change_due, cash_session_id=session.id if session else None, device_id=device.id,
-        cashier_id=cashier_id,
+        cashier_id=cashier_id, order_type=order_type, table_id=table_id,
         # The device printed the original; every print from here is a copy.
         original_printed_at=record.billed_at,
         **totals,
@@ -334,7 +337,38 @@ def _book(tenant, device, record, fy, seq) -> POSBill:
         )
     except inventory_ledger.StockError as exc:
         raise OfflineError(exc.message)
+    if order_type:
+        from app.restaurant.services import RestaurantError, settle_offline_bill
+
+        try:
+            settle_offline_bill(tenant, user, bill, payload)
+        except (POSValidationError, RestaurantError) as exc:
+            raise OfflineError(f"The table's order couldn't be updated: {exc.message}")
     return bill
+
+
+def _restaurant_order(tenant, payload) -> tuple[str | None, int | None]:
+    """A restaurant's offline bill (the ARFA Counter app): its order type,
+    and the table it billed - which must be one of this client's."""
+    from app.utils.module_settings import ORDER_TYPES
+
+    if not tenant.has_feature("restaurant_mode"):
+        return None, None
+    order_type = payload.get("order_type") or None
+    if order_type not in ORDER_TYPES:
+        order_type = None
+    table_id = None
+    if payload.get("table_id") not in (None, ""):
+        from app.models.business import DiningTable
+
+        try:
+            table = DiningTable.query.filter_by(id=int(payload.get("table_id")), tenant_id=tenant.id).first()
+        except (TypeError, ValueError):
+            table = None
+        if table is None:
+            raise OfflineError("The bill's table isn't one of yours.")
+        table_id, order_type = table.id, "dine_in"
+    return order_type, table_id
 
 
 def _cashier_id(tenant, user, value):

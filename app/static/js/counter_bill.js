@@ -46,7 +46,13 @@
   window.counterBill = function (cfg) {
     var byId = {};
     cfg.items.forEach(function (it) { byId[it.id] = it; });
+    var screen = makeScreen(cfg, byId);
+    // Tables & KOT (counter_tables.js), for a restaurant.
+    if (cfg.tables_on && window.counterTables) Object.assign(screen, window.counterTables(cfg, byId));
+    return screen;
+  };
 
+  function makeScreen(cfg, byId) {
     return {
       cfg: cfg,
       q: "", cat: "all", orderType: cfg.order_type || "",
@@ -59,26 +65,43 @@
       net: {online: navigator.onLine, pending: 0, problems: [], device: null, lastError: ""},
       cashier: cfg.cashier ? cfg.cashier.current : null,
       pin: "", pinError: "", pinBusy: false,
-      done: null,         // {number, billId, total, change, offline, doc, printed, shareUrl}
+      done: null,         // {number, billId, total, change, offline, doc, printed, shareUrl, kot}
       checkoutId: "",
+      // Tables & KOT (counter_tables.js): "bill" the counter's bill,
+      // "tables" the restaurant's tables, "table" one table's order.
+      view: cfg.view || "bill",
+      table: null,
 
       // --- start ------------------------------------------------------------------------------
       start: function () {
         var self = this;
         window.ARFA_CASHIER = this.cashier;
-        this.restoreCart();
+        if (this.view === "bill") this.restoreCart();
         this.$watch("cart", function () { self.saveCart(); self.askQuote(); });
         this.$watch("orderType", function () { self.askQuote(); });
         if (cfg.offline && window.ArfaOffline) {
-          ArfaOffline.onChange(function (st) { self.net = st; });
-          ArfaOffline.init(Object.assign({}, cfg.offline, {csrf: this.csrf}));
-          setTimeout(function () { ArfaApp.keepForOffline([cfg.offline.sw_scope, cfg.offline.sw_scope + "bill"]); }, 1500);
+          ArfaOffline.onChange(function (st) {
+            var was = self.net.pending;
+            self.net = st;
+            // Bills that were waiting are on the books now - a table they
+            // billed is free.
+            if (cfg.tables_on && was && !st.pending) self.refreshTables();
+          });
+          // A table's KOTs reach the server before the bill that settles it.
+          ArfaOffline.init(Object.assign({}, cfg.offline, {
+            csrf: this.csrf, beforeSync: cfg.tables_on ? function () { return self.flushKots(); } : null
+          }));
+          setTimeout(function () {
+            var scope = cfg.offline.sw_scope;
+            ArfaApp.keepForOffline([scope, scope + "bill"].concat(cfg.tables_on ? [scope + "tables"] : []));
+          }, 1500);
         } else {
           window.addEventListener("online", function () { self.net = Object.assign({}, self.net, {online: true}); });
           window.addEventListener("offline", function () { self.net = Object.assign({}, self.net, {online: false}); });
         }
         window.addEventListener("online", function () { self.refreshSession(); self.askQuote(); });
         if (navigator.onLine) this.refreshSession();
+        if (cfg.tables_on) this.startTables();
         this.askQuote();
       },
       // A fresh CSRF token (a screen opened from the phone's copy holds an
@@ -110,8 +133,8 @@
       shown: function () { return this.matches().slice(0, SHOWN); },
       more: function () { return Math.max(0, this.matches().length - SHOWN); },
       inCart: function (id) {
-        var line = this.cart.find(function (l) { return l.product_id === id; });
-        return line ? qtyText(line.qty) : "";
+        var qty = this.cart.reduce(function (s, l) { return l.product_id === id ? s + Number(l.qty) : s; }, 0);
+        return qty ? qtyText(qty) : "";
       },
       tap: function (it) {
         if (it.counter_only) { this.say(it.name + " is billed on the full counter (it needs a serial number, a prescription or the day's rate)."); return; }
@@ -121,12 +144,13 @@
         if (navigator.vibrate) navigator.vibrate(12);
       },
       add: function (it, qty) {
-        var line = this.cart.find(function (l) { return l.product_id === it.id; });
+        var line = this.cart.find(function (l) { return l.product_id === it.id && !l.note; });
         if (line) { line.qty = Number((Number(line.qty) + qty).toFixed(3)); }
-        else {
-          this.cart.push({product_id: it.id, description: it.name, hsn: it.hsn, qty: qty, rate: it.rate,
-                          gst_rate: it.gst_rate, incl: it.incl, unit: it.unit, loose: it.loose});
-        }
+        else { this.cart.push(this.lineFor(it, qty, "")); }
+      },
+      lineFor: function (it, qty, note) {
+        return {product_id: it.id, description: it.name, hsn: it.hsn, qty: qty, rate: it.rate,
+                gst_rate: it.gst_rate, incl: it.incl, unit: it.unit, loose: it.loose, note: note || ""};
       },
       step: function (i, by) {
         var line = this.cart[i];
@@ -145,7 +169,7 @@
       },
       saveQty: function () {
         var id = this.qtyEdit.id, qty = Number(this.qtyEdit.value);
-        var i = this.cart.findIndex(function (l) { return l.product_id === id; });
+        var i = this.cart.findIndex(function (l) { return l.product_id === id && !l.note; });
         if (!(qty > 0)) { if (i >= 0) this.cart.splice(i, 1); }
         else if (i >= 0) this.cart[i].qty = Number(qty.toFixed(3));
         else this.add(byId[id], Number(qty.toFixed(3)));
@@ -159,6 +183,7 @@
       // --- the cart kept on the phone ---------------------------------------------------------------
       owner: function () { return cfg.tenant_id + ":" + cfg.user_id; },
       saveCart: function () {
+        if (this.view !== "bill") return;  // a table's order lives on the table
         try { localStorage.setItem(ArfaApp.CART_KEY, JSON.stringify({owner: this.owner(), lines: this.cart, at: Date.now()})); } catch (e) {}
       },
       restoreCart: function () {
@@ -176,7 +201,8 @@
 
       // --- totals ------------------------------------------------------------------------------
       cartKey: function () {
-        return this.orderType + "|" + this.cart.map(function (l) { return l.product_id + "x" + l.qty; }).join(",");
+        return (this.table ? "T" + this.table.id : this.orderType) + "|" +
+          this.cart.map(function (l) { return l.product_id + "x" + l.qty; }).join(",");
       },
       quoted: function () { return this.quote && this.quoteFor === this.cartKey() && this.net.online ? this.quote : null; },
       askQuote: function () {
@@ -254,7 +280,8 @@
       formData: function () {
         var body = new FormData(), self = this;
         body.append("csrf_token", this.csrf);
-        if (this.orderType) body.append("order_type", this.orderType);
+        if (this.table) { body.append("order_type", "dine_in"); body.append("table_id", this.table.id); }
+        else if (this.orderType) body.append("order_type", this.orderType);
         this.cart.forEach(function (l) {
           body.append("line_product_id[]", l.product_id);
           body.append("line_description[]", l.description);
@@ -266,7 +293,7 @@
           body.append("line_unit[]", l.unit);
           body.append("line_discount_kind[]", "");
           body.append("line_discount_value[]", "");
-          body.append("line_note[]", "");
+          body.append("line_note[]", l.note || "");
           body.append("line_alt[]", "0");
           body.append("line_net_weight[]", "");
         });
@@ -306,8 +333,9 @@
               if (cfg.cashier && /PIN/.test(self.error)) self.cashier = null;
               return;
             }
+            var kot = r.data.kot_no ? self.counterKot("KOT " + r.data.kot_no) : null;
             self.finish({number: r.data.bill_number, billId: r.data.bill_id, total: r.data.grand_total,
-                         change: r.data.change_due, offline: false, shareUrl: r.data.share_url});
+                         change: r.data.change_due, offline: false, shareUrl: r.data.share_url, kot: kot});
           })
           .catch(function (e) {
             if (!reached && cfg.offline) { self.busy = false; return self.saveOffline(); }
@@ -328,16 +356,21 @@
           customer: null, cashier_id: c ? c.id : null, cashier_name: c ? c.name : "",
           // The online attempt that got no answer (if any) - the server then
           // spots it if that attempt did go through.
-          uuid: this.checkoutId
+          uuid: this.checkoutId,
+          order_type: this.table ? "dine_in" : (this.orderType || null), table_id: this.table ? this.table.id : null
         }).then(function (doneBill) {
           var change = self.mode === "cash" && self.cashGiven !== "" ? GstCalc.round2(Number(self.cashGiven) - doneBill.total) : null;
-          self.finish({number: doneBill.number, billId: null, total: doneBill.total, change: change, offline: true, doc: doneBill.doc});
+          // A takeaway / delivery order still goes to the kitchen.
+          var kot = cfg.tables_on && !self.table && self.orderType ? self.counterKot("KOT " + doneBill.number) : null;
+          self.finish({number: doneBill.number, billId: null, total: doneBill.total, change: change, offline: true,
+                       doc: doneBill.doc, kot: kot});
         }).catch(function (e) {
           self.error = "Couldn't keep the bill on this phone: " + (e && e.message ? e.message : e);
         }).then(function () { self.busy = false; });
       },
       finish: function (d) {
         d.printed = false;
+        if (this.table) this.tableBilled(d);
         this.done = d;
         this.cart = [];
         this.checkoutId = "";
@@ -347,7 +380,7 @@
         // A thermal printer in the app prints at once; anywhere else the
         // cashier taps Print (a phone browser's print dialog isn't wanted
         // for every bill).
-        if (thermalReady()) this.print();
+        if (thermalReady()) { this.print(); if (d.kot) this.printKot(d.kot); }
       },
       print: function () {
         var d = this.done, self = this;
@@ -379,7 +412,10 @@
           .then(function (data) { window.location.href = data.whatsapp; })
           .catch(function () { self.say("Couldn't make a share link - check the internet."); });
       },
-      newBill: function () { this.done = null; this.sheet = ""; this.mode = ""; this.cashGiven = ""; this.error = ""; },
+      newBill: function () {
+        this.done = null; this.sheet = ""; this.mode = ""; this.cashGiven = ""; this.error = "";
+        if (this.view === "table") this.showTables();
+      },
 
       // --- cashier PIN (feature "cashier_pin") --------------------------------------------------
       press: function (d) { if (this.pin.length < 6) this.pin += d; this.pinError = ""; },
@@ -415,7 +451,15 @@
         this.toast = text;
         clearTimeout(this._toastTimer);
         this._toastTimer = setTimeout(function () { self.toast = ""; }, 3200);
-      }
+      },
+      // Stand-ins for a shop without tables (counter_tables.js replaces them).
+      counterKot: function () { return null; },
+      printKot: function () {},
+      tableBilled: function () {},
+      showTables: function () {},
+      flushKots: function () { return Promise.resolve(); }
     };
-  };
+  }
+
+  window.ArfaBillPrint = {thermalReady: thermalReady, printDocThermal: printDocThermal, money: money, qtyText: qtyText, uuid4: uuid4};
 })();

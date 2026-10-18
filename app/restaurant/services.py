@@ -264,3 +264,163 @@ def cancel_order(tenant, table: DiningTable, reason: str) -> None:
     for kot in open_tickets(tenant.id, table.id):
         kot.status = KotStatus.CANCELLED
     db.session.delete(order)
+
+
+# --- the ARFA Counter app (counter app, stage 3) ----------------------------------------------
+
+MAX_KOT_ITEMS = 100
+
+
+def tables_state(tenant) -> list[dict]:
+    """Every table as the phone shows it: its running order (lines with
+    quantity and price) and what the kitchen has had of it (open tickets),
+    keyed like a ticket line (product|name|note)."""
+    from app.einvoice.providers.common import IST
+
+    out = []
+    for tile in overview(tenant):
+        table, order = tile["table"], tile["order"]
+        sent = sent_quantities(open_tickets(tenant.id, table.id)) if order or tile["kots"] else {}
+        out.append({
+            "id": table.id, "name": table.name, "section": table.section or "",
+            "busy": order is not None, "kots": tile["kots"],
+            "total": float(order.grand_total) if order else 0,
+            "since": order.created_at.astimezone(IST).strftime("%H:%M") if order else "",
+            "lines": [{"product_id": l.product_id, "name": l.description, "note": l.note or "",
+                       "qty": float(l.qty), "rate": float(l.rate)}
+                      for l in (order.lines if order else []) if not l.charge_kind],
+            "sent": {k: float(v["qty"]) for k, v in sent.items()},
+        })
+    return out
+
+
+def apply_kot(tenant, user, payload: dict) -> tuple[KitchenTicket | None, bool]:
+    """A KOT from the app: what changed on one table since that phone last
+    sent, each item a + or - quantity. The change is added to the table's
+    running order as it stands on the server now - so a phone that was
+    offline adds its items to what the counter or another phone sent
+    meanwhile, never replaces them. A quantity never goes below nothing.
+
+    Returns (ticket, new): the ticket is None when nothing changed; new is
+    False when this KOT (its uuid) was booked before - it is never booked
+    twice."""
+    from app.models.product import Product
+    from app.pos.services import CartInput, CartLineInput, hold_cart
+
+    uuid = str(payload.get("uuid") or "")[:36]
+    if len(uuid) < 8:
+        raise RestaurantError("The KOT has no id.")
+    existing = KitchenTicket.query.filter_by(tenant_id=tenant.id, client_uuid=uuid).first()
+    if existing is not None:
+        return existing, False
+    try:
+        table_id = int(payload.get("table_id"))
+    except (TypeError, ValueError):
+        raise RestaurantError("The KOT has no table.")
+    table = DiningTable.query.filter_by(id=table_id, tenant_id=tenant.id).first()
+    if table is None or not table.is_active:
+        raise RestaurantError("That table isn't in use any more - ask the owner, or send the order on another table.")
+    raw = payload.get("items")
+    if not isinstance(raw, list) or not raw or len(raw) > MAX_KOT_ITEMS:
+        raise RestaurantError("The KOT has no items.")
+    wanted = []
+    for item in raw:
+        try:
+            pid = int(item.get("product_id"))
+            qty = Decimal(str(item.get("qty")))
+        except (TypeError, ValueError, AttributeError, ArithmeticError):
+            raise RestaurantError("An item on the KOT can't be read.")
+        if not qty.is_finite() or qty == 0 or abs(qty) > 10000:
+            raise RestaurantError("An item on the KOT has a quantity that can't be right.")
+        wanted.append((pid, qty.quantize(Decimal("0.001")), str(item.get("note") or "").strip()[:100]))
+    ids = {pid for pid, _, _ in wanted}
+    products = {p.id: p for p in Product.query.filter(Product.tenant_id == tenant.id, Product.id.in_(ids))}
+    if len(products) != len(ids):
+        raise RestaurantError("An item on the KOT isn't on your menu any more.")
+
+    order = running_order(tenant.id, table.id)
+    lines = held_lines(order) if order else []
+    sent = []
+    for pid, qty, note in wanted:
+        line = next((l for l in lines if l.product_id == pid and (l.note or "") == note), None)
+        if line is None:
+            if qty < 0:
+                continue  # nothing of it on the table to take off
+            p = products[pid]
+            line = CartLineInput(description=p.name, hsn_or_sac_code=p.hsn_or_sac_code or "", qty=ZERO,
+                                 rate=p.sale_price, gst_rate=p.gst_rate, product_id=p.id, unit=p.unit,
+                                 price_includes_tax=p.price_includes_tax, note=note)
+            lines.append(line)
+        before = Decimal(line.qty)
+        after = max(before + qty, ZERO)
+        if after == before:
+            continue
+        line.qty = after
+        sent.append({"product_id": pid, "name": line.description, "note": note, "qty": str((after - before).normalize())})
+    if not sent:
+        return None, True
+
+    keep = [l for l in lines if Decimal(l.qty) > 0]
+    customer_id = order.customer_id if order else None
+    price_list_id = order.price_list_id if order else None
+    for held in POSBill.query.filter_by(tenant_id=tenant.id, table_id=table.id, status=POSBillStatus.HELD).all():
+        db.session.delete(held)
+    db.session.flush()
+    if keep:
+        hold_cart(tenant, user, CartInput(lines=keep, customer_id=customer_id, order_type="dine_in", table_id=table.id,
+                                          price_list_id=price_list_id), f"Table {table.name}")
+    kot = create_ticket(tenant, user, "dine_in", sent, table_id=table.id)
+    kot.client_uuid = uuid
+    kot.device_ref = str(payload.get("ref") or "").strip()[:20] or None
+    if not keep:
+        # Everything taken off: the table is free, its tickets cancelled.
+        for ticket in open_tickets(tenant.id, table.id):
+            ticket.status = KotStatus.CANCELLED
+    return kot, True
+
+
+def settle_offline_bill(tenant, user, bill, payload: dict) -> None:
+    """A bill made on a phone without internet, now booked. A table's bill
+    takes what it billed off the table's running order; the table is free
+    (its tickets billed) once nothing is left on it - anything added
+    meanwhile from another counter stays on the table to be billed. A
+    takeaway / delivery bill gets its kitchen ticket, as online."""
+    from app.pos.services import CartInput, hold_cart
+
+    if not tenant.has_feature("restaurant_mode"):
+        return
+    billed = {}
+    for line in bill.lines:
+        if line.product_id:
+            billed[line.product_id] = billed.get(line.product_id, ZERO) + Decimal(line.qty)
+    if not bill.table_id:
+        if bill.order_type:
+            items = [{"product_id": l.product_id, "name": l.description, "note": "", "qty": str(Decimal(l.qty).normalize())}
+                     for l in bill.lines if not l.charge_kind]
+            if items:
+                kot = create_ticket(tenant, user, bill.order_type, items, status=KotStatus.BILLED, pos_bill_id=bill.id)
+                kot.device_ref = (bill.bill_number or "")[:20] or None
+        return
+    order = running_order(tenant.id, bill.table_id)
+    left = []
+    for line in held_lines(order) if order else []:
+        take = min(Decimal(line.qty), billed.get(line.product_id, ZERO)) if line.product_id else ZERO
+        if take:
+            billed[line.product_id] -= take
+            line.qty = Decimal(line.qty) - take
+        if line.qty > 0:
+            left.append(line)
+    if order is not None:
+        customer_id, price_list_id = order.customer_id, order.price_list_id
+        for held in POSBill.query.filter_by(tenant_id=tenant.id, table_id=bill.table_id, status=POSBillStatus.HELD).all():
+            db.session.delete(held)
+        db.session.flush()
+        if left:
+            table = db.session.get(DiningTable, bill.table_id)
+            hold_cart(tenant, user, CartInput(lines=left, customer_id=customer_id, order_type="dine_in",
+                                              table_id=bill.table_id, price_list_id=price_list_id),
+                      f"Table {table.name}")
+            return
+    for ticket in open_tickets(tenant.id, bill.table_id):
+        ticket.status = KotStatus.BILLED
+        ticket.pos_bill_id = bill.id

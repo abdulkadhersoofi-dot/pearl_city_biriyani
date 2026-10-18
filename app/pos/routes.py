@@ -549,6 +549,7 @@ def checkout_route():
             extras = getattr(bill, "module_extras", None) or {}
             if extras.get("kot_id"):
                 response["kot_pdf"] = url_for("restaurant.kot_pdf", kot_id=extras["kot_id"])
+                response["kot_no"] = extras.get("kot_no")
             if bill.customer_id and tenant.has_feature("loyalty"):
                 from app.loyalty.points import balance
 

@@ -120,7 +120,13 @@ body.capp { margin: 0; min-height: 100dvh; background: var(--color-bg); color: v
 .bill-full { margin: 24px 0 0; text-align: center; font-size: 0.85rem; color: var(--color-text-muted); }
 .bill-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; padding: 10px 14px calc(12px + env(safe-area-inset-bottom));
   background: linear-gradient(to top, var(--color-bg) 70%, transparent); }
-.bill-bar-btn { width: 100%; max-width: 532px; margin: 0 auto; display: flex; align-items: center; gap: 12px; min-height: 60px; padding: 0 18px;
+.bill-bar-row { max-width: 532px; margin: 0 auto; display: flex; gap: 10px; }
+.bill-kot-btn { flex-shrink: 0; display: inline-flex; align-items: center; gap: 8px; min-height: 60px; padding: 0 18px; border: none;
+  border-radius: 20px; background: var(--color-warn-bg); color: var(--color-warn-text); font: inherit; font-weight: 800; cursor: pointer;
+  box-shadow: var(--shadow-2); }
+.bill-kot-btn:active { transform: scale(0.97); }
+.bill-kot-btn:only-child { flex: 1; justify-content: center; }
+.bill-bar-btn { flex: 1; min-width: 0; width: 100%; max-width: 532px; margin: 0 auto; display: flex; align-items: center; gap: 12px; min-height: 60px; padding: 0 18px;
   border: none; border-radius: 20px; background: linear-gradient(135deg, var(--color-primary), var(--color-primary-dark)); color: #fff;
   font: inherit; cursor: pointer; box-shadow: 0 10px 24px rgba(31, 122, 77, 0.35); }
 .bill-bar-btn:active { transform: scale(0.98); }
@@ -194,3 +200,21 @@ body.capp { margin: 0; min-height: 100dvh; background: var(--color-bg); color: v
 .pin-cover { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; padding: 16px; background: var(--color-bg); }
 .pin-card { width: 100%; max-width: 340px; text-align: center; }
 .pin-card .pin-dots { min-height: 40px; margin: 14px 0; font-size: 1.6rem; letter-spacing: 0.3em; }
+
+/* Tables & KOT (counter app, stage 3) */
+.tables-view { flex: 1; padding: 8px 14px 24px; }
+.table-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-top: 10px; }
+.table-card { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-height: 104px; padding: 14px; border-radius: 20px;
+  border: 1px solid var(--color-border); background: var(--color-surface); color: var(--color-text); font: inherit; text-align: left;
+  cursor: pointer; box-shadow: var(--shadow-1); transition: transform 0.12s var(--ease-out); }
+.table-card:active { transform: scale(0.96); }
+.table-card.is-busy { border-color: var(--color-primary); background: var(--color-primary-soft); }
+.table-card-name { font: 800 1.35rem var(--font-display); }
+.table-card-sec { font-size: 0.78rem; color: var(--color-text-muted); font-weight: 600; }
+.table-card-amt { margin-top: auto; color: var(--color-primary-dark); font-size: 1.05rem; }
+.table-card-meta { font-size: 0.82rem; color: var(--color-text-muted); }
+.table-card.is-free .table-card-meta { margin-top: auto; }
+.table-card-wait { display: inline-flex; align-items: center; gap: 4px; font-size: 0.75rem; font-weight: 700; color: var(--color-warn-text); }
+.line-kot { font-weight: 600; color: var(--color-text-muted); }
+.line-kot.is-new { color: var(--color-warn-text); }
+.done-tick.is-kot { background: var(--color-warn-text); }

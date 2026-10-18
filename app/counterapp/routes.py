@@ -6,6 +6,10 @@
   /app/resume    POST {device_id, token} - a paired phone signs back in
   /app/unpair    POST - this phone stops being a counter device
   /app/bill      the Bill screen (stage 2)
+  /app/tables    the same screen opened on the restaurant's tables (stage 3)
+  /app/tables/state  every table's running order and what the kitchen had
+  /app/kot       POST {kots: [...]} - KOTs from the phone, as changes to a
+                 table's order (sent at once online, queued offline)
   /app/ping      is the server there, is this phone signed in, and a fresh
                  CSRF token (a screen opened from the phone's copy may hold
                  an old one)
@@ -23,7 +27,7 @@ protect); both are rate-limited per address.
 import time
 from datetime import datetime
 
-from flask import after_this_request, jsonify, make_response, redirect, render_template, request, session, url_for
+from flask import abort, after_this_request, jsonify, make_response, redirect, render_template, request, session, url_for
 from flask_login import current_user, login_user, logout_user
 
 from app.auth.routes import APP_COOKIE
@@ -113,6 +117,70 @@ def bill():
 
     tenant = current_user.tenant
     return _screen(render_template("counterapp/bill.html", tenant=tenant, **bill_context(tenant, current_user)))
+
+
+@counterapp_bp.route("/tables")
+def tables():
+    """Tables & KOT: the Bill screen opened on the tables."""
+    if not _is_branch():
+        return redirect(url_for("counterapp.index"))
+    if not current_tenant_has("restaurant_mode"):
+        abort(404)
+    from app.counterapp.screens import bill_context
+
+    tenant = current_user.tenant
+    context = bill_context(tenant, current_user)
+    context["config"]["view"] = "tables"
+    return _screen(render_template("counterapp/bill.html", tenant=tenant, **context))
+
+
+@counterapp_bp.route("/tables/state")
+def tables_state():
+    if not _is_branch():
+        return jsonify({"error": "Sign in again."}), 401
+    if not current_tenant_has("restaurant_mode"):
+        abort(404)
+    from app.restaurant.services import tables_state as state
+
+    return jsonify({"tables": state(current_user.tenant)})
+
+
+@counterapp_bp.route("/kot", methods=["POST"])
+def send_kots():
+    """KOTs from the phone, oldest first: each a change to one table's
+    order. Every one comes back sent (with the kitchen's number), unchanged
+    (nothing new for the kitchen) or rejected (the phone keeps it and says
+    why) - a KOT sent before is never booked twice."""
+    if not _is_branch():
+        return jsonify({"error": "Sign in again."}), 401
+    if not current_tenant_has("restaurant_mode"):
+        abort(404)
+    from app.pos.services import POSValidationError
+    from app.restaurant import services as rs
+
+    tenant = current_user.tenant
+    results = []
+    for payload in ((request.get_json(silent=True) or {}).get("kots") or [])[:50]:
+        if not isinstance(payload, dict):
+            continue
+        try:
+            kot, new = rs.apply_kot(tenant, current_user, payload)
+        except (rs.RestaurantError, POSValidationError) as exc:
+            db.session.rollback()
+            results.append({"uuid": payload.get("uuid"), "status": "rejected", "error": exc.message})
+            continue
+        if kot is None:
+            db.session.commit()
+            results.append({"uuid": payload.get("uuid"), "status": "unchanged"})
+            continue
+        if new:
+            record_audit(current_user, "kot_sent", tenant_id=tenant.id, entity_type="dining_table",
+                         entity_id=kot.table_id, details={"kot_no": kot.kot_no, "from": "app",
+                                                          **({"phone_ref": kot.device_ref} if kot.device_ref else {})})
+        db.session.commit()
+        results.append({"uuid": kot.client_uuid, "status": "sent", "kot_id": kot.id, "kot_no": kot.kot_no,
+                        "items": kot.items})
+    return jsonify({"results": results})
 
 
 @counterapp_bp.route("/ping")

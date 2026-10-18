@@ -2713,6 +2713,42 @@ and numbering are the website's. Stage 1 is how a phone gets in.
 - Branches page: with Offline billing off, the phones card says how to
   switch it on.
 
+### Counter app - stage 3 (tables and KOT)
+
+- **Tables & KOT** on the app's home opens the restaurant's tables
+  (`/app/tables`): a card per table - free, or its amount, items and since
+  when - with section chips. Tap a table to add items (the same tiles and
+  search as the Bill screen); each line says whether the kitchen has it
+  ("In the kitchen", "1 more not sent", "Not sent yet").
+- **Send KOT** sends only what changed: "+2 Biryani", or "-1 Tea" as a
+  CANCEL line. The kitchen slip prints straight away on a thermal printer
+  (or with Print KOT), then "Keep adding" or "Back to tables". **Bill**
+  takes the whole table through the same pay sheet as the Bill screen and
+  frees it.
+- **Why changes, not the whole order**: the phone's KOT is added to the
+  table's order as it is on the server at that moment
+  (`restaurant.services.apply_kot`). So two waiters on one table, or a
+  phone that was offline while the counter added to the table, add up -
+  nobody's items are replaced. A quantity never goes below nothing; taking
+  everything off frees the table. Each KOT has the phone's id, so a KOT
+  sent twice (a lost reply) is booked once.
+- **Without internet** (Offline billing on): the tables open from the
+  phone's last copy; Send KOT prints the slip with the phone's own number
+  (O1-1, O1-2... a new count each day) and keeps the KOT; "1 KOT waiting
+  to be sent" until the connection is back. A table can be billed offline
+  too: the bill carries the table, and when it reaches the books it takes
+  what it billed off the table's order - the table is free when nothing is
+  left, and anything another counter added meanwhile stays to be billed.
+  The phone sends its KOTs before its bills, so a table's order is on the
+  server before the bill that settles it. A takeaway billed offline gets
+  its kitchen ticket when it is booked (its number on the ticket).
+- A KOT the server can't take (the table was switched off, an item
+  deleted or sold out) stays on the phone with the reason and a Drop
+  button.
+- KOT tickets keep the phone's id and slip number (migration b7e1c93d5a20:
+  `kitchen_tickets.client_uuid`, `device_ref`). The counter's own Tables
+  screen and Send KOT work as before.
+
 ### Console cleanup - how to run it (hand-over)
 
 For the Ultra Admin; an Auditor sees the same pages for their own clients,
@@ -2906,8 +2942,9 @@ before packages.
     "Counter phones & tablets" on the Branches page.
   - Stage 2 (done): the Bill screen - tiles, slide-up bill, one-tap cash / UPI /
     card, print and WhatsApp, offline in the phone's own series.
-  - Stage 3: Tables & KOT on the phone, KOTs kept offline and sent when
-    back online.
+  - Stage 3 (done): Tables & KOT on the phone - KOTs as changes, kept offline
+    with the phone's own slip number and sent when back online; tables
+    billed offline.
   - Stage 4: Held bills, Today, cashier PIN switch, the kitchen screen.
   - Stage 5: the Android shell as "ARFA Counter" (name, icon, pairing
     screen, Counter / Waiter / Kitchen mode), CI build, walk-through,
