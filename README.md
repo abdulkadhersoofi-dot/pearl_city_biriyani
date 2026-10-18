@@ -2667,6 +2667,52 @@ and numbering are the website's. Stage 1 is how a phone gets in.
   `counter_device_on` / `_off`, `counter_device_unpaired`, and
   `device_pair_failed` for refusals.
 
+### Counter app - stage 2 (the Bill screen)
+
+- **The Bill tile opens the phone's own Bill screen** (`/app/bill`): a
+  search box, category chips (and Favourites), big item tiles with a count
+  badge, and a bar at the bottom with the items and the total. Tapping the
+  bar slides up the bill: - / + per line, packing charge, GST, round-off,
+  "To pay", and one button each for Cash, UPI and Card.
+- **Paying**: Cash shows quick amounts (exact, next 50 / 100 / 500...) and
+  the change; UPI shows the shop's QR for the amount (online); Card goes
+  straight to "Paid". Then a big tick, the bill number, the change to
+  give, Print, Send on WhatsApp (online) and New bill. With a thermal
+  printer in the Android app the receipt prints by itself; in a phone
+  browser the cashier taps Print.
+- **Same rules as the counter**: the bill goes through `/pos/checkout`, so
+  numbering, GST, stock, price lists, cashier and audit are the counter's.
+  A restaurant picks Takeaway / Delivery / Swiggy / Zomato (dine-in is
+  billed from its table - stage 3) and the server's quote adds the packing
+  charge. A repeated tap after a lost reply returns the same bill (the
+  checkout id).
+- **Offline** (with Offline billing on): the screen opens without internet
+  from the phone's copy, the bill is numbered in the paired phone's own
+  series (O1/2026-27/0001) and kept on the phone; "1 bill waiting to be
+  sent" shows until it reaches the books, by itself when the connection
+  is back (or "Send now"). The app's service worker (`/app/sw.js`, the
+  counter's `pos_sw.js` reading its own scope) keeps only screens the
+  server marks as keepable (`X-Counter-Screen`), never a sign-in page, and
+  the app saves the screens and their files as soon as the Bill screen
+  opens online, so one visit is enough. Packing charges aren't added
+  offline and the bill says so.
+- **What stays on the full counter**: items that need a serial number,
+  margin-scheme goods, jewellery or a prescription show "Full counter" and
+  say why; discounts, customers, credit, returns and split payments are on
+  the full counter, linked at the bottom of the screen.
+- **Before the first bill**: a counter with day open / close shows "Open
+  the day" (cash in the drawer) and comes back to the Bill screen; a
+  counter with cashier PINs asks for one (Switch hands it to the next).
+- The bill in progress is kept on the phone for 12 hours, so a call or a
+  closed app doesn't lose it. If the session has ended, the screen signs
+  the phone back in with its secret before saving the bill.
+- Fixed on the way: a phone paired in stage 1 stored its next offline
+  number in the wrong shape, so every offline bill would have been
+  .../0001. It's now stored per financial year, and a phone paired before
+  this fix starts again from the server's count.
+- Branches page: with Offline billing off, the phones card says how to
+  switch it on.
+
 ### Console cleanup - how to run it (hand-over)
 
 For the Ultra Admin; an Auditor sees the same pages for their own clients,
@@ -2858,7 +2904,8 @@ before packages.
   in five stages:
   - Stage 1 (done): pairing codes and phone sign-in, the app's home screen,
     "Counter phones & tablets" on the Branches page.
-  - Stage 2: the Bill tab, phone-sized, online and offline.
+  - Stage 2 (done): the Bill screen - tiles, slide-up bill, one-tap cash / UPI /
+    card, print and WhatsApp, offline in the phone's own series.
   - Stage 3: Tables & KOT on the phone, KOTs kept offline and sent when
     back online.
   - Stage 4: Held bills, Today, cashier PIN switch, the kitchen screen.

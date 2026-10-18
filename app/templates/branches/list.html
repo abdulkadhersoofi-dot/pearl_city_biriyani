@@ -85,6 +85,10 @@
     <div><h2 class="m-0">Counter phones &amp; tablets</h2>
       <p class="text-muted m-0">Each one bills as its branch, in its own offline series. Switch one off and it stops at once - its bills stay.</p></div>
   </div>
+  {% if not has_feature('offline_pos') %}
+  <p class="devices-note">Phones bill while online. To keep billing without internet, switch on <strong>Offline billing</strong>
+    under Settings &gt; Modules.</p>
+  {% endif %}
   {% if devices %}
   <div class="table-wrap">
     <table class="console-table">

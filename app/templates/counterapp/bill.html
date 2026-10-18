@@ -1,0 +1,217 @@
+{% extends "counterapp/_layout.html" %}
+{% block title %}Bill - ARFA Counter{% endblock %}
+{% block head %}
+<script type="application/json" id="bill-config">{{ config|tojson }}</script>
+<script src="{{ url_for('static', filename='js/gst_calc.js') }}"></script>
+<script src="{{ url_for('static', filename='js/escpos.js') }}"></script>
+<script src="{{ url_for('static', filename='js/print.js') }}"></script>
+{% if config.offline %}<script src="{{ url_for('static', filename='js/pos_offline.js') }}"></script>{% endif %}
+<script src="{{ url_for('static', filename='js/counter_bill.js') }}"></script>
+{% endblock %}
+{% block body %}
+{# The app's Bill screen (counter app, stage 2): tap items, take the money,
+   print. Bills through the counter's own checkout, or - offline billing on,
+   no internet - in this phone's own series (counter_bill.js). #}
+<div class="capp-shell bill" x-data="counterBill(JSON.parse(document.getElementById('bill-config').textContent))" x-init="start()">
+  <header class="bill-top">
+    <a href="{{ url_for('counterapp.index') }}" class="bill-back" aria-label="Back to the app's home">{{ icon('chevron-right', 'icon-flip') }}</a>
+    <div class="bill-title">
+      <h1 class="m-0">Bill</h1>
+      <p class="m-0 text-muted" x-show="cashier" x-cloak x-text="cashier ? 'Cashier: ' + cashier.name : ''"></p>
+    </div>
+    <button type="button" class="btn btn-quiet btn-sm" x-show="cfg.cashier && cashier" x-cloak @click="lockCounter()">Switch</button>
+    <span class="capp-status" :class="net.online ? 'is-on' : 'is-off'" role="status">
+      <span class="dot" aria-hidden="true"></span><span x-text="net.online ? 'Online' : 'Offline'">Online</span></span>
+  </header>
+
+  <div class="bill-banners" aria-live="polite">
+    <p class="bill-banner is-off" x-show="!net.online" x-cloak>
+      {{ icon('cloud-off', 'icon-sm') }}
+      {% if config.offline %}<span>No internet - bills are kept on this phone and sent when you're back online.</span>
+      {% else %}<span>No internet - billing needs the connection here.</span>{% endif %}
+    </p>
+    <p class="bill-banner is-wait" x-show="net.pending" x-cloak>
+      {{ icon('refresh-cw', 'icon-sm') }}<span x-text="net.pending + (net.pending === 1 ? ' bill' : ' bills') + ' waiting to be sent'"></span>
+      <button type="button" class="btn btn-quiet btn-sm" x-show="net.online" @click="ArfaOffline.flush()">Send now</button>
+    </p>
+    <p class="bill-banner is-bad" x-show="net.problems && net.problems.length" x-cloak>
+      {{ icon('triangle-alert', 'icon-sm') }}<span x-text="net.problems.length + (net.problems.length === 1 ? ' bill' : ' bills') + ' couldn\'t be sent - the owner sees why on the website.'"></span>
+    </p>
+    <p class="bill-banner is-bad" x-show="net.lastError" x-cloak>{{ icon('triangle-alert', 'icon-sm') }}<span x-text="net.lastError"></span></p>
+  </div>
+
+  {% if needs_day %}
+  <form method="post" action="{{ url_for('pos.day_open') }}" class="bill-day card">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="back" value="app">
+    <h2 class="m-0">Open the day</h2>
+    <p class="text-muted mt-6">Count the cash in the drawer, then start billing.</p>
+    <label class="field m-0"><span class="field-label">Cash in the drawer</span>
+      <input type="number" name="opening_cash" class="field-input" inputmode="decimal" min="0" step="0.01" value="0"></label>
+    <button type="submit" class="btn btn-primary capp-btn mt-16">Open day</button>
+  </form>
+  {% else %}
+  <div class="bill-find">
+    <label class="bill-search">{{ icon('search', 'icon-sm') }}
+      <input type="search" x-model="q" placeholder="Search items" aria-label="Search items" autocomplete="off"></label>
+    <div class="bill-chips" role="tablist" aria-label="Order type" x-show="cfg.order_types.length > 1" x-cloak>
+      <template x-for="t in cfg.order_types" :key="t.value">
+        <button type="button" class="bchip" role="tab" :aria-selected="orderType === t.value" :class="orderType === t.value && 'is-on'"
+                @click="orderType = t.value" x-text="t.label"></button>
+      </template>
+    </div>
+    <div class="bill-chips" role="tablist" aria-label="Categories" x-show="cfg.categories.length || cfg.favourites" x-cloak>
+      <button type="button" class="bchip" role="tab" :aria-selected="cat === 'all'" :class="cat === 'all' && 'is-on'" @click="cat = 'all'">All</button>
+      <button type="button" class="bchip" role="tab" x-show="cfg.favourites" :aria-selected="cat === 'fav'" :class="cat === 'fav' && 'is-on'" @click="cat = 'fav'">Favourites</button>
+      <template x-for="c in cfg.categories" :key="c.id">
+        <button type="button" class="bchip" role="tab" :aria-selected="cat === c.id" :class="cat === c.id && 'is-on'" @click="cat = c.id" x-text="c.name"></button>
+      </template>
+    </div>
+  </div>
+
+  <main class="bill-items" :class="cart.length && 'has-bar'">
+    <div class="bill-grid">
+      <template x-for="it in shown()" :key="it.id">
+        <button type="button" class="bill-tile" @click="tap(it)"
+                :class="{'is-in': inCart(it.id), 'is-off': it.sold_out || it.counter_only}">
+          <span class="bill-tile-img" x-show="it.image"><img :src="it.image" alt="" loading="lazy"></span>
+          <span class="bill-tile-name" x-text="it.name"></span>
+          <span class="bill-tile-price"><span x-text="money(it.rate)"></span><small x-show="it.loose" x-text="' / ' + it.unit"></small></span>
+          <span class="bill-tile-qty" x-show="inCart(it.id)" x-text="inCart(it.id)"></span>
+          <span class="bill-tile-tag" x-show="it.sold_out">Sold out</span>
+          <span class="bill-tile-tag" x-show="it.counter_only && !it.sold_out">Full counter</span>
+        </button>
+      </template>
+    </div>
+    <p class="bill-empty" x-show="!shown().length" x-cloak>
+      {% if config['items'] %}Nothing matches - try another word.{% else %}No items yet - the owner adds them on the website.{% endif %}</p>
+    <p class="bill-more text-muted" x-show="more()" x-cloak x-text="more() + ' more - search to find them'"></p>
+    <p class="bill-full"><a href="{{ counter_url }}">Open the full counter</a> for discounts, customers, returns and the rest.</p>
+  </main>
+
+  <div class="bill-bar" x-show="cart.length && !sheet" x-cloak x-transition.opacity>
+    <button type="button" class="bill-bar-btn" @click="sheet = 'cart'">
+      <span class="bill-bar-count" x-text="count() + (count() === 1 ? ' item' : ' items')"></span>
+      <strong x-text="money(totals().grand)"></strong>
+      <span class="bill-bar-go">Pay {{ icon('chevron-right', 'icon-sm') }}</span>
+    </button>
+  </div>
+  {% endif %}
+
+  {# Sheets slide up from the bottom: the bill, paying, a weight, done. #}
+  <div class="bsheet-scrim" x-show="sheet" x-cloak x-transition.opacity @click="sheet !== 'done' && !busy && (sheet = (sheet === 'pay' || sheet === 'qty') && cart.length ? 'cart' : '')"></div>
+
+  <section class="bsheet" x-show="sheet === 'cart'" x-cloak x-transition:enter="bsheet-in" x-transition:leave="bsheet-out" aria-label="This bill">
+    <div class="bsheet-grip" aria-hidden="true"></div>
+    <div class="bsheet-head">
+      <h2 class="m-0">This bill</h2>
+      <button type="button" class="btn btn-quiet btn-sm" @click="clearBill()">Clear</button>
+    </div>
+    <ul class="bill-lines">
+      <template x-for="(line, i) in cart" :key="line.product_id">
+        <li class="bill-line">
+          <div class="bill-line-name"><span x-text="line.description"></span>
+            <small class="text-muted" x-text="line.loose ? qtyText(line.qty) + ' ' + line.unit + ' × ' + money(rateOf(i)) : money(rateOf(i)) + ' each'"></small></div>
+          <div class="bill-step">
+            <button type="button" class="step-btn" @click="step(i, -1)" :aria-label="'One less ' + line.description">{{ icon('minus', 'icon-sm') }}</button>
+            <span class="step-qty" x-text="line.loose ? qtyText(line.qty) : line.qty"></span>
+            <button type="button" class="step-btn" @click="step(i, 1)" :aria-label="'One more ' + line.description">{{ icon('plus', 'icon-sm') }}</button>
+          </div>
+          <strong class="bill-line-amt" x-text="money(lineCalc(i).total)"></strong>
+        </li>
+      </template>
+    </ul>
+    <dl class="bill-sums">
+      <template x-for="c in charges()" :key="c.description"><div><dt x-text="c.description"></dt><dd x-text="money(c.amount)"></dd></div></template>
+      {% if config.charges_gst %}<div><dt>GST</dt><dd x-text="money(totals().tax)"></dd></div>{% endif %}
+      <div x-show="totals().roundOff"><dt>Round off</dt><dd x-text="money(totals().roundOff)"></dd></div>
+      <div class="bill-grand"><dt>To pay</dt><dd x-text="money(totals().grand)"></dd></div>
+    </dl>
+    <p class="bill-note" x-show="!net.online && cfg.packing_on.includes(orderType)" x-cloak>No packing charge while offline - it's added on bills made online.</p>
+    <div class="pay-modes">
+      <template x-for="m in cfg.modes" :key="m.value">
+        <button type="button" class="pay-mode" :class="'pay-' + m.value" @click="pay(m.value)">
+          <span x-text="m.label"></span></button>
+      </template>
+    </div>
+  </section>
+
+  <section class="bsheet" x-show="sheet === 'pay'" x-cloak x-transition:enter="bsheet-in" x-transition:leave="bsheet-out" aria-label="Payment">
+    <div class="bsheet-grip" aria-hidden="true"></div>
+    <div class="bsheet-head">
+      <button type="button" class="btn btn-quiet btn-sm" @click="sheet = 'cart'" :disabled="busy">{{ icon('chevron-right', 'icon-sm icon-flip') }}Bill</button>
+      <h2 class="m-0" x-text="modeLabel(mode)"></h2>
+    </div>
+    <p class="pay-due"><small>To pay</small><strong x-text="money(totals().grand)"></strong></p>
+    <template x-if="mode === 'cash'">
+      <div class="pay-cash-box">
+        <p class="field-label m-0">Cash received</p>
+        <div class="pay-quick">
+          <template x-for="n in quickCash()" :key="n">
+            <button type="button" class="bchip" :class="Number(cashGiven) === n && 'is-on'" @click="cashGiven = String(n)" x-text="money(n)"></button>
+          </template>
+        </div>
+        <input type="number" class="field-input pay-input" inputmode="decimal" min="0" step="1" x-model="cashGiven" placeholder="Other amount" aria-label="Cash received">
+        <p class="pay-change" x-show="change() !== null && change() >= 0">Change <strong x-text="money(change())"></strong></p>
+      </div>
+    </template>
+    <template x-if="mode === 'upi'">
+      <div class="pay-upi">
+        <img x-show="upiQr()" :src="upiQr()" alt="UPI QR code for this bill" class="pay-qr">
+        <p class="text-muted m-0" x-show="!upiQr()">Take the payment on the shop's UPI QR, then tap Paid.</p>
+      </div>
+    </template>
+    <p class="field-error-msg" x-show="error" x-text="error" role="alert"></p>
+    <button type="button" class="btn btn-primary capp-btn pay-go" @click="confirm()" :disabled="busy">
+      <span x-show="!busy" x-text="'Paid ' + money(totals().grand) + ' - save bill'"></span>
+      <span x-show="busy" x-cloak>Saving...</span>
+    </button>
+  </section>
+
+  <section class="bsheet" x-show="sheet === 'qty'" x-cloak x-transition:enter="bsheet-in" x-transition:leave="bsheet-out" aria-label="Quantity">
+    <div class="bsheet-grip" aria-hidden="true"></div>
+    <div class="bsheet-head"><h2 class="m-0" x-text="qtyEdit.name"></h2></div>
+    <p class="qty-show"><strong x-text="qtyEdit.value || '0'"></strong> <span x-text="qtyEdit.unit"></span></p>
+    <div class="qty-keys">
+      <template x-for="k in ['1','2','3','4','5','6','7','8','9','.','0','back']" :key="k">
+        <button type="button" class="qty-key" @click="key(k)" :aria-label="k === 'back' ? 'Delete' : k">
+          <span x-show="k !== 'back'" x-text="k"></span><span x-show="k === 'back'">&#9003;</span></button>
+      </template>
+    </div>
+    <button type="button" class="btn btn-primary capp-btn" @click="saveQty()">Done</button>
+  </section>
+
+  <section class="bsheet bsheet-done" x-show="sheet === 'done'" x-cloak x-transition:enter="bsheet-in" aria-label="Bill saved">
+    <div class="done-tick" aria-hidden="true">{{ icon('check') }}</div>
+    <h2 class="m-0 done-no" x-text="done ? done.number : ''"></h2>
+    <p class="done-amt" x-text="done ? money(done.total) : ''"></p>
+    <p class="done-change" x-show="done && done.change !== null && done.change > 0">Give change <strong x-text="done ? money(done.change) : ''"></strong></p>
+    <p class="text-muted m-0" x-show="done && done.offline">Kept on this phone - it goes to the books when you're back online.</p>
+    <div class="done-actions">
+      <button type="button" class="btn btn-secondary capp-btn" @click="print()">{{ icon('printer', 'icon-sm') }}<span x-text="done && done.printed ? 'Print again' : 'Print'"></span></button>
+      <button type="button" class="btn btn-secondary capp-btn" x-show="done && !done.offline && net.online" @click="share()">Send on WhatsApp</button>
+      <button type="button" class="btn btn-primary capp-btn" @click="newBill()">New bill</button>
+    </div>
+  </section>
+
+  <div class="capp-toast" x-show="toast" x-cloak x-transition.opacity role="status" x-text="toast"></div>
+
+  <div class="pin-cover" x-show="cfg.cashier && !cashier" x-cloak>
+    <div class="pin-card">
+      <h2 class="m-0">Enter your PIN</h2>
+      <p class="pin-dots" x-text="pin.replace(/./g, '●') || ' '"></p>
+      <p class="field-error-msg" x-show="pinError" x-text="pinError" role="alert"></p>
+      <div class="qty-keys">
+        <template x-for="d in ['1','2','3','4','5','6','7','8','9']" :key="d">
+          <button type="button" class="qty-key" @click="press(d)" x-text="d"></button>
+        </template>
+        <button type="button" class="qty-key" @click="pin = ''">Clear</button>
+        <button type="button" class="qty-key" @click="press('0')">0</button>
+        <button type="button" class="qty-key is-go" :disabled="pinBusy || pin.length < 4" @click="unlock()">OK</button>
+      </div>
+      <a href="{{ url_for('counterapp.index') }}" class="btn btn-quiet btn-sm mt-16">Back</a>
+    </div>
+  </div>
+  <iframe id="receipt-print-frame" title="Receipt printing" class="d-none" aria-hidden="true" tabindex="-1"></iframe>
+</div>
+{% endblock %}

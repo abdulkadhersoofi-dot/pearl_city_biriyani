@@ -21,7 +21,7 @@
   <main class="capp-main">
     <p class="capp-hello">{{ 'Good morning' if now_hour < 12 else ('Good afternoon' if now_hour < 17 else 'Good evening') }}! What's next?</p>
     <nav class="capp-tiles" aria-label="Counter">
-      <a href="{{ url_for('pos.terminal') }}" class="capp-tile tile-bill">
+      <a href="{{ url_for('counterapp.bill') }}" class="capp-tile tile-bill">
         <span class="capp-tile-icon">{{ icon('receipt-text') }}</span>
         <strong>Bill</strong><small>Ring up a sale</small></a>
       {% if tables_on %}

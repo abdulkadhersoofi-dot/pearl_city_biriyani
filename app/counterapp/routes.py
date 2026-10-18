@@ -5,6 +5,15 @@
   /app/pair      POST {code, name, platform} - use the owner's code
   /app/resume    POST {device_id, token} - a paired phone signs back in
   /app/unpair    POST - this phone stops being a counter device
+  /app/bill      the Bill screen (stage 2)
+  /app/ping      is the server there, is this phone signed in, and a fresh
+                 CSRF token (a screen opened from the phone's copy may hold
+                 an old one)
+  /app/sw.js     the app's service worker: keeps the home and Bill screens
+                 so they open without internet
+
+A screen the phone may keep a copy of says so (SCREEN_HEADER); the pairing
+screen and anything a signed-out phone sees never do.
 
 Pairing and resuming are authenticated by the code / the device's secret,
 not by a session, so they carry no CSRF token (there is no session yet to
@@ -12,18 +21,34 @@ protect); both are rate-limited per address.
 """
 
 import time
+from datetime import datetime
 
-from flask import after_this_request, jsonify, render_template, request, session, url_for
+from flask import after_this_request, jsonify, make_response, redirect, render_template, request, session, url_for
 from flask_login import current_user, login_user, logout_user
 
 from app.auth.routes import APP_COOKIE
-
 from app.counterapp import counterapp_bp
 from app.counterapp import pairing as pairing_service
+from app.einvoice.providers.common import IST
 from app.extensions import csrf, db
 from app.models.mixins import utcnow
 from app.models.user import UserRole
 from app.utils.audit import record_audit
+from app.utils.features import current_tenant_has
+
+SCREEN_HEADER = "X-Counter-Screen"
+
+
+def _screen(html):
+    """A signed-in screen the app's service worker may keep for offline."""
+    response = make_response(html)
+    response.headers[SCREEN_HEADER] = "1"
+    response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
+def _is_branch() -> bool:
+    return current_user.is_authenticated and current_user.role == UserRole.STAFF
 
 
 def _signed_in_as(user, device, method):
@@ -51,9 +76,10 @@ def _device_payload(device, token=None) -> dict:
                "user_id": user.id, "branch": user.name, "business": user.tenant.display_name,
                "home": url_for("counterapp.index")}
     try:
-        payload["next_number"] = offline.device_state(user.tenant, device)["next_number"]
+        state = offline.device_state(user.tenant, device)
+        payload["fy"], payload["next_number"] = state["fy"], state["next_number"]
     except Exception:  # no GSTIN / location yet - offline billing can't number, the rest still works
-        payload["next_number"] = None
+        payload["fy"] = payload["next_number"] = None
     if token:
         payload["token"] = token
     return payload
@@ -71,17 +97,44 @@ def index():
         return render_template("counterapp/pair.html")
     if current_user.role != UserRole.STAFF:
         return render_template("counterapp/not_branch.html")
-    from app.utils.features import current_tenant_has
+    tenant = current_user.tenant
+    return _screen(render_template("counterapp/home.html", tenant=tenant, now_hour=datetime.now(IST).hour,
+                                   tables_on=current_tenant_has("restaurant_mode"),
+                                   offline_on=current_tenant_has("offline_pos"),
+                                   device_id=session.get("counter_device_id")))
 
-    from datetime import datetime
 
-    from app.einvoice.providers.common import IST
+@counterapp_bp.route("/bill")
+def bill():
+    """The Bill screen: tap items, take the money, print."""
+    if not _is_branch():
+        return redirect(url_for("counterapp.index"))
+    from app.counterapp.screens import bill_context
 
     tenant = current_user.tenant
-    return render_template("counterapp/home.html", tenant=tenant, now_hour=datetime.now(IST).hour,
-                           tables_on=current_tenant_has("restaurant_mode"),
-                           offline_on=current_tenant_has("offline_pos"),
-                           device_id=session.get("counter_device_id"))
+    return _screen(render_template("counterapp/bill.html", tenant=tenant, **bill_context(tenant, current_user)))
+
+
+@counterapp_bp.route("/ping")
+def ping():
+    from flask_wtf.csrf import generate_csrf
+
+    if not _is_branch():
+        return jsonify({"signed_in": False})
+    return jsonify({"signed_in": True, "user_id": current_user.id, "csrf": generate_csrf()})
+
+
+@counterapp_bp.route("/sw.js")
+def service_worker():
+    """The same service worker as the counter's (pos_sw.js), for the app's
+    scope - it keeps this scope's screens."""
+    from flask import current_app, send_from_directory
+
+    response = make_response(send_from_directory(current_app.static_folder, "js/pos_sw.js",
+                                                 mimetype="application/javascript", max_age=0))
+    response.headers["Service-Worker-Allowed"] = url_for("counterapp.index")
+    response.headers["Cache-Control"] = "no-cache"
+    return response
 
 
 @counterapp_bp.route("/pair", methods=["POST"])

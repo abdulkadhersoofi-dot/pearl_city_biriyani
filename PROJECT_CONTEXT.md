@@ -591,6 +591,18 @@ this list is just the index.
   page: `branches.pair_phone`, `branches.device_active`, `#sec-devices`.
   Plan for stages 2-5: the "ARFA Counter app" Roadmap entry in the README.
 
+- **Counter app, stage 2 (Bill screen).** `counterapp.bill` (`/app/bill`)
+  renders `counterapp/bill.html` from `screens.bill_context` (items with
+  the counter's price, `counter_only` = `offline.blocked_products`, modes
+  cash / UPI / card, restaurant order types without dine-in, `quote_url`
+  for restaurant / wholesale, the offline config with the app's service
+  worker). `static/js/counter_bill.js` posts to `/pos/checkout` (same
+  fields as the terminal) or `ArfaOffline.queueBill`. `/app/ping` gives a
+  fresh CSRF token (and `ArfaApp.resume()` signs back in). `pos_sw.js`
+  serves both scopes; the app's cache is "arfa-app-v1" and keeps only
+  responses with `X-Counter-Screen: 1`. `pos.day_open` honours
+  `back=app`.
+
 ## 5. Chronological development history (this session)
 
 This is the part README.md doesn't capture — the actual sequence of

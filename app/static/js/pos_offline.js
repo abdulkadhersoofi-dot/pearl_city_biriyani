@@ -76,6 +76,9 @@
     var h = Array.prototype.map.call(b, function (x) { return ("0" + x.toString(16)).slice(-2); }).join("");
     return h.slice(0, 8) + "-" + h.slice(8, 12) + "-" + h.slice(12, 16) + "-" + h.slice(16, 20) + "-" + h.slice(20);
   }
+  // {financial year: next number}; anything else stored (a phone paired
+  // before stage 2 kept a bare number) starts over from the server's count.
+  function nextMap(next) { return next && typeof next === "object" ? next : {}; }
   // The next number in this device's series - under a cross-tab lock where
   // the browser has one, so two open tabs can't hand out the same number.
   function withLock(fn) {
@@ -86,7 +89,7 @@
     return withLock(function () {
       var d = loadDevice() || device;
       var fy = financialYear(now);
-      d.next = d.next || {};
+      d.next = nextMap(d.next);
       var seq = d.next[fy] || 1;
       d.next[fy] = seq + 1;
       saveDevice(d);
@@ -96,7 +99,7 @@
   // The server's count can only move the device forward, never back.
   function mergeNext(fy, serverNext) {
     if (!device || !fy || !serverNext) return;
-    device.next = device.next || {};
+    device.next = nextMap(device.next);
     device.next[fy] = Math.max(device.next[fy] || 1, serverNext);
     saveDevice(device);
   }

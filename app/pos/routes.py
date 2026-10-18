@@ -893,7 +893,8 @@ def day_open():
     except POSValidationError as exc:
         db.session.rollback()
         flash(exc.message, "error")
-    return redirect(url_for("pos.terminal"))
+    # Opened from the ARFA Counter app's Bill screen: back there.
+    return redirect(url_for("counterapp.bill") if request.form.get("back") == "app" else url_for("pos.terminal"))
 
 
 @pos_bp.route("/day/cash", methods=["POST"])

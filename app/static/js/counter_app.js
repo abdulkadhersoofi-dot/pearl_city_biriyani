@@ -9,6 +9,7 @@
  */
 (function () {
   var KEY = "arfa.app.device";
+  var CART_KEY = "arfa.app.cart";  // the Bill screen's cart in progress (counter_bill.js)
 
   function load() {
     try { return JSON.parse(localStorage.getItem(KEY) || "null"); } catch (e) { return null; }
@@ -16,16 +17,27 @@
   function save(d) {
     try {
       localStorage.setItem(KEY, JSON.stringify(d));
+      // pos_offline.js counts per financial year: {"2026-27": 1}.
+      var next = {};
+      if (d.fy && d.next_number) next[d.fy] = d.next_number;
       localStorage.setItem("arfa.device." + d.tenant_id + "." + d.user_id, JSON.stringify(
-        {id: d.id, token: d.token, code: d.code, name: d.name, next: d.next_number || 1}));
+        {id: d.id, token: d.token, code: d.code, name: d.name, next: next}));
     } catch (e) { /* storage off - the phone will ask for a code next time */ }
   }
   function forget() {
     var d = load();
     try {
       localStorage.removeItem(KEY);
+      localStorage.removeItem(CART_KEY);
       if (d) localStorage.removeItem("arfa.device." + d.tenant_id + "." + d.user_id);
     } catch (e) {}
+    // The screens kept for offline use belong to this branch - drop them.
+    if (window.caches) caches.delete("arfa-app-v1").catch(function () {});
+    if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
+      navigator.serviceWorker.getRegistrations().then(function (rs) {
+        rs.forEach(function (r) { if (/\/app\/$/.test(r.scope)) r.unregister(); });
+      }).catch(function () {});
+    }
   }
   function post(url, body) {
     return fetch(url, {
@@ -38,7 +50,39 @@
   }
   function platform() { return window.AndroidPrint ? "android" : "app"; }
 
-  window.ArfaApp = {load: load, save: save, forget: forget, post: post, platform: platform};
+  // Signs this phone back in with its secret when the session has ended
+  // (idle sign-out). Resolves true when signed in again.
+  function resume() {
+    var d = load();
+    if (!d) return Promise.resolve(false);
+    return post("/app/resume", {device_id: d.id, token: d.token}).then(function (r) { return r.ok; });
+  }
+
+  // Keeps the app's screens and everything they load in the offline copy
+  // the service worker serves (pos_sw.js, cache "arfa-app-v1") - at once,
+  // so a phone that opened the Bill screen just once still opens it
+  // without internet. A screen is kept only if the server says it may be
+  // (X-Counter-Screen), never a sign-in page.
+  function keepForOffline(screens) {
+    if (!window.caches || !navigator.onLine) return;
+    var urls = [];
+    document.querySelectorAll("script[src], link[rel=stylesheet], link[rel=preload], link[rel=icon]").forEach(function (el) {
+      urls.push(el.src || el.href);
+    });
+    var sprite = document.getElementById("icon-sprite");
+    if (sprite && sprite.dataset.href) urls.push(sprite.dataset.href);
+    caches.open("arfa-app-v1").then(function (cache) {
+      urls.forEach(function (u) { cache.add(u).catch(function () {}); });
+      screens.forEach(function (path) {
+        fetch(path, {credentials: "same-origin"}).then(function (res) {
+          if (res.ok && !res.redirected && res.headers.get("X-Counter-Screen") === "1") cache.put(path, res);
+        }).catch(function () {});
+      });
+    }).catch(function () {});
+  }
+
+  window.ArfaApp = {load: load, save: save, forget: forget, post: post, platform: platform, resume: resume,
+                    keepForOffline: keepForOffline, CART_KEY: CART_KEY};
 
   window.pairScreen = function () {
     return {
@@ -63,7 +107,7 @@
           if (!r.ok) { self.error = (r.data && r.data.error) || "That didn't work - try again."; return; }
           var d = r.data;
           save({id: d.device_id, token: d.token, code: d.code, name: d.name, tenant_id: d.tenant_id,
-                user_id: d.user_id, next_number: d.next_number});
+                user_id: d.user_id, fy: d.fy, next_number: d.next_number});
           window.location.replace(d.home || "/app/");
         }).catch(function () { self.busy = false; self.error = "No internet - connect and try again."; });
       }
