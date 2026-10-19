@@ -7,9 +7,12 @@ the routes enforce with feature_required / permission_required. A group
 with nothing left in it is dropped, so a kirana shop sees a few short
 groups and a wholesale client sees all six.
 
-Only Client Admins and the firm's own logins (Ultra Admin, Auditors,
-Sub-Auditors) get a menu. A branch (Staff) login only ever has the
-counter, so it keeps the simple layout with no menu at all."""
+Client Admins and the firm's own logins (Ultra Admin, Auditors,
+Sub-Auditors) get a menu. A branch (Staff) login gets a short one of its
+own once its business has screens beyond the counter (a restaurant's
+Tables and Kitchen, Job cards) - only what the Client Admin left on for
+that login (its modules and permissions); a branch with nothing but the
+counter keeps the simple layout with no menu at all."""
 
 from dataclasses import dataclass, field
 
@@ -33,10 +36,19 @@ class Link:
     keywords: str = ""
     # A console power the signed-in auditor must hold (packages and powers).
     power: str | None = None
+    # A counter permission the signed-in login must hold (a branch's menu).
+    permission: str | None = None
 
     def visible(self) -> bool:
         if self.feature and not current_tenant_has(self.feature):
             return False
+        if self.permission:
+            from flask_login import current_user
+
+            from app.utils.permissions import user_can
+
+            if not user_can(current_user, self.permission):
+                return False
         if self.power:
             from flask_login import current_user
 
@@ -156,6 +168,50 @@ def _client_groups() -> list[Group]:
     ]
 
 
+def _branch_groups() -> list[Group]:
+    """A branch login's menu: its counter and the screens around it. Every
+    entry follows the business's modules, what is hidden at this counter
+    and the login's permissions - the same rules as the routes."""
+    return [
+        Group("counter", "Counter", (
+            Link("Counter", "pos.terminal", "monitor", endpoints=("pos.terminal",), keywords="pos billing bill"),
+            Link("Tables", "restaurant.tables", "utensils-crossed", feature="restaurant_mode",
+                 endpoints=("restaurant.tables",), keywords="restaurant dine kot"),
+            Link("Kitchen", "restaurant.kitchen", "clipboard-list", feature="restaurant_mode",
+                 endpoints=("restaurant.kitchen",), keywords="kot orders ready"),
+            Link("Sold out today", "restaurant.menu", "package-minus", feature="restaurant_mode",
+                 endpoints=("restaurant.menu",), keywords="menu"),
+            Link("Job cards", "jobs.index", "wrench", feature="job_cards",
+                 endpoints=("jobs.index", "jobs.new", "jobs.view"), keywords="repair service"),
+            Link("Warranty check", "jobs.warranty", "shield-check", feature="electronics",
+                 endpoints=("jobs.warranty",), keywords="imei serial"),
+        )),
+        Group("today", "Today", (
+            Link("Day-book", "pos.day_book", "list", permission="view_reports", endpoints=("pos.day_book",),
+                 keywords="today bills reprint refund"),
+            Link("Z-report", "pos.z_report_view", "file-text", permission="view_reports",
+                 endpoints=("pos.z_report_view",), keywords="end of day"),
+            Link("Close the day", "pos.day_close", "clock", feature="day_close", endpoints=("pos.day_close",),
+                 keywords="cash count drawer"),
+            Link("Offline bills", "pos.offline_bills", "cloud-off", feature="offline_pos",
+                 endpoints=("pos.offline_bills",), keywords="sync queue"),
+        )),
+    ]
+
+
+def _branch_has_screens() -> bool:
+    """Has this branch login anything to open beside the counter itself?"""
+    return any(link.visible() for link in _branch_groups()[0].links[1:])
+
+
+def _groups_for(user) -> list[Group]:
+    if user.is_client_admin:
+        return _client_groups()
+    if user.is_staff:
+        return _branch_groups()
+    return _admin_groups(user)
+
+
 def _accounts_link() -> tuple:
     for feature, endpoint, kwargs in (("receivables", "accounts.receivables_index", {}),
                                       ("payables", "accounts.payables_index", {}),
@@ -214,8 +270,11 @@ def _admin_groups(user) -> list[Group]:
 
 
 def has_menu(user) -> bool:
-    return bool(getattr(user, "is_authenticated", False)
-                and (user.is_admin_hierarchy or user.is_client_admin))
+    if not getattr(user, "is_authenticated", False):
+        return False
+    if user.is_staff:
+        return _branch_has_screens()
+    return bool(user.is_admin_hierarchy or user.is_client_admin)
 
 
 def menu_groups(user) -> list[dict]:
@@ -223,7 +282,7 @@ def menu_groups(user) -> list[dict]:
     empty groups dropped."""
     if not has_menu(user):
         return []
-    groups = _client_groups() if user.is_client_admin else _admin_groups(user)
+    groups = _groups_for(user)
     out = []
     for group in groups:
         links = [{"label": link.label, "url": link.url, "icon": link.icon, "active": link.is_active()}
@@ -360,8 +419,7 @@ def palette_entries(user) -> list[dict]:
             seen.add(key)
             entries.append(entry)
 
-    groups = _client_groups() if user.is_client_admin else _admin_groups(user)
-    for group in groups:
+    for group in _groups_for(user):
         for link in group.links:
             if link.visible():
                 add(link.as_entry(group.label))

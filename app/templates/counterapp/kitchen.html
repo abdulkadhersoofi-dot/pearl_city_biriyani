@@ -1,5 +1,5 @@
 {% extends "counterapp/_layout.html" %}
-{% block title %}Kitchen - ARFA Counter{% endblock %}
+{% block title %}Kitchen - {{ 'ARFA Counter' if in_app else tenant.display_name }}{% endblock %}
 {% block body_class %}capp-kitchen{% endblock %}
 {% block head %}
 <script src="{{ url_for('static', filename='js/counter_kitchen.js') }}"></script>
@@ -8,13 +8,15 @@
 {# The kitchen screen (counter app, stage 4): a tablet in the kitchen shows
    this branch's KOTs as they come in, oldest first; a tap marks one ready
    (Undo for a slip of the finger). Needs the internet - it asks the server
-   every few seconds. #}
-<div class="kitchen-screen" x-data='kitchenScreen({{ {'state_url': url_for('counterapp.kitchen_state'), 'ready_url': url_for('counterapp.kitchen_ready', ticket_id=0), 'csrf': csrf}|tojson }})' x-init="start()">
+   every few seconds. The website opens the same screen
+   (/restaurant/kitchen) - the owner's shows every login's KOTs and who
+   sent each. #}
+<div class="kitchen-screen" x-data='kitchenScreen({{ {'state_url': state_url, 'ready_url': ready_url, 'csrf': csrf}|tojson }})' x-init="start()">
   <header class="kitchen-top">
-    <a href="{{ url_for('counterapp.index') }}" class="bill-back" aria-label="Back to the app's home">{{ icon('chevron-right', 'icon-flip') }}</a>
+    <a href="{{ back_url }}" class="bill-back" aria-label="{{ back_label }}">{{ icon('chevron-right', 'icon-flip') }}</a>
     <div class="bill-title">
       <h1 class="m-0">Kitchen</h1>
-      <p class="m-0 text-muted">{{ current_user.name }} · <span x-text="cooking.length + (cooking.length === 1 ? ' to cook' : ' to cook')"></span></p>
+      <p class="m-0 text-muted">{{ 'All counters' if current_user.is_client_admin else current_user.name }} · <span x-text="cooking.length + (cooking.length === 1 ? ' to cook' : ' to cook')"></span></p>
     </div>
     <button type="button" class="btn btn-quiet btn-sm" @click="showReady = !showReady" x-text="showReady ? 'To cook' : 'Ready (' + ready.length + ')'">Ready</button>
     <span class="capp-status" :class="online ? 'is-on' : 'is-off'" role="status">
@@ -30,6 +32,7 @@
           <strong class="kot-card-label" x-text="k.label"></strong>
           <span class="kot-card-no" x-text="'KOT ' + k.kot_no + (k.phone_ref ? ' · ' + k.phone_ref : '')"></span>
           <span class="kot-card-age" x-text="k.minutes < 1 ? 'just now' : k.minutes + ' min'"></span>
+          <span class="kot-card-by" x-show="k.by" x-text="k.by"></span>
         </header>
         <ul class="kot-items">
           <template x-for="(i, n) in k.items" :key="n">

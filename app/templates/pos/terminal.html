@@ -346,6 +346,8 @@
           </template>
         </div>
       </template>
+      <p class="table-changed" x-show="tableNote" x-cloak role="status">{{ icon('refresh-cw', 'icon-sm') }}<span x-text="tableNote"></span>
+        <button type="button" class="btn btn-quiet btn-sm" @click="tableNote = ''">OK</button></p>
       <div class="cart-tools">
         <template x-if="MODULES.salesmen && MODULES.salesmen.length">
           <select class="field-input price-list-select" x-model.number="salesmanId" aria-label="Salesman">
@@ -868,6 +870,11 @@ function posTerminal() {
     offlineQueued: false,
     offlineDoc: null,
     checkoutUuid: "",
+    // Live tables: the open table as this screen last saw it on the server
+    // (its signature and item quantities), and what another screen changed.
+    tableSig: null,
+    tableBase: {},
+    tableNote: "",
     // Inside the ARFA POS Android app (direct thermal printing, drawer).
     inApp: !!(window.AndroidPrint && window.AndroidPrint.openSettings),
     init() {
@@ -899,6 +906,56 @@ function posTerminal() {
       }
       if (PREFILL.customer) this.customer = PREFILL.customer;
       if (PREFILL.bill_disc_kind) this.billDisc = {kind: PREFILL.bill_disc_kind, value: Number(PREFILL.bill_disc_value)};
+      if (MODULES.restaurant && MODULES.restaurant.table) {
+        this.tableSig = MODULES.restaurant.table_sig;
+        this.tableBase = this.qtyMap(MODULES.restaurant.table_lines);
+        this.watchTable();
+      }
+    },
+    // --- live tables ---------------------------------------------------
+    tableKey(productId, name, note) { return (productId || "") + "|" + name + "|" + (note || ""); },
+    qtyMap(lines) {
+      const m = {};
+      lines.forEach(l => { const k = this.tableKey(l.product_id, l.name, l.note); m[k] = Number(((m[k] || 0) + Number(l.qty)).toFixed(3)); });
+      return m;
+    },
+    watchTable() {
+      const look = async () => {
+        if (document.hidden || this.submitting) return;
+        try {
+          const res = await fetch(MODULES.restaurant.table_state_url, {headers: {"X-Requested-With": "XMLHttpRequest"}});
+          if (res.ok && !res.redirected) this.mergeTable(await res.json());
+        } catch (e) { /* offline: the next look tries again */ }
+      };
+      setInterval(look, 5000);
+      document.addEventListener("visibilitychange", look);
+    },
+    // Another counter or a waiter's phone changed this table: what THEY
+    // changed (not their whole order) goes into this cart, on top of what
+    // was added here - so neither screen's items are lost or doubled.
+    mergeTable(state) {
+      if (!state || state.sig === this.tableSig) return;
+      const now = this.qtyMap(state.lines), base = this.tableBase, said = [];
+      new Set(Object.keys(now).concat(Object.keys(base))).forEach(k => {
+        const d = Number(((now[k] || 0) - (base[k] || 0)).toFixed(3));
+        if (!d) return;
+        const info = state.lines.find(l => this.tableKey(l.product_id, l.name, l.note) === k);
+        let line = this.cart.find(l => this.tableKey(l.product_id, l.description, l.note) === k);
+        if (line) {
+          line.qty = Math.max(0, Number((Number(line.qty) + d).toFixed(3)));
+        } else if (d > 0 && info) {
+          const p = PRODUCTS.find(x => x.id === info.product_id);
+          if (!p) return;
+          line = this.newLine(p, d);
+          Object.assign(line, {description: info.name, note: info.note, rate: info.rate});
+          this.cart.push(line);
+        }
+        said.push((d > 0 ? "+" : "") + d + " " + (info ? info.name : line ? line.description : ""));
+      });
+      this.cart = this.cart.filter(l => Number(l.qty) > 0);
+      this.tableBase = now;
+      this.tableSig = state.sig;
+      if (said.length) this.tableNote = "Changed on another screen: " + said.join(", ");
     },
     // --- business-type modules -----------------------------------------
     orderTypeList() {
@@ -920,7 +977,10 @@ function posTerminal() {
       if (this.priceListId) body.append("price_list_id", this.priceListId);
       if (MODULES.restaurant) {
         body.append("order_type", this.orderType || "");
-        if (MODULES.restaurant.table) body.append("table_id", MODULES.restaurant.table.id);
+        if (MODULES.restaurant.table) {
+          body.append("table_id", MODULES.restaurant.table.id);
+          body.append("table_sig", this.tableSig || "");
+        }
         if (this.serviceCharge && this.orderType === "dine_in") body.append("service_charge", "1");
       }
       if (this.salesmanId) body.append("salesman_id", this.salesmanId);
@@ -1066,7 +1126,11 @@ function posTerminal() {
       try {
         const res = await fetch(MODULES.restaurant.kot_url, {method: "POST", body, headers: {"X-Requested-With": "XMLHttpRequest"}});
         const data = await res.json();
-        if (!res.ok) { this.quoteError = data.error || "Could not send the KOT."; return; }
+        if (!res.ok) {
+          if (data.table_changed) this.mergeTable(data.table);
+          this.quoteError = data.error || "Could not send the KOT.";
+          return;
+        }
         const back = () => { window.location = data.tables_url; };
         if (data.pdf) this.printUrl(data.pdf, back); else back();
       } catch (e) { this.quoteError = "Could not reach the server."; }
@@ -1488,6 +1552,7 @@ function posTerminal() {
         reached = true;
         const data = await res.json();
         if (!res.ok) {
+          if (data.table_changed) this.mergeTable(data.table);
           this.checkoutError = data.error || "Checkout failed.";
           return;
         }

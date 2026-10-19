@@ -28,15 +28,73 @@ def _table(table_id):
     return table
 
 
+def _grid_sig(tiles) -> str:
+    import hashlib
+
+    parts = [f"{t['table'].id}:{t['table'].name}:{t['kots']}:"
+             f"{services.lines_sig(services.order_lines(t['order'])) if t['order'] else '-'}:"
+             f"{t['order'].grand_total if t['order'] else ''}" for t in tiles]
+    return hashlib.sha1("|".join(parts).encode()).hexdigest()[:16]
+
+
 @restaurant_bp.route("/")
 @tenant_user_required
 @feature_required(FLAG)
 def tables():
+    """The tables. The page asks again every few seconds (?live=1, just the
+    grid and its signature) so a KOT from any counter or phone shows up
+    without a reload."""
     tenant = current_user.tenant
     tiles = services.overview(tenant)
-    return render_template("restaurant/tables.html", tiles=tiles, order_types=services.order_types(tenant),
-                           free=[t["table"] for t in tiles if t["order"] is None],
-                           busy=[t["table"] for t in tiles if t["order"] is not None])
+    ctx = {"tiles": tiles, "free": [t["table"] for t in tiles if t["order"] is None],
+           "busy": [t["table"] for t in tiles if t["order"] is not None], "grid_sig": _grid_sig(tiles)}
+    if request.args.get("live"):
+        return jsonify({"sig": ctx["grid_sig"], "html": render_template("restaurant/_grid.html", **ctx)})
+    return render_template("restaurant/tables.html", order_types=services.order_types(tenant), **ctx)
+
+
+@restaurant_bp.route("/tables/<int:table_id>/state")
+@tenant_user_required
+@feature_required(FLAG)
+def table_state(table_id):
+    """One table's running order, for a counter that has it open."""
+    return jsonify(services.table_snapshot(current_user.tenant, _table(table_id)))
+
+
+# --- the kitchen screen on the website (the app's own is /app/kitchen) ---------------------
+
+@restaurant_bp.route("/kitchen")
+@tenant_user_required
+@feature_required(FLAG)
+def kitchen():
+    from flask_wtf.csrf import generate_csrf
+
+    return render_template("counterapp/kitchen.html", tenant=current_user.tenant, csrf=generate_csrf(), in_app=False,
+                           state_url=url_for("restaurant.kitchen_state"),
+                           ready_url=url_for("restaurant.kitchen_ready", ticket_id=0),
+                           back_url=url_for("restaurant.tables"), back_label="Back to the tables")
+
+
+@restaurant_bp.route("/kitchen/state")
+@tenant_user_required
+@feature_required(FLAG)
+def kitchen_state():
+    return jsonify(services.kitchen_state(current_user.tenant, current_user))
+
+
+@restaurant_bp.route("/kitchen/<int:ticket_id>/ready", methods=["POST"])
+@tenant_user_required
+@feature_required(FLAG)
+def kitchen_ready(ticket_id):
+    ready = (request.get_json(silent=True) or {}).get("ready", True) is not False
+    try:
+        ticket = services.mark_ready(current_user.tenant, current_user, ticket_id, ready)
+    except services.RestaurantError as exc:
+        return jsonify({"error": exc.message}), 404
+    record_audit(current_user, "kot_ready" if ready else "kot_not_ready", tenant_id=current_user.tenant_id,
+                 entity_type="kitchen_ticket", entity_id=ticket.id, details={"kot_no": ticket.kot_no})
+    db.session.commit()
+    return jsonify({"ok": True})
 
 
 @restaurant_bp.route("/tables/<int:table_id>/kot", methods=["POST"])
@@ -47,6 +105,11 @@ def send_kot(table_id):
 
     table = _table(table_id)
     tenant = current_user.tenant
+    try:
+        services.check_table(tenant, table.id, request.form.get("table_sig"))
+    except services.TableChanged as exc:
+        return jsonify({"error": exc.message, "table_changed": True,
+                        "table": services.table_snapshot(tenant, table)}), 409
     try:
         cart = _cart_from_request()
         kot = services.send_kot(tenant, current_user, table, cart)

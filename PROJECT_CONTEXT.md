@@ -638,6 +638,20 @@ this list is just the index.
   secrets). CI publishes `ARFA-Counter.apk` (+ old name) and version.json
   pointing at it. README has "Counter app - how to run it".
 
+- **Branch screens and live tables (follow-up).** `navigation._branch_groups`
+  (Link has `permission=`); `has_menu` is true for a branch only when
+  `_branch_has_screens()`. Live tables: `restaurant.services.order_lines /
+  lines_sig / table_snapshot / check_table / TableChanged`;
+  `tables_state` rows carry `sig`; routes `restaurant.tables?live=1`
+  (JSON sig + `_grid.html`), `restaurant.table_state`,
+  `restaurant.kitchen / kitchen_state / kitchen_ready` (owner =
+  every login's tickets, `by` label; `_kitchen_tickets`). `table_sig`
+  form field on `restaurant.send_kot` and `pos.checkout_route` -> 409
+  `{table_changed, table}`. Counter JS: `tableSig / tableBase /
+  mergeTable / watchTable` in `pos/terminal.html`; app:
+  `mergeOpenTable` + 6 s poll in `counter_tables.js`, `table_sig` in
+  `counter_bill.js formData`. Tests: `tests/test_branch_screens_live.py`.
+
 ## 5. Chronological development history (this session)
 
 This is the part README.md doesn't capture — the actual sequence of

@@ -290,6 +290,7 @@ body.capp-kitchen { background: var(--color-bg); }
 .kot-card-no { grid-column: 1; font-size: 0.8rem; color: var(--color-text-muted); font-family: var(--font-mono); }
 .kot-card-age { grid-column: 2; grid-row: 1 / span 2; align-self: start; padding: 4px 10px; border-radius: 999px; background: var(--color-surface-2);
   font-weight: 800; font-size: 0.85rem; white-space: nowrap; }
+.kot-card-by { grid-column: 1 / -1; font-size: 0.8rem; font-weight: 700; color: var(--color-text-muted); }
 .kot-items { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .kot-items li { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 2px 8px; font-size: 1.08rem; font-weight: 600; }
 .kot-items li b { font-size: 1.15rem; }

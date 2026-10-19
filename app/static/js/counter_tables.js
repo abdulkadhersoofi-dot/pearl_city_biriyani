@@ -20,6 +20,11 @@
   var P = window.ArfaBillPrint;
 
   function key(productId, name, note) { return (productId || "") + "|" + name + "|" + (note || ""); }
+  function qtyMap(lines) {
+    var m = {};
+    (lines || []).forEach(function (l) { var k = key(l.product_id, l.name, l.note); m[k] = Number(((m[k] || 0) + Number(l.qty)).toFixed(3)); });
+    return m;
+  }
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return {"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]; }); }
   // A KOT slip as a small page, for the browser's print dialog or
   // Android's system print when there's no thermal printer.
@@ -46,6 +51,9 @@
 
     return {
       tables: [], tablesAt: 0, kotQueue: [], tableSent: {}, kotBusy: false, kotDone: null, section: "",
+      // The open table as this phone last saw it (its server signature and
+      // item quantities) - to fold in what other screens change meanwhile.
+      tableSig: null, tableBase: {},
 
       // --- start --------------------------------------------------------------------------------
       startTables: function () {
@@ -54,6 +62,13 @@
         this.kotQueue = read(KOTS_KEY, []);
         window.addEventListener("online", function () { self.flushKots().then(function () { self.refreshTables(); }); });
         setInterval(function () { if (navigator.onLine && self.waitingKots().length) self.flushKots(); }, 20000);
+        // Live tables: while the tables or a table are on screen, look again
+        // every few seconds - KOTs from the counter and other phones show up.
+        setInterval(function () {
+          if (navigator.onLine && !document.hidden && !self.busy && !self.kotBusy && (self.view === "tables" || self.view === "table")) {
+            self.refreshTables();
+          }
+        }, 6000);
         if (navigator.onLine) this.flushKots().then(function () { return self.refreshTables(); });
       },
       saveTables: function () { write(TABLES_KEY, {tables: this.tables, at: Date.now()}); },
@@ -82,6 +97,7 @@
             self.tables = data.tables;
             self.kotQueue.forEach(function (k) { if (!k.error) self.applyLocal(k); });
             self.saveTables();
+            if (self.view === "table" && self.table) self.mergeOpenTable();
             return true;
           }).catch(function () { return false; });
       },
@@ -127,9 +143,43 @@
             return line;
           });
           self.tableSent = Object.assign({}, fresh.sent);
+          self.tableSig = fresh.sig === undefined ? null : fresh.sig;
+          self.tableBase = qtyMap(fresh.lines);
           self.view = "table"; self.q = ""; self.sheet = ""; self.error = "";
         };
         this.refreshTables().then(open);
+      },
+      // Another counter or phone changed the open table: what THEY changed
+      // goes into this phone's order, on top of what was added here.
+      mergeOpenTable: function () {
+        var self = this, id = this.table.id;
+        var fresh = this.tables.find(function (x) { return x.id === id; });
+        if (!fresh) return;
+        var now = qtyMap(fresh.lines), base = this.tableBase, said = [], seen = {};
+        Object.keys(now).concat(Object.keys(base)).forEach(function (k) {
+          if (seen[k]) return;
+          seen[k] = true;
+          var d = Number(((now[k] || 0) - (base[k] || 0)).toFixed(3));
+          if (!d) return;
+          var info = fresh.lines.find(function (l) { return key(l.product_id, l.name, l.note) === k; });
+          var line = self.cart.find(function (l) { return key(l.product_id, l.description, l.note) === k; });
+          if (line) {
+            line.qty = Math.max(0, Number((Number(line.qty) + d).toFixed(3)));
+          } else if (d > 0 && info) {
+            var it = byId[info.product_id];
+            if (!it) return;
+            line = self.lineFor(it, d, info.note);
+            line.description = info.name;
+            line.rate = info.rate;
+            self.cart.push(line);
+          }
+          said.push((d > 0 ? "+" : "") + P.qtyText(d) + " " + (info ? info.name : line ? line.description : ""));
+        });
+        this.cart = this.cart.filter(function (l) { return Number(l.qty) > 0; });
+        this.tableSent = Object.assign({}, fresh.sent);
+        this.tableBase = now;
+        this.tableSig = fresh.sig === undefined ? null : fresh.sig;
+        if (said.length) this.say("Changed on another screen: " + said.join(", "));
       },
       leaveTable: function () {
         if (this.unsent().length && !window.confirm("Some changes haven't gone to the kitchen. Leave without sending them?")) return;
@@ -179,14 +229,17 @@
           if (!r) { offline(); return; }
           if (r.status === "rejected") { self.error = r.error; self.say(r.error); return; }
           self.kotSent(kot, r.status === "sent" ? String(r.kot_no) : "", false);
+          if (r.sig !== undefined && self.table && self.table.id === kot.table_id) self.tableSig = r.sig;
           self.refreshTables();
         }).catch(function () { offline(); }).then(function () { self.kotBusy = false; });
       },
       kotSent: function (kot, number, offline) {
-        var sent = this.tableSent;
+        var sent = this.tableSent, base = this.tableBase;
         kot.items.forEach(function (i) {
           var k = key(i.product_id, i.name, i.note);
           sent[k] = Math.max(0, Number(((sent[k] || 0) + i.qty).toFixed(3)));
+          // This phone's own change is on the table now - not "another screen's".
+          base[k] = Math.max(0, Number(((base[k] || 0) + i.qty).toFixed(3)));
         });
         this.tableSent = Object.assign({}, sent);
         var doc = number ? this.kotDoc("KOT " + number, "Table " + kot.table_name, kot.items) : null;
@@ -283,6 +336,8 @@
       tableBilled: function (done) {
         var id = this.table.id;
         done.table = this.table.name;
+        this.tableBase = {};
+        this.tableSig = "";
         if (done.offline) {
           var t = this.tables.find(function (x) { return x.id === id; });
           if (t) { t.lines = []; t.sent = {}; t.busy = false; t.total = 0; t.kots = 0; t.since = ""; this.saveTables(); }

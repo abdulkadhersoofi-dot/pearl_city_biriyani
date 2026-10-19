@@ -289,7 +289,13 @@
       formData: function () {
         var body = new FormData(), self = this;
         body.append("csrf_token", this.csrf);
-        if (this.table) { body.append("order_type", "dine_in"); body.append("table_id", this.table.id); }
+        if (this.table) {
+          body.append("order_type", "dine_in");
+          body.append("table_id", this.table.id);
+          // The table as this phone last saw it - the server refuses a bill
+          // made from an old view (KOTs still on their way excepted).
+          if (this.tableSig !== null && !this.tableWaiting(this.table.id)) body.append("table_sig", this.tableSig);
+        }
         else if (this.orderType) body.append("order_type", this.orderType);
         this.cart.forEach(function (l) {
           body.append("line_product_id[]", l.product_id);
@@ -339,6 +345,7 @@
             }
             if (!r.res.ok) {
               self.error = r.data.error || "The bill wasn't saved.";
+              if (r.data.table_changed) self.refreshTables();
               if (cfg.cashier && /PIN/.test(self.error)) self.cashier = null;
               return;
             }

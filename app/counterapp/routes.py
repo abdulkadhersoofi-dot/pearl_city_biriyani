@@ -178,7 +178,8 @@ def send_kots():
             continue
         if kot is None:
             db.session.commit()
-            results.append({"uuid": payload.get("uuid"), "status": "unchanged"})
+            results.append({"uuid": payload.get("uuid"), "status": "unchanged",
+                            **_table_sig(tenant, payload.get("table_id"))})
             continue
         if new:
             record_audit(current_user, "kot_sent", tenant_id=tenant.id, entity_type="dining_table",
@@ -186,8 +187,17 @@ def send_kots():
                                                           **({"phone_ref": kot.device_ref} if kot.device_ref else {})})
         db.session.commit()
         results.append({"uuid": kot.client_uuid, "status": "sent", "kot_id": kot.id, "kot_no": kot.kot_no,
-                        "items": kot.items})
+                        "items": kot.items, **_table_sig(tenant, kot.table_id)})
     return jsonify({"results": results})
+
+
+def _table_sig(tenant, table_id) -> dict:
+    """The table's signature after this KOT - the phone bills with it."""
+    from app.restaurant import services as rs
+
+    if not isinstance(table_id, int):
+        return {}
+    return {"sig": rs.lines_sig(rs.order_lines(rs.running_order(tenant.id, table_id)))}
 
 
 @counterapp_bp.route("/ping")

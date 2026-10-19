@@ -1542,6 +1542,13 @@ a.report-tile:hover .report-go { transform: translateX(3px); color: var(--color-
 .table-tile.free { border-top: 4px solid color-mix(in srgb, var(--color-primary) 55%, var(--color-surface)); }
 .table-tile.busy { border-color: color-mix(in srgb, var(--color-accent) 60%, var(--color-border)); border-top: 4px solid var(--color-accent); background: color-mix(in srgb, var(--color-accent) 6%, var(--color-surface)); }
 .table-tile-main { min-height: 110px; padding: 16px 14px; }
+.table-changed { display: flex; align-items: center; gap: 8px; margin: 8px 0 0; padding: 8px 10px; border-radius: 10px;
+  background: var(--color-primary-soft); color: var(--color-text); font-size: 0.9rem; font-weight: 600; }
+.table-changed span { flex: 1; }
+/* Live tables: a table another counter or phone just changed glows once. */
+.table-tile.is-updated { animation: table-updated 1.2s ease-in-out 2; }
+@keyframes table-updated { 50% { box-shadow: 0 0 0 5px var(--color-primary-soft); } }
+@media (prefers-reduced-motion: reduce) { .table-tile.is-updated { animation: none; outline: 3px solid var(--color-primary-soft); } }
 .table-name { font-family: var(--font-display); font-size: 1.5rem; }
 .table-amount { color: var(--color-warn-text); font-size: 1.05rem; }
 .table-actions summary { cursor: pointer; color: var(--color-text-muted); font-weight: 600; padding: 4px 0; }

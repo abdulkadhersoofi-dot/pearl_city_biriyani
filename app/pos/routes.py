@@ -281,6 +281,7 @@ def _module_context(tenant) -> dict:
         else:
             order_type = "takeaway" if "takeaway" in values else (values[0] if values else "dine_in")
         running = rs.running_order(tenant.id, table.id) if table else None
+        snapshot = rs.table_snapshot(tenant, table) if table else None
         out["restaurant"] = {
             "order_types": types, "order_type": order_type, "labels": ORDER_TYPES,
             "table": {"id": table.id, "name": table.name} if table else None,
@@ -288,6 +289,11 @@ def _module_context(tenant) -> dict:
             "service_pct": float(settings["service_charge_percent"] or 0),
             "kot_url": url_for("restaurant.send_kot", table_id=table.id) if table else None,
             "tables_url": url_for("restaurant.tables"),
+            # The table as this page found it, and where to look for
+            # changes from the other screens (live tables).
+            "table_sig": snapshot["sig"] if snapshot else None,
+            "table_lines": snapshot["lines"] if snapshot else [],
+            "table_state_url": url_for("restaurant.table_state", table_id=table.id) if table else None,
         }
         out["quote"] = True
     if tenant.has_feature("pharmacy"):
@@ -512,6 +518,19 @@ def checkout_route():
                             "share_url": url_for("pos.share_bill", bill_id=done.id), "repeat": True})
     try:
         cart = _cart_from_request()
+        if cart.table_id:
+            # Billed from an out-of-date view of the table: refused, with
+            # the table as it is now (live tables).
+            from app.models.business import DiningTable
+            from app.restaurant import services as rs
+
+            try:
+                rs.check_table(tenant, cart.table_id, request.form.get("table_sig"))
+            except rs.TableChanged as exc:
+                db.session.rollback()
+                table = tenant_query(DiningTable).filter_by(id=cart.table_id).first()
+                return jsonify({"error": exc.message, "table_changed": True,
+                                "table": rs.table_snapshot(tenant, table)}), 409
         payment = _payments_from_request()
         cash_tendered = _money(request.form.get("cash_tendered"), "Cash received")
         session = require_open_session(tenant, current_user)

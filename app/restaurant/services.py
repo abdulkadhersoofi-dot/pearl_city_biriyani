@@ -104,6 +104,52 @@ def open_tickets(tenant_id: int, table_id: int):
             .order_by(KitchenTicket.id).all())
 
 
+# --- a table as every screen sees it (live tables) ----------------------------------------
+# Several screens work on one table at once - the counter, a waiter's
+# phone, the owner. Each screen keeps the table's signature from when it
+# last looked; a KOT or a bill sent with an old signature is refused
+# (TableChanged) so a screen that missed another's items can never cancel
+# them or bill the table without them. The screens look every few seconds
+# and fold the other's changes into their own cart.
+
+class TableChanged(RestaurantError):
+    pass
+
+
+def order_lines(order) -> list[dict]:
+    return [{"product_id": l.product_id, "name": l.description, "note": l.note or "", "qty": float(l.qty),
+             "rate": float(l.rate)} for l in (order.lines if order else []) if not l.charge_kind]
+
+
+def lines_sig(lines: list[dict]) -> str:
+    """The table's order in a few characters: the same items in the same
+    quantities give the same signature, whoever saved them. An empty
+    table is ""."""
+    import hashlib
+
+    qty: dict[str, Decimal] = {}
+    for line in lines:
+        k = _key(line["product_id"], line["name"], line["note"])
+        qty[k] = qty.get(k, ZERO) + Decimal(str(line["qty"]))
+    parts = sorted(f"{k}={v.normalize():f}" for k, v in qty.items() if v)
+    return hashlib.sha1("\n".join(parts).encode()).hexdigest()[:16] if parts else ""
+
+
+def table_snapshot(tenant, table) -> dict:
+    lines = order_lines(running_order(tenant.id, table.id))
+    return {"table_id": table.id, "sig": lines_sig(lines), "lines": lines}
+
+
+def check_table(tenant, table_id, sig) -> None:
+    """Refuse a KOT / bill made from an out-of-date view of the table. A
+    screen that sends no signature (an older app) is taken as before."""
+    if sig is None or not table_id:
+        return
+    if lines_sig(order_lines(running_order(tenant.id, table_id))) != sig:
+        raise TableChanged("This table was just changed on another screen - its order is updated here. "
+                           "Check it and press again.")
+
+
 def overview(tenant) -> list[dict]:
     tables = (DiningTable.query.filter_by(tenant_id=tenant.id, is_active=True)
               .order_by(DiningTable.sort_order, DiningTable.name).all())
@@ -281,14 +327,14 @@ def tables_state(tenant) -> list[dict]:
     for tile in overview(tenant):
         table, order = tile["table"], tile["order"]
         sent = sent_quantities(open_tickets(tenant.id, table.id)) if order or tile["kots"] else {}
+        lines = order_lines(order)
         out.append({
+            "sig": lines_sig(lines),
             "id": table.id, "name": table.name, "section": table.section or "",
             "busy": order is not None, "kots": tile["kots"],
             "total": float(order.grand_total) if order else 0,
             "since": order.created_at.astimezone(IST).strftime("%H:%M") if order else "",
-            "lines": [{"product_id": l.product_id, "name": l.description, "note": l.note or "",
-                       "qty": float(l.qty), "rate": float(l.rate)}
-                      for l in (order.lines if order else []) if not l.charge_kind],
+            "lines": lines,
             "sent": {k: float(v["qty"]) for k, v in sent.items()},
         })
     return out
@@ -431,17 +477,27 @@ def settle_offline_bill(tenant, user, bill, payload: dict) -> None:
 KITCHEN_READY_SHOWN = 12
 
 
+def _kitchen_tickets(tenant, user):
+    """A branch's kitchen has that branch's tickets; the owner's (the
+    Client Admin's) has every ticket in the business."""
+    query = KitchenTicket.query.filter(KitchenTicket.tenant_id == tenant.id)
+    if not user.is_client_admin:
+        query = query.filter(KitchenTicket.created_by_id == user.id)
+    return query
+
+
 def kitchen_state(tenant, user) -> dict:
     """The kitchen screen: today's tickets from this branch, oldest first,
     still cooking - and the last few marked ready (to undo a slip of the
-    finger). A cancelled order's tickets drop off."""
+    finger). A cancelled order's tickets drop off. The owner's screen says
+    which login sent each one."""
     from app.einvoice.providers.common import IST
     from app.models.mixins import utcnow
 
-    tickets = (KitchenTicket.query.filter(KitchenTicket.tenant_id == tenant.id, KitchenTicket.kot_date == date.today(),
-                                          KitchenTicket.created_by_id == user.id,
-                                          KitchenTicket.status != KotStatus.CANCELLED)
+    tickets = (_kitchen_tickets(tenant, user)
+               .filter(KitchenTicket.kot_date == date.today(), KitchenTicket.status != KotStatus.CANCELLED)
                .order_by(KitchenTicket.id).all())
+    everyone = user.is_client_admin
     now = utcnow()
 
     def row(t):
@@ -454,7 +510,8 @@ def kitchen_state(tenant, user) -> dict:
                 "minutes": int((now - t.created_at).total_seconds() // 60),
                 "items": [{"name": i["name"], "qty": f"{abs(Decimal(str(i['qty']))).normalize():f}",
                            "note": i.get("note") or "", "cancel": Decimal(str(i["qty"])) < 0} for i in t.items],
-                "ready_at": t.ready_at.astimezone(IST).strftime("%H:%M") if t.ready_at else ""}
+                "ready_at": t.ready_at.astimezone(IST).strftime("%H:%M") if t.ready_at else "",
+                "by": (t.created_by.name if t.created_by else "") if everyone else ""}
 
     cooking = [row(t) for t in tickets if t.ready_at is None]
     ready = [row(t) for t in sorted((t for t in tickets if t.ready_at), key=lambda t: t.ready_at, reverse=True)]
@@ -464,7 +521,7 @@ def kitchen_state(tenant, user) -> dict:
 def mark_ready(tenant, user, ticket_id: int, ready: bool = True) -> KitchenTicket:
     from app.models.mixins import utcnow
 
-    ticket = KitchenTicket.query.filter_by(id=ticket_id, tenant_id=tenant.id, created_by_id=user.id).first()
+    ticket = _kitchen_tickets(tenant, user).filter(KitchenTicket.id == ticket_id).first()
     if ticket is None:
         raise RestaurantError("That KOT isn't on this kitchen's screen.")
     ticket.ready_at = utcnow() if ready else None

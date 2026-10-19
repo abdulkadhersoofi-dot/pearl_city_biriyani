@@ -10,6 +10,7 @@
     {% for ot in order_types if ot.value != 'dine_in' %}
     <a href="{{ url_for('pos.terminal', order_type=ot.value) }}" class="btn btn-secondary">{{ ot.label }}</a>
     {% endfor %}
+    <a href="{{ url_for('restaurant.kitchen') }}" class="btn btn-quiet">Kitchen</a>
     <a href="{{ url_for('restaurant.menu') }}" class="btn btn-quiet">Sold out today</a>
     {% if current_user.is_client_admin %}<a href="{{ url_for('restaurant.setup') }}" class="btn btn-quiet">Setup</a>{% endif %}
   </div>
@@ -17,41 +18,9 @@
 {% if not tiles %}
 <div class="card"><p class="empty-state">No tables yet.{% if current_user.is_client_admin %} <a href="{{ url_for('restaurant.setup') }}">Add your tables</a>.{% endif %}</p></div>
 {% endif %}
-<div class="table-grid">
-  {% for t in tiles %}
-  {% set o = t.order %}
-  <div class="table-tile {{ 'busy' if o else 'free' }}">
-    <a href="{{ url_for('pos.terminal', table=t.table.id) }}" class="table-tile-main">
-      <span class="table-name">{{ t.table.name }}</span>
-      {% if t.table.section %}<span class="table-section">{{ t.table.section }}</span>{% endif %}
-      {% if o %}
-        <span class="table-amount">Rs. {{ '%.2f'|format(o.grand_total) }}</span>
-        <span class="table-meta">{{ o.lines|length }} item{{ 's' if o.lines|length != 1 }} &middot; since {{ o.created_at|ist('%H:%M') }}{% if t.kots %} &middot; {{ t.kots }} KOT{{ 's' if t.kots != 1 }}{% endif %}</span>
-      {% else %}
-        <span class="table-meta">Free</span>
-      {% endif %}
-    </a>
-    {% if o %}
-    <details class="table-actions">
-      <summary>More</summary>
-      <form method="post" action="{{ url_for('restaurant.move', table_id=t.table.id) }}" class="row gap-6">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <select name="to_table_id" class="field-input m-0">
-          {% for other in free %}<option value="{{ other.id }}">Move to {{ other.name }}</option>{% endfor %}
-          {% for other in busy if other.id != t.table.id %}<option value="{{ other.id }}">Merge into {{ other.name }}</option>{% endfor %}
-        </select>
-        <button class="btn btn-quiet btn-sm" name="action" value="move">Move</button>
-        <button class="btn btn-quiet btn-sm" name="action" value="merge">Merge</button>
-      </form>
-      <form method="post" action="{{ url_for('restaurant.cancel', table_id=t.table.id) }}" class="row gap-6 mt-6"
-            onsubmit="return confirm('Cancel the whole order on table {{ t.table.name }}?');">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <input type="text" name="reason" placeholder="Reason" required class="field-input m-0 grow">
-        <button class="btn btn-danger btn-sm">Cancel order</button>
-      </form>
-    </details>
-    {% endif %}
-  </div>
-  {% endfor %}
+<div id="tables-live" data-url="{{ url_for('restaurant.tables', live=1) }}" data-sig="{{ grid_sig }}" aria-live="polite">
+{% include "restaurant/_grid.html" %}
 </div>
+<p class="text-muted fs-sm2 mt-12" id="tables-live-note">{{ icon('activity', 'icon-sm') }} Live - orders from every counter and phone show here as they are sent.</p>
+<script src="{{ url_for('static', filename='js/tables_live.js') }}"></script>
 {% endblock %}

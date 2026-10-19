@@ -2811,6 +2811,45 @@ and numbering are the website's. Stage 1 is how a phone gets in.
 - Fixed on the way: the home screen passed the text "null" for a phone
   signed in without a paired device, hiding the device line.
 
+### Branch screens and live tables (after the counter app)
+
+- **A branch login has a menu** once its business has screens beyond the
+  counter (`navigation._branch_groups`): Counter, Tables, Kitchen, Sold
+  out today (restaurant), Job cards and Warranty check (job cards /
+  electronics), then Day-book and Z-report (with "view reports"), Close
+  the day and Offline bills (when those are on). Each entry follows the
+  business's modules, the modules hidden at that counter, and the login's
+  permissions - the same rules as the routes, so nothing opens that
+  didn't before; the menu just shows it. A branch with nothing but the
+  counter keeps the simple layout. Search (Ctrl K) lists the same screens.
+  (Before, these screens were open to a branch but reachable only through
+  a small "Tables" button on the bill, so a branch looked like it had the
+  counter alone.)
+- **The Tables page is live** (`restaurant/routes.tables`, `?live=1`
+  returns the grid and its signature; `static/js/tables_live.js`): it
+  looks again every 5 seconds and swaps in the grid when anything
+  changed, lighting up the tables that did. It waits while a table's
+  "More" panel is open.
+- **A table open on the counter is live too**: the page polls
+  `/restaurant/tables/<id>/state` and folds in what another counter or
+  phone changed (as + / - quantities, on top of what was added here),
+  with a "Changed on another screen" note. The phone app does the same
+  for its tables list and an open table (every 6 seconds).
+- **A KOT or bill from an out-of-date view of a table is refused.**
+  Every screen sends the table's signature (`services.lines_sig`: the
+  items and quantities, whoever saved them) with a KOT (website) or a
+  table's bill (website and app). If the table changed meanwhile, the
+  server answers 409 with the table as it is now; the screen folds it in
+  and says to check and press again. Before, the counter sent the whole
+  order as it was when its page opened, so a KOT from it could cancel
+  what a waiter's phone had added since, and billing could leave those
+  items off the bill. A screen that sends no signature (an older app)
+  is taken as before. The app's KOTs were already sent as changes.
+- **A kitchen screen on the website** (`/restaurant/kitchen`, the same
+  screen as the app's): a branch sees its own KOTs, as in the app; the
+  owner sees every counter's, with who sent each, and can mark any
+  ready. The Tables page has a Kitchen button.
+
 ### Counter app - how to run it (hand-over)
 
 **The owner, once per phone**
@@ -3055,6 +3094,13 @@ before packages.
     Kitchen, kitchen stays lit, one signing key), CI build as
     `ARFA-Counter.apk`, walk-through, hand-over ("Counter app - how to
     run it").
+  - Follow-up (done): branch logins get a menu with their screens
+    (Tables, Kitchen, Sold out, Job cards, Day-book...), live tables on
+    the website and in the app, a refused KOT / bill from an out-of-date
+    table, and the owner's kitchen screen with every counter's KOTs.
+  - Open: a branch's kitchen shows only that login's KOTs (as designed in
+    stage 4) - a KOT the owner sends from their own counter shows on the
+    owner's kitchen screen, not on a branch's.
 
   Interface redesign limits:
   - Stage 3 changed pages through shared CSS and two small scripts, not

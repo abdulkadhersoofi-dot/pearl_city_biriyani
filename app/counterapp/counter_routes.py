@@ -101,7 +101,10 @@ def kitchen():
     _kitchen_on()
     from flask_wtf.csrf import generate_csrf
 
-    return render_template("counterapp/kitchen.html", tenant=current_user.tenant, csrf=generate_csrf())
+    return render_template("counterapp/kitchen.html", tenant=current_user.tenant, csrf=generate_csrf(), in_app=True,
+                           state_url=url_for("counterapp.kitchen_state"),
+                           ready_url=url_for("counterapp.kitchen_ready", ticket_id=0),
+                           back_url=url_for("counterapp.index"), back_label="Back to the app's home")
 
 
 @counterapp_bp.route("/kitchen/state")
