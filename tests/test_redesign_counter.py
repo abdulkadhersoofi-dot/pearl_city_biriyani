@@ -51,7 +51,8 @@ def test_counter_is_full_screen_with_its_own_bar(client, db, tenant, client_admi
     html = client.get("/pos/").get_data(as_text=True)
     assert re.search(r'<body class="[^"]*\bis-counter\b', html)
     assert 'class="pos-bar"' in html and "Held bills" in html and 'class="pos-count">0<' in html
-    assert 'class="pay-row"' in html and "quickPay(m.value)" in html
+    # The way to pay is chosen after Checkout only - no Cash / UPI / Card on the bill itself.
+    assert 'class="pay-row"' not in html and "quickPay" not in html and "startCheckout()" in html
     assert "Day-book" in html and "Z-report" in html and "Keyboard shortcuts" in html
     # Other counter pages keep the normal frame.
     day_book = client.get("/pos/bills").get_data(as_text=True)
@@ -118,8 +119,9 @@ t.pickCat("uncat"); out.other = names(t.shownProducts());
 t.search = "soda"; out.search = names(t.shownProducts()); t.search = "";
 const p = PRODUCTS.find(x => x.name === "Parotta");
 t.addToCart(p); t.addToCart(p);
-t.quickPay(t.paymentModes[0].value);
-out.step = t.checkoutStep; out.mode = t.paymentMode; out.qty = t.cart[0].qty;
+t.startCheckout(); out.step = t.checkoutStep;
+t.selectPayment(t.paymentModes[0].value);
+out.mode = t.paymentMode; out.qty = t.cart[0].qty;
 console.log(JSON.stringify(out));
 """ % ids
     path = tmp_path / "counter.js"
@@ -133,4 +135,4 @@ console.log(JSON.stringify(out));
     assert out["drinks"] == ["Lime Soda"] and out["subAfterPick"] is None
     assert out["other"] == ["Pickle"]
     assert out["search"] == ["Lime Soda"]
-    assert out["step"] == "confirm" and out["mode"] == "cash" and out["qty"] == 2
+    assert out["step"] == "payment" and out["mode"] == "cash" and out["qty"] == 2

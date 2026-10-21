@@ -1478,19 +1478,6 @@ a.report-tile:hover .report-go { transform: translateX(3px); color: var(--color-
 .cart-count { display: inline-grid; place-items: center; min-width: 24px; height: 24px; padding: 0 7px; margin-left: 4px; border-radius: 999px; background: var(--color-primary); color: #fff; font-size: 0.8rem; vertical-align: 3px; }
 .is-counter .cart-total-row { align-items: baseline; font-size: 1.05rem; }
 .cart-total-value { display: inline-block; font-size: 1.9rem; font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; transform-origin: right center; }
-.pay-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-.pay-row.pay-1 { grid-template-columns: 1fr; }
-.pay-row.pay-2 { grid-template-columns: repeat(2, 1fr); }
-.pay-btn {
-  min-height: 62px; border-radius: var(--radius-lg); border: 2px solid var(--color-border); background: var(--color-surface);
-  color: var(--color-text); font: inherit; font-size: 1.1rem; font-weight: 800; cursor: pointer;
-  transition: transform 0.12s var(--ease-out), border-color 0.15s, background-color 0.15s, box-shadow 0.15s;
-}
-.pay-btn:hover:not(:disabled) { border-color: var(--color-primary); box-shadow: var(--shadow-1); }
-.pay-btn:active:not(:disabled) { transform: scale(0.97); }
-.pay-btn.is-main { background: var(--color-primary); border-color: var(--color-primary); color: #fff; }
-.pay-btn.is-main:hover:not(:disabled) { background: var(--color-primary-hover); }
-.pay-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .cart-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .cart-actions form { margin: 0; }
 .cart-actions .btn { width: 100%; min-height: 44px; }
@@ -1578,8 +1565,7 @@ a.report-tile:hover .report-go { transform: translateX(3px); color: var(--color-
   .pos-bar { justify-content: space-between; }
   .pos-grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; }
   .is-counter .product-tile { min-height: 150px; }
-  .pay-btn { min-height: 56px; }
-}
+  }
 
 /* --- Utilities (redesign stage 3) ---------------------------------------
    What used to be one-off inline style="..." attributes, now named and

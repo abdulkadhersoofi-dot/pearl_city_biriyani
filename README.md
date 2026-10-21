@@ -2084,13 +2084,15 @@ helpers in `posTerminal()` are new.
   under a picked category, the favourites row, then larger tiles. A
   search always looks through every item. The chips replace the
   expand/collapse tree.
-- **The bill**: a count badge, a big total, and the first three payment
-  modes as **one-tap buttons** - Cash, UPI, Card go straight to the
-  confirm step (cash tendered, UPI QR); "Checkout" (F4) still opens every
-  way to pay - split, credits, old gold, points. A prescription, when the
-  bill needs one, is still asked first. Hold bill (F8) sits beside it.
+- **The bill**: a count badge, a big total, then **Checkout** (F4) - the
+  way to pay (Cash, UPI, Card, split, credits, old gold, points) is
+  picked only after it, in one place. A prescription, when the bill needs
+  one, is still asked first. Hold bill (F8) sits beside it. (Cash / UPI /
+  Card buttons used to sit on the bill itself as one-tap shortcuts; they
+  were taken off because, next to Checkout, they read as a choice to
+  make before checking out.)
 - **Phones**: a bar at the bottom keeps the bill's count and total in
-  reach with a Pay button; tapping it scrolls to the bill.
+  reach with a Checkout button; tapping the total scrolls to the bill.
 - **Motion**: a tapped item flies to the bill total, which bumps; the
   confirm sheet rises in; on "Printed" a tick draws itself (saffron when
   the bill was queued offline) and the change to give rises in large.
@@ -2101,8 +2103,8 @@ helpers in `posTerminal()` are new.
   billing screen, the bar and Counter menu, held bills in the drawer with
   their count, chips only with categories on, branch logins get the same
   counter, and the page's own script run in Node: chips filter by
-  category / sub-category / "Other", search overrides them, and a one-tap
-  payment lands on the confirm step with the right mode.
+  category / sub-category / "Other", search overrides them, and Checkout
+  opens the payment step.
 
 ### Interface redesign - stage 6 (dark mode, sign-in, firm console, accessibility)
 

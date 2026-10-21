@@ -425,16 +425,11 @@
         <button type="button" class="btn btn-secondary btn-lg btn-block mb-8" :disabled="cart.length === 0 || submitting"
                 @click="sendKot()">Send KOT &amp; save order</button>
       </template>
-      <!-- One tap: the counter's usual ways to pay go straight to the confirm step. -->
-      <div class="pay-row" :class="'pay-' + Math.min(paymentModes.length, 3)">
-        <template x-for="(m, mi) in paymentModes.slice(0, 3)" :key="'qp-'+m.value">
-          <button type="button" class="pay-btn" :class="mi === 0 ? 'is-main' : ''" :disabled="cart.length === 0"
-                  @click="quickPay(m.value)" x-text="m.label"></button>
-        </template>
-      </div>
+      <!-- The way to pay is picked after Checkout, never before - one
+           place to choose Cash / UPI / Card / Split. -->
       <div class="cart-actions">
-        <button type="button" class="btn btn-secondary" :disabled="cart.length === 0" @click="startCheckout()"
-                x-text="MODULES.restaurant && MODULES.restaurant.table ? 'Bill this table' : 'Checkout'" title="More ways to pay: split, credits (F4)"></button>
+        <button type="button" class="btn btn-primary" :disabled="cart.length === 0" @click="startCheckout()"
+                x-text="MODULES.restaurant && MODULES.restaurant.table ? 'Bill this table' : 'Checkout'" title="Checkout (F4)"></button>
 
       <form method="post" :action="holdUrl" x-ref="holdForm">
         <input type="hidden" name="then_resume" x-ref="thenResume" value="">
@@ -474,8 +469,7 @@
       <span x-text="cart.length + ' item' + (cart.length === 1 ? '' : 's') + ' - view bill'"></span>
       <strong x-text="'Rs. ' + cartTotal().toFixed(2)"></strong>
     </button>
-    <button type="button" class="btn btn-primary" x-show="paymentModes.length" @click="quickPay(paymentModes[0].value)"
-            x-text="'Pay ' + (paymentModes.length ? paymentModes[0].label : '')"></button>
+    <button type="button" class="btn btn-primary" @click="startCheckout()">Checkout</button>
   </div>
 
   <!-- Held bills: a drawer from the left, its count always on the bar. -->
@@ -1187,7 +1181,7 @@ function posTerminal() {
     // Category/sub-category tree expand-collapse state. Keyed by
     // "cat-<id>" / "sub-<id>" / "uncat" - nothing persists across a
     // reload, "Expand all"/"Collapse all" just set every key at once.
-    // --- category chips and quick pay (redesign stage 5) ----------------
+    // --- category chips (redesign stage 5) --------------------------------
     pickCat(id) { this.activeCat = id; this.activeSub = null; },
     activeSubs() {
       if (!this.categoryWise || this.activeCat === null || this.activeCat === "uncat") return [];
@@ -1204,14 +1198,6 @@ function posTerminal() {
         return sub ? sub.products : [];
       }
       return cat.loose_products.concat(...cat.subcategories.map(x => x.products));
-    },
-    // Cash / UPI / Card on the bill: straight to the confirm step (a
-    // prescription first, when the bill needs one).
-    quickPay(mode) {
-      if (!this.cart.length) return;
-      this.startCheckout();
-      if (this.checkoutStep === "rx") { this.afterRx = mode; return; }
-      this.selectPayment(mode);
     },
     // A tapped item flies to the bill total, which gives a small bump.
     flyFrom(ev) {
