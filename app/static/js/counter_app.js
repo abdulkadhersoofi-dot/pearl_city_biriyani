@@ -148,8 +148,10 @@
       pickMode: function (m) { setMode(m); this.mode = m; this.choosing = false; },
       appSettings: function () { if (this.inApp) window.AndroidPrint.openSettings(); },
       unpair: function () {
-        if (!window.confirm("Unpair this phone? It stops billing for this counter until the owner gives a new code.")) return;
-        post("/app/unpair").finally(function () { forget(); window.location.replace("/app/"); });
+        ArfaDialog.confirm("Unpair this phone? It stops billing for this counter until the owner gives a new code.",
+                           {ok: "Unpair", danger: true}).then(function (ok) {
+          if (ok) post("/app/unpair").finally(function () { forget(); window.location.replace("/app/"); });
+        });
       }
     };
   };

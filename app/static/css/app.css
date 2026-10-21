@@ -2029,3 +2029,24 @@ a.console-stat { text-decoration: none; }
 .pair-big span { padding: 12px 16px; border-radius: 16px; background: var(--color-primary-soft); }
 @media (max-width: 640px) { .pair-big { font-size: 2.2rem; } }
 .devices-note { margin: 0 0 12px; padding: 10px 14px; border-radius: var(--radius); background: var(--color-info-bg); color: var(--color-info-text); }
+
+/* The app's own confirm / question box (static/js/dialog.js) - used in
+   place of the browser's confirm() and prompt(), which the Android app
+   can't show. */
+.arfa-dialog-scrim { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 16px;
+  background: var(--color-scrim-strong); animation: arfa-dialog-fade 0.14s ease-out; }
+.arfa-dialog { width: min(420px, 100%); padding: 22px 20px 18px; border-radius: var(--radius-lg); background: var(--color-surface);
+  color: var(--color-text); border: 1px solid var(--color-border); box-shadow: var(--shadow-3); animation: arfa-dialog-rise 0.18s ease-out; }
+.arfa-dialog-text { margin: 0 0 16px; font-size: 1.02rem; font-weight: 600; line-height: 1.45; overflow-wrap: anywhere; }
+.arfa-dialog-input { width: 100%; margin: 0 0 6px; resize: vertical; min-height: 64px; font: inherit; }
+.arfa-dialog-error { margin: 0 0 8px; color: var(--color-danger); font-size: 0.88rem; font-weight: 600; }
+.arfa-dialog-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 8px; }
+.arfa-dialog-actions .btn { min-width: 96px; min-height: 44px; }
+/* One deep red in both themes: white text stays readable on it in dark mode too. */
+.arfa-dialog-actions .btn-danger { background: #b3261e; color: #fff; border-color: #b3261e; }
+.arfa-dialog-actions .btn-danger:hover { background: #8f1d17; border-color: #8f1d17; }
+html.arfa-dialog-open { overflow: hidden; }
+@keyframes arfa-dialog-fade { from { opacity: 0; } }
+@keyframes arfa-dialog-rise { from { opacity: 0; transform: translateY(8px) scale(0.98); } }
+@media (prefers-reduced-motion: reduce) { .arfa-dialog-scrim, .arfa-dialog { animation: none; } }
+@media print { .arfa-dialog-scrim { display: none; } }

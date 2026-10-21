@@ -98,7 +98,7 @@
   <h2 class="mt-0">Void this invoice</h2>
   <p class="text-muted">Invoices are never deleted - voiding keeps it on record with the reason, for audit.</p>
   <form method="post" action="{{ url_for('invoicing.void_invoice_route', invoice_id=invoice.id) }}"
-        onsubmit="return confirm('Void invoice {{ invoice.invoice_number }}? This cannot be undone.');" class="row">
+        data-confirm="Void invoice {{ invoice.invoice_number }}? This cannot be undone." data-danger class="row">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="text" name="reason" placeholder="Reason for voiding" required class="field-input grow minw-200">
     <button class="btn btn-danger">Void invoice</button>

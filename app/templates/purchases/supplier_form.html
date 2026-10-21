@@ -39,7 +39,7 @@
 </div>
 {% endif %}
 <form class="mt-12" method="post" action="{{ url_for('purchases.deactivate_supplier', supplier_id=supplier.id) }}"
-      onsubmit="return confirm('Remove {{ supplier.name }} from the active list?');">
+      data-confirm="Remove {{ supplier.name }} from the active list?" data-danger>
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <button class="btn btn-quiet">Remove</button>
 </form>

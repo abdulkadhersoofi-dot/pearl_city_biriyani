@@ -32,7 +32,7 @@
   <form method="post" class="row gap-8">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="gstin_id" value="{{ g.id }}">
     <button name="action" value="test" class="btn btn-secondary">Test login</button>
-    <button name="action" value="remove" class="btn btn-quiet" onclick="return confirm('Remove the saved login?');">Remove login</button>
+    <button name="action" value="remove" class="btn btn-quiet" data-confirm="Remove the saved login?" data-danger>Remove login</button>
   </form>
   {% else %}
   <p class="text-muted">No login saved - use the JSON downloads and record the IRN / e-way bill number you get back.</p>

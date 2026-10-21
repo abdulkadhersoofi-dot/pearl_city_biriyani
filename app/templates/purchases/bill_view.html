@@ -78,7 +78,7 @@
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <label class="field m-0 grow"><span class="field-label">Void this bill - reason</span>
     <input type="text" name="reason" class="field-input" required></label>
-  <button class="btn btn-danger" onclick="return confirm('Void {{ bill.number }}? Its goods come out of stock and its ITC is dropped.');">Void</button>
+  <button class="btn btn-danger" data-confirm="Void {{ bill.number }}? Its goods come out of stock and its ITC is dropped." data-danger>Void</button>
 </form>
 {% endif %}
 {% endblock %}

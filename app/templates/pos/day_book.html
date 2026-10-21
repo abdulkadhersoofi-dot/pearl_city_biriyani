@@ -29,7 +29,8 @@
           <a href="{{ url_for('pos.return_items', bill_id=b.id) }}" class="btn btn-quiet btn-sm">Return items</a>
           {% if not b.returns %}
           <form method="post" action="{{ url_for('pos.refund_bill_route', bill_id=b.id) }}"
-                onsubmit="var r = prompt('Reason for refund:'); if (!r) { return false; } this.reason.value = r; return confirm('Refund Rs. {{ '%.2f'|format(b.grand_total) }} for {{ b.bill_number }}?');">
+                data-prompt="Reason for refunding {{ b.bill_number }}:" data-prompt-field="reason"
+                data-confirm="Refund Rs. {{ '%.2f'|format(b.grand_total) }} for {{ b.bill_number }}?" data-danger>
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="amount" value="{{ b.grand_total }}">
             <input type="hidden" name="redirect_date" value="{{ on_date.isoformat() }}">
@@ -40,7 +41,7 @@
           {% endif %}
           {% if b.status.value == 'completed' and can('void') %}
           <form method="post" action="{{ url_for('pos.void_bill_route', bill_id=b.id) }}"
-                onsubmit="var r = prompt('Why is {{ b.bill_number }} being voided?'); if (!r) { return false; } this.reason.value = r; return true;">
+                data-prompt="Why is {{ b.bill_number }} being voided?" data-prompt-field="reason">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="redirect_date" value="{{ on_date.isoformat() }}">
             <input type="hidden" name="reason">

@@ -17,7 +17,7 @@
       <summary>Cancel this IRN</summary>
       <p class="text-muted">The IRP lets you cancel within {{ irn_cancel_hours }} hours of generating it. The {{ 'invoice' if p.kind == 'invoice' else 'note' }} is then voided with the same reason.</p>
       <form method="post" action="{{ url_for('einvoice.cancel', kind=p.kind, doc_id=doc.id) }}" class="form-grid"
-            onsubmit="return confirm('Cancel the IRN and void this document? This cannot be undone.');">
+            data-confirm="Cancel the IRN and void this document? This cannot be undone." data-danger>
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <label class="field"><span class="field-label">Reason</span>
           <select name="reason_code" class="field-input" required>{% for code, label in p.reasons.items() %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select></label>

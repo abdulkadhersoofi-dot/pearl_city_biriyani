@@ -67,7 +67,7 @@
   <form method="post" class="row gap-10"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="invoice">
     <button class="btn btn-primary" {{ 'disabled' if not job.lines }}>Make the invoice</button></form>
   {% else %}<p class="text-muted mt-0">The owner's login makes the invoice.</p>{% endif %}
-  <form method="post" class="row gap-10 mt-10" onsubmit="return confirm('Cancel job {{ job.number }}?');">
+  <form method="post" class="row gap-10 mt-10" data-confirm="Cancel job {{ job.number }}?" data-danger>
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="cancel">
     <input type="text" name="reason" placeholder="Reason to cancel" required class="field-input m-0 grow">
     <button class="btn btn-danger">Cancel job</button>

@@ -21,7 +21,7 @@
   <div class="page-header mb-12">
     <h2 class="m-0 fs-lg">{{ category.name }}</h2>
     <form method="post" action="{{ url_for('products.deactivate_category', category_id=category.id) }}"
-          onsubmit="return confirm('Remove {{ category.name }} and all its sub-categories? Items already using them keep working, just grouped under Uncategorized in the POS.');">
+          data-confirm="Remove {{ category.name }} and all its sub-categories? Items already using them keep working, just grouped under Uncategorized in the POS." data-danger>
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button class="btn btn-quiet btn-sm">Remove category</button>
     </form>
@@ -32,7 +32,7 @@
     <li class="row" style="justify-content:space-between; align-items:center; padding:4px 0;">
       <span>{{ sub.name }}</span>
       <form method="post" action="{{ url_for('products.deactivate_sub_category', sub_category_id=sub.id) }}"
-            onsubmit="return confirm('Remove {{ sub.name }}?');">
+            data-confirm="Remove {{ sub.name }}?" data-danger>
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button class="btn btn-quiet btn-sm">Remove</button>
       </form>

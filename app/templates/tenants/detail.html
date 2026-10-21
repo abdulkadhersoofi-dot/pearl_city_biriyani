@@ -48,7 +48,7 @@
           {% if console_can('pause_clients') %}
           {% if tenant.is_active %}
           <form method="post" action="{{ url_for('tenants.deactivate', tenant_id=tenant.id) }}"
-                onsubmit="return confirm('Pause {{ tenant.legal_name }}? They and every branch under them will no longer be able to sign in, until resumed.');">
+                data-confirm="Pause {{ tenant.legal_name }}? They and every branch under them will no longer be able to sign in, until resumed." data-danger>
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button class="btn btn-danger" role="menuitem">Pause access</button>
           </form>
@@ -236,14 +236,14 @@
                       <a href="{{ url_for('tenants.reset_client_password', tenant_id=tenant.id, user_id=u.id) }}" class="btn" role="menuitem">Reset password</a>
                       {% if u.has_two_factor %}
                       <form method="post" action="{{ url_for('tenants.reset_client_two_factor', tenant_id=tenant.id, user_id=u.id) }}"
-                            onsubmit="return confirm('Turn off two-step sign-in for {{ u.name }}? Only do this if they lost their phone.');">
+                            data-confirm="Turn off two-step sign-in for {{ u.name }}? Only do this if they lost their phone." data-danger>
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <button class="btn" role="menuitem">Reset two-step sign-in</button>
                       </form>
                       {% endif %}
                       {% if u.is_active %}
                       <form method="post" action="{{ url_for('tenants.deactivate_user', tenant_id=tenant.id, user_id=u.id) }}"
-                            onsubmit="return confirm('Deactivate {{ u.name }}? They will no longer be able to sign in.');">
+                            data-confirm="Deactivate {{ u.name }}? They will no longer be able to sign in." data-danger>
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <button class="btn btn-danger" role="menuitem">Deactivate</button>
                       </form>

@@ -12,7 +12,7 @@
 <div class="card"><p class="mt-0"><strong>Voided</strong> {{ v.voided_at|ist }}</p><p class="text-muted">{{ v.void_reason }}</p></div>
 {% elif current_user.is_client_admin and not v.used_amount %}
 <form method="post" action="{{ url_for('jewellery.old_gold_void', voucher_id=v.id) }}" class="card row void-box gap-10 items-end"
-      onsubmit="return confirm('Void {{ v.number }}?');">
+      data-confirm="Void {{ v.number }}?" data-danger>
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <label class="field m-0 grow"><span class="field-label">Void this voucher - reason</span><input type="text" name="reason" required class="field-input"></label>
   <button class="btn btn-danger">Void</button>

@@ -43,7 +43,7 @@
 
 {% if ret.status.value == 'completed' and can('void') %}
 <form class="mt-16" method="post" action="{{ url_for('pos.void_return_route', return_id=ret.id) }}"
-      onsubmit="var r = prompt('Why is this return being voided?'); if (!r) { return false; } this.reason.value = r; return true;">
+      data-prompt="Why is this return being voided?" data-prompt-field="reason">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <input type="hidden" name="reason">
   <button class="btn btn-quiet text-danger">Void this return</button>

@@ -40,7 +40,7 @@
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <label class="field m-0 grow"><span class="field-label">Void this adjustment - reason</span>
     <input type="text" name="reason" class="field-input" required></label>
-  <button class="btn btn-danger" onclick="return confirm('Void {{ adjustment.number }}? Its stock changes will be reversed.');">Void</button>
+  <button class="btn btn-danger" data-confirm="Void {{ adjustment.number }}? Its stock changes will be reversed." data-danger>Void</button>
 </form>
 {% endif %}
 {% endblock %}

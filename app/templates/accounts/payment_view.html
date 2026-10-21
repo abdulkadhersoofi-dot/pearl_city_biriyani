@@ -27,7 +27,7 @@
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <label class="field m-0"><span class="field-label">Cheque status on</span><input type="date" name="on" value="{{ today.isoformat() }}" class="field-input"></label>
   <button name="status" value="cleared" class="btn btn-primary">Cleared</button>
-  <button name="status" value="bounced" class="btn btn-danger" onclick="return confirm('Mark the cheque bounced? The bills it paid become unpaid again.');">Bounced</button>
+  <button name="status" value="bounced" class="btn btn-danger" data-confirm="Mark the cheque bounced? The bills it paid become unpaid again." data-danger>Bounced</button>
 </form>
 {% endif %}
 <h2>Set against</h2>
@@ -39,7 +39,7 @@
         <td>{% if a.purchase_bill %}<a href="{{ url_for('purchases.view_bill', bill_id=a.purchase_bill_id) }}">{{ a.purchase_bill.number }} ({{ a.purchase_bill.supplier_invoice_no }})</a>{% elif a.expense %}<a href="{{ url_for('expenses.view_expense', expense_id=a.expense_id) }}">{{ a.expense.number }}</a>{% else %}Opening balance{% endif %}</td>
         <td class="num">{{ '%.2f'|format(a.amount) }}</td>
         <td>{% if payment.status.value == 'posted' %}<form class="d-inline" method="post" action="{{ url_for('accounts.remove_payment_allocation', payment_id=payment.id, allocation_id=a.id) }}">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-quiet btn-sm" onclick="return confirm('Take this amount off the bill?');">Remove</button></form>{% endif %}</td>
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-quiet btn-sm" data-confirm="Take this amount off the bill?" data-danger>Remove</button></form>{% endif %}</td>
       </tr>
     {% else %}
       <tr><td colspan="3" class="empty-state">Not set against any bill - it's an advance to the supplier.</td></tr>
@@ -61,7 +61,7 @@
 <form method="post" action="{{ url_for('accounts.void_payment', payment_id=payment.id) }}" class="card row void-box gap-10 items-end">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <label class="field m-0 grow"><span class="field-label">Void this payment - reason</span><input type="text" name="reason" class="field-input" required></label>
-  <button class="btn btn-danger" onclick="return confirm('Void {{ payment.number }}?');">Void</button>
+  <button class="btn btn-danger" data-confirm="Void {{ payment.number }}?" data-danger>Void</button>
 </form>
 {% endif %}
 {% endblock %}

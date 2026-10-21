@@ -65,7 +65,7 @@
 <form method="post" action="{{ url_for('sales.cancel_document', doc_id=doc.id) }}" class="card row void-box gap-10 items-end">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <label class="field m-0 grow"><span class="field-label">Cancel this {{ doc.label|lower }} - reason</span><input type="text" name="reason" class="field-input" required></label>
-  <button class="btn btn-danger" onclick="return confirm('Cancel {{ doc.number }}?');">Cancel</button>
+  <button class="btn btn-danger" data-confirm="Cancel {{ doc.number }}?" data-danger>Cancel</button>
 </form>
 {% endif %}
 {% endblock %}

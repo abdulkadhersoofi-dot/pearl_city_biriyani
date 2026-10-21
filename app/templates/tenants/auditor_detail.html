@@ -38,7 +38,7 @@
           <a href="{{ url_for('tenants.reset_auditor_password', auditor_id=auditor.id) }}" class="btn" role="menuitem">Reset password</a>
           {% if auditor.has_two_factor %}
           <form method="post" action="{{ url_for('tenants.reset_auditor_two_factor', auditor_id=auditor.id) }}"
-                onsubmit="return confirm('Reset two-step sign-in for {{ auditor.name }}? They set it up again at their next sign-in.');">
+                data-confirm="Reset two-step sign-in for {{ auditor.name }}? They set it up again at their next sign-in." data-danger>
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button class="btn" role="menuitem">Reset two-step sign-in</button>
           </form>
@@ -46,7 +46,7 @@
           <a href="{{ url_for('subscriptions.index', kind='auditor', subject_id=auditor.id) }}" class="btn" role="menuitem">Subscription invoices</a>
           {% if auditor.is_active %}
           <form method="post" action="{{ url_for('tenants.deactivate_auditor', auditor_id=auditor.id) }}"
-                onsubmit="return confirm('Deactivate {{ auditor.name }}? They will no longer be able to sign in.');">
+                data-confirm="Deactivate {{ auditor.name }}? They will no longer be able to sign in." data-danger>
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button class="btn btn-danger" role="menuitem">Deactivate</button>
           </form>

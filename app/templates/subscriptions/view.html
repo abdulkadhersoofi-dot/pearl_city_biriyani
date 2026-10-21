@@ -60,7 +60,7 @@
     <button class="btn btn-primary">Mark paid</button>
   </form>
   <form method="post" action="{{ url_for('subscriptions.void', invoice_id=invoice.id) }}" class="row flex-wrap"
-        onsubmit="return confirm('Void {{ invoice.number }}? It stays on record as voided.');">
+        data-confirm="Void {{ invoice.number }}? It stays on record as voided." data-danger>
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input name="reason" class="field-input maxw-260" placeholder="Reason to void" required>
     <button class="btn btn-quiet">Void</button>

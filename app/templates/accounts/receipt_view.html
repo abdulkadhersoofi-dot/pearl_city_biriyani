@@ -39,7 +39,7 @@
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <label class="field" style="margin:0;"><span class="field-label">Cheque status on</span><input type="date" name="on" value="{{ today.isoformat() }}" class="field-input"></label>
   <button name="status" value="cleared" class="btn btn-primary">Cleared</button>
-  <button name="status" value="bounced" class="btn btn-danger" onclick="return confirm('Mark the cheque bounced? The bills it paid become outstanding again.');">Bounced</button>
+  <button name="status" value="bounced" class="btn btn-danger" data-confirm="Mark the cheque bounced? The bills it paid become outstanding again." data-danger>Bounced</button>
 </form>
 {% endif %}
 
@@ -58,7 +58,7 @@
         {% if receipt.is_advance %}{% set u = tax_by_alloc.get(a.id) %}<td class="num">{{ '%.2f'|format(u.taxable_value) if u else '' }}</td><td class="num">{{ '%.2f'|format(u.tax) if u else '' }}</td>{% endif %}
         <td>{% if receipt.status.value == 'posted' %}
           <form method="post" action="{{ url_for('accounts.remove_receipt_allocation', receipt_id=receipt.id, allocation_id=a.id) }}" style="display:inline;">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-quiet btn-sm" onclick="return confirm('Take this amount off the bill?');">Remove</button></form>{% endif %}</td>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-quiet btn-sm" data-confirm="Take this amount off the bill?" data-danger>Remove</button></form>{% endif %}</td>
       </tr>
     {% else %}
       <tr><td colspan="6" class="empty-state">Not set against any bill - it's on account.</td></tr>
@@ -94,7 +94,7 @@
 <form method="post" action="{{ url_for('accounts.void_receipt', receipt_id=receipt.id) }}" class="card row void-box" style="gap:10px; align-items:flex-end;">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <label class="field" style="margin:0; flex:1;"><span class="field-label">Void this receipt - reason</span><input type="text" name="reason" class="field-input" required></label>
-  <button class="btn btn-danger" onclick="return confirm('Void {{ receipt.number }}?');">Void</button>
+  <button class="btn btn-danger" data-confirm="Void {{ receipt.number }}?" data-danger>Void</button>
 </form>
 {% endif %}
 {% endblock %}

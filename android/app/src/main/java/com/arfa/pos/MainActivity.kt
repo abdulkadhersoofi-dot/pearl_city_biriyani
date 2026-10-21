@@ -31,6 +31,9 @@ import android.view.View
 import android.view.WindowManager
 import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
+import android.webkit.JsPromptResult
+import android.webkit.JsResult
+import android.webkit.WebChromeClient
 import android.webkit.SslErrorHandler
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
@@ -198,6 +201,54 @@ class MainActivity : AppCompatActivity() {
 
         webView.addJavascriptInterface(PrintBridge(), "AndroidPrint")
         webView.webViewClient = AppWebViewClient()
+        webView.webChromeClient = AppChromeClient()
+    }
+
+    /**
+     * The page's own alert / confirm / prompt boxes. A WebView without this
+     * answers every confirm() with "Cancel" and never shows it - which is
+     * how Discard on a held bill used to do nothing in the app. The web
+     * screens now draw their own boxes (static/js/dialog.js); this is the
+     * safety net for any page that still asks the browser.
+     */
+    private inner class AppChromeClient : WebChromeClient() {
+        override fun onJsAlert(view: WebView?, url: String?, message: String?, result: JsResult): Boolean {
+            if (isFinishing) { result.cancel(); return true }
+            AlertDialog.Builder(this@MainActivity)
+                .setMessage(message)
+                .setPositiveButton(android.R.string.ok) { _, _ -> result.confirm() }
+                .setOnCancelListener { result.confirm() }
+                .show()
+            return true
+        }
+
+        override fun onJsConfirm(view: WebView?, url: String?, message: String?, result: JsResult): Boolean {
+            if (isFinishing) { result.cancel(); return true }
+            AlertDialog.Builder(this@MainActivity)
+                .setMessage(message)
+                .setPositiveButton(android.R.string.ok) { _, _ -> result.confirm() }
+                .setNegativeButton(android.R.string.cancel) { _, _ -> result.cancel() }
+                .setOnCancelListener { result.cancel() }
+                .show()
+            return true
+        }
+
+        override fun onJsPrompt(view: WebView?, url: String?, message: String?, defaultValue: String?,
+                                result: JsPromptResult): Boolean {
+            if (isFinishing) { result.cancel(); return true }
+            val input = EditText(this@MainActivity).apply {
+                setText(defaultValue ?: "")
+                setSingleLine(false)
+            }
+            AlertDialog.Builder(this@MainActivity)
+                .setMessage(message)
+                .setView(input)
+                .setPositiveButton(android.R.string.ok) { _, _ -> result.confirm(input.text.toString()) }
+                .setNegativeButton(android.R.string.cancel) { _, _ -> result.cancel() }
+                .setOnCancelListener { result.cancel() }
+                .show()
+            return true
+        }
     }
 
     private fun reload() {

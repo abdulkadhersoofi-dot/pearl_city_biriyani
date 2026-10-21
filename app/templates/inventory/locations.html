@@ -35,7 +35,7 @@
         <td>{{ 'Active' if loc.is_active else 'Off' }}</td>
         <td>
           {% if loc.is_active and not loc.is_default and loc.kind.value != 'branch' %}
-          <form method="post" action="{{ url_for('inventory.deactivate_location', location_id=loc.id) }}" onsubmit="return confirm('Switch off {{ loc.name }}?');">
+          <form method="post" action="{{ url_for('inventory.deactivate_location', location_id=loc.id) }}" data-confirm="Switch off {{ loc.name }}?" data-danger>
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button class="btn btn-quiet btn-sm">Switch off</button>
           </form>

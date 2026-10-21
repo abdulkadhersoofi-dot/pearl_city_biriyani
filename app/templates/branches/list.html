@@ -34,7 +34,7 @@
             <button class="btn btn-secondary btn-sm">{{ icon('smartphone', 'icon-sm') }}Pair a phone</button>
           </form>
           <form method="post" action="{{ url_for('branches.deactivate_branch', user_id=u.id) }}"
-                onsubmit="return confirm('Deactivate {{ u.name }}? They will no longer be able to sign in.');">
+                data-confirm="Deactivate {{ u.name }}? They will no longer be able to sign in." data-danger>
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button class="btn btn-quiet">Deactivate</button>
           </form>
@@ -103,7 +103,7 @@
           <td>{% if d.is_active %}<span class="status-badge status-issued">On</span>{% else %}<span class="status-badge status-draft">Off</span>{% endif %}</td>
           <td class="num">
             <form method="post" action="{{ url_for('branches.device_active', device_id=d.id) }}"
-                  {% if d.is_active %}onsubmit="return confirm('Switch off {{ d.name }}? It stops billing for {{ d.user.name }} straight away.');"{% endif %}>
+                  {% if d.is_active %}data-confirm="Switch off {{ d.name }}? It stops billing for {{ d.user.name }} straight away." data-danger{% endif %}>
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <input type="hidden" name="active" value="{{ '0' if d.is_active else '1' }}">
               <button class="btn btn-quiet btn-sm">{{ 'Switch off' if d.is_active else 'Switch on' }}</button>

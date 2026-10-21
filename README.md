@@ -2852,6 +2852,30 @@ and numbering are the website's. Stage 1 is how a phone gets in.
   owner sees every counter's, with who sent each, and can mark any
   ready. The Tables page has a Kitchen button.
 
+### The app's own confirm boxes (no browser pop-ups)
+
+- **Every "Are you sure?" and "Why?" is drawn in the page**
+  (`static/js/dialog.js`, loaded by `base.html` and the counter app's
+  layout), never the browser's `confirm()` / `prompt()` / `alert()`.
+  Inside the ARFA Counter Android app those never showed - a WebView
+  with no handler answers "Cancel" without asking - so Discard on a held
+  bill, Void, Remove and the rest silently did nothing there, and they
+  looked different on every phone.
+- In a template: `data-confirm="Void INV-12?"` on a form (or on one
+  button of it), `data-danger` for a red confirm button,
+  `data-confirm-ok` for its words (otherwise the pressed button's own
+  words - "Void", "Discard", "Cancel order"); `data-prompt="Why is it
+  voided?" data-prompt-field="reason"` asks for a reason, fills that
+  field, then sends. From a script: `ArfaDialog.confirm(message, {ok,
+  danger})` and `ArfaDialog.prompt(message, {ok, required})` return
+  Promises. Esc / tapping outside goes back; Enter confirms; the
+  keyboard stays inside the box.
+- The Android app also shows any browser box a page still asks for, as an
+  Android dialog (`MainActivity.AppChromeClient`) - a safety net; it
+  needs the new APK.
+- A test fails if any template or script uses the browser's boxes again
+  (`tests/test_in_page_dialogs.py`).
+
 ### Counter app - how to run it (hand-over)
 
 **The owner, once per phone**

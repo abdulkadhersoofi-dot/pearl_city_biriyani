@@ -39,7 +39,7 @@
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <label class="field m-0 grow"><span class="field-label">Void this transfer - reason</span>
     <input type="text" name="reason" class="field-input" required></label>
-  <button class="btn btn-danger" onclick="return confirm('Void {{ transfer.number }}? The goods go back to {{ transfer.from_location.name }}.');">Void</button>
+  <button class="btn btn-danger" data-confirm="Void {{ transfer.number }}? The goods go back to {{ transfer.from_location.name }}." data-danger>Void</button>
 </form>
 {% endif %}
 {% endblock %}

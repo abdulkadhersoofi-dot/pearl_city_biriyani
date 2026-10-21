@@ -41,7 +41,7 @@
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <label class="field m-0 grow"><span class="field-label">Void this debit note - reason</span>
     <input type="text" name="reason" class="field-input" required></label>
-  <button class="btn btn-danger" onclick="return confirm('Void {{ ret.number }}? The goods come back into stock.');">Void</button>
+  <button class="btn btn-danger" data-confirm="Void {{ ret.number }}? The goods come back into stock." data-danger>Void</button>
 </form>
 {% endif %}
 {% endblock %}

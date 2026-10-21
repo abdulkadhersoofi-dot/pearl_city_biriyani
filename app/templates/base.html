@@ -42,6 +42,7 @@
       if (window.AndroidPrint) { window.location.href = url; } else { window.open(url, "_blank", "noopener"); }
     }
   </script>
+  <script src="{{ url_for('static', filename='js/dialog.js') }}"></script>
   <script defer src="{{ url_for('static', filename='js/shell.js') }}"></script>
   <script defer src="{{ url_for('static', filename='js/vendor/alpine.min.js') }}"></script>
   {% block head %}{% endblock %}

@@ -109,7 +109,7 @@
 {% if product %}
 <form class="mt-12" method="post" action="{{ url_for('products.deactivate_product', product_id=product.id) }}"
      
-      onsubmit="return confirm('Remove {{ product.name }} from the active list?');">
+      data-confirm="Remove {{ product.name }} from the active list?" data-danger>
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <button class="btn btn-quiet">Remove</button>
 </form>

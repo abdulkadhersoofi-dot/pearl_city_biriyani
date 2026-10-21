@@ -652,6 +652,15 @@ this list is just the index.
   `mergeOpenTable` + 6 s poll in `counter_tables.js`, `table_sig` in
   `counter_bill.js formData`. Tests: `tests/test_branch_screens_live.py`.
 
+- **In-page dialogs.** Never use `confirm()` / `prompt()` / `alert()` - the
+  Android WebView can't show them. Templates: `data-confirm`,
+  `data-danger`, `data-confirm-ok`, `data-prompt` + `data-prompt-field`
+  (handled by `static/js/dialog.js`, a capturing submit listener that
+  re-sends with `requestSubmit(submitter)`); scripts: `ArfaDialog.confirm /
+  prompt` (Promises). `MainActivity.AppChromeClient` handles onJsAlert /
+  onJsConfirm / onJsPrompt as a fallback. Sweep test:
+  `tests/test_in_page_dialogs.py`.
+
 ## 5. Chronological development history (this session)
 
 This is the part README.md doesn't capture — the actual sequence of

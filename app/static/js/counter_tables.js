@@ -182,8 +182,10 @@
         if (said.length) this.say("Changed on another screen: " + said.join(", "));
       },
       leaveTable: function () {
-        if (this.unsent().length && !window.confirm("Some changes haven't gone to the kitchen. Leave without sending them?")) return;
-        this.showTables();
+        var self = this;
+        if (!this.unsent().length) { this.showTables(); return; }
+        ArfaDialog.confirm("Some changes haven't gone to the kitchen. Leave without sending them?", {ok: "Leave", danger: true})
+          .then(function (ok) { if (ok) self.showTables(); });
       },
 
       // --- what the kitchen hasn't heard yet ----------------------------------------------------
@@ -282,10 +284,14 @@
         }).catch(function () {}).then(function () { self._flushing = false; });
       },
       dropKot: function (k) {
-        if (!window.confirm("Drop this KOT? It won't reach the books - the kitchen slip already printed stays as it is.")) return;
-        this.kotQueue = this.kotQueue.filter(function (x) { return x !== k; });
-        this.saveQueue();
-        this.refreshTables();
+        var self = this;
+        ArfaDialog.confirm("Drop this KOT? It won't reach the books - the kitchen slip already printed stays as it is.",
+                           {ok: "Drop KOT", danger: true}).then(function (ok) {
+          if (!ok) return;
+          self.kotQueue = self.kotQueue.filter(function (x) { return x !== k; });
+          self.saveQueue();
+          self.refreshTables();
+        });
       },
       // This phone's own KOT numbers while offline: its series code and a
       // count that starts again each day (O1-1, O1-2...).

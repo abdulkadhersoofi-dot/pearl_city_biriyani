@@ -34,7 +34,7 @@
             <button name="action" value="retry" class="btn btn-secondary">Try again</button>
             <input type="text" name="reason" placeholder="Reason to cancel" class="field-input maxw-180">
             <button name="action" value="void" class="btn btn-quiet"
-                    onclick="return confirm('Record {{ r.bill_number }} as a cancelled bill? Its number stays used.');">Cancel bill</button>
+                    data-confirm="Record {{ r.bill_number }} as a cancelled bill? Its number stays used." data-danger>Cancel bill</button>
           </form>
           {% elif r.pos_bill %}
           <a href="{{ url_for('pos.view_receipt', bill_id=r.pos_bill_id) }}">View bill</a>
@@ -68,7 +68,7 @@
             <input type="hidden" name="device_id" value="{{ d.id }}">
             {% if d.is_active %}
             <button name="action" value="device_off" class="btn btn-quiet"
-                    onclick="return confirm('Switch {{ d.name }} off? Bills it still holds can\'t be sent until you switch it back on.');">Switch off</button>
+                    data-confirm="Switch {{ d.name }} off? Bills it still holds can't be sent until you switch it back on." data-danger>Switch off</button>
             {% else %}
             <span class="tag">Off</span> <button name="action" value="device_on" class="btn btn-quiet">Switch on</button>
             {% endif %}

@@ -27,7 +27,7 @@
         <button class="btn btn-quiet btn-sm" name="action" value="merge">Merge</button>
       </form>
       <form method="post" action="{{ url_for('restaurant.cancel', table_id=t.table.id) }}" class="row gap-6 mt-6"
-            onsubmit="return confirm('Cancel the whole order on table {{ t.table.name }}?');">
+            data-confirm="Cancel the whole order on table {{ t.table.name }}?" data-danger>
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="text" name="reason" placeholder="Reason" required class="field-input m-0 grow">
         <button class="btn btn-danger btn-sm">Cancel order</button>

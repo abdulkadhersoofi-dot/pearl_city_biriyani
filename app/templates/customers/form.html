@@ -38,7 +38,7 @@
 {% if customer %}
 <form class="mt-12" method="post" action="{{ url_for('customers.deactivate_customer', customer_id=customer.id) }}"
      
-      onsubmit="return confirm('Remove {{ customer.name }} from the active list?');">
+      data-confirm="Remove {{ customer.name }} from the active list?" data-danger>
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <button class="btn btn-quiet">Remove</button>
 </form>

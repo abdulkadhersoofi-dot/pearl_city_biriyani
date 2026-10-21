@@ -60,7 +60,7 @@
   <summary><strong>Void this voucher</strong> <span class="text-muted">- takes the goods out of your used stock</span></summary>
   {% if sold_any %}<p class="text-muted">Some of these goods were already sold - void those sales first.</p>
   {% else %}
-  <form method="post" action="{{ url_for('margin.voucher_void', bill_id=bill.id) }}" class="row items-end gap-8 mt-12" onsubmit="return confirm('Void {{ bill.number }}?');">
+  <form method="post" action="{{ url_for('margin.voucher_void', bill_id=bill.id) }}" class="row items-end gap-8 mt-12" data-confirm="Void {{ bill.number }}?" data-danger>
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label class="field m-0"><span class="field-label">Reason</span><input type="text" name="reason" class="field-input" required></label>
     <button class="btn btn-danger">Void</button>

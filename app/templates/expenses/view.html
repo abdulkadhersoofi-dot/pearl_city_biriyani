@@ -48,7 +48,7 @@
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <label class="field m-0 grow"><span class="field-label">{{ 'Skip this draft' if expense.status.value == 'draft' else 'Void this expense' }} - reason</span>
     <input type="text" name="reason" class="field-input" required></label>
-  <button class="btn btn-danger" onclick="return confirm('{{ 'Skip this draft?' if expense.status.value == 'draft' else 'Void ' ~ expense.number ~ '?' }}');">{{ 'Skip' if expense.status.value == 'draft' else 'Void' }}</button>
+  <button class="btn btn-danger" data-confirm="{{ 'Skip this draft?' if expense.status.value == 'draft' else 'Void ' ~ expense.number ~ '?' }}" data-danger>{{ 'Skip' if expense.status.value == 'draft' else 'Void' }}</button>
 </form>
 {% endif %}
 {% endblock %}

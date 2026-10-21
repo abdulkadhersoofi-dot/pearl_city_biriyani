@@ -25,7 +25,7 @@
 <form method="post" action="{{ url_for('accounts.void_refund', refund_id=refund.id) }}" class="card row void-box gap-10 items-end">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <label class="field m-0 grow"><span class="field-label">Void this refund voucher - reason</span><input type="text" name="reason" class="field-input" required></label>
-  <button class="btn btn-danger" onclick="return confirm('Void {{ refund.number }}?');">Void</button>
+  <button class="btn btn-danger" data-confirm="Void {{ refund.number }}?" data-danger>Void</button>
 </form>
 {% endif %}
 {% endblock %}

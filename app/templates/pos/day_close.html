@@ -89,7 +89,7 @@
     <button class="btn btn-secondary btn-block">Record</button>
   </form>
   <form method="post" action="{{ url_for('pos.day_close') }}" class="card"
-        onsubmit="return confirm('Close the day? Bills from today can no longer be voided after this.');">
+        data-confirm="Close the day? Bills from today can no longer be voided after this.">
     <h2 class="mt-0">Close the day</h2>
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label class="field"><span class="field-label">Cash counted in the drawer (Rs.)</span><input type="number" name="counted_cash" min="0" step="0.01" class="field-input" required></label>

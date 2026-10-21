@@ -185,8 +185,9 @@
         this.sheet = this.qtyEdit.from === "cart" && this.cart.length ? "cart" : "";
       },
       clearBill: function () {
-        if (this.cart.length && !window.confirm("Clear this bill?")) return;
-        this.cart = []; this.sheet = ""; this.checkoutId = "";
+        var self = this, clear = function () { self.cart = []; self.sheet = ""; self.checkoutId = ""; };
+        if (!this.cart.length) { clear(); return; }
+        ArfaDialog.confirm("Clear this bill?", {ok: "Clear bill", danger: true}).then(function (ok) { if (ok) clear(); });
       },
 
       // --- the cart kept on the phone ---------------------------------------------------------------
@@ -497,8 +498,10 @@
         var self = this;
         if (!this.cart.length) return Promise.resolve(false);
         if (label === undefined) {
-          label = window.prompt("A name for this bill (optional) - a customer's name, or what they're waiting for:", "");
-          if (label === null) return Promise.resolve(false);
+          return ArfaDialog.prompt("A name for this bill (optional) - a customer's name, or what they're waiting for:",
+                                   {ok: "Hold bill", required: false}).then(function (given) {
+            return given === null ? false : self.holdBill(given);
+          });
         }
         var lines = this.cart.map(function (l) { return {product_id: l.product_id, qty: l.qty, note: l.note || ""}; });
         var keepHere = function () {
@@ -549,7 +552,12 @@
       },
       discardHeld: function (h) {
         var self = this;
-        if (!window.confirm("Throw away this held bill?")) return;
+        ArfaDialog.confirm("Throw away this held bill?", {ok: "Discard", danger: true}).then(function (ok) {
+          if (ok) self.dropHeld(h);
+        });
+      },
+      dropHeld: function (h) {
+        var self = this;
         if (String(h.id).charAt(0) === "p") {
           this.localHeld = this.localHeld.filter(function (x) { return x.id !== h.id; });
           this.saveLocalHeld();

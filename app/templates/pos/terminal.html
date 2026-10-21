@@ -489,7 +489,7 @@
           <a href="{{ url_for('pos.terminal', resume=hb.id) }}" class="btn btn-quiet btn-sm"
              @click="resumeHeld($event, {{ hb.id }})">Resume</a>
           <form method="post" action="{{ url_for('pos.discard_held', bill_id=hb.id) }}"
-                onsubmit="return confirm('Discard this held bill?');">
+                data-confirm="Discard this held bill?" data-confirm-ok="Discard" data-danger>
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button class="btn btn-quiet btn-sm">Discard</button>
           </form>

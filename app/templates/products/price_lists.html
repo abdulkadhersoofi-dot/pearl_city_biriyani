@@ -28,7 +28,7 @@
         <td>{{ 'Active' if pl.is_active else 'Off' }}</td>
         <td>
           {% if pl.is_active %}
-          <form method="post" action="{{ url_for('products.deactivate_price_list', list_id=pl.id) }}" onsubmit="return confirm('Switch off {{ pl.name }}? Counters using it go back to normal prices.');">
+          <form method="post" action="{{ url_for('products.deactivate_price_list', list_id=pl.id) }}" data-confirm="Switch off {{ pl.name }}? Counters using it go back to normal prices." data-danger>
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button class="btn btn-quiet btn-sm">Switch off</button>
           </form>

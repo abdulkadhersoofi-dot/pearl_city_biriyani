@@ -147,7 +147,7 @@
   <details class="mt-6">
     <summary>Cancel this e-way bill</summary>
     <p class="field-help">Allowed within {{ ewb_cancel_hours }} hours of generating it, if the goods haven't moved.</p>
-    <form method="post" action="{{ url_for('einvoice.eway_cancel', ewb_id=ewb.id) }}" class="form-grid" onsubmit="return confirm('Cancel e-way bill {{ ewb.ewb_no }}?');">
+    <form method="post" action="{{ url_for('einvoice.eway_cancel', ewb_id=ewb.id) }}" class="form-grid" data-confirm="Cancel e-way bill {{ ewb.ewb_no }}?" data-danger>
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <label class="field"><span class="field-label">Reason</span>
         <select name="reason_code" class="field-input">{% for code, label in cancel_reasons.items() %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select></label>
