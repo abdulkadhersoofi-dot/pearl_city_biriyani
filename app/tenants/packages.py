@@ -26,7 +26,7 @@ from app.utils.audit import record_audit
 from app.utils.auditor_scope import assert_auditor_owns_tenant
 from app.utils.entitlements import (
     AS_PACKAGE, CHOICE, LIMITS, MODULE_STATES, OFF, SETTING_STATES, SETTINGS, allowed_packages, assign_package,
-    auditor_can, ensure_starting_packages,
+    auditor_can, client_switch, ensure_starting_packages,
     grant_of, module_state, own_branding, package_module_state, package_price_for, package_summary, preview_package,
     refresh_read_only, resolve_module_request, set_branding_exception, set_limit_exception, set_module_exception, set_setting_exception,
     setting_state,
@@ -508,6 +508,42 @@ def save_client_exceptions(tenant_id):
     flash(f"{changed} change{'s' if changed != 1 else ''} saved for {tenant.legal_name}." if changed
           else "Nothing changed.", "success")
     return redirect(url_for("tenants.detail", tenant_id=tenant.id, tab="package", _anchor="sec-package"))
+
+
+@tenants_bp.route("/clients/<int:tenant_id>/modules", methods=["POST"])
+@roles_required(UserRole.SUPER_ADMIN)
+def save_client_modules(tenant_id):
+    """Each module for this client: Off or On, locked by ARFA, or the
+    client's own switch. Off / On differing from the package are kept as
+    this client's exceptions; the client can't change either."""
+    tenant = Tenant.query.get_or_404(tenant_id)
+    grant = grant_of(tenant)
+    locks = switched = 0
+    for feature in AVAILABLE_FEATURES:
+        wanted = request.form.get(f"mod_{feature.key}")
+        if wanted is None:
+            continue
+        if wanted not in MODULE_STATES:
+            abort(400)
+        package_state = package_module_state(grant.package, feature.key) if grant is not None else CHOICE
+        target = None if wanted == package_state else wanted
+        current = (grant.module_overrides or {}).get(feature.key) if grant is not None else None
+        if target != current:
+            grant = set_module_exception(tenant, feature.key, target, current_user)
+            locks += 1
+        if wanted == CHOICE:
+            on = request.form.get(f"on_{feature.key}") == "1"
+            if client_switch(tenant, feature.key) != on:
+                tenant.set_feature(feature.key, on)
+                switched += 1
+    if switched:
+        record_audit(current_user, "client_modules_switched", tenant_id=tenant.id, entity_type="tenant",
+                     entity_id=tenant.id, details={"by": "ultra_admin", "count": switched})
+    db.session.commit()
+    changed = locks + switched
+    flash(f"{changed} module{'s' if changed != 1 else ''} changed for {tenant.legal_name}." if changed
+          else "Nothing changed.", "success")
+    return redirect(url_for("tenants.detail", tenant_id=tenant.id, tab="package", _anchor="sec-module-locks"))
 
 
 @tenants_bp.route("/clients/<int:tenant_id>/requests/<int:request_id>", methods=["POST"])

@@ -147,13 +147,17 @@ def test_the_client_page_shows_kinds_and_their_own_choices_by_kind(client, db, t
     db.session.commit()
     _login(client, super_admin.email, "SuperSecret123")
     html = client.get(f"/admin/clients/{tenant.id}").get_data(as_text=True)
-    table = html.split('class="exceptions-table no-stack"', 1)[1].split("</table>", 1)[0]
-    a = _positions(table, 'class="kind-row"><th colspan="4" scope="colgroup">Trade packs',
+    # The Ultra Admin's one module table (Off / On / Client decides), by kind.
+    table = html.split('class="module-locks no-stack"', 1)[1].split("</table>", 1)[0]
+    a = _positions(table, 'class="kind-row" x-show="!q"><th colspan="3" scope="colgroup">Trade packs',
                    'scope="colgroup">Modules', 'scope="colgroup">Selling', 'scope="colgroup">Counter options')
     assert a == sorted(a)
-    chips = html.split("switches</h3>", 1)[1].split("Save their modules", 1)[0]
-    assert '<p class="chip-kind">Modules</p>' in chips and '<p class="chip-kind">Counter options</p>' in chips
-    assert chips.index("chip-kind\">Modules") < chips.index("chip-kind\">Counter options")
+    tenant.set_feature("loyalty", True)   # the client's own choice in Retail, switched on
+    db.session.commit()
+    html = client.get(f"/admin/clients/{tenant.id}").get_data(as_text=True)
+    table = html.split('class="module-locks no-stack"', 1)[1].split("</table>", 1)[0]
+    assert 'name="mod_loyalty" value="choice" checked' in table and 'name="on_loyalty" value="1" checked' in table
+    assert 'name="mod_inventory" value="inc" checked' in table and 'name="mod_batch_expiry" value="off" checked' in table
 
 
 def test_a_client_page_warns_when_an_add_on_is_on_without_its_module(client, db, tenant, super_admin):

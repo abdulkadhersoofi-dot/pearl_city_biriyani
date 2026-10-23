@@ -47,7 +47,8 @@ def checklist(tenant) -> dict | None:
         {"key": "bill", "label": "First bill", "help": "Ring up a sale on the POS, or raise an invoice.",
          "done": (POSBill.query.filter(POSBill.tenant_id == tenant.id, POSBill.bill_number.isnot(None)).first()
                   is not None) or Invoice.query.filter_by(tenant_id=tenant.id).first() is not None,
-         "url": url_for("pos.terminal"), "action": "Open the POS"},
+         "url": url_for("pos.terminal") if tenant.has_feature("pos") else url_for("invoicing.new_invoice"),
+         "action": "Open the POS" if tenant.has_feature("pos") else "Raise an invoice"},
         {"key": "printer", "label": "Printer test", "help": "Print a test receipt to check the paper size.",
          "done": bool(state.get("printer_tested")), "url": url_for("settings.printer_test"), "action": "Print a test"},
     ]

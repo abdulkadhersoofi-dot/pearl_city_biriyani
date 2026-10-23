@@ -45,6 +45,7 @@ def list_branches():
 
 @branches_bp.route("/<int:user_id>/pair", methods=["POST"])
 @roles_required(UserRole.CLIENT_ADMIN)
+@feature_required("pos")
 def pair_phone(user_id):
     """A one-time code that signs a phone in as this branch. Shown once,
     here, never stored in the clear."""

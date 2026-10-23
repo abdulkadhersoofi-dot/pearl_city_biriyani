@@ -108,7 +108,7 @@
 {% elif invoice.status.value == 'void' %}
 <div class="card mt-20">
   {% if has_feature('sales_documents') and invoice.customer_id %}<p><a href="{{ url_for('invoicing.new_invoice', duplicate_from=invoice.id) }}" class="btn btn-secondary">Duplicate as a new invoice</a></p>{% endif %}
-  <p><strong>Voided</strong> on {{ invoice.voided_at.strftime('%d %b %Y %H:%M') }} by {{ invoice.voided_by.name if invoice.voided_by else '-' }}.</p>
+  <p><strong>Voided</strong> on {{ (invoice.voided_at|ist('%d %b %Y %H:%M')) }} by {{ invoice.voided_by.name if invoice.voided_by else '-' }}.</p>
   <p class="text-muted">Reason: {{ invoice.void_reason }}</p>
 </div>
 {% endif %}

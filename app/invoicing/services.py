@@ -7,7 +7,7 @@ from app.models.customer import Customer
 from app.models.invoice import Invoice, InvoiceLine, InvoiceStatus
 from app.models.invoice_series import DocumentType
 from app.models.mixins import utcnow
-from app.models.tenant import Gstin, Tenant
+from app.models.tenant import Gstin, RegistrationType, Tenant
 from app.models.user import BranchType, User, UserRole
 from app.inventory import hooks as inventory_hooks
 from app.inventory import ledger as inventory_ledger
@@ -109,18 +109,29 @@ def parse_line_arrays(
     return lines
 
 
+def branch_document_type(tenant: Tenant, branch) -> DocumentType:
+    """What goes with stock sent to a branch. A branch the business owns
+    is an internal stock transfer: a Delivery Challan, no GST, whatever the
+    registration. A third-party branch buys the stock: a Tax Invoice with
+    GST from a regular business, a Bill of Supply (no GST) from a
+    composition or unregistered one - which can't issue Tax Invoices."""
+    if branch.branch_type == BranchType.OWNED:
+        return DocumentType.DELIVERY_CHALLAN
+    if tenant.registration_type == RegistrationType.REGULAR:
+        return DocumentType.TAX_INVOICE
+    return DocumentType.BILL_OF_SUPPLY
+
+
 def create_invoice(tenant: Tenant, created_by, data: InvoiceInput) -> Invoice:
     branch = None
     if data.branch_user_id:
         branch = User.query.filter_by(id=data.branch_user_id, tenant_id=tenant.id, role=UserRole.STAFF).first()
         if not branch:
             raise InvoiceValidationError("Select a valid branch.")
-        # Never the operator's choice: a PCB-owned branch is an internal
-        # stock transfer (Delivery Challan, no GST); a third-party branch
-        # is a real sale (Tax Invoice, GST as normal). Whatever document
-        # type the caller passed in is overridden here so this can never
-        # drift from the branch's own type.
-        document_type = DocumentType.DELIVERY_CHALLAN if branch.branch_type == BranchType.OWNED else DocumentType.TAX_INVOICE
+        # Never the operator's choice - see branch_document_type. Whatever
+        # document type the caller passed in is overridden here so this
+        # can never drift from the branch's own type.
+        document_type = branch_document_type(tenant, branch)
     elif data.customer_id:
         document_type = data.document_type
     else:

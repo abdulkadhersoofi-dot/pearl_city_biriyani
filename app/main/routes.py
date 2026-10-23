@@ -70,7 +70,28 @@ def index():
         if current_user.tenant and current_user.tenant.has_feature("business_reports"):
             return redirect(url_for("reports.dashboard"))
         return redirect(url_for("invoicing.list_invoices"))
-    return redirect(url_for("pos.terminal"))
+    return redirect(branch_landing(current_user))
+
+
+def branch_landing(user, in_app: bool = False) -> str:
+    """Where a branch login starts: its counter - or, with counter billing
+    (the "pos" module) off for the business, its first other screen."""
+    tenant = user.tenant
+    if tenant is not None and tenant.has_feature("pos"):
+        return url_for("counterapp.index") if in_app else url_for("pos.terminal")
+    if tenant is not None and tenant.has_feature("job_cards"):
+        return url_for("jobs.index")
+    return url_for("main.no_counter")
+
+
+@main_bp.route("/counter-off")
+def no_counter():
+    """A branch login with nothing to open: counter billing is off."""
+    from flask import render_template
+
+    if not current_user.is_authenticated or current_user.tenant_id is None:
+        return redirect(url_for("main.index"))
+    return render_template("no_counter.html")
 
 
 @main_bp.route("/needs-you")

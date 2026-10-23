@@ -1,5 +1,6 @@
 import logging
 import os
+import time
 
 from flask import Flask
 from dotenv import load_dotenv
@@ -14,6 +15,7 @@ def create_app(config_object=None):
     app = Flask(__name__)
     app.config.from_object(config_object or get_config())
 
+    _set_process_clock(app)
     _configure_logging(app)
     from app.monitoring import init_monitoring
 
@@ -30,6 +32,18 @@ def create_app(config_object=None):
     _register_request_hooks(app)
 
     return app
+
+
+def _set_process_clock(app: Flask) -> None:
+    """The server's own clock reads Indian time (config TIMEZONE_*), so
+    date.today() and datetime.now() are India's date and hour wherever the
+    server runs - a cloud server's clock is UTC, which made a bill made
+    after midnight carry yesterday's date until 5:30 AM."""
+    posix = app.config.get("TIMEZONE_POSIX")
+    if not posix or not hasattr(time, "tzset"):
+        return
+    os.environ["TZ"] = posix
+    time.tzset()
 
 
 def _configure_logging(app: Flask) -> None:
@@ -334,6 +348,10 @@ def _register_context_processors(app: Flask) -> None:
 
 
 def _register_request_hooks(app: Flask) -> None:
+    from app.utils.delivery import init_delivery
+
+    init_delivery(app)
+
     @app.before_request
     def enforce_session_security():
         """Idle sign-out, and two-step sign-in for the accounts that must

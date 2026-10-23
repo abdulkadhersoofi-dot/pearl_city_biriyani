@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Counter billing is off - {{ firm_name }}{% endblock %}
+{% block content %}
+{# A branch login whose business has counter billing (the "pos" module)
+   switched off, and nothing else to open. #}
+<div class="card maxw-560">
+  <h1 class="mt-0">Counter billing is switched off</h1>
+  <p>{{ current_user.tenant.display_name }} doesn't use the billing counter right now, so this login has nothing to
+    open. Ask the owner to switch <strong>Counter billing (POS)</strong> on in Settings &gt; Modules.</p>
+  <a href="{{ url_for('auth.logout') }}" class="btn btn-secondary">Sign out</a>
+</div>
+{% endblock %}

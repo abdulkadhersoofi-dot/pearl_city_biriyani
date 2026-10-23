@@ -16,7 +16,7 @@
     {% for b in bills %}
       <tr{% if b.status.value == 'voided' %} class="text-muted"{% endif %}>
         <td><a href="{{ url_for('pos.view_receipt', bill_id=b.id) }}">{{ b.bill_number }}</a>{% if b.customer_snapshot %}<div class="text-muted fs-sm">{{ b.customer_snapshot.name }}</div>{% endif %}</td>
-        <td>{{ b.completed_at.strftime('%H:%M') if b.completed_at else '-' }}</td>
+        <td>{{ (b.completed_at|ist('%H:%M')) if b.completed_at else '-' }}</td>
         <td>{{ b.payment_summary()|upper }}</td>
         <td>
           {% if b.status.value == 'voided' %}<span class="status-badge status-void">Voided</span>
@@ -53,7 +53,7 @@
       {% if b.status.value == 'refunded' %}
       <tr class="text-muted">
         <td>&#8618; Refund</td>
-        <td>{{ b.refunded_at.strftime('%H:%M') if b.refunded_at else '-' }}</td>
+        <td>{{ (b.refunded_at|ist('%H:%M')) if b.refunded_at else '-' }}</td>
         <td>{{ (labels[b.refund_mode] if b.refund_mode else b.payment_summary())|upper }}</td>
         <td><span class="status-badge status-void">Refunded</span></td>
         <td>- Rs. {{ '%.2f'|format(b.refunded_amount or 0) }}</td>
@@ -80,7 +80,7 @@
     {% for r in returns %}
       <tr{% if r.status.value == 'voided' %} class="text-muted"{% endif %}>
         <td><a href="{{ url_for('pos.view_return', return_id=r.id) }}">{{ r.return_number }}</a></td>
-        <td>{{ r.returned_at.strftime('%H:%M') }}</td>
+        <td>{{ (r.returned_at|ist('%H:%M')) }}</td>
         <td>{{ r.bill.bill_number }}</td>
         <td>{{ labels[r.refund_mode]|upper }}</td>
         <td><span class="status-badge status-{{ 'void' if r.status.value == 'voided' else 'issued' }}">{{ r.status.value|title }}</span></td>

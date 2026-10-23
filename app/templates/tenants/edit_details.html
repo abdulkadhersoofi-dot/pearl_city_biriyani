@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}Edit details - {{ tenant.legal_name }} - {{ firm_name }}{% endblock %}
+{% block content %}
+{# A client's business details after onboarding (app/tenants/details.py):
+   names, GST registration, business type, turnover and every business
+   location. A location that has issued documents keeps them: a new GSTIN
+   on it becomes a new location and the old one is switched off. #}
+{% set v = posted or {} %}
+{% set reg = v.get('registration_type', tenant.registration_type.value) %}
+<div class="page-header">
+  <div>
+    <h1>Edit details</h1>
+    <p class="text-muted mt-0">{{ tenant.legal_name }} · documents already issued never change.</p>
+  </div>
+  <a href="{{ url_for('tenants.detail', tenant_id=tenant.id) }}" class="btn btn-quiet">Back to the client</a>
+</div>
+
+{% if error %}<p class="flash flash-error" role="alert">{{ error }}</p>{% endif %}
+
+<form method="post" x-data="{ reg: '{{ reg }}', type: '{{ v.get('business_type', tenant.business_type.value) }}' }" class="details-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+  <div class="card mb-20">
+    <h2 class="mt-0">Business</h2>
+    <div class="form-grid">
+      <label class="field"><span class="field-label">Legal name</span>
+        <input class="field-input" name="legal_name" required maxlength="255" value="{{ v.get('legal_name', tenant.legal_name) }}"></label>
+      <label class="field"><span class="field-label">Trade name <span class="text-muted">(optional)</span></span>
+        <input class="field-input" name="trade_name" maxlength="255" value="{{ v.get('trade_name', tenant.trade_name or '') }}"></label>
+      <label class="field"><span class="field-label">GST registration</span>
+        <select class="field-input" name="registration_type" x-model="reg">
+          {% for r, label in registrations.items() %}<option value="{{ r.value }}" {% if reg == r.value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select>
+        <small class="field-help" x-show="reg !== '{{ tenant.registration_type.value }}'" x-cloak>
+          From now on: <span x-text="reg === 'regular' ? 'Tax Invoices with GST' : 'Bills of Supply without GST'"></span>.
+          Documents already issued stay as they were.</small></label>
+      <label class="field"><span class="field-label">Turnover last financial year <span class="text-muted">(Rs., optional)</span></span>
+        <input class="field-input" name="aato" inputmode="decimal" value="{{ v.get('aato', tenant.aato if tenant.aato is not none else '') }}"></label>
+      <label class="field"><span class="field-label">Type of business</span>
+        <select class="field-input" name="business_type" x-model="type">
+          {% for b in business_types %}<option value="{{ b.value }}" {% if v.get('business_type', tenant.business_type.value) == b.value %}selected{% endif %}>{{ b.label }}</option>{% endfor %}
+        </select></label>
+      <label class="switch-row field">
+        <span class="switch"><input type="checkbox" name="apply_preset" value="1" {% if v.get('apply_preset') == '1' %}checked{% endif %}><span class="switch-track"></span></span>
+        <span><strong>Also switch modules to this type's recommended set</strong>
+          <small>Leave off to keep the modules as they are.</small></span>
+      </label>
+    </div>
+  </div>
+
+  <div class="card mb-20">
+    <h2 class="mt-0">Business locations</h2>
+    <p class="text-muted mt-0" x-show="reg !== 'unregistered'">Each location's state comes from its GSTIN. A location that has issued documents
+      keeps them: giving it a different GSTIN adds a new location (carrying on the same numbering) and switches the old one off.</p>
+    <p class="text-muted mt-0" x-show="reg === 'unregistered'" x-cloak>An unregistered business has no GSTIN - any GSTIN on a location is taken off
+      (a location that has issued documents is kept for them, and a new one takes its place).</p>
+    {% for loc in locations %}
+    <fieldset class="location-edit">
+      <legend>{{ loc.display_label }}{% if used[loc.id] %} <span class="pill pill-muted">has documents</span>{% endif %}</legend>
+      <div class="form-grid">
+        <label class="field" x-show="reg !== 'unregistered'"><span class="field-label">GSTIN</span>
+          <input class="field-input mono" name="loc-{{ loc.id }}-gstin" maxlength="15" autocapitalize="characters"
+                 value="{{ v.get('loc-' ~ loc.id ~ '-gstin', loc.gstin or '') }}" :disabled="reg === 'unregistered'"></label>
+        <label class="field" x-show="reg === 'unregistered'" x-cloak><span class="field-label">State</span>
+          <select class="field-input" name="loc-{{ loc.id }}-state">
+            {% set st = v.get('loc-' ~ loc.id ~ '-state', loc.state_code) %}
+            {% for code, name in states %}<option value="{{ code }}" {% if st == code %}selected{% endif %}>{{ name }}</option>{% endfor %}
+          </select></label>
+        <label class="field"><span class="field-label">Address</span>
+          <input class="field-input" name="loc-{{ loc.id }}-address" value="{{ v.get('loc-' ~ loc.id ~ '-address', loc.registered_address or '') }}"></label>
+        <label class="field"><span class="field-label">City</span>
+          <input class="field-input" name="loc-{{ loc.id }}-city" maxlength="100" value="{{ v.get('loc-' ~ loc.id ~ '-city', loc.city or '') }}"></label>
+        <label class="field"><span class="field-label">PIN code</span>
+          <input class="field-input" name="loc-{{ loc.id }}-pincode" maxlength="6" inputmode="numeric" value="{{ v.get('loc-' ~ loc.id ~ '-pincode', loc.pincode or '') }}"></label>
+      </div>
+      <div class="row gap-16 mt-6">
+        <label class="row gap-6"><input type="radio" name="primary_id" value="{{ loc.id }}"
+               {% if v.get('primary_id', primary_default|string) == loc.id|string %}checked{% endif %}> Main location</label>
+        {% if locations|length > 1 %}
+        <label class="row gap-6"><input type="checkbox" name="loc-{{ loc.id }}-remove" value="1" {% if v.get('loc-' ~ loc.id ~ '-remove') == '1' %}checked{% endif %}>
+          Switch this location off{% if used[loc.id] %} (its documents stay){% endif %}</label>
+        {% endif %}
+      </div>
+    </fieldset>
+    {% else %}
+    <p class="text-muted">No business location yet - add one on the client's Overview first.</p>
+    {% endfor %}
+    {% if retired %}
+    <details class="more-details mt-12"><summary>Switched-off locations ({{ retired|length }})</summary>
+      <ul class="plain-list mt-6">{% for g in retired %}<li>{{ g.display_label }} - {{ g.state_name }}</li>{% endfor %}</ul>
+    </details>
+    {% endif %}
+  </div>
+
+  <div class="row gap-10">
+    <button type="submit" class="btn btn-primary">Save details</button>
+    <a href="{{ url_for('tenants.detail', tenant_id=tenant.id) }}" class="btn btn-quiet">Cancel</a>
+  </div>
+</form>
+{% endblock %}

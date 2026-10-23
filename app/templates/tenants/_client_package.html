@@ -20,7 +20,7 @@
     <form method="post" action="{{ url_for('tenants.resolve_request', tenant_id=tenant.id, request_id=item.req.id) }}" class="request-row">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <span>{{ icon('layout-grid', 'icon-sm') }}<strong>{{ item.label }}</strong>
-        <small class="text-muted">asked {{ item.req.created_at.strftime('%d %b') }}{% if item.req.requested_by %} by {{ item.req.requested_by.name }}{% endif %}</small></span>
+        <small class="text-muted">asked {{ (item.req.created_at|ist('%d %b')) }}{% if item.req.requested_by %} by {{ item.req.requested_by.name }}{% endif %}</small></span>
       <span class="row">
         <button type="submit" name="action" value="choice" class="btn btn-primary btn-sm">Add as their choice</button>
         <button type="submit" name="action" value="inc" class="btn btn-secondary btn-sm">Include</button>
@@ -55,8 +55,60 @@
   </form>
   {% endif %}
 
-  {# The client's own-choice modules, switched for them (Ultra Admin, or an auditor with that power). #}
-  {% if pkg.can_switch %}
+  {# The Ultra Admin decides each module for this client: Off or On -
+     locked, the client and their branches can't change them (a module
+     that's off is invisible and its pages refuse) - or Client decides,
+     with the client's own switch (module exceptions underneath). #}
+  {% if pkg.is_ultra %}
+  <form method="post" action="{{ url_for('tenants.save_client_modules', tenant_id=tenant.id) }}" class="mt-20" id="sec-module-locks"
+        x-data="{ q: '' }">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="row justify-between items-end gap-10">
+      <div>
+        <h3 class="m-0">Modules for {{ tenant.display_name }}</h3>
+        <p class="text-muted mt-0 mb-0"><strong>Off</strong> and <strong>On</strong> are locked - {{ tenant.display_name }} and their
+          branches can't change them, and a module that's off can't be opened at all. <strong>Client decides</strong> leaves the switch with them.</p>
+      </div>
+      <input type="search" class="field-input maxw-260" placeholder="Find a module" x-model="q" aria-label="Find a module">
+    </div>
+    <div class="table-wrap mt-12">
+      <table class="module-locks no-stack">
+        <thead><tr><th>Module</th><th>For {{ tenant.display_name }}</th><th>Their switch</th></tr></thead>
+        {% for group in pkg.module_rows %}
+        <tbody>
+          {% if group.first %}<tr class="kind-row" x-show="!q"><th colspan="3" scope="colgroup">{{ group.kind_title }}</th></tr>{% endif %}
+          {% if group.kind == 'module' %}<tr class="group-row" x-show="!q"><th colspan="3" scope="colgroup">{{ group.title }}</th></tr>{% endif %}
+          {% for row in group['items'] %}
+          {% set key = row.feature.key %}
+          <tr x-data="{ s: '{{ row.state }}' }" class="{{ 'has-exception' if row.exception }}{{ ' is-addon' if row.depth }}"
+              data-hay="{{ row.feature.label|lower }}" x-show="!q || $el.dataset.hay.includes(q.toLowerCase())">
+            <td><strong>{{ row.feature.label }}</strong>
+              {% if row.exception %}<small class="text-muted d-block">Only for {{ tenant.display_name }} - their package says {{ pkg.module_states[row.package_state] }}</small>{% endif %}
+              {% if row.needs_off %}<small class="needs-note is-off">{{ icon('triangle-alert', 'icon-sm') }}Works with {{ row.needs_off|join(', ') }} - off for them</small>{% endif %}</td>
+            <td>
+              <div class="lock-seg" role="radiogroup" aria-label="{{ row.feature.label }} for {{ tenant.display_name }}">
+                <label class="lock-seg-off"><input type="radio" name="mod_{{ key }}" value="off"{% if row.state == 'off' %} checked{% endif %} x-model="s"><span>Off</span></label>
+                <label class="lock-seg-on"><input type="radio" name="mod_{{ key }}" value="inc"{% if row.state == 'inc' %} checked{% endif %} x-model="s"><span>On</span></label>
+                <label><input type="radio" name="mod_{{ key }}" value="choice"{% if row.state == 'choice' %} checked{% endif %} x-model="s"><span>Client decides</span></label>
+              </div>
+            </td>
+            <td>
+              <label class="switch" x-show="s === 'choice'" title="{{ tenant.display_name }}'s own switch">
+                <input type="checkbox" name="on_{{ key }}" value="1" {% if row.on %}checked{% endif %} aria-label="{{ row.feature.label }} switched on"><span class="switch-track"></span></label>
+              <span class="lock-note" x-show="s !== 'choice'">{{ icon('lock-keyhole', 'icon-sm') }}<span x-text="s === 'off' ? 'Locked off' : 'Locked on'"></span></span>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        {% endfor %}
+      </table>
+    </div>
+    <button type="submit" class="btn btn-primary mt-12">Save modules</button>
+  </form>
+  {% endif %}
+
+  {# The client's own-choice modules, switched for them (an auditor with that power). #}
+  {% if pkg.can_switch and not pkg.is_ultra %}
   {% set choices = [] %}
   {% for group in pkg.module_rows %}{% for row in group['items'] if row.state == 'choice' %}{% set _ = choices.append(row) %}{% endfor %}{% endfor %}
   {% if choices %}
@@ -86,7 +138,7 @@
   <form method="post" action="{{ url_for('tenants.save_client_exceptions', tenant_id=tenant.id) }}" class="mt-20">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <details class="exceptions" {% if pkg.exception_count %}open{% endif %} x-data="{ only: {{ 'true' if pkg.exception_count else 'false' }} }">
-      <summary><strong>Change single modules or settings for this client</strong>
+      <summary><strong>Change single settings and limits for this client</strong>
         <span class="text-muted">- the package stays as it is for other clients</span></summary>
       {% if pkg.exception_count %}
       {# Only where this client differs from their package, until asked for the rest (stage 3). #}
@@ -95,34 +147,6 @@
         <span><strong>Only what differs for {{ tenant.display_name }}</strong><small>Untick to see every module and setting and change any of them.</small></span>
       </label>
       {% endif %}
-
-      <div class="table-wrap mt-12">
-        <table class="exceptions-table no-stack" :class="{ 'only-changed': only }">
-          <thead><tr><th>Module</th><th>Package says</th><th>For {{ tenant.display_name }}</th><th>Now</th></tr></thead>
-          {% for group in pkg.module_rows %}
-          <tbody>
-            {% if group.first %}<tr class="kind-row"><th colspan="4" scope="colgroup">{{ group.kind_title }}</th></tr>{% endif %}
-            {% if group.kind == 'module' %}<tr class="group-row"><th colspan="4" scope="colgroup">{{ group.title }}</th></tr>{% endif %}
-            {% for row in group['items'] %}
-            <tr class="{{ 'has-exception' if row.exception }}{{ ' is-addon' if row.depth }}">
-              <td><label for="mod_{{ row.feature.key }}">{{ row.feature.label }}</label>
-                {% if row.needs_off %}<small class="needs-note is-off">{{ icon('triangle-alert', 'icon-sm') }}Works with {{ row.needs_off|join(', ') }} - off for them</small>{% endif %}</td>
-              <td><span class="pill {{ state_pill[row.package_state] }}">{{ pkg.module_states[row.package_state] }}</span></td>
-              <td>
-                <select name="mod_{{ row.feature.key }}" id="mod_{{ row.feature.key }}" class="field-input">
-                  <option value="package" {% if not row.exception %}selected{% endif %}>As the package</option>
-                  {% for value, label in pkg.module_states.items() %}
-                  <option value="{{ value }}" {% if row.exception == value %}selected{% endif %}>{{ label }}</option>
-                  {% endfor %}
-                </select>
-              </td>
-              <td>{% if row.on %}<span class="status-badge status-issued">On</span>{% else %}<span class="status-badge status-draft">Off</span>{% endif %}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-          {% endfor %}
-        </table>
-      </div>
 
       <div class="table-wrap mt-16">
         <table class="exceptions-table no-stack" :class="{ 'only-changed': only }">

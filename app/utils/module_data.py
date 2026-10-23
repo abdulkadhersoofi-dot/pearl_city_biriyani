@@ -20,6 +20,7 @@ def _model(name):
 
 # module -> (models whose rows mean "this client has records here", home endpoint)
 MODULE_RECORDS = {
+    "pos": (("POSBill",), "pos.day_book"),
     "inventory": (("StockMovement",), "inventory.index"),
     "purchases": (("PurchaseBill",), "purchases.bills"),
     "expenses": (("Expense",), "expenses.index"),

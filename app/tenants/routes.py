@@ -49,7 +49,7 @@ from app.utils.entitlements import (
     ensure_starting_packages, grant_of, has_room, limit_meter, limit_of, may_add, package_price_for, power_required,
     sub_auditor_room, LIMITS, package_summary,
 )
-from app.utils.indian_states import STATE_NAME_BY_CODE
+from app.utils.indian_states import INDIAN_STATES, STATE_NAME_BY_CODE
 from app.utils.uploads import UploadError, delete_uploaded_image, save_uploaded_image
 
 
@@ -503,6 +503,65 @@ def update_logo(tenant_id):
     return redirect(url_for("tenants.detail", tenant_id=tenant.id))
 
 
+@tenants_bp.route("/clients/<int:tenant_id>/details", methods=["GET", "POST"])
+@admin_or_auditor_required
+@power_required("edit_client_details")
+def edit_details(tenant_id):
+    """Change a client's names, GST registration type, business type,
+    turnover and business locations after onboarding (app/tenants/details.py)."""
+    from decimal import Decimal, InvalidOperation
+
+    from app.tenants.details import REGISTRATION_LABELS, DetailsError, location_has_documents, save_details
+    from app.utils.catalogue import business_types
+
+    tenant = Tenant.query.get_or_404(tenant_id)
+    assert_auditor_owns_tenant(current_user, tenant)
+    locations = tenant.gstins.filter_by(is_active=True).order_by(Gstin.is_primary.desc(), Gstin.id).all()
+    error = None
+    posted = None
+    if request.method == "POST":
+        f = request.form
+        posted = f
+        try:
+            aato = None
+            if (f.get("aato") or "").strip():
+                try:
+                    aato = Decimal(f["aato"].replace(",", "").strip())
+                except InvalidOperation:
+                    raise DetailsError("Turnover must be a number of rupees.")
+                if aato < 0:
+                    raise DetailsError("Turnover can't be below zero.")
+            data = {
+                "legal_name": f.get("legal_name"), "trade_name": f.get("trade_name"),
+                "registration_type": f.get("registration_type"), "business_type": f.get("business_type"),
+                "apply_preset": f.get("apply_preset") == "1", "aato": aato,
+                "primary_id": f.get("primary_id"),
+                "locations": [{"id": loc.id, "gstin": f.get(f"loc-{loc.id}-gstin"),
+                               "state_code": f.get(f"loc-{loc.id}-state"), "address": f.get(f"loc-{loc.id}-address"),
+                               "city": f.get(f"loc-{loc.id}-city"), "pincode": f.get(f"loc-{loc.id}-pincode"),
+                               "remove": f.get(f"loc-{loc.id}-remove") == "1"} for loc in locations],
+            }
+            changes = save_details(tenant, current_user, data)
+        except DetailsError as exc:
+            db.session.rollback()
+            error = exc.message
+        else:
+            db.session.commit()
+            if changes:
+                flash(f"Saved {len(changes)} change{'s' if len(changes) != 1 else ''} for {tenant.legal_name}.",
+                      "success")
+            else:
+                flash("Nothing changed.", "info")
+            return redirect(url_for("tenants.detail", tenant_id=tenant.id))
+    return render_template(
+        "tenants/edit_details.html", tenant=tenant, locations=locations, posted=posted, error=error,
+        registrations=REGISTRATION_LABELS, business_types=business_types(), states=INDIAN_STATES,
+        used={loc.id: location_has_documents(loc) for loc in locations},
+        retired=tenant.gstins.filter_by(is_active=False).order_by(Gstin.id).all(),
+        primary_default=next((loc.id for loc in locations if loc.is_primary), locations[0].id if locations else ""),
+    )
+
+
 @tenants_bp.route("/clients/<int:tenant_id>/gstins/new", methods=["POST"])
 @admin_or_auditor_required
 @power_required("edit_client_details")
@@ -693,7 +752,9 @@ def act_as(tenant_id, user_id):
     # the client doesn't know about would lock them out of their own login.
     if target.is_client_admin:
         return redirect(url_for("invoicing.list_invoices"))
-    return redirect(url_for("pos.terminal"))
+    from app.main.routes import branch_landing
+
+    return redirect(branch_landing(target))
 
 
 @tenants_bp.route("/clients/<int:tenant_id>/users/<int:user_id>/deactivate", methods=["POST"])

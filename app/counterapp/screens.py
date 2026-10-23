@@ -89,8 +89,12 @@ def _packing_on(tenant, order_types) -> list[str]:
 
 def offline_config(tenant, user) -> dict | None:
     """The counter's offline set-up (pos.routes._module_context), with the
-    app's own service worker so the app's screens open without internet."""
-    if not current_tenant_has("offline_pos"):
+    app's own service worker so the app's screens open without internet.
+    A paired phone always bills offline; a browser on these screens only
+    with offline billing on for the business."""
+    from app.pos.offline import phone_bills_offline
+
+    if not (current_tenant_has("offline_pos") or phone_bills_offline()):
         return None
     from app.pos.offline import OFFLINE_MODES
     from app.pos.services import enabled_payment_modes

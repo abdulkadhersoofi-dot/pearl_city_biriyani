@@ -1,0 +1,15 @@
+{% extends "counterapp/_layout.html" %}
+{% block body %}
+{# The business has counter billing (the "pos" module) switched off: the
+   app has nothing to bill with. Never kept for offline (no X-Counter-Screen). #}
+<main class="pair">
+  <div class="pair-hero" aria-hidden="true"><img src="{{ url_for('static', filename='img/counter-icon.svg') }}" alt="" class="pair-logo"></div>
+  <h1 class="pair-title">ARFA Counter</h1>
+  <section class="pair-card">
+    <p class="m-0"><strong>Counter billing is switched off for {{ tenant.display_name }}.</strong></p>
+    <p class="text-muted mt-6">This phone bills at the counter, so there's nothing to open here. Ask the owner to switch
+      Counter billing (POS) on, or ask ARFA to add it to the package.</p>
+    <a href="{{ url_for('auth.logout') }}" class="btn btn-secondary capp-btn">Sign out</a>
+  </section>
+</main>
+{% endblock %}

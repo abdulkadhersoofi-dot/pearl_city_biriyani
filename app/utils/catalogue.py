@@ -65,7 +65,7 @@ class Entry:
 
 ENTRIES = [
     # --- trade packs ---
-    Entry("restaurant_mode", TRADE, "utensils-crossed", setup="restaurant.setup",
+    Entry("restaurant_mode", TRADE, "utensils-crossed", needs=("pos",), setup="restaurant.setup",
           setup_label="Tables, order types & charges", short="Restaurant"),
     Entry("pharmacy", TRADE, "pill", needs=("batch_expiry",), setup="pharmacy.register", setup_label="Drug register",
           short="Pharmacy"),
@@ -75,11 +75,12 @@ ENTRIES = [
     Entry("jewellery", TRADE, "gem", setup="jewellery.rates", setup_label="Today's rates", short="Jewellery"),
     Entry("wholesale", TRADE, "boxes", setup="wholesale.index", setup_label="Customer groups & salesmen",
           short="Wholesale"),
-    Entry("weighing", TRADE, "scale", setup="settings.modules", setup_label="Scale label format",
+    Entry("weighing", TRADE, "scale", needs=("pos",), setup="settings.modules", setup_label="Scale label format",
           short="Weighing scale"),
     Entry("margin_scheme", TRADE, "coins", setup="margin.index", setup_label="Second-hand goods",
           short="Second-hand goods"),
     # --- modules: selling ---
+    Entry("pos", MODULE, "monitor", "selling", setup="pos.terminal", setup_label="Open the counter"),
     Entry("credit_sales", MODULE, "users", "selling"),
     Entry("sales_documents", MODULE, "file-text", "selling", setup="sales.documents", setup_label="Quotes & orders"),
     Entry("recurring_invoices", MODULE, "repeat", "selling", setup="sales.recurring", setup_label="Recurring invoices"),
@@ -109,10 +110,12 @@ ENTRIES = [
     Entry("einvoice", MODULE, "file-check", "gst", setup="einvoice.settings", setup_label="e-Invoice login"),
     Entry("eway_bill", MODULE, "truck", "gst", setup="einvoice.settings", setup_label="e-Way Bill login"),
     # --- counter options ---
-    Entry("favourites", COUNTER, "sparkles"),
-    Entry("day_close", COUNTER, "clock"),
-    Entry("cashier_pin", COUNTER, "key-round", setup="branches.cashiers", setup_label="Cashiers & PINs"),
-    Entry("offline_pos", COUNTER, "cloud-off", setup="pos.offline_bills", setup_label="Counter devices & offline bills"),
+    Entry("favourites", COUNTER, "sparkles", needs=("pos",)),
+    Entry("day_close", COUNTER, "clock", needs=("pos",)),
+    Entry("cashier_pin", COUNTER, "key-round", needs=("pos",), setup="branches.cashiers",
+          setup_label="Cashiers & PINs"),
+    Entry("offline_pos", COUNTER, "cloud-off", needs=("pos",), setup="pos.offline_bills",
+          setup_label="Counter devices & offline bills"),
 ]
 CATALOGUE = {e.key: e for e in ENTRIES}
 

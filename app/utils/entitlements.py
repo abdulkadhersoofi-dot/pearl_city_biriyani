@@ -94,7 +94,7 @@ AUDITOR_POWERS = {
     "assign_packages": "Choose a package for their clients",
     "switch_client_modules": "Switch a client's Client's-choice modules",
     "pause_clients": "Pause and resume clients",
-    "edit_client_details": "Add a client's business locations and logo",
+    "edit_client_details": "Edit a client's business details - names, GST registration, GSTINs, locations, logo",
     "act_as": "Act as a client or branch login",
     "reset_logins": "Reset, block and unblock a client's logins (password, two-step)",
     "month_end": "Month-end pack, Tally export and filing tracker",
@@ -127,7 +127,14 @@ def grant_of(tenant):
 
 def package_module_state(package, key: str) -> str:
     state = (package.modules or {}).get(key)
-    return state if state in MODULE_STATES else (package.unlisted_modules or OFF)
+    if state in MODULE_STATES:
+        return state
+    unlisted = package.unlisted_modules or OFF
+    # A package that doesn't mention the counter (made before it was a
+    # module) includes it.
+    if key in ON_UNLESS_SWITCHED_OFF and unlisted == OFF:
+        return INCLUDED
+    return unlisted
 
 
 def module_state(tenant, key: str) -> str:
@@ -143,13 +150,23 @@ def module_state(tenant, key: str) -> str:
     return package_module_state(grant.package, key)
 
 
+# Switches that read as on until a client's switch says otherwise: the
+# counter (POS) was there for every client before it became a module.
+ON_UNLESS_SWITCHED_OFF = frozenset({"pos"})
+
+
+def client_switch(tenant, key: str) -> bool:
+    """The client's own switch for a module (their choice)."""
+    return bool((tenant.features or {}).get(key, key in ON_UNLESS_SWITCHED_OFF))
+
+
 def module_mode(tenant, key: str) -> str:
     """Whether the module is on, off or read-only for this client now."""
     state = module_state(tenant, key)
     if state == INCLUDED:
         return ON
     if state == CHOICE:
-        return ON if (tenant.features or {}).get(key) else OFF
+        return ON if client_switch(tenant, key) else OFF
     grant = grant_of(tenant)
     if grant is not None and key in (grant.read_only_modules or []):
         return READ_ONLY
@@ -556,7 +573,7 @@ def preview_package(tenant, package, keep_exceptions: bool = False) -> list[dict
     for key in ordered_keys():   # in the catalogue's order, as every screen lists them
         feature = FEATURES[key]
         state = overrides.get(key) if overrides.get(key) in MODULE_STATES else package_module_state(package, key)
-        after = state == INCLUDED or (state == CHOICE and bool((tenant.features or {}).get(key)))
+        after = state == INCLUDED or (state == CHOICE and client_switch(tenant, key))
         before = tenant.has_feature(key)
         if before != after:
             changes.append({"key": key, "label": feature.label, "before": before, "after": after, "state": state})
@@ -595,7 +612,7 @@ BUSINESS_TYPE_PACKAGE = _business_type_package()
 
 CURRENT_SETUP = "current"
 
-_BILLING_INC = ["credit_sales", "favourites"]
+_BILLING_INC = ["pos", "credit_sales", "favourites"]
 _RETAIL_INC = _BILLING_INC + ["inventory", "purchases", "expenses", "business_reports", "daily_summary"]
 _COUNTER_CHOICE = ["categories", "day_close", "cashier_pin", "offline_pos"]
 _ARFA_SETS_BUSINESS = {"business_type": ARFA, "aato": ARFA}

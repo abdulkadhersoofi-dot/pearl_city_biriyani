@@ -661,6 +661,39 @@ this list is just the index.
   onJsConfirm / onJsPrompt as a fallback. Sweep test:
   `tests/test_in_page_dialogs.py`.
 
+- **Six fixes (IST, client details, branch billing, module locks, POS
+  module, fast app).**
+  - IST: `create_app` -> `_set_process_clock` (`TZ=TIMEZONE_POSIX`,
+    `time.tzset()`); engine `connect_args` sets the session timezone to
+    `TIMEZONE_NAME`. Print stored times with `|ist(fmt)`, never
+    `.strftime` on a stored timestamp.
+  - Client details: `app/tenants/details.py` (`save_details`,
+    `_replace` + `_carry_numbering` for a location that has issued
+    documents), route `tenants.edit_details` (power
+    `edit_client_details`), read-only card in `settings/business.html`.
+  - Branch billing: `invoicing.services.branch_document_type(tenant,
+    branch)` - owned -> DELIVERY_CHALLAN; regular -> TAX_INVOICE; else
+    BILL_OF_SUPPLY.
+  - Module locks: `tenants.save_client_modules` (Ultra Admin) writes
+    `module_overrides` off / inc / choice per module; the chips form in
+    `_client_package.html` is for auditors only.
+  - POS module: feature `pos`; `entitlements.ON_UNLESS_SWITCHED_OFF` and
+    `client_switch()` keep it on for a client with no saved switch;
+    `features.module_gate("pos")` on the `pos` / `restaurant` /
+    `counterapp` blueprints; `main.branch_landing(user)` sends a branch to
+    `/counter-off` when it's off; catalogue `needs=("pos",)` on the
+    counter's modules. Migration `d5e1a7c3f924`.
+  - Fast app: `app/utils/delivery.py` (`?v=` fingerprints, immutable
+    caching, gzip); `X-Screen-Version` on app screens
+    (`counterapp.routes._screen`); `pos_sw.js` v2 caches with
+    `appScreen` (copy first, refresh behind, "screen-updated");
+    `counter_app.js` fetch timeouts + `registerWorker`;
+    `pos.offline.phone_bills_offline()` / `offline_review_on()`;
+    `MainActivity.SPLASH_MAX_MS`. Tests: `tests/test_indian_time.py`,
+    `test_client_details.py`, `test_branch_billing_unregistered.py`,
+    `test_module_locks.py`, `test_pos_module.py`,
+    `test_app_fast_offline.py`.
+
 ## 5. Chronological development history (this session)
 
 This is the part README.md doesn't capture — the actual sequence of

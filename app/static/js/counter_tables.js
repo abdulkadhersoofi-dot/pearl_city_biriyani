@@ -298,7 +298,9 @@
       localRef: function () {
         var d = (window.ArfaApp && ArfaApp.load()) || {};
         var code = d.code || (window.ArfaOffline && ArfaOffline.deviceCode()) || "P";
-        var today = new Date().toISOString().slice(0, 10), seq = read(SEQ_KEY, {day: today, n: 0});
+        // The phone's own date (India), not UTC - the count starts again at midnight here.
+        var d0 = new Date(), today = d0.getFullYear() + "-" + (d0.getMonth() + 1) + "-" + d0.getDate();
+        var seq = read(SEQ_KEY, {day: today, n: 0});
         if (seq.day !== today) seq = {day: today, n: 0};
         seq.n += 1;
         write(SEQ_KEY, seq);

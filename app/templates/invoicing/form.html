@@ -10,6 +10,9 @@
   const WHOLESALE_PRICE_URL = {{ (url_for('wholesale.price') if has_feature('wholesale') else '')|tojson }};
   const PRODUCTS_BY_NAME = { {% for p in products %}{{ p.name|tojson }}: {hsn: {{ (p.hsn_or_sac_code or '')|tojson }}, rate: {{ p.sale_price }}, incl: {{ p.price_includes_tax|tojson }}, gst_rate: {{ p.gst_rate }}, unit: {{ p.unit|tojson }}, id: {{ p.id }}},{% endfor %} };
   const NO_GST_DOC_TYPES = ["bill_of_supply", "delivery_challan"];
+  // A third-party branch gets a Tax Invoice only from a regular (GST)
+  // business; a composition or unregistered one bills it on a Bill of Supply.
+  const SELLER_REGISTERED = {{ (current_user.tenant.registration_type.value == 'regular')|tojson }};
   // New ad-hoc lines start from the client's own "prices include GST"
   // default (Settings); a catalog item always brings its own setting.
   const DEFAULT_INCL = {{ current_user.tenant.default_price_includes_tax|tojson }};
@@ -32,7 +35,7 @@
   <div class="card mb-20">
     <div class="form-grid">
       <div class="field {{ 'field-error' if form.gstin_id.errors }}">
-        {{ form.gstin_id.label(class="field-label") }}
+        <label class="field-label" for="{{ form.gstin_id.id }}">{{ 'Billing from (your GSTIN)' if current_user.tenant.registration_type.value != 'unregistered' else 'Billing from' }}</label>
         {{ form.gstin_id(class="field-input", **{"@change": "recalc()"}) }}
       </div>
       <div class="field {{ 'field-error' if form.document_type.errors }}" x-show="billTo === 'customer'">
@@ -198,7 +201,9 @@ function invoiceForm() {
     },
     autoDocType() {
       if (!this.branchId) return 'Select a branch';
-      return BRANCH_TYPE[this.branchId] === 'owned' ? 'Delivery Challan - no GST, stock transfers automatically' : 'Tax Invoice - GST applies, stock transfers automatically';
+      if (BRANCH_TYPE[this.branchId] === 'owned') return 'Delivery Challan - no GST, stock transfers automatically';
+      return SELLER_REGISTERED ? 'Tax Invoice - GST applies, stock transfers automatically'
+                               : 'Bill of Supply - no GST, stock transfers automatically';
     },
     isIntraState() {
       const gstinSelect = document.querySelector('[name=gstin_id]');
@@ -206,7 +211,7 @@ function invoiceForm() {
       return gstinState && gstinState === this.placeOfSupply;
     },
     chargesGst() {
-      if (this.billTo === 'branch') return BRANCH_TYPE[this.branchId] !== 'owned';
+      if (this.billTo === 'branch') return SELLER_REGISTERED && BRANCH_TYPE[this.branchId] !== 'owned';
       const docType = document.querySelector('[name=document_type]');
       return !docType || !NO_GST_DOC_TYPES.includes(docType.value);
     },

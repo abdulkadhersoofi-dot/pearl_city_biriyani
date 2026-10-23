@@ -411,7 +411,9 @@ def _persist_lines(bill: POSBill, computed_lines: list[dict], charge_gst: bool) 
 
 
 def _active_gstin(tenant: Tenant):
-    gstin = tenant.gstins.filter_by(is_active=True).first()
+    from app.models.tenant import Gstin
+
+    gstin = tenant.gstins.filter_by(is_active=True).order_by(Gstin.is_primary.desc(), Gstin.id).first()
     if not gstin:
         raise POSValidationError(
             "This client has no business location on file. Ask the firm to add one from Clients -> this client."

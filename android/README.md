@@ -108,14 +108,19 @@ app while it's on.
 
 ### Offline
 
-Offline billing is a web feature (flag `offline_pos`, see the main
-README): the app's screens register a service worker (`/app/sw.js`),
-queue bills in IndexedDB - each numbered in this phone's own series
+Offline billing is a web feature, always on for a paired phone (the flag
+`offline_pos` now covers only the website counter - see the main README,
+"Six fixes"): the app's screens register a service worker (`/app/sw.js`)
+that opens them from the phone at once and refreshes them behind, every
+request gives up after 8-10 s, and bills are queued in IndexedDB - each numbered in this phone's own series
 (O1/2026-27/0001) - and KOTs in localStorage (the phone's own slip
 number, O1-1), and send them when the connection is back, KOTs first.
 The app's part: it enables DOM storage, always opens `/app/?start=1`
 (so the saved screens load with no connection), and its "can't reach the
-server" screen offers **Open the counter without internet**.
+server" screen offers **Open the counter without internet**. The splash
+waits at most 1.5 s (`SPLASH_MAX_MS`) and the page shows as soon as it is
+drawn (`onPageCommitVisible`), so the app never sits on the splash
+waiting for a slow server.
 
 ### Update check
 

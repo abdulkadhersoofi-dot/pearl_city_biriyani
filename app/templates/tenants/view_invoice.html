@@ -69,7 +69,7 @@
 
 {% if invoice.status.value == 'void' %}
 <div class="card mt-20">
-  <p><strong>Voided</strong> on {{ invoice.voided_at.strftime('%d %b %Y %H:%M') }} by {{ invoice.voided_by.name if invoice.voided_by else '-' }}.</p>
+  <p><strong>Voided</strong> on {{ (invoice.voided_at|ist('%d %b %Y %H:%M')) }} by {{ invoice.voided_by.name if invoice.voided_by else '-' }}.</p>
   <p class="text-muted">Reason: {{ invoice.void_reason }}</p>
 </div>
 {% endif %}

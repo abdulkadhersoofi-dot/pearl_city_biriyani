@@ -43,10 +43,21 @@ from app.utils.features import current_tenant_has
 SCREEN_HEADER = "X-Counter-Screen"
 
 
+SCREEN_VERSION_HEADER = "X-Screen-Version"
+
+
 def _screen(html):
-    """A signed-in screen the app's service worker may keep for offline."""
+    """A signed-in screen the app's service worker may keep for offline.
+    Its version - the page less its CSRF token - tells the phone whether a
+    fresh copy differs from the one it opened from (new prices, an item
+    sold out...), so it can reload with it."""
+    import hashlib
+
+    from flask_wtf.csrf import generate_csrf
+
     response = make_response(html)
     response.headers[SCREEN_HEADER] = "1"
+    response.headers[SCREEN_VERSION_HEADER] = hashlib.sha1(html.replace(generate_csrf(), "").encode()).hexdigest()[:12]
     response.headers["Cache-Control"] = "no-cache"
     return response
 
@@ -103,7 +114,7 @@ def index():
         return render_template("counterapp/pair.html")
     if current_user.role != UserRole.STAFF:
         return render_template("counterapp/not_branch.html")
-    from app.pos import cashiers
+    from app.pos import cashiers, offline
 
     tenant = current_user.tenant
     cashier = None
@@ -111,7 +122,8 @@ def index():
         cashier = {"current": cashiers.current_cashier(tenant, current_user)}
     return _screen(render_template("counterapp/home.html", tenant=tenant, now_hour=datetime.now(IST).hour,
                                    tables_on=current_tenant_has("restaurant_mode"),
-                                   offline_on=current_tenant_has("offline_pos"), cashier=cashier,
+                                   offline_on=current_tenant_has("offline_pos") or offline.phone_bills_offline(),
+                                   cashier=cashier,
                                    device_id=session.get("counter_device_id")))
 
 

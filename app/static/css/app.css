@@ -2050,3 +2050,33 @@ html.arfa-dialog-open { overflow: hidden; }
 @keyframes arfa-dialog-rise { from { opacity: 0; transform: translateY(8px) scale(0.98); } }
 @media (prefers-reduced-motion: reduce) { .arfa-dialog-scrim, .arfa-dialog { animation: none; } }
 @media print { .arfa-dialog-scrim { display: none; } }
+
+/* Edit a client's details (console): one block per business location. */
+.location-edit { border: 1px solid var(--color-border); border-radius: var(--radius); padding: 12px 14px 14px; margin: 0 0 12px; }
+.location-edit legend { padding: 0 6px; font-weight: 700; }
+.mono { font-family: var(--font-mono); letter-spacing: 0.02em; }
+.plain-facts { display: grid; gap: 8px; margin: 0 0 10px; }
+.plain-facts > div { display: grid; grid-template-columns: minmax(120px, 180px) 1fr; gap: 10px; }
+.plain-facts dt { color: var(--color-text-muted); font-size: 0.9rem; }
+.plain-facts dd { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+@media (max-width: 520px) { .plain-facts > div { grid-template-columns: 1fr; gap: 2px; } }
+
+/* Console: each module Off / On (locked) / Client decides for one client. */
+.module-locks { width: 100%; }
+.module-locks td { vertical-align: middle; }
+.module-locks .kind-row th { background: var(--color-surface-2); text-transform: none; letter-spacing: 0; font-size: 0.95rem; }
+.module-locks .group-row th { background: transparent; padding-top: 14px; }
+.module-locks tr.has-exception td:first-child { box-shadow: inset 3px 0 0 var(--color-accent); }
+.module-locks tr.is-addon td:first-child { padding-left: 26px; }
+.lock-seg { display: inline-flex; gap: 2px; padding: 3px; border-radius: 10px; background: var(--color-surface-2); border: 1px solid var(--color-border); }
+.lock-seg label { position: relative; }
+.lock-seg input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.lock-seg span { display: block; padding: 6px 12px; border-radius: 8px; font-size: 0.86rem; font-weight: 600; color: var(--color-text-muted); white-space: nowrap; }
+.lock-seg input:checked + span { background: var(--color-surface); color: var(--color-text); box-shadow: var(--shadow-1); }
+.lock-seg .lock-seg-off input:checked + span { color: var(--color-danger); }
+.lock-seg .lock-seg-on input:checked + span { color: var(--color-primary); }
+.lock-seg input:focus-visible + span { outline: 2px solid var(--color-primary); outline-offset: 1px; }
+.lock-note { display: inline-flex; align-items: center; gap: 4px; color: var(--color-text-muted); font-size: 0.86rem; }
+.d-block { display: block; }
+.maxw-260 { max-width: 260px; }
+.maxw-560 { max-width: 560px; }

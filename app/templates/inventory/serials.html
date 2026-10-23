@@ -17,7 +17,7 @@
         <td><strong>{{ u.serial_no }}</strong></td>
         <td>{{ u.product.name }}</td>
         <td><span class="tag {{ 'tag-fast' if u.status.value == 'in_stock' else '' }}">{{ u.status.value|replace('_', ' ')|title }}</span></td>
-        <td>{% if u.status.value == 'sold' %}Sold{% if u.sold_at %} {{ u.sold_at.strftime('%d %b %Y') }}{% endif %}{% if u.sold_pos_bill_id %} · <a href="{{ url_for('pos.view_receipt', bill_id=u.sold_pos_bill_id) }}">bill</a>{% endif %}
+        <td>{% if u.status.value == 'sold' %}Sold{% if u.sold_at %} {{ (u.sold_at|ist('%d %b %Y')) }}{% endif %}{% if u.sold_pos_bill_id %} · <a href="{{ url_for('pos.view_receipt', bill_id=u.sold_pos_bill_id) }}">bill</a>{% endif %}
             {% else %}{{ u.location.name if u.location else '-' }}{% endif %}</td>
         <td>{{ u.warranty_end.strftime('%d %b %Y') if u.warranty_end else '-' }}</td>
       </tr>

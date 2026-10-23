@@ -74,6 +74,7 @@
       // Held bills (stage 4): this counter's on the server, and any held on
       // the phone while offline.
       heldList: [], localHeld: [],
+      screenUpdated: false,
 
       // --- start ------------------------------------------------------------------------------
       start: function () {
@@ -94,14 +95,20 @@
           ArfaOffline.init(Object.assign({}, cfg.offline, {
             csrf: this.csrf, beforeSync: cfg.tables_on ? function () { return self.flushKots(); } : null
           }));
-          setTimeout(function () {
-            var scope = cfg.offline.sw_scope;
-            ArfaApp.keepForOffline([scope, scope + "bill"].concat(cfg.tables_on ? [scope + "tables"] : []));
-          }, 1500);
         } else {
           window.addEventListener("online", function () { self.net = Object.assign({}, self.net, {online: true}); });
           window.addEventListener("offline", function () { self.net = Object.assign({}, self.net, {online: false}); });
         }
+        // The app's offline copy, on every phone: its screens and what they load.
+        ArfaApp.registerWorker();
+        setTimeout(function () {
+          ArfaApp.keepForOffline(["/app/", "/app/bill"].concat(cfg.tables_on ? ["/app/tables"] : []));
+        }, 1500);
+        // A fresher copy of this screen (new prices, an item sold out):
+        // reload into it now if nothing is in hand, else once the bill is done.
+        window.addEventListener("arfa:screen-updated", function () { self.screenUpdated = true; self.reloadIfIdle(); });
+        this.$watch("sheet", function () { self.reloadIfIdle(); });
+        this.$watch("cart", function () { self.reloadIfIdle(); });
         window.addEventListener("online", function () { self.refreshSession(); self.askQuote(); });
         if (navigator.onLine) this.refreshSession();
         if (cfg.tables_on) this.startTables();
@@ -112,6 +119,11 @@
           history.replaceState(null, "", window.location.pathname);
         }
         this.askQuote();
+      },
+      reloadIfIdle: function () {
+        if (!this.screenUpdated || this.busy || this.sheet || this.cart.length || this.view === "table") return;
+        this.screenUpdated = false;
+        window.location.reload();
       },
       // A fresh CSRF token (a screen opened from the phone's copy holds an
       // old one), signing the phone back in first if its session ended.

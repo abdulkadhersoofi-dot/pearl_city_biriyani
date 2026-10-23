@@ -38,7 +38,7 @@
       <tr><td colspan="6"><em>Opening balance</em></td><td class="num">{{ opening|qty }}</td></tr>
     {% for r in rows %}
       <tr>
-        <td>{{ r.movement.moved_at.strftime('%d %b %Y %H:%M') }}</td>
+        <td>{{ (r.movement.moved_at|ist('%d %b %Y %H:%M')) }}</td>
         <td>{{ r.label }}{% if r.movement.batch %} · {{ r.movement.batch.batch_no }}{% endif %}{% if r.movement.serial %} · {{ r.movement.serial.serial_no }}{% endif %}</td>
         <td>{{ r.movement.location.name }}</td>
         <td>{{ r.movement.source_type|replace('_', ' ') }} #{{ r.movement.source_id }}{% if r.movement.note %}<br><small class="text-muted">{{ r.movement.note }}</small>{% endif %}</td>

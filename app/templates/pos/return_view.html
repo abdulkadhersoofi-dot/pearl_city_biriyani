@@ -7,7 +7,7 @@
     <h1>{{ ret.return_number }}</h1>
     <p class="text-muted mt-0">
       Sales return against <a href="{{ url_for('pos.view_receipt', bill_id=ret.bill_id) }}">{{ ret.bill.bill_number }}</a>
-      &middot; {{ ret.returned_at.strftime('%d %b %Y %H:%M') }}
+      &middot; {{ (ret.returned_at|ist('%d %b %Y %H:%M')) }}
       &middot; <span class="status-badge status-{{ 'void' if ret.status.value == 'voided' else 'issued' }}">{{ ret.status.value|title }}</span>
     </p>
   </div>

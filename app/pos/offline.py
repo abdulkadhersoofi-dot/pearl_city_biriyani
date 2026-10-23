@@ -54,6 +54,23 @@ class OfflineError(Exception):
         self.message = message
 
 
+def phone_bills_offline() -> bool:
+    """Is the signed-in login the ARFA Counter app on a paired phone? The
+    app always bills without internet - in the phone's own series - so
+    those phones send and check their offline bills whether or not the
+    business has offline billing on for the website counter ("offline_pos")."""
+    from flask import session
+    from flask_login import current_user
+
+    return bool(current_user.is_authenticated and current_user.is_staff and session.get("counter_device_id"))
+
+
+def offline_review_on(tenant) -> bool:
+    """Does the owner need the Offline bills page? With offline billing on,
+    or once any phone or counter has billed offline (an app phone always can)."""
+    return tenant.has_feature("offline_pos") or CounterDevice.query.filter_by(tenant_id=tenant.id).first() is not None
+
+
 def _hash(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 

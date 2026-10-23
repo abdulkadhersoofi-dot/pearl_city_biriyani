@@ -29,6 +29,14 @@ FEATURES = {
     f.key: f
     for f in [
         Feature(
+            "pos",
+            "Counter billing (POS)",
+            "The billing counter: tap-and-bill with receipts, held bills, the day-book and Z-report, branch "
+            "counters and the ARFA Counter phone app (restaurant tables and KOTs work through it). Switch off for "
+            "a business that only raises invoices - invoices, stock and reports carry on without it.",
+            available=True,
+        ),
+        Feature(
             "categories",
             "Item categories",
             "Group items into categories and sub-categories (e.g. Biriyani > Chicken). The item form gets "
@@ -231,10 +239,10 @@ FEATURES = {
         Feature(
             "offline_pos",
             "Offline billing",
-            "The POS keeps billing when the internet drops: the screen and items are saved on the device, bills "
-            "are numbered in that device's own series (O1/2026-27/0001...) and sent to the server when the "
-            "connection is back. Plain cash / UPI / card bills only - credit, returns and discounts wait for "
-            "the connection.",
+            "The website's POS keeps billing when the internet drops: the screen and items are saved on the "
+            "device, bills are numbered in that device's own series (O1/2026-27/0001...) and sent to the server "
+            "when the connection is back. Plain cash / UPI / card bills only - credit, returns and discounts wait "
+            "for the connection. (The ARFA Counter phone app always bills offline.)",
             available=True,
         ),
         Feature(
@@ -287,9 +295,11 @@ BUSINESS_TYPE_PRESETS: dict[BusinessType, set[str]] = {
 }
 # Every new client with the dashboard also gets the owner's end-of-day
 # summary on it (Phase 10). Offline billing and cashier PINs stay opt-in.
+# Every business starts with the counter (POS) - it was always there.
 for _preset in BUSINESS_TYPE_PRESETS.values():
     if "business_reports" in _preset:
         _preset.add("daily_summary")
+    _preset.add("pos")
 
 # Whether shelf prices usually already include GST for this kind of
 # business (MRP-printed retail goods, menu prices) - the default for new
@@ -359,6 +369,22 @@ def current_tenant_reads(key: str) -> bool:
 
     tenant = current_user.tenant
     return bool(tenant and module_mode(tenant, key) == READ_ONLY and not login_hides(current_user, key))
+
+
+def module_gate(key: str):
+    """feature_required for a whole blueprint (its before_request): 404
+    while the signed-in client has the module off, read-only (GET only)
+    while it's kept for its records. Not signed in, or a console login:
+    left to the routes' own checks."""
+    if not current_user.is_authenticated or current_user.tenant_id is None:
+        return
+    if current_tenant_has(key):
+        return
+    if not current_tenant_reads(key):
+        abort(404)
+    if request.method not in ("GET", "HEAD"):
+        abort(403)
+    g.read_only_module = FEATURES[key].label
 
 
 def feature_required(key: str):

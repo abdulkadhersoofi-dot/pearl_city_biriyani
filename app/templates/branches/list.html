@@ -29,10 +29,12 @@
           <a href="{{ url_for('branches.reset_branch_password', user_id=u.id) }}">Reset password</a>
           {% if u.is_active %}
           {# The ARFA Counter app: a one-time code signs a phone in as this branch. #}
+          {% if has_feature('pos') %}
           <form method="post" action="{{ url_for('branches.pair_phone', user_id=u.id) }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button class="btn btn-secondary btn-sm">{{ icon('smartphone', 'icon-sm') }}Pair a phone</button>
           </form>
+          {% endif %}
           <form method="post" action="{{ url_for('branches.deactivate_branch', user_id=u.id) }}"
                 data-confirm="Deactivate {{ u.name }}? They will no longer be able to sign in." data-danger>
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -78,6 +80,7 @@
   </table>
 </div>
 
+{% if has_feature('pos') %}
 {# Phones and tablets that bill as a branch (the ARFA Counter app), and any
    browser counter registered for offline billing. #}
 <section class="card mt-20" id="sec-devices">
@@ -118,4 +121,5 @@
   <p class="text-muted m-0">None yet. Tap <strong>Pair a phone</strong> next to a branch, then type the code in the ARFA Counter app on that phone.</p>
   {% endif %}
 </section>
+{% endif %}
 {% endblock %}

@@ -20,6 +20,19 @@
     </div>
   </section>
 
+  {# Registration and GSTINs are ARFA's to change (console > the client > Edit details). #}
+  <section class="card settings-card">
+    <h2>Registration &amp; locations</h2>
+    <dl class="plain-facts">
+      <div><dt>Legal name</dt><dd>{{ tenant.legal_name }}{% if tenant.trade_name %} <span class="text-muted">· {{ tenant.trade_name }}</span>{% endif %}</dd></div>
+      <div><dt>GST registration</dt><dd>{{ {'regular': 'Regular (GST registered)', 'composition': 'Composition scheme', 'unregistered': 'Unregistered (no GSTIN)'}[tenant.registration_type.value] }}</dd></div>
+      {% for g in tenant.gstins if g.is_active %}
+      <div><dt>{{ 'Main location' if g.is_primary else 'Location' }}</dt><dd>{{ g.display_label }}{% if g.registered_address or g.city %}<br><small class="text-muted">{{ [g.registered_address, g.city, g.pincode]|select|join(', ') }}</small>{% endif %}</dd></div>
+      {% endfor %}
+    </dl>
+    <p class="field-help m-0">To change these - a new GSTIN, a change of registration, an address - ask ARFA.</p>
+  </section>
+
   <section class="card settings-card">
     <h2>Prices of new items</h2>
     {{ lock_note(locked.pricing) }}

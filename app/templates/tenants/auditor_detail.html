@@ -99,7 +99,7 @@
         <div><dt>Renews</dt><dd>{{ auditor.next_billing_due.strftime('%d %b %Y') if auditor.next_billing_due else ('Not verified yet' if auditor.billing_cycle is none else 'Not tracked yet') }}</dd></div>
         <div><dt>Two-step sign-in</dt><dd>{{ 'On' if auditor.has_two_factor else 'Not set up' }}</dd></div>
         <div><dt>Email</dt><dd class="break-all">{{ auditor.email }}</dd></div>
-        <div><dt>Created</dt><dd>{{ auditor.created_at.strftime('%d %b %Y') }}</dd></div>
+        <div><dt>Created</dt><dd>{{ (auditor.created_at|ist('%d %b %Y')) }}</dd></div>
       </dl>
     </div>
   </section>
@@ -155,7 +155,7 @@
                 {% elif status.billing_notice %}<span class="status-badge status-warn">Renewal due</span>
                 {% else %}<span class="status-badge status-issued">Active</span>{% endif %}
               </td>
-              <td>{{ tenant.created_at.strftime('%d %b %Y') }}</td>
+              <td>{{ (tenant.created_at|ist('%d %b %Y')) }}</td>
               <td class="num"><a href="{{ url_for('tenants.detail', tenant_id=tenant.id) }}" class="row-go" aria-label="Open {{ tenant.legal_name }}">{{ icon('chevron-right') }}</a></td>
             </tr>
             {% else %}

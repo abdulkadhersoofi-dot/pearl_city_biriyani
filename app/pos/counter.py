@@ -2,7 +2,7 @@
 "cashier_pin") and the offline bill queue (feature "offline_pos",
 app.pos.offline)."""
 
-from flask import jsonify, request
+from flask import abort, jsonify, request
 from flask_login import current_user
 
 from app.auth.decorators import tenant_user_required
@@ -42,6 +42,24 @@ def cashier_lock():
 
 # --- offline billing (feature "offline_pos") ------------------------------------------------
 
+def _offline_billing(view):
+    """Offline bills come from a counter with offline billing on
+    ("offline_pos"), or from the ARFA Counter app on a paired phone - the
+    app always bills offline. Anyone else: 404, as for a module that's off."""
+    from functools import wraps
+
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        from app.pos.offline import phone_bills_offline
+        from app.utils.features import current_tenant_has
+
+        if not (current_tenant_has("offline_pos") or phone_bills_offline()):
+            abort(404)
+        return view(*args, **kwargs)
+
+    return wrapped
+
+
 def _device_from_request(tenant):
     from app.pos import offline
 
@@ -72,7 +90,7 @@ def offline_register():
 
 @pos_bp.route("/offline/state")
 @tenant_user_required
-@feature_required("offline_pos")
+@_offline_billing
 def offline_state():
     """The device's next number, and a fresh CSRF token for sending bills
     (the cached page's token may have expired while offline)."""
@@ -93,7 +111,7 @@ def offline_state():
 
 @pos_bp.route("/offline/sync", methods=["POST"])
 @tenant_user_required
-@feature_required("offline_pos")
+@_offline_billing
 def offline_sync():
     """The device's queued bills, oldest first. Each comes back synced,
     failed (kept on the server for the Client Admin) or rejected (not even
@@ -174,14 +192,17 @@ def receipt_json(bill_id):
 
 @pos_bp.route("/offline", methods=["GET", "POST"])
 @tenant_user_required
-@feature_required("offline_pos")
 def offline_bills():
+    """The owner's review of bills made offline - by a counter with offline
+    billing on, or by an ARFA Counter phone (which always can)."""
     from flask import abort, flash, redirect, render_template, url_for
 
     from app.models.platform import CounterDevice, OfflineBill, OfflineBillStatus
     from app.pos import offline
     from app.utils.tenant_scope import tenant_query
 
+    if not offline.offline_review_on(current_user.tenant):
+        abort(404)
     if not current_user.is_client_admin:
         abort(403)
     tenant = current_user.tenant

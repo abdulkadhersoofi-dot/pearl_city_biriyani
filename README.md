@@ -2876,6 +2876,91 @@ and numbering are the website's. Stage 1 is how a phone gets in.
 - A test fails if any template or script uses the browser's boxes again
   (`tests/test_in_page_dialogs.py`).
 
+### Six fixes: Indian time, client details, branch billing, module locks, POS module, fast app
+
+- **Indian time everywhere.** The server process runs on IST
+  (`create_app` sets `TZ` from `TIMEZONE_POSIX`, default `IST-5:30`, and
+  calls `time.tzset()`; the Dockerfile sets it too) and every database
+  connection uses `timezone=Asia/Kolkata` (`SQLALCHEMY_ENGINE_OPTIONS`),
+  so `now()`, `datetime.now()` and the day boundaries of reports agree.
+  Templates print stored times through the `ist` filter
+  (`created_at|ist('%d %b %Y %H:%M')`), which turns a time stored in UTC
+  into Indian time and leaves an Indian time as it is. Before, invoices,
+  receipts, the Z-report and the day-book printed UTC - 5 h 30 m behind.
+  Tests: `tests/test_indian_time.py`.
+- **A client's details can be changed after onboarding**
+  (`/admin/clients/<id>/details`, "Edit details" on the client's page;
+  Ultra Admin, or an auditor with the "edit client details" power;
+  `app/tenants/details.py`). Legal and trade name, registration type
+  (Regular / Composition / Unregistered), business type, turnover and the
+  business locations (GSTIN, state, address, PIN; add, remove, choose
+  the main one). Documents already issued never change: a location that
+  has issued anything is never given another GSTIN in place - a new
+  location takes its place, the old one is switched off, and the
+  numbering carries on (`_carry_numbering`) so no number repeats. A
+  GSTIN must be valid, match its state and not belong to another client.
+  From the change on, new documents follow the new registration (Tax
+  Invoice / Bill of Supply). The client sees the result read-only under
+  Settings -> Business, "Registration & locations". Every change is in
+  the audit log. Tests: `tests/test_client_details.py`.
+- **An unregistered or composition business bills its branches**
+  (`invoicing.services.branch_document_type`). On New invoice, "Billing
+  to a branch": an *own* branch gets a Delivery Challan (a stock
+  transfer, no GST - whatever the registration); a *third-party* branch
+  gets a Bill of Supply without GST from an unregistered or composition
+  seller, a Tax Invoice from a regular one. The form picks the type by
+  itself and says so ("Bill of Supply - no GST"). Before, an unregistered
+  business couldn't issue either. Tests:
+  `tests/test_branch_billing_unregistered.py`.
+- **Modules the Ultra Admin switches off are locked.** A client's page
+  -> Package has "Modules for <client>" (Ultra Admin only,
+  `tenants.save_client_modules`): each module is Off, On (included) or
+  Client decides, with its switch for the last. Off means the client
+  doesn't see it at all - not in the menu, Settings -> Modules, search
+  or the routes (404); On means it's on and the client can't switch it
+  off; only "Client decides" gives the client a switch. Auditors keep
+  the chips (they can switch only within what the package allows).
+  Tests: `tests/test_module_locks.py`.
+- **The counter (POS) is a module** (`pos`, "Counter billing (POS)").
+  Every existing client keeps it (the migration `d5e1a7c3f924` switches
+  it on for everyone and includes it in every package that doesn't
+  leave modules to the client), and a client with no saved switch has it
+  on (`ON_UNLESS_SWITCHED_OFF`). Switched off: the counter, tables,
+  kitchen, sold out, day-book, Z-report, close the day, counter settings,
+  pairing phones and the modules that need the counter (restaurant,
+  weighing scale, favourites, day close, cashier PIN, offline) are gone
+  - routes 404 (`module_gate("pos")` on the `pos`, `restaurant` and
+  `counterapp` blueprints), and a branch login lands on "There is no
+  counter for this business" instead of the counter. Invoices are the
+  "Sell" tab then. Tests: `tests/test_pos_module.py`.
+- **The ARFA Counter app is fast and works without internet.**
+  - Static files carry a fingerprint (`?v=` - `app/utils/delivery.py`)
+    and are cached for a year (immutable): a reopened app asks nothing
+    about scripts and styles. Pages, CSS, scripts and JSON are gzipped
+    (about a quarter of the size).
+  - The service worker (`static/js/pos_sw.js`, scope `/app/`) opens the
+    app's screens (home, Bill, Tables) from the phone at once, whatever
+    the network, and fetches a fresh copy behind them. Each screen
+    carries `X-Screen-Version` (a hash of the page without its CSRF
+    token); when the fresh copy differs (a new price, an item sold out)
+    the page is told and reloads into it when the cashier is idle (no
+    open bill or sheet).
+  - Every request from the app gives up in time (8 s for a read, 10 s
+    for a bill) - a phone "connected" without data used to wait for
+    minutes; a bill then falls back to the phone's own series and is
+    sent when the connection is back.
+  - A paired phone always bills offline, whether or not the business has
+    "Offline billing" on (that switch is now for the website counter);
+    the owner sees Offline bills as soon as a phone is paired.
+  - Android: the splash never waits for the server more than 1.5 s, the
+    page shows as soon as it's drawn (`onPageCommitVisible`), hardware
+    layer, no zoom.
+  - Measured through a throttling proxy, opening the Bill screen: good
+    connection 0.34 s -> 0.23 s; 3 s per connection 21 s -> 0.2 s;
+    connected but no answer: never -> 0.15 s; no internet: failed ->
+    0.15 s; bytes per reopen ~300 KB -> ~3 KB.
+  - Tests: `tests/test_app_fast_offline.py`.
+
 ### Counter app - how to run it (hand-over)
 
 **The owner, once per phone**
@@ -3127,6 +3212,21 @@ before packages.
   - Open: a branch's kitchen shows only that login's KOTs (as designed in
     stage 4) - a KOT the owner sends from their own counter shows on the
     owner's kitchen screen, not on a branch's.
+- **Six fixes** (done - see Design notes "Six fixes"): Indian time on
+  every page, print and report; a client's registration, business type
+  and GSTINs editable from the console; an unregistered / composition
+  business billing its branches (Bill of Supply, or a Delivery Challan to
+  its own); modules the Ultra Admin switches off or on are locked for the
+  client; the counter (POS) as a module; a fast ARFA Counter app that
+  opens and bills without internet.
+  Limits:
+  - A changed registration applies from the change on; documents already
+    issued keep the type, GSTIN and tax they were issued with.
+  - A paired phone always bills offline; the "Offline billing" switch now
+    covers the website counter only.
+  - The app's screens refresh in the background, so a new price shows
+    after a few seconds (and the screen reloads only while no bill is
+    open); the website counter still asks the network first (up to 4 s).
 
   Interface redesign limits:
   - Stage 3 changed pages through shared CSS and two small scripts, not

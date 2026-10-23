@@ -6,7 +6,7 @@
   <div>
     <h1>{{ bill.bill_number }}</h1>
     <p class="text-muted mt-0">
-      {{ bill.completed_at.strftime('%d %b %Y %H:%M') if bill.completed_at else '' }} ·
+      {{ (bill.completed_at|ist('%d %b %Y %H:%M')) if bill.completed_at else '' }} ·
       <span class="status-badge status-{{ 'issued' if bill.status.value == 'completed' else 'void' }}">{{ bill.status.value|title }}</span>
       {% if bill.is_margin_scheme %} · <span class="tag">Margin scheme invoice</span>{% endif %}
       {% if bill.customer_snapshot %} · {{ bill.customer_snapshot.name }}{% if bill.customer_snapshot.gstin %} ({{ bill.customer_snapshot.gstin }}){% endif %}{% endif %}

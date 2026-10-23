@@ -31,10 +31,17 @@ SECTIONS = [
 SETUP_ALSO_NEEDS = {"batch_expiry": ("inventory",), "serial_imei": ("inventory",)}
 
 
+# Sections that belong to a module: gone from the menu while it's off.
+SECTION_MODULE = {"counter": "pos"}
+
+
 def section_menu(active: str) -> list[dict]:
+    from app.utils.features import current_tenant_has
+
     return [{"key": key, "label": label, "icon": icon, "url": url_for(endpoint), "active": key == active,
              "description": description}
-            for key, label, icon, endpoint, description in SECTIONS]
+            for key, label, icon, endpoint, description in SECTIONS
+            if key not in SECTION_MODULE or current_tenant_has(SECTION_MODULE[key])]
 
 
 def section_info(key: str) -> dict:

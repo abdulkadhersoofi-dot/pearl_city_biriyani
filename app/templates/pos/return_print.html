@@ -22,7 +22,7 @@
   <div class="rule"></div>
   <div class="doc-number">{{ ret.return_number }}</div>
   <table>
-    <tr><td>Date</td><td class="right">{{ ret.returned_at.strftime('%d %b %Y %H:%M') }}</td></tr>
+    <tr><td>Date</td><td class="right">{{ (ret.returned_at|ist('%d %b %Y %H:%M')) }}</td></tr>
     <tr><td>Against bill</td><td class="right">{{ ret.bill.bill_number }}</td></tr>
     {% if ret.customer_snapshot %}<tr><td>Customer</td><td class="right">{{ ret.customer_snapshot.name }}</td></tr>{% endif %}
     {% if ret.customer_snapshot and ret.customer_snapshot.gstin %}<tr><td>Cust. GSTIN</td><td class="right">{{ ret.customer_snapshot.gstin }}</td></tr>{% endif %}

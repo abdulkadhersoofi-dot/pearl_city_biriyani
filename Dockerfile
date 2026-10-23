@@ -25,7 +25,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 RUN chmod +x deploy/entrypoint.sh
 
+# Indian time for the whole container (the app also sets it itself -
+# app._set_process_clock - and on every database connection).
 ENV PYTHONUNBUFFERED=1 \
+    TZ=IST-5:30 \
     FLASK_APP=wsgi.py \
     FLASK_ENV=production
 

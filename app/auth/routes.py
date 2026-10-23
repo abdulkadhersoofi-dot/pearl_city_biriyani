@@ -46,7 +46,9 @@ def _post_login_redirect(user: User):
         if user.tenant and user.tenant.has_feature("business_reports"):
             return redirect(url_for("reports.dashboard"))
         return redirect(url_for("invoicing.list_invoices"))
-    return redirect(url_for("counterapp.index") if in_counter_app() else url_for("pos.terminal"))
+    from app.main.routes import branch_landing
+
+    return redirect(branch_landing(user, in_app=in_counter_app()))
 
 
 def _login_view(login_tenant=None):
@@ -304,6 +306,9 @@ def logout():
     logout_user()
     session.pop("impersonator_id", None)
     session.pop("cashier_id", None)
+    # A paired phone signs back in with its own secret (which sets this
+    # again); anyone signing in by email here next isn't that phone.
+    session.pop("counter_device_id", None)
     return redirect(url_for("auth.login"))
 
 

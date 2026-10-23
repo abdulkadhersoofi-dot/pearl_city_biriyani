@@ -68,7 +68,7 @@
 
 {% if note.status.value == 'void' %}
 <div class="card mt-20">
-  <p><strong>Voided</strong> on {{ note.voided_at.strftime('%d %b %Y %H:%M') }} by {{ note.voided_by.name if note.voided_by else '-' }}.</p>
+  <p><strong>Voided</strong> on {{ (note.voided_at|ist('%d %b %Y %H:%M')) }} by {{ note.voided_by.name if note.voided_by else '-' }}.</p>
   <p class="text-muted">Reason: {{ note.void_reason }}</p>
 </div>
 {% endif %}

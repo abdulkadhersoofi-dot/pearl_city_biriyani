@@ -81,6 +81,10 @@ def posted_lines():
 def header_form_choices(form, tenant):
     form.gstin_id.choices = [(g.id, g.display_label) for g in tenant.gstins.filter_by(is_active=True)]
     form.document_type.choices = _tenant_document_type_choices()
+    if request.method == "POST" and request.form.get("branch_user_id"):
+        # Billing a branch: the document type is the branch's
+        # (services.branch_document_type), not the hidden picker's.
+        form.document_type.validate_choice = False
     customers = tenant_query(Customer).filter_by(is_active=True).order_by(Customer.name).all()
     form.customer_id.choices = [("new", "+ New customer")] + [(str(c.id), c.name) for c in customers]
     branches = tenant_query(User).filter_by(role=UserRole.STAFF, is_active=True).order_by(User.name).all()

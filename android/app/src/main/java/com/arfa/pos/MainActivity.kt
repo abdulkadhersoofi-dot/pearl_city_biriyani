@@ -92,6 +92,7 @@ class MainActivity : AppCompatActivity() {
 
     private var isHandlingBlockedRole = false
     private var hasLoadedOnce = false
+    private val startedAt = System.currentTimeMillis()
     private var backPressedAt = 0L
     // Keeps the off-screen WebView alive while Android prints from it.
     private var printWebView: WebView? = null
@@ -116,7 +117,11 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         val splash = installSplashScreen()
         super.onCreate(savedInstanceState)
-        splash.setKeepOnScreenCondition { !hasLoadedOnce }
+        // The splash waits for the first screen to show - but never longer
+        // than SPLASH_MAX_MS: the app's screens open from the phone's own
+        // copy, and a slow or sleeping server must not hold the app on the
+        // splash (it used to wait for the server to answer, up to a minute).
+        splash.setKeepOnScreenCondition { !hasLoadedOnce && System.currentTimeMillis() - startedAt < SPLASH_MAX_MS }
 
         settings = PrinterSettings(this)
         printer = EscPosPrinter(this, settings)
@@ -192,6 +197,13 @@ class MainActivity : AppCompatActivity() {
         webSettings.useWideViewPort = true
         webSettings.loadWithOverviewMode = true
         webSettings.cacheMode = android.webkit.WebSettings.LOAD_DEFAULT
+        // Draw the page ahead of scrolling and on the GPU - smoother on
+        // the low-cost phones counters use.
+        webSettings.offscreenPreRaster = true
+        webView.setLayerType(View.LAYER_TYPE_HARDWARE, null)
+        // No zoom controls or text auto-sizing work on every page.
+        webSettings.setSupportZoom(false)
+        webSettings.mediaPlaybackRequiresUserGesture = true
         // Tells the server this is the ARFA Counter app (app/auth/routes.py
         // APP_AGENT): a branch login lands on the app's screens.
         webSettings.userAgentString = webSettings.userAgentString + " ARFACounter/" + BuildConfig.VERSION_NAME
@@ -335,6 +347,14 @@ class MainActivity : AppCompatActivity() {
         override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
             binding.errorView.visibility = View.GONE
             if (!hasLoadedOnce) binding.loadingSpinner.visibility = View.VISIBLE
+        }
+
+        // The first paint of a page (earlier than "finished": scripts and
+        // pictures may still be coming) - enough to drop the splash.
+        override fun onPageCommitVisible(view: WebView, url: String) {
+            binding.webView.visibility = View.VISIBLE
+            binding.loadingSpinner.visibility = View.GONE
+            hasLoadedOnce = true
         }
 
         override fun onPageFinished(view: WebView, url: String) {
@@ -714,6 +734,8 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val ACTION_USB_PERMISSION = "com.arfa.pos.USB_PERMISSION"
+        // The longest the splash may stay up waiting for the first screen.
+        private const val SPLASH_MAX_MS = 1500L
     }
 }
 

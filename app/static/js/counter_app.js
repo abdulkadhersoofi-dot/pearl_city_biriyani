@@ -8,6 +8,29 @@
  * offline in its own series (O1/...) without registering a second time.
  */
 (function () {
+  // Every request to the server gives up after a while: on a phone that is
+  // "connected" but gets no data (or a server still waking up) a request
+  // would otherwise hang for minutes, and the screen with it. A request
+  // that gives up counts as no internet - bills and KOTs are then kept on
+  // the phone and sent later (each carries its own id, so one that did
+  // reach the server is never booked twice).
+  var nativeFetch = window.fetch && window.fetch.bind(window);
+  if (nativeFetch && window.AbortController) {
+    window.fetch = function (input, init) {
+      init = init || {};
+      var url = typeof input === "string" ? input : (input && input.url) || "";
+      var same = true;
+      try { same = new URL(url, window.location.href).origin === window.location.origin; } catch (e) {}
+      if (init.signal || !same) return nativeFetch(input, init);
+      var ctrl = new AbortController();
+      var wait = init.method && init.method.toUpperCase() !== "GET" ? 10000 : 8000;
+      var timer = setTimeout(function () { ctrl.abort(); }, wait);
+      return nativeFetch(input, Object.assign({}, init, {signal: ctrl.signal})).then(
+        function (res) { clearTimeout(timer); return res; },
+        function (err) { clearTimeout(timer); throw err; });
+    };
+  }
+
   var KEY = "arfa.app.device";
   var CART_KEY = "arfa.app.cart";  // the Bill screen's cart in progress (counter_bill.js)
   // What this phone is for (stage 5) - where the app opens: the counter's
@@ -39,7 +62,7 @@
       if (d) localStorage.removeItem("arfa.device." + d.tenant_id + "." + d.user_id);
     } catch (e) {}
     // The screens kept for offline use belong to this branch - drop them.
-    if (window.caches) caches.delete("arfa-app-v1").catch(function () {});
+    if (window.caches) ["arfa-app-v1", "arfa-app-v2"].forEach(function (n) { caches.delete(n).catch(function () {}); });
     if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
       navigator.serviceWorker.getRegistrations().then(function (rs) {
         rs.forEach(function (r) { if (/\/app\/$/.test(r.scope)) r.unregister(); });
@@ -62,7 +85,30 @@
   function resume() {
     var d = load();
     if (!d) return Promise.resolve(false);
-    return post("/app/resume", {device_id: d.id, token: d.token}).then(function (r) { return r.ok; });
+    return post("/app/resume", {device_id: d.id, token: d.token}).then(function (r) {
+      // Switched off or unpaired by the owner: this phone's saved screens go,
+      // so the next start asks for a new code instead of opening old copies.
+      if (r.status === 403) forget();
+      return r.ok;
+    });
+  }
+
+  // The app's offline copy (pos_sw.js): installed on every phone, whatever
+  // the business's offline billing setting - the app always works offline.
+  function registerWorker() {
+    if (!("serviceWorker" in navigator)) return;
+    navigator.serviceWorker.register("/app/sw.js", {scope: "/app/"}).catch(function () {});
+  }
+  // A fresher copy of this screen has been kept (new prices, an item sold
+  // out): the screen hears "arfa:screen-updated" and reloads into it when
+  // the cashier is free.
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.addEventListener("message", function (ev) {
+      var msg = ev.data || {};
+      if (msg.type === "screen-updated" && msg.path === window.location.pathname) {
+        window.dispatchEvent(new CustomEvent("arfa:screen-updated"));
+      }
+    });
   }
 
   // Keeps the app's screens and everything they load in the offline copy
@@ -78,7 +124,7 @@
     });
     var sprite = document.getElementById("icon-sprite");
     if (sprite && sprite.dataset.href) urls.push(sprite.dataset.href);
-    caches.open("arfa-app-v1").then(function (cache) {
+    caches.open("arfa-app-v2").then(function (cache) {
       urls.forEach(function (u) { cache.add(u).catch(function () {}); });
       screens.forEach(function (path) {
         fetch(path, {credentials: "same-origin"}).then(function (res) {
@@ -89,7 +135,8 @@
   }
 
   window.ArfaApp = {load: load, save: save, forget: forget, post: post, platform: platform, resume: resume,
-                    keepForOffline: keepForOffline, CART_KEY: CART_KEY, mode: mode, setMode: setMode};
+                    keepForOffline: keepForOffline, registerWorker: registerWorker, CART_KEY: CART_KEY, mode: mode,
+                    setMode: setMode};
 
   window.pairScreen = function () {
     return {
@@ -134,6 +181,7 @@
       inApp: !!(window.AndroidPrint && window.AndroidPrint.openSettings),
       start: function () {
         var self = this, d = load();
+        registerWorker();
         // The app opening (/app/?start=1): straight to what this phone is for.
         if (/[?&]start=1/.test(window.location.search)) {
           var target = tablesOn ? MODES[this.mode] : MODES.counter;

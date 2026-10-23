@@ -67,8 +67,8 @@
     {% for a in sessions %}
       <tr>
         <td><a href="{{ url_for('pos.day_session', session_id=a.session.id) }}">{{ a.session.user.name }}</a></td>
-        <td>{{ a.session.opened_at.strftime('%H:%M') }}</td>
-        <td>{{ a.session.closed_at.strftime('%H:%M') if a.session.closed_at else 'Open' }}</td>
+        <td>{{ (a.session.opened_at|ist('%H:%M')) }}</td>
+        <td>{{ (a.session.closed_at|ist('%H:%M')) if a.session.closed_at else 'Open' }}</td>
         <td>Rs. {{ '%.2f'|format(a.session.expected_cash if a.session.closed_at else a.expected_cash) }}</td>
         <td>{{ ('Rs. %.2f'|format(a.session.counted_cash)) if a.session.closed_at else '-' }}</td>
         <td>{% if a.session.closed_at %}<strong style="color:{{ 'var(--color-danger)' if a.session.difference < 0 else 'inherit' }};">Rs. {{ '%.2f'|format(a.session.difference) }}</strong>{% else %}-{% endif %}</td>

@@ -77,7 +77,7 @@
             {% else %}<span class="status-badge status-void">{{ labels.get(r.reason, r.reason|replace('_', ' ')|title) }}</span>{% endif %}
             {% if r.no_auditor %}<span class="status-badge status-draft">No auditor</span>{% endif %}
           </td>
-          <td>{{ tenant.created_at.strftime('%d %b %Y') }}</td>
+          <td>{{ (tenant.created_at|ist('%d %b %Y')) }}</td>
           <td class="num"><a href="{{ url_for('tenants.detail', tenant_id=tenant.id) }}" class="row-go" aria-label="Open {{ tenant.legal_name }}">{{ icon('chevron-right') }}</a></td>
         </tr>
         {% else %}

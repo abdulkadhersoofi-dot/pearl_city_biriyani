@@ -484,7 +484,7 @@
       <div class="held-bill-card">
         <div class="held-bill-label">{{ hb.hold_label or ('Bill #' ~ hb.id) }}</div>
         <div class="held-bill-meta">{{ hb.lines|length }} item(s) &middot; Rs. {{ '%.2f'|format(hb.grand_total) }}</div>
-        <div class="held-bill-meta">Held at {{ hb.created_at.strftime('%H:%M') }}</div>
+        <div class="held-bill-meta">Held at {{ (hb.created_at|ist('%H:%M')) }}</div>
         <div class="row">
           <a href="{{ url_for('pos.terminal', resume=hb.id) }}" class="btn btn-quiet btn-sm"
              @click="resumeHeld($event, {{ hb.id }})">Resume</a>

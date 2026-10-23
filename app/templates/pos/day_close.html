@@ -4,7 +4,7 @@
 <div class="page-header">
   <div>
     <h1>{% if session and session.closed_at %}Closed day{% else %}Cash &amp; day close{% endif %}</h1>
-    {% if session %}<p class="text-muted mt-0">{{ session.user.name }} &middot; opened {{ session.opened_at.strftime('%d %b %Y %H:%M') }}{% if session.closed_at %} &middot; closed {{ session.closed_at.strftime('%H:%M') }}{% endif %}</p>{% endif %}
+    {% if session %}<p class="text-muted mt-0">{{ session.user.name }} &middot; opened {{ (session.opened_at|ist('%d %b %Y %H:%M')) }}{% if session.closed_at %} &middot; closed {{ (session.closed_at|ist('%H:%M')) }}{% endif %}</p>{% endif %}
   </div>
   <a href="{{ url_for('pos.terminal') }}" class="btn btn-quiet">Back to billing</a>
 </div>
@@ -61,7 +61,7 @@
   <table>
     <tbody>
     {% for m in session.movements %}
-      <tr><td>{{ m.created_at.strftime('%H:%M') }}</td><td>{{ 'In' if m.kind == 'in' else 'Out' }}</td><td>{{ m.reason }}</td><td>Rs. {{ '%.2f'|format(m.amount) }}</td></tr>
+      <tr><td>{{ (m.created_at|ist('%H:%M')) }}</td><td>{{ 'In' if m.kind == 'in' else 'Out' }}</td><td>{{ m.reason }}</td><td>Rs. {{ '%.2f'|format(m.amount) }}</td></tr>
     {% endfor %}
     </tbody>
   </table>

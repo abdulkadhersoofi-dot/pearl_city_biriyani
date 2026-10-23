@@ -21,7 +21,9 @@ from app.utils.audit import record_audit
 from app.utils.entitlements import (
     SETTINGS, acting_console_user, auditor_can, client_may_switch, locked_for_client, own_branding,
 )
-from app.utils.features import AVAILABLE_FEATURES, BUSINESS_TYPE_LABELS, FEATURES, apply_business_type_preset
+from app.utils.features import (
+    AVAILABLE_FEATURES, BUSINESS_TYPE_LABELS, FEATURES, apply_business_type_preset, feature_required,
+)
 from app.utils.uploads import UploadError, delete_uploaded_image, save_uploaded_image
 
 
@@ -287,6 +289,7 @@ def request_module(key):
 
 @settings_bp.route("/counter", methods=["GET", "POST"])
 @roles_required(UserRole.CLIENT_ADMIN)
+@feature_required("pos")
 def counter():
     tenant = current_user.tenant
     form = CounterForm(obj=tenant)

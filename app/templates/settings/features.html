@@ -95,7 +95,7 @@
           {% if item.records_url %}<a href="{{ item.records_url }}">Open records</a>{% endif %}</span>
         {% endif %}
         {% if requests.get(item.key) %}
-        <span class="asked-note">{{ icon('clock', 'icon-sm') }}Asked {{ requests[item.key].created_at.strftime('%d %b') }}</span>
+        <span class="asked-note">{{ icon('clock', 'icon-sm') }}Asked {{ (requests[item.key].created_at|ist('%d %b')) }}</span>
         {% else %}
         <form method="post" action="{{ url_for('settings.request_module', key=item.key) }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

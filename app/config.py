@@ -33,9 +33,20 @@ class Config:
         )
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+    # The business's clock: Indian time (UTC+5:30). Timestamps are still
+    # stored as UTC instants; this decides how they read back and what
+    # "today" is. The server process runs on it (app._set_process_clock -
+    # date.today(), datetime.now()), and so does every database connection
+    # (its session time zone), so a stored time comes back as Indian time
+    # and a day boundary in a report or numbering is midnight in India,
+    # not 5:30 in the morning. TIMEZONE_POSIX needs no tz database on the
+    # server (India keeps no daylight saving).
+    TIMEZONE_NAME = os.environ.get("APP_TIMEZONE", "Asia/Kolkata")
+    TIMEZONE_POSIX = os.environ.get("APP_TIMEZONE_POSIX", "IST-5:30")
     SQLALCHEMY_ENGINE_OPTIONS = {
         "pool_pre_ping": True,
         "pool_recycle": 280,
+        "connect_args": {"options": f"-c timezone={TIMEZONE_NAME}"},
     }
 
     REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")

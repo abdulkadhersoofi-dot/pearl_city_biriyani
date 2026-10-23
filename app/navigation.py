@@ -38,9 +38,15 @@ class Link:
     power: str | None = None
     # A counter permission the signed-in login must hold (a branch's menu).
     permission: str | None = None
+    # Other modules it also needs, all on (a restaurant's tables need the counter).
+    also: tuple = ()
+    # Anything else that decides it, asked last (a callable, no arguments).
+    check: object = None
 
     def visible(self) -> bool:
         if self.feature and not current_tenant_has(self.feature):
+            return False
+        if self.also and not all(current_tenant_has(f) for f in self.also):
             return False
         if self.permission:
             from flask_login import current_user
@@ -57,6 +63,8 @@ class Link:
             if not auditor_can(current_user, self.power):
                 return False
         if self.any_feature and not any(current_tenant_has(f) for f in self.any_feature):
+            return False
+        if self.check is not None and not self.check():
             return False
         return True
 
@@ -98,8 +106,9 @@ def _client_groups() -> list[Group]:
             Link("Live", "live.dashboard", "activity", blueprints=("live",), keywords="branches leaderboard now"),
         )),
         Group("sell", "Sell", (
-            Link("POS", "pos.terminal", "monitor", blueprints=("pos",), keywords="counter billing bill till"),
-            Link("Tables", "restaurant.tables", "utensils-crossed", feature="restaurant_mode",
+            Link("POS", "pos.terminal", "monitor", feature="pos", blueprints=("pos",),
+                 keywords="counter billing bill till"),
+            Link("Tables", "restaurant.tables", "utensils-crossed", feature="restaurant_mode", also=("pos",),
                  blueprints=("restaurant",), keywords="restaurant dine kot"),
             # Credit / debit notes are a tab inside Invoices (invoicing/_tabs.html).
             Link("Invoices", "invoicing.list_invoices", "receipt-text", blueprints=("invoicing", "notes"),
@@ -168,18 +177,29 @@ def _client_groups() -> list[Group]:
     ]
 
 
+def _offline_review() -> bool:
+    """The Offline bills page is the owner's (a branch can't open it), with
+    offline billing on or once a phone has billed offline."""
+    from flask_login import current_user
+
+    from app.pos.offline import offline_review_on
+
+    return bool(current_user.is_client_admin and offline_review_on(current_user.tenant))
+
+
 def _branch_groups() -> list[Group]:
     """A branch login's menu: its counter and the screens around it. Every
     entry follows the business's modules, what is hidden at this counter
     and the login's permissions - the same rules as the routes."""
     return [
         Group("counter", "Counter", (
-            Link("Counter", "pos.terminal", "monitor", endpoints=("pos.terminal",), keywords="pos billing bill"),
-            Link("Tables", "restaurant.tables", "utensils-crossed", feature="restaurant_mode",
+            Link("Counter", "pos.terminal", "monitor", feature="pos", endpoints=("pos.terminal",),
+                 keywords="pos billing bill"),
+            Link("Tables", "restaurant.tables", "utensils-crossed", feature="restaurant_mode", also=("pos",),
                  endpoints=("restaurant.tables",), keywords="restaurant dine kot"),
-            Link("Kitchen", "restaurant.kitchen", "clipboard-list", feature="restaurant_mode",
+            Link("Kitchen", "restaurant.kitchen", "clipboard-list", feature="restaurant_mode", also=("pos",),
                  endpoints=("restaurant.kitchen",), keywords="kot orders ready"),
-            Link("Sold out today", "restaurant.menu", "package-minus", feature="restaurant_mode",
+            Link("Sold out today", "restaurant.menu", "package-minus", feature="restaurant_mode", also=("pos",),
                  endpoints=("restaurant.menu",), keywords="menu"),
             Link("Job cards", "jobs.index", "wrench", feature="job_cards",
                  endpoints=("jobs.index", "jobs.new", "jobs.view"), keywords="repair service"),
@@ -187,13 +207,13 @@ def _branch_groups() -> list[Group]:
                  endpoints=("jobs.warranty",), keywords="imei serial"),
         )),
         Group("today", "Today", (
-            Link("Day-book", "pos.day_book", "list", permission="view_reports", endpoints=("pos.day_book",),
-                 keywords="today bills reprint refund"),
-            Link("Z-report", "pos.z_report_view", "file-text", permission="view_reports",
+            Link("Day-book", "pos.day_book", "list", feature="pos", permission="view_reports",
+                 endpoints=("pos.day_book",), keywords="today bills reprint refund"),
+            Link("Z-report", "pos.z_report_view", "file-text", feature="pos", permission="view_reports",
                  endpoints=("pos.z_report_view",), keywords="end of day"),
-            Link("Close the day", "pos.day_close", "clock", feature="day_close", endpoints=("pos.day_close",),
-                 keywords="cash count drawer"),
-            Link("Offline bills", "pos.offline_bills", "cloud-off", feature="offline_pos",
+            Link("Close the day", "pos.day_close", "clock", feature="day_close", also=("pos",),
+                 endpoints=("pos.day_close",), keywords="cash count drawer"),
+            Link("Offline bills", "pos.offline_bills", "cloud-off", feature="pos", check=_offline_review,
                  endpoints=("pos.offline_bills",), keywords="sync queue"),
         )),
     ]
@@ -294,7 +314,7 @@ def menu_groups(user) -> list[dict]:
 
 def _new_actions() -> list[Link]:
     return [
-        Link("Counter bill", "pos.terminal", "monitor", keywords="pos sale"),
+        Link("Counter bill", "pos.terminal", "monitor", feature="pos", keywords="pos sale"),
         Link("Tax invoice", "invoicing.new_invoice", "receipt-text", keywords="invoice"),
         # (Credit / debit notes start from an issued invoice, not from here.)
         Link("Quotation or order", "sales.new_document", "file-text", feature="sales_documents",
@@ -327,14 +347,16 @@ def _more_screens() -> list[tuple[str, Link]]:
     s, b, r, p = "Sell", "Stock & buying", "Reports & GST", "People & money"
     return [
         (s, Link("Credit & debit notes", "notes.list_notes", "file-minus", keywords="credit note debit note return")),
-        (s, Link("Day-book", "pos.day_book", "list", keywords="today bills reprint refund")),
-        (s, Link("Z-report", "pos.z_report_view", "file-text", keywords="end of day x report")),
-        (s, Link("Close the day", "pos.day_close", "clock", feature="day_close", keywords="cash count drawer")),
-        (s, Link("Offline bills", "pos.offline_bills", "cloud-off", feature="offline_pos", keywords="sync queue")),
-        (s, Link("Restaurant menu", "restaurant.menu", "utensils-crossed", feature="restaurant_mode",
+        (s, Link("Day-book", "pos.day_book", "list", feature="pos", keywords="today bills reprint refund")),
+        (s, Link("Z-report", "pos.z_report_view", "file-text", feature="pos", keywords="end of day x report")),
+        (s, Link("Close the day", "pos.day_close", "clock", feature="day_close", also=("pos",),
+                 keywords="cash count drawer")),
+        (s, Link("Offline bills", "pos.offline_bills", "cloud-off", feature="pos", check=_offline_review,
+                 keywords="sync queue")),
+        (s, Link("Restaurant menu", "restaurant.menu", "utensils-crossed", feature="restaurant_mode", also=("pos",),
                  keywords="sold out")),
         (s, Link("Restaurant setup", "restaurant.setup", "utensils-crossed", feature="restaurant_mode",
-                 keywords="tables sections charges")),
+                 also=("pos",), keywords="tables sections charges")),
         (s, Link("Recurring invoices", "sales.recurring", "repeat", feature="recurring_invoices",
                  keywords="amc rent repeat")),
         (s, Link("Warranty check", "jobs.warranty", "shield-check", feature="electronics", keywords="imei serial")),
@@ -390,7 +412,7 @@ def _more_screens() -> list[tuple[str, Link]]:
         ("Settings", Link("Appearance", "settings.appearance", "sparkles", keywords="logo theme colour color font brand")),
         ("Settings", Link("Modules", "settings.features", "layout-grid",
                           keywords="features switch on off enable disable turn")),
-        ("Settings", Link("Counter settings", "settings.counter", "monitor", keywords="payment modes upi qr cash card")),
+        ("Settings", Link("Counter settings", "settings.counter", "monitor", feature="pos", keywords="payment modes upi qr cash card")),
         ("Settings", Link("Documents & printing", "settings.documents", "printer",
                           keywords="print size receipt paper roll margin declaration")),
         ("Settings", Link("Subscription", "subscriptions.mine", "banknote", keywords="software fee plan invoices")),
@@ -449,7 +471,9 @@ def bottom_tabs(user) -> list[dict]:
     home = (Link("Home", "reports.dashboard", "house", endpoints=("reports.dashboard",))
             if current_tenant_has("business_reports")
             else Link("Home", "invoicing.list_invoices", "house", blueprints=("invoicing",)))
-    tabs = [home, Link("Sell", "pos.terminal", "monitor", blueprints=("pos",)),
+    sell = (Link("Sell", "pos.terminal", "monitor", blueprints=("pos",)) if current_tenant_has("pos")
+            else Link("Sell", "invoicing.list_invoices", "receipt-text", blueprints=("invoicing",)))
+    tabs = [home, sell,
             Link("Reports", "reports.index", "chart-column", blueprints=("reports",))]
     return [{"label": t.label, "url": t.url, "icon": t.icon, "active": t.is_active()} for t in tabs]
 
@@ -469,7 +493,9 @@ def needs_you(tenant) -> list[dict]:
     from datetime import date
 
     items = []
-    if tenant.has_feature("offline_pos"):
+    from app.pos.offline import offline_review_on
+
+    if tenant.has_feature("pos") and offline_review_on(tenant):
         from app.models.platform import OfflineBill, OfflineBillStatus
 
         failed = OfflineBill.query.filter_by(tenant_id=tenant.id, status=OfflineBillStatus.FAILED).count()

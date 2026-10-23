@@ -26,6 +26,9 @@
       </div>
     </div>
     <div class="row">
+      {% if console_can('edit_client_details') %}
+      <a href="{{ url_for('tenants.edit_details', tenant_id=tenant.id) }}" class="btn btn-secondary">{{ icon('settings', 'icon-sm') }}Edit details</a>
+      {% endif %}
       {% if actable %}
       <div class="pop-wrap menu-wrap" x-data="{ open: false }" @click.outside="open = false" @keydown.escape.window="open = false">
         <button type="button" class="btn btn-secondary" @click="open = !open" aria-haspopup="menu" :aria-expanded="open.toString()">
@@ -116,7 +119,7 @@
         <div><dt>Business type</dt><dd>{{ business_type.label }}{% if business_type.packs %}<small>{{ business_type.packs|join(', ') }} pack{{ 's' if business_type.packs|length > 1 }}</small>{% endif %}</dd></div>
         <div><dt>Registration</dt><dd>{{ tenant.registration_type.value|title }}</dd></div>
         <div><dt>Logins</dt><dd>{{ users|selectattr('is_active')|list|length }} active<small>of {{ users|length }}</small></dd></div>
-        <div><dt>Onboarded</dt><dd>{{ tenant.created_at.strftime('%d %b %Y') }}</dd></div>
+        <div><dt>Onboarded</dt><dd>{{ (tenant.created_at|ist('%d %b %Y')) }}</dd></div>
       </dl>
     </div>
 
@@ -153,12 +156,14 @@
       <div class="card" id="sec-locations">
         <h2 class="mt-0">Business locations</h2>
         <ul class="plain-list">
-          {% for g in tenant.gstins %}
-            <li>{{ g.display_label }}{% if g.is_primary %} <span class="pill pill-muted">primary</span>{% endif %}</li>
+          {% for g in tenant.gstins if g.is_active %}
+            <li>{{ g.display_label }}{% if g.is_primary %} <span class="pill pill-muted">primary</span>{% endif %}
+              {% if g.registered_address or g.city %}<br><small class="text-muted">{{ [g.registered_address, g.city, g.pincode]|select|join(', ') }}</small>{% endif %}</li>
           {% else %}
             <li class="text-muted">No business location on file yet - the counter and invoices need at least one to bill from.</li>
           {% endfor %}
         </ul>
+        {% if console_can('edit_client_details') %}<p class="m-0 mb-8"><a href="{{ url_for('tenants.edit_details', tenant_id=tenant.id) }}">{{ icon('settings', 'icon-sm') }} Change GSTIN, registration or address</a></p>{% endif %}
         {{ limit_meter(gstin_meter, 'GSTINs') }}
         {% if console_can('edit_client_details') and (not gstin_meter.full or current_user.is_super_admin) %}
         <details class="more-details mt-12">
@@ -378,7 +383,7 @@
           {% for b in pos_bills %}
             <tr>
               <td><a href="{{ url_for('tenants.admin_view_pos_bill', tenant_id=tenant.id, bill_id=b.id) }}">{{ b.bill_number }}</a></td>
-              <td>{{ b.completed_at.strftime('%d %b %Y %H:%M') if b.completed_at else '-' }}</td>
+              <td>{{ (b.completed_at|ist('%d %b %Y %H:%M')) if b.completed_at else '-' }}</td>
               <td>{{ b.payment_mode.value|upper if b.payment_mode else '-' }}</td>
               <td>
                 {% if b.status.value == 'completed' %}<span class="status-badge status-issued">Completed</span>

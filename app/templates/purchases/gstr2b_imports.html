@@ -28,7 +28,7 @@
         <td>{{ imp.gstin.gstin }}</td><td>{{ imp.filename }}</td>
         <td class="num">{{ imp.entries|length }}</td>
         <td class="num">{{ imp.entries|selectattr('status.value', 'equalto', 'matched')|list|length }}</td>
-        <td>{{ imp.created_at.strftime('%d %b %Y %H:%M') }}</td>
+        <td>{{ (imp.created_at|ist('%d %b %Y %H:%M')) }}</td>
       </tr>
     {% else %}
       <tr><td colspan="6" class="empty-state">No GSTR-2B uploaded yet.</td></tr>
