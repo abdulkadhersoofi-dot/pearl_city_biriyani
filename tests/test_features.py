@@ -28,12 +28,13 @@ def test_presets_differ_by_business_type():
     assert preset_features(BusinessType.PHARMACY)["batch_expiry"] is True
     assert preset_features(BusinessType.RESTAURANT)["batch_expiry"] is False
     assert preset_features(BusinessType.RESTAURANT)["categories"] is True
-    assert not any(preset_features(BusinessType.OTHER).values())
+    # Every business starts with the counter (POS), and nothing else for "Other".
+    assert [k for k, on in preset_features(BusinessType.OTHER).items() if on] == ["pos"]
 
 
 def test_settings_only_offers_modules_that_are_built():
     # Every module is built since Phase 9 (business-type modules).
-    assert [f.key for f in AVAILABLE_FEATURES] == ["categories", "inventory", "purchases", "expenses", "variants", "batch_expiry", "serial_imei", "margin_scheme", "receivables", "payables", "sales_documents", "recurring_invoices", "cash_bank_book", "business_reports", "weighing", "restaurant_mode", "job_cards", "pharmacy", "electronics", "jewellery", "wholesale", "credit_sales", "multi_price_list", "favourites", "day_close", "einvoice", "eway_bill", "loyalty", "offline_pos", "cashier_pin", "daily_summary"]
+    assert [f.key for f in AVAILABLE_FEATURES] == ["pos", "categories", "inventory", "purchases", "expenses", "variants", "batch_expiry", "serial_imei", "margin_scheme", "receivables", "payables", "sales_documents", "recurring_invoices", "cash_bank_book", "business_reports", "weighing", "restaurant_mode", "job_cards", "pharmacy", "electronics", "jewellery", "wholesale", "credit_sales", "multi_price_list", "favourites", "day_close", "einvoice", "eway_bill", "loyalty", "offline_pos", "cashier_pin", "daily_summary"]
     assert len(AVAILABLE_FEATURES) == len(FEATURES)
 
 
@@ -85,7 +86,7 @@ def test_onboarding_without_a_business_type_switches_nothing_on(client, db, supe
     )
     t = Tenant.query.filter_by(legal_name="Plain Co").one()
     assert t.business_type == BusinessType.OTHER
-    assert not any(t.features.values())
+    assert [k for k, on in t.features.items() if on] == ["pos"]   # the counter, as every business
 
 
 def test_settings_switches_a_module_on_and_audits_it(client, db, tenant, client_admin):

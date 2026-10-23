@@ -75,6 +75,8 @@ def test_the_migration_ships_the_same_packages_as_the_code():
     frozen = {row[0]: row for row in migration.PACKAGES}
     for p in STARTING_PACKAGES:
         key, name, order, unlisted, modules, settings, limits, branding, _ = frozen[p["key"]]
+        if "pos" not in modules and unlisted != CHOICE:
+            modules = {**modules, "pos": INCLUDED}   # added by d5e1a7c3f924 (POS as a module)
         assert (name, order, unlisted, modules, settings, limits, branding) == (
             p["name"], p["sort_order"], p.get("unlisted_modules", OFF), p["modules"], p["settings"], p["limits"],
             p["own_branding"]), key
