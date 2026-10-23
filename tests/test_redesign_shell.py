@@ -122,7 +122,7 @@ def test_flashed_messages_become_toasts(client, db, tenant, client_admin):
 def test_icons_come_from_the_vendored_sprite(client, db, tenant, client_admin):
     _login(client, "admin@acme.example.com", "ClientSecret123")
     html = _page(client)
-    assert "/static/img/icons.svg#i-receipt-text" in html
+    assert re.search(r"/static/img/icons\.svg\?v=[0-9a-f]{10}#i-receipt-text", html)
     assert client.get("/static/img/icons.svg").status_code == 200
     for font in ("figtree", "bricolage-grotesque", "jetbrains-mono"):
         assert client.get(f"/static/fonts/{font}.woff2").status_code == 200

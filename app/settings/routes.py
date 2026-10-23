@@ -19,7 +19,8 @@ from app.settings.forms import (
 from app.settings.sections import module_groups, section_info, section_menu
 from app.utils.audit import record_audit
 from app.utils.entitlements import (
-    SETTINGS, acting_console_user, auditor_can, client_may_switch, locked_for_client, own_branding,
+    ON_UNLESS_SWITCHED_OFF, SETTINGS, acting_console_user, auditor_can, client_may_switch, locked_for_client,
+    own_branding,
 )
 from app.utils.features import (
     AVAILABLE_FEATURES, BUSINESS_TYPE_LABELS, FEATURES, apply_business_type_preset, feature_required,
@@ -81,12 +82,18 @@ def _apply_locks(tenant, form, business_type):
     return bool(tried)
 
 
-def _save_features(tenant, form):
+def _save_features(tenant, form, older_form=False):
     # Only the modules the client's package leaves to them; Included and
     # Off modules are the Ultra Admin's to change (app/utils/entitlements.py).
+    # The all-in-one form (older_form) predates the counter being a module:
+    # without its switch, the counter stays as it is rather than going off.
     for feature in AVAILABLE_FEATURES:
-        if client_may_switch(tenant, feature.key):
-            tenant.set_feature(feature.key, getattr(form, feature_field_name(feature.key)).data)
+        if not client_may_switch(tenant, feature.key):
+            continue
+        name = feature_field_name(feature.key)
+        if older_form and feature.key in ON_UNLESS_SWITCHED_OFF and name not in request.form:
+            continue
+        tenant.set_feature(feature.key, getattr(form, name).data)
 
 
 def _finish(tenant, before_features, section=None):
@@ -201,7 +208,7 @@ def _save_everything(tenant):
         tenant.business_type = business_type
         if not _locked("pricing"):
             tenant.default_price_includes_tax = form.default_price_includes_tax.data
-        _save_features(tenant, form)
+        _save_features(tenant, form, older_form=True)
         message = "Settings updated."
     _finish(tenant, before)
     flash(message, "success")

@@ -62,7 +62,8 @@ def _module_rules(app):
 
 
 def _nothing_package(db):
-    p = Package(name="Nothing", modules={}, unlisted_modules=OFF, settings={}, limits={})
+    # The counter is in a package unless it says otherwise (it was always there).
+    p = Package(name="Nothing", modules={"pos": OFF}, unlisted_modules=OFF, settings={}, limits={})
     db.session.add(p)
     db.session.commit()
     return p
