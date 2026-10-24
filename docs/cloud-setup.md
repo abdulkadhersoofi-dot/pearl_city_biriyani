@@ -194,6 +194,9 @@ on two-step sign-in, then create clients from there):
    - `arfa-super-admin-password`: a strong password (12+ characters) -
      keep it in your notepad.
 
+Tell Claude which of these you filled: Claude lists them in
+`deploy/gcp/settings.env` (`OPTIONAL_SECRETS`) so the deploy passes them on.
+
 Tell Claude "step 7 done". From here Claude builds the database, staging,
 the nightly job and the push trigger itself (`scripts/gcp/setup.sh`), puts
 the app live on Google Cloud, and reports back.

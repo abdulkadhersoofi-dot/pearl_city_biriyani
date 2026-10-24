@@ -21,13 +21,13 @@ steps:
   - id: staging
     name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
     entrypoint: bash
-    env: ["PROJECT_ID=$PROJECT_ID"]
-    args: ["scripts/gcp/release.sh", "staging", "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/web:$BUILD_ID", "${SHORT_SHA:-${_VERSION}}"]
+    env: ["PROJECT_ID=$PROJECT_ID", "COMMIT=$SHORT_SHA"]
+    args: ["scripts/gcp/release.sh", "staging", "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/web:$BUILD_ID", "${_VERSION}"]
   - id: production
     name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
     entrypoint: bash
-    env: ["PROJECT_ID=$PROJECT_ID"]
-    args: ["scripts/gcp/release.sh", "production", "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/web:$BUILD_ID", "${SHORT_SHA:-${_VERSION}}"]
+    env: ["PROJECT_ID=$PROJECT_ID", "COMMIT=$SHORT_SHA"]
+    args: ["scripts/gcp/release.sh", "production", "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/web:$BUILD_ID", "${_VERSION}"]
   - id: hosting
     name: node:20-bookworm-slim
     entrypoint: bash

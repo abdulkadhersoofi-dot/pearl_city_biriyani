@@ -17,7 +17,7 @@ source deploy/gcp/settings.env
 
 TARGET=${1:?staging or production}
 IMAGE=${2:?image}
-VERSION=${3:?version}
+VERSION=${COMMIT:-${3:?version}}   # COMMIT: the pushed commit (trigger builds); else the 3rd argument
 CONN="$PROJECT_ID:$REGION:$SQL_INSTANCE"
 RUN_SA="arfa-run@$PROJECT_ID.iam.gserviceaccount.com"
 
@@ -39,21 +39,21 @@ ENV_VARS+=",GUNICORN_WORKERS=$WORKERS,GUNICORN_THREADS=$THREADS,DB_POOL_SIZE=$PO
 ENV_VARS+=",PROXY_FIX_X_FOR=$PROXY_FIX_X_FOR,PROXY_FIX_X_HOST=1,PUBLIC_URL=$PUBLIC_URL,APP_VERSION=$VERSION,$EXTRA_ENV"
 SECRETS="DATABASE_URL=arfa-db-url$SUFFIX:latest,SECRET_KEY=arfa-secret-key$SUFFIX:latest"
 SECRETS+=",EINVOICE_SECRET_KEY=arfa-einvoice-key$SUFFIX:latest"
-# Optional extras, only when they have been stored (scripts/gcp/secret.sh).
-for pair in SENTRY_DSN:arfa-sentry-dsn SMTP_HOST:arfa-smtp-host SMTP_USERNAME:arfa-smtp-username \
-            SMTP_PASSWORD:arfa-smtp-password SMTP_FROM:arfa-smtp-from; do
-  name=${pair%%:*} secret=${pair#*:}
-  if gcloud secrets versions describe latest --secret "$secret" --project "$PROJECT_ID" >/dev/null 2>&1; then
-    SECRETS+=",$name=$secret:latest"
-  fi
-done
+# Optional extras, listed in OPTIONAL_SECRETS (deploy/gcp/settings.env) once
+# they hold a value. The build account may read a secret but not look one up,
+# so a "does it exist?" check here would always say no.
+uses() { case " $OPTIONAL_SECRETS " in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
+uses sentry && SECRETS+=",SENTRY_DSN=arfa-sentry-dsn:latest"
+if uses smtp; then
+  SECRETS+=",SMTP_HOST=arfa-smtp-host:latest,SMTP_USERNAME=arfa-smtp-username:latest"
+  SECRETS+=",SMTP_PASSWORD=arfa-smtp-password:latest,SMTP_FROM=arfa-smtp-from:latest"
+fi
 
 # The Ultra Admin login, made by the migrate job on an empty database
 # (flask bootstrap-super-admin; it does nothing once the account exists).
 # Only the job sees it, never the web service.
 JOB_SECRETS=$SECRETS
-if gcloud secrets versions describe latest --secret arfa-super-admin-email --project "$PROJECT_ID" >/dev/null 2>&1 &&
-   gcloud secrets versions describe latest --secret arfa-super-admin-password --project "$PROJECT_ID" >/dev/null 2>&1; then
+if uses super-admin; then
   JOB_SECRETS+=",SUPER_ADMIN_EMAIL=arfa-super-admin-email:latest,SUPER_ADMIN_PASSWORD=arfa-super-admin-password:latest"
 fi
 

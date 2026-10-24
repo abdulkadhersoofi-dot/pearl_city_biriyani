@@ -46,6 +46,11 @@ def test_production_waits_for_its_data_and_a_healthy_candidate():
     assert _settings()["PRODUCTION_ENABLED"] in ("0", "1")
     assert "SUPER_ADMIN_PASSWORD=arfa-super-admin-password" in release   # the first login, for the job only
     assert release.index("JOB_SECRETS") < release.index("gcloud run deploy")
+    # The build account can't look secrets up, so optional ones are listed, never probed.
+    assert "gcloud secrets versions describe" not in release
+    assert set(_settings()["OPTIONAL_SECRETS"].split()) <= {"sentry", "smtp", "super-admin"}
+    assert 'COMMIT=$SHORT_SHA' in (ROOT / "cloudbuild.yaml").read_text()
+    assert "SHORT_SHA:-" not in (ROOT / "cloudbuild.yaml").read_text()   # Cloud Build has no ${X:-default}
     build = (ROOT / "cloudbuild.yaml").read_text()
     assert build.index("id: staging") < build.index("id: production") < build.index("id: hosting")
 
