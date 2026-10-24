@@ -12,6 +12,13 @@ domain) and step 9 (the phones) come later, when Claude asks.
 Never paste a password, key or database address into the Claude chat.
 Where a step stores one, it says where.
 
+> **Fresh start (decided 24 Oct 2026).** Render held only demo data, so
+> nothing is copied across: Google Cloud starts with an empty database and
+> clients are created fresh there. Step 0 (keeping Render's data) and the
+> Render database URL in step 7 are therefore optional, there is no
+> cutover, and Render is simply switched off once Google Cloud is live.
+> `docs/cloud-cutover.md` stays for any later move that does carry data.
+
 ---
 
 ## Step 0 - TODAY: keep the Render data safe
@@ -171,42 +178,50 @@ terminal's history), then press Enter:
    with the secret's name changed: `arfa-sentry-dsn`, `arfa-smtp-host`,
    `arfa-smtp-username`, `arfa-smtp-password`, `arfa-smtp-from`.
 
+**4. Your Ultra Admin login on the new server** (its database starts empty,
+so this is how your first account gets made; you sign in with it and turn
+on two-step sign-in, then create clients from there):
+1. In Cloud Shell, get the latest scripts and re-run the setup - it only
+   adds the two new boxes (and skips everything already done, the key too):
+   ```
+   cd ~/pearl_city_biriyani && git pull && bash scripts/gcp/bootstrap.sh YOUR_PROJECT_ID
+   ```
+2. In Secret Manager
+   (https://console.cloud.google.com/security/secret-manager - signed in as
+   the project's owner), the same way as above (**+ New version**, paste,
+   **Add new version**):
+   - `arfa-super-admin-email`: the email you will sign in with;
+   - `arfa-super-admin-password`: a strong password (12+ characters) -
+     keep it in your notepad.
+
 Tell Claude "step 7 done". From here Claude builds the database, staging,
-the nightly job and the push trigger itself (`scripts/gcp/setup.sh`), copies
-Render's data into **staging** to rehearse, and reports back.
+the nightly job and the push trigger itself (`scripts/gcp/setup.sh`), puts
+the app live on Google Cloud, and reports back.
 
-## Step 8 - The domain (when Claude asks - two short visits to your domain registrar)
+## Step 8 - The domain (when Claude asks - one visit to your domain registrar)
 
-**8a. Point arfa.live at Render first** (so the phones move to their
-permanent address once, while Render still runs everything):
-1. Render -> **gst-billing-app** -> **Settings** -> **Custom Domains** ->
-   **Add Custom Domain** -> `arfa.live` -> Save. Render shows one or two DNS
-   records.
-2. At the company you bought arfa.live from (GoDaddy, Hostinger, Namecheap,
-   BigRock ...): **DNS settings** for arfa.live -> add exactly those records
-   -> save. Back in Render, wait until it says **Verified** and the
-   certificate is issued (minutes to a few hours).
-3. Tell Claude. Claude then sets the phones' address to https://arfa.live
-   (`android/server.json`) - each phone moves by itself within 12 hours,
-   keeping its pairing.
-
-**8b. At the cutover**, Claude runs `scripts/gcp/setup.sh domain`, which
-prints Firebase's records for arfa.live. You replace the Render records with
-those at your registrar. Phones need nothing - they already use arfa.live.
+Claude runs `scripts/gcp/setup.sh domain`, which prints the DNS records
+Firebase needs for arfa.live. At the company you bought arfa.live from
+(GoDaddy, Hostinger, Namecheap, BigRock ...): **DNS settings** for
+arfa.live -> remove any old records pointing at Render -> add exactly the
+records Claude gives you -> save. The certificate follows by itself
+(minutes to a few hours).
 
 ## Step 9 - The phones (once)
 
 Install the new APK on each counter phone (in the app: **Settings** ->
 **Check for updates**, or download
-https://github.com/abdulkadhersoofi-dot/pearl_city_biriyani/releases/tag/android-latest).
-It keeps its pairing. After this, an address change never needs the phones.
+https://github.com/abdulkadhersoofi-dot/pearl_city_biriyani/releases/tag/android-latest)
+and pair it again with a code from the new server (Branches -> the branch ->
+Pair a phone) - the demo pairings stay behind on Render. Claude points the
+app at https://arfa.live first (`android/server.json`); after this, an
+address change never needs the phones.
 
 ---
 
 ## THINGS ONLY ABDUL CAN DO
 
-1. Today: upgrade the Render database to a paid plan, and add the GitHub
-   secret `BACKUP_DATABASE_URL` (step 0).
+1. (Optional - demo data only) the GitHub secret `BACKUP_DATABASE_URL` (step 0).
 2. Create the Google Cloud account and billing, with your GSTIN (step 1).
 3. Create the project and note its ID (step 2).
 4. Add Firebase to the project and open Hosting once (step 3).
@@ -214,11 +229,10 @@ It keeps its pairing. After this, an address change never needs the phones.
 6. Connect GitHub to Cloud Build (step 5).
 7. Put Claude's key in the Claude Code environment as `GCP_SA_KEY_JSON`, then
    start a new session (step 6).
-8. Store Render's SECRET_KEY and External Database URL in Google (step 7).
-9. Add DNS records at your domain registrar, twice (step 8).
-10. Install the new APK on each phone, once (step 9).
-11. Say **"go"** for the cutover, and later **"go"** for switching Render off
-    (docs/cloud-cutover.md).
+8. Store the e-mail settings and your Ultra Admin email + password in Google (step 7).
+9. Add DNS records at your domain registrar (step 8).
+10. Install the new APK on each phone and pair it again, once (step 9).
+11. Say **"go"** for switching Render off once Google Cloud is live.
 
 Everything else is Claude's to run.
 
