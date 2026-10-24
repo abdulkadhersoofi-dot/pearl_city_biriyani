@@ -1,0 +1,16 @@
+{
+  "hosting": [
+    {
+      "target": "production",
+      "public": "deploy/firebase/public",
+      "ignore": ["**/.*"],
+      "rewrites": [{"source": "**", "run": {"serviceId": "arfa-web", "region": "asia-south1"}}]
+    },
+    {
+      "target": "staging",
+      "public": "deploy/firebase/public",
+      "ignore": ["**/.*"],
+      "rewrites": [{"source": "**", "run": {"serviceId": "arfa-web-staging", "region": "asia-south1"}}]
+    }
+  ]
+}

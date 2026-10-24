@@ -1,0 +1,11 @@
+{
+  "projects": {"default": "REPLACE_WITH_PROJECT_ID"},
+  "targets": {
+    "REPLACE_WITH_PROJECT_ID": {
+      "hosting": {
+        "production": ["REPLACE_WITH_PROJECT_ID"],
+        "staging": ["REPLACE_WITH_PROJECT_ID-staging"]
+      }
+    }
+  }
+}

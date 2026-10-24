@@ -1,0 +1,45 @@
+# ROLLBACK ONLY (docs/cloud-cutover.md, trigger R3): copies the Cloud SQL
+# production database back over the Render database, so Render can take
+# over again without losing a document issued on Google Cloud. Started by
+# scripts/gcp/transfer_back.sh. Replaces everything in Render's database.
+substitutions:
+  _CONN: ""
+  _DB: arfa
+  _RUN_ID: manual
+options:
+  logging: CLOUD_LOGGING_ONLY
+timeout: 7200s
+availableSecrets:
+  secretManager:
+    - versionName: projects/$PROJECT_ID/secrets/arfa-render-db-url/versions/latest
+      env: RENDER_URL
+    - versionName: projects/$PROJECT_ID/secrets/arfa-db-url/versions/latest
+      env: CLOUD_URL
+steps:
+  - id: copy-back
+    name: postgres:17-bookworm
+    entrypoint: bash
+    secretEnv: ["RENDER_URL", "CLOUD_URL"]
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        apt-get update -qq && apt-get install -yqq curl ca-certificates >/dev/null
+        curl -sSfo /usr/local/bin/cloud-sql-proxy \
+          https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.18.2/cloud-sql-proxy.linux.amd64
+        chmod +x /usr/local/bin/cloud-sql-proxy
+        cloud-sql-proxy --port 6543 "${_CONN}" & sleep 5
+        CRED=$${CLOUD_URL#postgresql://}; CRED=$${CRED%%@*}
+        export PGPASSWORD=$${CRED#*:}
+        SRC="host=127.0.0.1 port=6543 dbname=${_DB} user=$${CRED%%:*} sslmode=disable"
+        psql "$$SRC" -At -F '|' -v ON_ERROR_STOP=1 -f deploy/gcp/verify_counts.sql > /workspace/cloud_counts.txt
+        pg_dump --no-owner --no-privileges --format=plain "$$SRC" | gzip > /workspace/cloud.sql.gz
+        unset PGPASSWORD
+        psql "$$RENDER_URL" -v ON_ERROR_STOP=1 -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
+        gunzip -c /workspace/cloud.sql.gz | psql "$$RENDER_URL" -v ON_ERROR_STOP=1 --single-transaction -q
+        psql "$$RENDER_URL" -At -F '|' -v ON_ERROR_STOP=1 -f deploy/gcp/verify_counts.sql > /workspace/render_counts.txt
+        if diff /workspace/cloud_counts.txt /workspace/render_counts.txt; then
+          echo "IDENTICAL: Render now holds exactly what Cloud SQL held."
+        else
+          echo "NOT IDENTICAL - see the differences above."; exit 1
+        fi

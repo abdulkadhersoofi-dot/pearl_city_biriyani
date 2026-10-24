@@ -1,0 +1,47 @@
+# The one-time copy of the Render database into Cloud SQL
+# (scripts/gcp/transfer.sh starts it - for staging rehearsals, then for
+# the cutover). Runs inside Google Cloud: dump Render with pg_dump 17,
+# keep the dump and Render's counts in the transfer bucket, import the
+# dump into the target database as the app's login.
+substitutions:
+  _TARGET_DB: arfa_staging
+  _TARGET_USER: arfa_staging_app
+  _RUN_ID: manual
+  _INSTANCE: arfa-db
+options:
+  logging: CLOUD_LOGGING_ONLY
+timeout: 7200s
+availableSecrets:
+  secretManager:
+    - versionName: projects/$PROJECT_ID/secrets/arfa-render-db-url/versions/latest
+      env: RENDER_URL
+steps:
+  - id: dump
+    name: postgres:17-bookworm
+    entrypoint: bash
+    secretEnv: ["RENDER_URL"]
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        psql "$$RENDER_URL" -At -F '|' -v ON_ERROR_STOP=1 -f deploy/gcp/verify_counts.sql > /workspace/render_counts.txt
+        pg_dump --no-owner --no-privileges --format=plain "$$RENDER_URL" | gzip > /workspace/arfa.sql.gz
+        test -s /workspace/arfa.sql.gz
+        echo "dump: $(stat -c %s /workspace/arfa.sql.gz) bytes, $(wc -l < /workspace/render_counts.txt) checks"
+  - id: keep
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        gcloud storage cp /workspace/arfa.sql.gz /workspace/render_counts.txt gs://$PROJECT_ID-transfer/${_RUN_ID}/
+  - id: import
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        gcloud sql import sql ${_INSTANCE} gs://$PROJECT_ID-transfer/${_RUN_ID}/arfa.sql.gz \
+          --database ${_TARGET_DB} --user ${_TARGET_USER} --project $PROJECT_ID --quiet
