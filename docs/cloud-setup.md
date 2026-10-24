@@ -124,15 +124,16 @@ the project.
 
 1. Back in Cloud Shell, make the key one line and download it:
    ```
-   python3 -c "import json;print(json.dumps(json.load(open('/home/$USER/claude-deployer-key.json'))))" > ~/key-oneline.txt
+   base64 -w0 ~/claude-deployer-key.json > ~/key-oneline.txt
    cloudshell download ~/key-oneline.txt
    ```
    Your browser downloads `key-oneline.txt`.
 2. Open https://claude.ai/code, open this project's session, click the
    **environment** name in the session's title bar -> **Edit**.
 3. Under **Environment variables**, add a new line:
-   `GCP_SA_KEY_JSON=` followed by the whole contents of `key-oneline.txt`
-   (open it in Notepad / Kate, select all, copy, paste right after the `=`).
+   `GCP_SA_KEY_JSON=` followed by the whole contents of `key-oneline.txt` -
+   one long line of letters and digits (open it in Notepad / Kate, select
+   all, copy, paste right after the `=`).
    If the settings offer a **Network secrets** / **API credentials** section
    instead, put it there under the same name. **Save**.
 4. Delete the key from Cloud Shell and your laptop:
@@ -146,28 +147,25 @@ the project.
 
 ## Step 7 - Two values from your notepad, stored in Google (not in chat)
 
-In Cloud Shell, run each line with your real value between the single
-quotes:
+In Cloud Shell, run each command; it asks you to paste the value (nothing
+shows while you paste - that is on purpose, and it isn't kept in the
+terminal's history), then press Enter:
 
 1. Render's **SECRET_KEY** (Render -> web service **gst-billing-app** ->
    **Environment** -> SECRET_KEY -> reveal). Saved e-invoice logins are
    locked with it, so the new server needs the same one:
    ```
-   printf '%s' 'PASTE-RENDER-SECRET_KEY-HERE' | gcloud secrets versions add arfa-einvoice-key --data-file=-
+   read -rsp "Paste Render's SECRET_KEY, then Enter: " V && printf '%s' "$V" | gcloud secrets versions add arfa-einvoice-key --data-file=- && unset V
    ```
 2. Render's **External Database URL** (Render -> database -> **Connect**),
    used once to copy the data across:
    ```
-   printf '%s' 'PASTE-EXTERNAL-DATABASE-URL-HERE' | gcloud secrets versions add arfa-render-db-url --data-file=-
+   read -rsp "Paste the External Database URL, then Enter: " V && printf '%s' "$V" | gcloud secrets versions add arfa-render-db-url --data-file=- && unset V
    ```
 3. Only if you use them today (they are in your notepad as SENTRY_DSN,
-   SMTP_HOST, SMTP_USERNAME, SMTP_PASSWORD, SMTP_FROM) - for each:
-   ```
-   printf '%s' 'VALUE' | gcloud secrets versions add arfa-sentry-dsn --data-file=-
-   printf '%s' 'VALUE' | gcloud secrets versions add arfa-smtp-host --data-file=-
-   ```
-   (names: `arfa-sentry-dsn`, `arfa-smtp-host`, `arfa-smtp-username`,
-   `arfa-smtp-password`, `arfa-smtp-from`).
+   SMTP_HOST, SMTP_USERNAME, SMTP_PASSWORD, SMTP_FROM) - the same command
+   with the secret's name changed: `arfa-sentry-dsn`, `arfa-smtp-host`,
+   `arfa-smtp-username`, `arfa-smtp-password`, `arfa-smtp-from`.
 
 Tell Claude "step 7 done". From here Claude builds the database, staging,
 the nightly job and the push trigger itself (`scripts/gcp/setup.sh`), copies

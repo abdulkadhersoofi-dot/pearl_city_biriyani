@@ -169,6 +169,7 @@ fi
 
 echo
 echo "Done. Next (docs/cloud-setup.md, step 6):"
-echo "  1. Download the key:      cloudshell download $KEY"
-echo "  2. Put its whole text in the Claude Code cloud environment as GCP_SA_KEY_JSON"
-echo "  3. Delete it here:        rm $KEY"
+echo "  1. Make it one line:      base64 -w0 $KEY > ~/key-oneline.txt"
+echo "  2. Download that:         cloudshell download ~/key-oneline.txt"
+echo "  3. Put its text in the Claude Code environment as GCP_SA_KEY_JSON"
+echo "  4. Delete both here:      rm $KEY ~/key-oneline.txt"

@@ -10,7 +10,12 @@ fi
 KEY_FILE="${HOME}/.config/arfa/claude-deployer.json"
 mkdir -p "$(dirname "$KEY_FILE")"
 umask 077
-printf '%s' "$GCP_SA_KEY_JSON" > "$KEY_FILE"
+# Stored as base64 (one line of letters and digits, safe in any settings
+# box); a raw JSON key works too.
+case "$GCP_SA_KEY_JSON" in
+  "{"*) printf '%s' "$GCP_SA_KEY_JSON" > "$KEY_FILE" ;;
+  *)    printf '%s' "$GCP_SA_KEY_JSON" | tr -d ' \n\r' | base64 -d > "$KEY_FILE" ;;
+esac
 # A placeholder token set by the environment would win over the key.
 unset CLOUDSDK_AUTH_ACCESS_TOKEN
 gcloud auth activate-service-account --key-file "$KEY_FILE" --quiet
