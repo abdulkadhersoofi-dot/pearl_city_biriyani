@@ -167,14 +167,21 @@ domain)
   curl -sS -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
     "$API?customDomainId=$DOMAIN" -d '{}' >/dev/null || true
   sleep 5
-  curl -sS -H "Authorization: Bearer $TOKEN" "$API/$DOMAIN" | python3 -c '
+  STATE=$(curl -sS -H "Authorization: Bearer $TOKEN" "$API/$DOMAIN")
+  python3 - "$STATE" <<'PY'
 import json, sys
-d = json.load(sys.stdin)
+d = json.loads(sys.argv[1])
+if "error" in d:
+    sys.exit("Firebase answered: " + d["error"].get("message", str(d["error"])))
 print("Status:", d.get("hostState"), "/", d.get("ownershipState"), "/ certificate:", (d.get("cert") or {}).get("state"))
-for upd in ((d.get("requiredDnsUpdates") or {}).get("desired") or []):
-    for rec in upd.get("records", []):
-        print(f"  {rec.get(\"requiredAction\", \"ADD\"):6} {rec.get(\"type\"):6} {rec.get(\"domainName\")}  ->  {rec.get(\"rdata\")}")
-'
+dns = d.get("requiredDnsUpdates") or {}
+for title, key in (("Records to have", "desired"), ("Records found now", "discovered")):
+    print(title + ":")
+    for upd in dns.get(key) or []:
+        for rec in upd.get("records", []):
+            action = rec.get("requiredAction", "") if key == "desired" else ""
+            print(f"  {action:6} {rec.get('type', ''):6} {rec.get('domainName', '')}  ->  {rec.get('rdata', '')}")
+PY
   ;;
 
 *)
