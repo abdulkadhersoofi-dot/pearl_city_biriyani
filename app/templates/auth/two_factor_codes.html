@@ -8,5 +8,14 @@
   {% for code in codes %}<li><code>{{ code }}</code></li>{% endfor %}
 </ul>
 <button type="button" class="btn btn-secondary btn-block" onclick="window.print()">Print the codes</button>
+{% if handoff %}
+{# Set up on a client's own sign-in address: continue to the main one. #}
+<form method="post" action="{{ handoff.action }}">
+  <input type="hidden" name="token" value="{{ handoff.token }}">
+  <button type="submit" class="btn btn-primary btn-block btn-lg mt-12">I've saved them - continue</button>
+</form>
+<p class="text-muted text-center mt-12">Continue within 10 minutes - after that, sign in again with your new code.</p>
+{% else %}
 <a href="{{ url_for('main.index') }}" class="btn btn-primary btn-block btn-lg mt-12">I've saved them - continue</a>
+{% endif %}
 {% endblock %}

@@ -5,9 +5,10 @@ from flask import abort, current_app, flash, redirect, render_template, request,
 from flask_login import current_user, login_required, login_user, logout_user
 
 from app.auth import auth_bp
+from app.auth import login_domain
 from app.auth import security
 from app.auth.forms import ChangePasswordForm, LoginForm, TwoFactorCodeForm, TwoFactorDisableForm
-from app.extensions import db
+from app.extensions import csrf, db
 from app.models.audit_log import AuditLog
 from app.models.mixins import utcnow
 from app.models.tenant import Tenant
@@ -90,6 +91,14 @@ def _login_view(login_tenant=None):
 
         if user and user.is_active and user.check_password(form.password.data):
             security.clear_failures(user)
+            domain_tenant = login_domain.current_login_tenant()
+            if domain_tenant is not None and user.tenant_id != domain_tenant.id:
+                # A client's own sign-in address is for that client's logins.
+                record_audit(user, "login_refused_other_domain", tenant_id=user.tenant_id,
+                             details={"host": login_domain.request_host()})
+                db.session.commit()
+                flash(f"This account doesn't sign in here - use {login_domain.public_url()}.", "error")
+                return render_template("auth/login.html", form=form, login_tenant=login_tenant)
             if user.tenant_id is not None:
                 status = tenant_access_status(user.tenant)
                 if status.blocked:
@@ -132,6 +141,12 @@ def _login_view(login_tenant=None):
 
 
 def _finish_login(user, method: str = "password"):
+    if login_domain.current_login_tenant() is not None:
+        # On a client's own sign-in address: hand over to the main address,
+        # which does the signing in (app/auth/login_domain.py).
+        handoff = login_domain.start_handoff(user, method)
+        db.session.commit()
+        return render_template("auth/handoff.html", handoff=handoff)
     login_user(user, remember=False)
     session["last_active"] = time.time()
     user.last_login_at = utcnow()
@@ -229,6 +244,11 @@ def two_factor_setup():
             codes = security.enable_two_factor(user, secret)
             session.pop("2fa_new_secret", None)
             record_audit(user, "two_factor_enabled", tenant_id=user.tenant_id)
+            if pending and login_domain.current_login_tenant() is not None:
+                _clear_pending()
+                handoff = login_domain.start_handoff(user, "totp_setup", login_domain.HANDOFF_AFTER_SETUP_SECONDS)
+                db.session.commit()
+                return render_template("auth/two_factor_codes.html", codes=codes, user=user, handoff=handoff)
             if pending:
                 _clear_pending()
                 login_user(user, remember=False)
@@ -285,7 +305,25 @@ def account_security():
 
 @auth_bp.route("/login", methods=["GET", "POST"])
 def login():
-    return _login_view()
+    # On a client's own sign-in address, their branded page.
+    return _login_view(login_tenant=login_domain.current_login_tenant())
+
+
+@auth_bp.route("/handoff", methods=["GET", "POST"])
+@csrf.exempt
+def handoff():
+    """Signs in, on the main address, a user whose password (and code) was
+    checked on their client's own sign-in address a moment ago. CSRF-exempt:
+    the post comes from that other address; the one-time token is what
+    proves it."""
+    if request.method != "POST" or login_domain.current_login_tenant() is not None:
+        return redirect(url_for("auth.login"))
+    user = login_domain.redeem(request.form.get("token", ""))
+    if user is None:
+        db.session.commit()
+        flash("That sign-in took too long or was already used - please sign in again.", "error")
+        return redirect(url_for("auth.login"))
+    return _finish_login(user, "own_address")
 
 
 @auth_bp.route("/login/<slug>", methods=["GET", "POST"])
@@ -309,13 +347,17 @@ def logout():
         return redirect(url_for("auth.login"))
     record_audit(current_user, "logout", tenant_id=current_user.tenant_id)
     db.session.commit()
+    # Back to the client's own sign-in address, if they have one - not for
+    # an admin acting as them, nor in the counter app (it stays on its server).
+    own_address = (None if session.get("impersonator_id") or in_counter_app()
+                   else login_domain.sign_in_address_for(current_user))
     logout_user()
     session.pop("impersonator_id", None)
     session.pop("cashier_id", None)
     # A paired phone signs back in with its own secret (which sets this
     # again); anyone signing in by email here next isn't that phone.
     session.pop("counter_device_id", None)
-    return redirect(url_for("auth.login"))
+    return redirect(own_address or url_for("auth.login"))
 
 
 @auth_bp.route("/stop-impersonating")

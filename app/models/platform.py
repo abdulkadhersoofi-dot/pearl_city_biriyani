@@ -70,6 +70,26 @@ class DevicePairing(db.Model, TenantScopedMixin, TimestampMixin):
     device = db.relationship("CounterDevice")
 
 
+class LoginHandoff(db.Model, TimestampMixin):
+    """A one-time hand-over from a client's own sign-in address
+    (Tenant.login_domain) to the main address: a browser's sign-in can't
+    cross from one domain to another, so the sign-in address issues this
+    and the main address redeems it (app/auth/login_domain.py). Valid for
+    a minute, used once; only its hash is kept."""
+
+    __tablename__ = "login_handoffs"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id", name="fk_login_handoffs_user"), nullable=False,
+                        index=True)
+    token_hash = db.Column(db.String(64), nullable=False, unique=True)
+    from_host = db.Column(db.String(253), nullable=False)
+    expires_at = db.Column(db.DateTime(timezone=True), nullable=False, index=True)
+    used_at = db.Column(db.DateTime(timezone=True))
+
+    user = db.relationship("User")
+
+
 class OfflineBillStatus(str, enum.Enum):
     SYNCED = "synced"  # on the books as a POS bill
     FAILED = "failed"  # the server couldn't take it - waits for the Client Admin

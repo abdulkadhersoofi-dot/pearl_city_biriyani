@@ -1,0 +1,13 @@
+{% extends "auth_base.html" %}
+{% block title %}Signing in - {{ firm_name }}{% endblock %}
+{% block heading %}<h1 class="auth-title">Signing you in…</h1>{% endblock %}
+{% block content %}
+{# The one-time hand-over to the main address (app/auth/login_domain.py):
+   posted, never put in an address. #}
+<form method="post" action="{{ handoff.action }}" id="handoff-form" class="stack">
+  <input type="hidden" name="token" value="{{ handoff.token }}">
+  <p class="text-muted mt-0">Taking you to your account.</p>
+  <button type="submit" class="btn btn-primary btn-block btn-lg">Continue</button>
+</form>
+<script>document.getElementById("handoff-form").submit();</script>
+{% endblock %}

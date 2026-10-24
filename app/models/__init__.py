@@ -30,7 +30,7 @@ from app.models.business import (
     Salesman,
 )
 from app.models.platform import (
-    Cashier, CounterDevice, DevicePairing, OfflineBill, OfflineBillStatus, PlatformInvoice, PlatformInvoiceStatus,
+    Cashier, CounterDevice, DevicePairing, LoginHandoff, OfflineBill, OfflineBillStatus, PlatformInvoice, PlatformInvoiceStatus,
     PlatformProfile,
     PlatformSeries,
 )

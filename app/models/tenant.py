@@ -74,6 +74,11 @@ class Tenant(db.Model, TimestampMixin):
     text_color = db.Column(db.String(7), nullable=False, default="#1f2a24")  # body text on that background
     font_family = db.Column(db.String(20), nullable=False, default="system")
     login_slug = db.Column(db.String(64), unique=True)
+    # The client's own sign-in address (a domain they own, e.g.
+    # login.theirbrand.com), pointed at this server. Only the sign-in
+    # screens are served there; once signed in, the user carries on at
+    # PUBLIC_URL (app/auth/login_domain.py). Set by the Ultra Admin.
+    login_domain = db.Column(db.String(253), unique=True)
     # 2in / 3in / a4 - app.pos.receipt.THERMAL_WIDTHS_IN keys, plus "a4".
     # Lets POS checkout print immediately without asking every time.
     default_receipt_format = db.Column(db.String(10), nullable=False, default="3in")

@@ -222,6 +222,27 @@ address change never needs the phones.
 
 ---
 
+## A VVIP client's own sign-in address (any time)
+
+A client whose package includes own branding can have their sign-in page
+on a domain they own - for example `login.theirbrand.com`. That address
+shows only their sign-in page (their logo and colours, two-step sign-in
+too); once the password is right, they carry on at https://arfa.live. Only
+that client's own logins can sign in there.
+
+1. The client must **own** the domain (bought at GoDaddy or similar). A
+   sub-address such as `login.theirbrand.com` keeps their main website free.
+2. Ultra Admin: **Clients** -> the client -> **Logo** card -> **Own sign-in
+   address** -> type the domain -> **Save address**.
+3. Claude runs `scripts/gcp/setup.sh domain login.theirbrand.com` and gives
+   you its two DNS records (an A or CNAME record and a TXT record).
+4. At the registrar of that domain, add exactly those records. The
+   certificate follows by itself within a few hours.
+
+To stop using it: the same card -> **Remove address**.
+
+---
+
 ## THINGS ONLY ABDUL CAN DO
 
 1. (Optional - demo data only) the GitHub secret `BACKUP_DATABASE_URL` (step 0).

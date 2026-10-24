@@ -362,7 +362,8 @@ def _register_context_processors(app: Flask) -> None:
 
 READ_ONLY_FLAG = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "deploy", "render-read-only")
 # Signing in and out still work on a read-only copy, so its records can be looked at.
-_READ_ONLY_ALLOWED = {"auth.login", "auth.logout", "auth.two_factor", "auth.two_factor_setup", "counterapp.resume",
+_READ_ONLY_ALLOWED = {"auth.login", "auth.logout", "auth.two_factor", "auth.two_factor_setup", "auth.handoff",
+                      "counterapp.resume",
                       "counterapp.pair", "counterapp.ping"}
 
 
@@ -381,6 +382,10 @@ def _register_request_hooks(app: Flask) -> None:
     from app.utils.delivery import init_delivery
 
     init_delivery(app)
+    # First: a client's own sign-in domain serves only the sign-in screens.
+    from app.auth.login_domain import init_login_domains
+
+    init_login_domains(app)
 
     @app.before_request
     def refuse_changes_when_read_only():
@@ -596,6 +601,9 @@ def _register_cli(app: Flask) -> None:
         from app.utils.web_session import delete_expired
 
         click.echo(f"{delete_expired()} expired session(s) deleted.")
+        from app.auth.login_domain import delete_expired as delete_old_handoffs
+
+        click.echo(f"{delete_old_handoffs()} old sign-in hand-over(s) deleted.")
 
     @app.cli.command("nightly")
     @click.pass_context
