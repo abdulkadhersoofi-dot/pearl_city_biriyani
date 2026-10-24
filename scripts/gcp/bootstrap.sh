@@ -139,6 +139,9 @@ for s in arfa-db-url arfa-secret-key arfa-einvoice-key arfa-db-url-staging arfa-
          arfa-einvoice-key-staging arfa-sentry-dsn arfa-smtp-host arfa-smtp-username arfa-smtp-password arfa-smtp-from; do
   secret "$s" arfa-run
 done
+# Your Ultra Admin login on the new server (used once, by the migrate job).
+secret arfa-super-admin-email arfa-run
+secret arfa-super-admin-password arfa-run
 secret arfa-db-admin-url arfa-ops
 secret arfa-render-db-url arfa-build
 secret arfa-db-url arfa-run arfa-build      # the build reads it only for a rollback copy back to Render
@@ -157,8 +160,12 @@ fi
 step "9/9 Claude's key"
 KEY=~/claude-deployer-key.json
 [ -s "$KEY" ] || rm -f "$KEY"   # a refused attempt leaves an empty file behind
+EXISTING=$(gcloud iam service-accounts keys list --iam-account "$(sa claude-deployer)" --managed-by user \
+  --format 'value(name)' 2>/dev/null | wc -l)
 if [ -s "$KEY" ]; then
   echo "  $KEY already exists - not making another."
+elif [ "$EXISTING" -gt 0 ]; then
+  echo "  Claude already has a key ($EXISTING) - not making another. (To replace it, see docs/cloud-setup.md.)"
 elif gcloud iam service-accounts keys create "$KEY" --iam-account "$(sa claude-deployer)"; then
   echo "  Made $KEY"
 else

@@ -721,6 +721,14 @@ this list is just the index.
   `static/js/gst_exports.js`. Android: `ServerAddress.kt`, `MainActivity`
   `startMove / MoveBridge / restoreCarried`, `android/server.json` ->
   `version.json server_url`. Docs: `docs/cloud-setup.md`, `docs/cloud-cutover.md`.
+  **Owner's decision 24 Oct 2026: fresh start.** Render held demo data
+  only; Google Cloud starts empty (`PRODUCTION_ENABLED=1`, no transfer, no
+  read-only period); the first Ultra Admin comes from the secrets
+  `arfa-super-admin-email` / `arfa-super-admin-password` via the migrate
+  job's `flask bootstrap-super-admin`. Project: `arfa-gst-prod-1`
+  (organisation account arfasoftware@gmail.com; key creation allowed for
+  this project by `scripts/gcp/allow_key.sh`). Render's database is
+  PostgreSQL 18 - so is Cloud SQL (`POSTGRES_18`).
 
 ## 5. Chronological development history (this session)
 

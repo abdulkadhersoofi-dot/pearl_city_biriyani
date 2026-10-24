@@ -1,5 +1,11 @@
 # Cutover from Render to Google Cloud - runbook and rollback
 
+> **Not used for the first move (decided 24 Oct 2026):** Render held only
+> demo data, so Google Cloud started with an empty database and nothing
+> was copied (`PRODUCTION_ENABLED="1"` from the start). This runbook - and
+> `transfer.sh`, `transfer_back.sh`, the read-only switch - stays ready for
+> any later move that has to carry real data.
+
 Written **before** the cutover, so nothing is decided under pressure. Each
 step names who does it. Abdul says **"go"** before step C1; nothing in
 section C starts without it.

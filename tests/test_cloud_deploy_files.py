@@ -41,7 +41,9 @@ def test_production_waits_for_its_data_and_a_healthy_candidate():
     assert 'PRODUCTION_ENABLED" != "1"' in release
     assert "--no-traffic --tag candidate" in release and "update-traffic" in release
     assert release.index("jobs execute") < release.index("gcloud run deploy")      # migrate before deploy
-    assert _settings()["PRODUCTION_ENABLED"] == "0"
+    assert _settings()["PRODUCTION_ENABLED"] in ("0", "1")
+    assert "SUPER_ADMIN_PASSWORD=arfa-super-admin-password" in release   # the first login, for the job only
+    assert release.index("JOB_SECRETS") < release.index("gcloud run deploy")
     build = (ROOT / "cloudbuild.yaml").read_text()
     assert build.index("id: staging") < build.index("id: production") < build.index("id: hosting")
 

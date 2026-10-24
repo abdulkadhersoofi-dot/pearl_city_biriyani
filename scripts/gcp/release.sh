@@ -47,10 +47,20 @@ for pair in SENTRY_DSN:arfa-sentry-dsn SMTP_HOST:arfa-smtp-host SMTP_USERNAME:ar
   fi
 done
 
+# The Ultra Admin login, made by the migrate job on an empty database
+# (flask bootstrap-super-admin; it does nothing once the account exists).
+# Only the job sees it, never the web service.
+JOB_SECRETS=$SECRETS
+if gcloud secrets versions describe latest --secret arfa-super-admin-email --project "$PROJECT_ID" >/dev/null 2>&1 &&
+   gcloud secrets versions describe latest --secret arfa-super-admin-password --project "$PROJECT_ID" >/dev/null 2>&1; then
+  JOB_SECRETS+=",SUPER_ADMIN_EMAIL=arfa-super-admin-email:latest,SUPER_ADMIN_PASSWORD=arfa-super-admin-password:latest"
+fi
+
 echo "== $TARGET: migrating the $TARGET database"
 gcloud run jobs deploy "arfa-migrate$SUFFIX" --project "$PROJECT_ID" --region "$REGION" --image "$IMAGE" \
   --service-account "$RUN_SA" --set-cloudsql-instances "$CONN" --command deploy/migrate.sh \
-  --set-env-vars "$ENV_VARS" --set-secrets "$SECRETS" --max-retries 0 --task-timeout 3600 --memory 1Gi --quiet
+  --set-env-vars "$ENV_VARS,SUPER_ADMIN_NAME=Firm Admin" --set-secrets "$JOB_SECRETS" \
+  --max-retries 0 --task-timeout 3600 --memory 1Gi --quiet
 gcloud run jobs execute "arfa-migrate$SUFFIX" --project "$PROJECT_ID" --region "$REGION" --wait
 
 echo "== $TARGET: new revision, no traffic yet"
