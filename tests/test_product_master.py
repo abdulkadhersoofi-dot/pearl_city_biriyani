@@ -152,3 +152,28 @@ def test_item_list_searches_sku_and_barcode(client, db, tenant, client_admin):
     assert b"Pencil" not in client.get("/products/?q=STN").data
     body = client.get("/products/?q=890100").data
     assert b"Pen" in body and b"Pencil" not in body
+
+
+def test_an_item_without_a_category_can_be_edited_on_a_fresh_request(app, client, db, tenant, client_admin,
+                                                                     super_admin):
+    # In production every request starts with an empty database session;
+    # acting as the client, nothing loads the client's package before the
+    # save's module check does - which first writes the item as the form
+    # left it. The blank category must
+    # already be "none" by then, not "" in a number column (that was a 500).
+    p = Product(tenant_id=tenant.id, name="Consulting", hsn_or_sac_code="9983", gst_rate=Decimal("18"), unit="NOS",
+                sale_price=Decimal("1000"), is_service=True)
+    db.session.add(p)
+    db.session.commit()
+    product_id = p.id
+    _login(client, client_admin.email, "ClientSecret123")
+    with client.session_transaction() as sess:
+        sess["impersonator_id"] = super_admin.id  # the Ultra Admin acting as the client
+    with app.app_context():  # its own session and signed-in user, as in production
+        resp = client.post(f"/products/{product_id}/edit", data=_form(
+            name="Consulting", hsn_or_sac_code="9963", unit="NOS", sale_price="1000", gst_rate="18", is_service="y",
+            category_id="", sub_category_id=""))
+    assert resp.status_code == 302
+    db.session.expire_all()
+    p = db.session.get(Product, product_id)
+    assert p.hsn_or_sac_code == "9963" and p.category_id is None and p.sub_category_id is None
