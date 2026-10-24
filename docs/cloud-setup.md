@@ -98,7 +98,11 @@ nothing to install.
    bash scripts/gcp/bootstrap.sh arfa-gst-prod
    ```
    (or `bash bootstrap.sh arfa-gst-prod` if you uploaded it).
-4. It prints `== 1/9` ... `== 9/9` and ends with **Done**. If it stops with a
+4. It prints `== 1/9` ... `== 9/9` and ends with **Done**. If step 9/9 says
+   **"Key creation was refused"** (an account in a Google Workspace
+   organisation, which blocks keys by default), run
+   `bash scripts/gcp/allow_key.sh YOUR_PROJECT_ID`, wait 2 minutes, and run
+   bootstrap.sh again - it lifts the block for this one project only. If it stops with a
    message instead, copy the **last 20 lines** (not keys) to Claude.
 
 What it did: turned on the Google services, made five service accounts

@@ -161,9 +161,9 @@ if [ -f "$KEY" ]; then
 elif gcloud iam service-accounts keys create "$KEY" --iam-account "$(sa claude-deployer)"; then
   echo "  Made $KEY"
 else
-  echo "  Key creation was refused. If your account is in a Google Workspace organisation, the policy"
-  echo "  iam.disableServiceAccountKeyCreation blocks it: IAM & Admin -> Organization policies ->"
-  echo "  'Disable service account key creation' -> Override for this project -> Off. Then run this again."
+  echo "  Key creation was refused: your organisation blocks service-account keys by default."
+  echo "  Lift it for this project only, then run this again:"
+  echo "    bash scripts/gcp/allow_key.sh $PROJECT_ID"
   exit 1
 fi
 
