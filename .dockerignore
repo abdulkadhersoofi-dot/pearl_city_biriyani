@@ -11,3 +11,9 @@ flask_session/
 dump.rdb
 *.log
 tests/
+# Not part of the server image.
+android/
+tests/
+backups/
+deploy/firebase/
+requirements-dev.txt

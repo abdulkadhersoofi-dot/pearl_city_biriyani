@@ -1,0 +1,7 @@
+{% extends "auth_base.html" %}
+{% block title %}Read-only - {{ firm_name }}{% endblock %}
+{% block content %}
+<h1>Read-only</h1>
+<p>{{ message }}</p>
+<p><a class="btn btn-primary" href="{{ config.PUBLIC_URL }}">Open {{ config.PUBLIC_URL }}</a></p>
+{% endblock %}

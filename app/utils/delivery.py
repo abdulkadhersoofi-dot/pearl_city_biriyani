@@ -44,6 +44,11 @@ def static_version(app, filename: str) -> str | None:
 def init_delivery(app) -> None:
     @app.url_defaults
     def _fingerprint_static(endpoint, values):
+        if endpoint == "main.media" and "image_id" in values and "sig" not in values:
+            from app.main.routes import media_sig
+
+            values["sig"] = media_sig(values["image_id"])
+            return
         if endpoint == "static" and "filename" in values and "v" not in values:
             version = static_version(app, values["filename"])
             if version:

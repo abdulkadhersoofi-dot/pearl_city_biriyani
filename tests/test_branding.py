@@ -139,16 +139,42 @@ def test_logo_and_product_image_persist_through_a_fresh_browser_session(app, db,
     second_session = app.test_client()
     _login(second_session, client_admin.email, "ClientSecret123")
 
-    logo_resp = second_session.get(f"/media/{logo_id}")
+    with app.test_request_context():
+        from flask import url_for
+
+        logo_url = url_for("main.media", image_id=logo_id)
+        photo_url = url_for("main.media", image_id=product.image_id)
+    logo_resp = second_session.get(logo_url)
     assert logo_resp.status_code == 200
     assert logo_resp.data
 
-    photo_resp = second_session.get(f"/media/{product.image_id}")
+    photo_resp = second_session.get(photo_url)
     assert photo_resp.status_code == 200
     assert photo_resp.data
 
     nav_resp = second_session.get("/pos/")
-    assert f"/media/{logo_id}".encode() in nav_resp.data
+    assert logo_url.encode() in nav_resp.data
+
+
+def test_images_cant_be_walked_by_their_id(app, client, db, tenant, client_admin):
+    """An image's address carries a keyed signature: counting through ids
+    (/media/1, /media/2 ...) finds nothing, and neither does a made-up
+    signature or another image's signature."""
+    from app.models.media import UploadedImage
+
+    first = UploadedImage(content_type="image/png", data=b"a" * 10)
+    second = UploadedImage(content_type="image/png", data=b"b" * 10)
+    db.session.add_all([first, second])
+    db.session.commit()
+    with app.test_request_context():
+        from flask import url_for
+
+        good = url_for("main.media", image_id=first.id)
+        other = url_for("main.media", image_id=second.id)
+    assert client.get(good).status_code == 200
+    assert client.get(f"/media/{first.id}").status_code == 404
+    assert client.get(f"/media/{first.id}-{'0' * 24}").status_code == 404
+    assert client.get(f"/media/{first.id}-{other.rsplit('-', 1)[1]}").status_code == 404
 
 
 def test_invoice_pdf_embeds_the_tenant_logo_as_a_data_uri(client, db, tenant, client_admin):

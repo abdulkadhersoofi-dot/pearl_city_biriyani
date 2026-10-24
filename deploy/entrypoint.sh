@@ -7,14 +7,21 @@
 # instance (two containers racing the same migration on cold start);
 # free tier runs exactly one, so that's a future-you problem for when
 # you upgrade the plan (switch to preDeployCommand at that point instead).
+#
+# On Google Cloud Run (several instances) RUN_MIGRATIONS_ON_START=0: the
+# migration runs once, as the "migrate" Cloud Run Job, before the new
+# version is deployed (cloudbuild.yaml), never from the web containers.
 set -e
 
-flask db upgrade
+if [ "${RUN_MIGRATIONS_ON_START:-1}" = "1" ]; then
+    # Building an index on a big table can take longer than a page may.
+    DB_STATEMENT_TIMEOUT_MS=0 flask db upgrade
 
-# Best-effort, not fatal: free tier also has no Shell tab to run this
-# by hand, so it happens here instead. A failure here (e.g. a bad env
-# var) must never take the whole app down - `|| true` keeps the site up
-# even if this one step has a problem.
-flask bootstrap-super-admin || true
+    # Best-effort, not fatal: free tier also has no Shell tab to run this
+    # by hand, so it happens here instead. A failure here (e.g. a bad env
+    # var) must never take the whole app down - `|| true` keeps the site up
+    # even if this one step has a problem.
+    flask bootstrap-super-admin || true
+fi
 
 exec gunicorn -c deploy/gunicorn.conf.py wsgi:app

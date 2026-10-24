@@ -25,7 +25,10 @@ APP_AGENT = "ARFACounter/"
 def in_counter_app() -> bool:
     """A paired phone (its cookie) or the ARFA Counter app itself: a branch
     login belongs on the app's screens (/app/), not the website's counter."""
-    return bool(request.cookies.get(APP_COOKIE)) or APP_AGENT in (request.user_agent.string or "")
+    # The session flag too: behind Firebase Hosting only the session
+    # cookie reaches the app, so the cookie alone isn't enough there.
+    return (bool(request.cookies.get(APP_COOKIE)) or bool(session.get(APP_COOKIE))
+            or APP_AGENT in (request.user_agent.string or ""))
 
 
 def _recent_failed_logins(email: str, window_minutes: int) -> int:
@@ -69,6 +72,9 @@ def _login_view(login_tenant=None):
         if _recent_failed_logins(email, window) >= limit:
             flash("Too many attempts. Please try again in a few minutes.", "error")
             return render_template("auth/login.html", form=form, login_tenant=login_tenant)
+        if current_app.config.get("LOG_FORWARDED_FOR"):
+            current_app.logger.warning("sign-in from %s (X-Forwarded-For: %s)", request.remote_addr,
+                                       request.headers.get("X-Forwarded-For"))
         if security.ip_failures(request.remote_addr, window) >= current_app.config["LOGIN_IP_LIMIT"]:
             flash("Too many failed sign-ins from this network. Please try again in a few minutes.", "error")
             return render_template("auth/login.html", form=form, login_tenant=login_tenant)

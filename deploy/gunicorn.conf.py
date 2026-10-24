@@ -9,8 +9,16 @@ if os.environ.get("PORT"):
 else:
     bind = os.environ.get("GUNICORN_BIND", "127.0.0.1:8000")
 workers = int(os.environ.get("GUNICORN_WORKERS", multiprocessing.cpu_count() * 2 + 1))
-worker_class = "sync"
-timeout = 60
+# Threads per worker (gthread): each thread serves one request at a time
+# and holds one database connection while it does - keep DB_POOL_SIZE at
+# this number. Cloud Run runs 2 workers x 4 threads with its concurrency
+# set to 8, so a request never queues inside the container. 1 thread is
+# the plain one-request-per-worker behaviour (Render).
+threads = int(os.environ.get("GUNICORN_THREADS", "1"))
+worker_class = "gthread" if threads > 1 else "sync"
+# Under Firebase Hosting's 60-second limit, so a stuck request ends here
+# (and is logged) rather than as an anonymous 504 at the edge.
+timeout = int(os.environ.get("GUNICORN_TIMEOUT", "55"))
 graceful_timeout = 30
 keepalive = 5
 

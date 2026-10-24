@@ -35,15 +35,31 @@ def healthz():
     return body, 200 if healthy else 503
 
 
-@main_bp.route("/media/<int:image_id>")
-def media(image_id):
+def media_sig(image_id: int) -> str:
+    """The part of an image's address that can't be guessed: a keyed hash
+    of its id. Ids count up, so without it anyone could walk /media/1,
+    /media/2 ... and pull every business's logo and product photos."""
+    import hashlib
+    import hmac
+
+    key = (current_app.config["SECRET_KEY"] + ":media").encode()
+    return hmac.new(key, str(int(image_id)).encode(), hashlib.sha256).hexdigest()[:24]
+
+
+@main_bp.route("/media/<int:image_id>-<sig>")
+def media(image_id, sig):
     # Tenant logos and product photos - stored in the database (see
     # app/models/media.py), served from here instead of as a static
     # file. Unauthenticated, same as a static file would be: a tenant's
     # branded sign-in page shows its logo before anyone is signed in.
     # Content is immutable once uploaded (replacing an image creates a
     # new row/id rather than overwriting this one), so this is safe to
-    # cache hard.
+    # cache hard. url_for("main.media", image_id=...) adds the signature
+    # (app.utils.delivery); an address without the right one is a 404.
+    import hmac
+
+    if not hmac.compare_digest(sig, media_sig(image_id)):
+        abort(404)
     record = UploadedImage.query.get_or_404(image_id)
     if record.is_private:
         abort(404)

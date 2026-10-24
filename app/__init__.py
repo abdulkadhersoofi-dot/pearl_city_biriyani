@@ -20,10 +20,12 @@ def create_app(config_object=None):
     from app.monitoring import init_monitoring
 
     init_monitoring(app)
-    if app.config.get("PROXY_FIX_X_FOR"):
+    _check_secret_key(app)
+    if app.config.get("PROXY_FIX_X_FOR") or app.config.get("PROXY_FIX_X_HOST"):
         from werkzeug.middleware.proxy_fix import ProxyFix
 
-        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=app.config["PROXY_FIX_X_FOR"], x_proto=1)
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=app.config.get("PROXY_FIX_X_FOR", 0), x_proto=1,
+                                x_host=app.config.get("PROXY_FIX_X_HOST", 0))
     _init_extensions(app)
     _register_blueprints(app)
     _register_error_handlers(app)
@@ -32,6 +34,11 @@ def create_app(config_object=None):
     _register_request_hooks(app)
 
     return app
+
+
+def _check_secret_key(app: Flask) -> None:
+    if app.config.get("REQUIRE_SECRET_KEY") and app.config.get("SECRET_KEY") in (None, "", "dev-only-insecure-key"):
+        raise RuntimeError("SECRET_KEY is not set - refusing to start in production on the development key.")
 
 
 def _set_process_clock(app: Flask) -> None:
@@ -61,11 +68,16 @@ def _init_extensions(app: Flask) -> None:
     login_manager.init_app(app)
     csrf.init_app(app)
 
-    if app.config.get("SESSION_TYPE") == "redis":
-        import redis
+    if app.config.get("SESSION_TYPE") == "database":
+        from app.utils.web_session import DatabaseSessionInterface
 
-        app.config["SESSION_REDIS"] = redis.from_url(app.config["REDIS_URL"])
-    sess.init_app(app)
+        app.session_interface = DatabaseSessionInterface(app.config.get("SESSION_REFRESH_MINUTES", 10))
+    else:
+        if app.config.get("SESSION_TYPE") == "redis":
+            import redis
+
+            app.config["SESSION_REDIS"] = redis.from_url(app.config["REDIS_URL"])
+        sess.init_app(app)
 
     from app.models.user import User
 
@@ -205,6 +217,7 @@ def _register_context_processors(app: Flask) -> None:
             "platform_name": app.config["FIRM_NAME"],
             "billing_notice": billing_notice,
             "impersonator_name": impersonator_name,
+            "read_only_copy": read_only_mode(),
         }
 
     from app.utils.features import current_tenant_has
@@ -347,10 +360,41 @@ def _register_context_processors(app: Flask) -> None:
         return STATE_NAME_BY_CODE.get(state_code, state_code)
 
 
+READ_ONLY_FLAG = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "deploy", "render-read-only")
+# Signing in and out still work on a read-only copy, so its records can be looked at.
+_READ_ONLY_ALLOWED = {"auth.login", "auth.logout", "auth.two_factor", "auth.two_factor_setup", "counterapp.resume",
+                      "counterapp.pair", "counterapp.ping"}
+
+
+def read_only_mode() -> bool:
+    """A copy of the app kept only to be looked at - Render, after the move
+    to Google Cloud. READ_ONLY_MODE=1 anywhere; on Render (which sets
+    RENDER=true) also when deploy/render-read-only is in the code, so a
+    commit switches Render to read-only without anyone opening its
+    dashboard. Never on Cloud Run, which doesn't set RENDER."""
+    if os.environ.get("READ_ONLY_MODE") == "1":
+        return True
+    return bool(os.environ.get("RENDER")) and os.path.exists(READ_ONLY_FLAG)
+
+
 def _register_request_hooks(app: Flask) -> None:
     from app.utils.delivery import init_delivery
 
     init_delivery(app)
+
+    @app.before_request
+    def refuse_changes_when_read_only():
+        from flask import jsonify, render_template, request
+
+        if request.method in ("GET", "HEAD", "OPTIONS") or not read_only_mode():
+            return None
+        if request.endpoint in _READ_ONLY_ALLOWED:
+            return None
+        message = ("This copy of ARFA is read-only - billing has moved to "
+                   f"{app.config.get('PUBLIC_URL') or 'the new address'}. Nothing was saved here.")
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+            return jsonify({"error": message, "read_only": True}), 503
+        return render_template("read_only.html", message=message), 503
 
     @app.before_request
     def enforce_session_security():
@@ -387,7 +431,8 @@ def _register_request_hooks(app: Flask) -> None:
             return redirect(url_for("auth.login"))
         # Background polls (the counter's offline sync) don't count as
         # someone using the screen.
-        if not request.headers.get("X-Background"):
+        # Written at most once a minute - each write is a session save.
+        if not request.headers.get("X-Background") and (not last or now - last >= 60):
             session["last_active"] = now
 
         if (not impersonating and security.two_factor_required(current_user) and not current_user.has_two_factor
@@ -544,6 +589,33 @@ def _register_cli(app: Flask) -> None:
                 db.session.commit()
         click.echo(f"{made} recurring invoice draft(s) made.")
 
+    @app.cli.command("sessions-cleanup")
+    def sessions_cleanup():
+        """Deletes expired sign-in sessions (SESSION_TYPE=database, the
+        web_sessions table). Run daily - "flask nightly" does."""
+        from app.utils.web_session import delete_expired
+
+        click.echo(f"{delete_expired()} expired session(s) deleted.")
+
+    @app.cli.command("nightly")
+    @click.pass_context
+    def nightly(ctx):
+        """The jobs that run every night on Google Cloud (Cloud Scheduler ->
+        the "nightly" Cloud Run Job): expired sessions, recurring expense
+        and invoice drafts. Each step runs even if an earlier one failed."""
+        failed = []
+        steps = [("sessions-cleanup", sessions_cleanup), ("expenses-generate-drafts", expenses_generate_drafts),
+                 ("recurring-invoices-generate", recurring_invoices_generate)]
+        for name, command in steps:
+            try:
+                ctx.invoke(command)
+            except Exception as exc:  # noqa: BLE001 - report and carry on with the next step
+                db.session.rollback()
+                failed.append(name)
+                click.echo(f"{name} failed: {exc}", err=True)
+        if failed:
+            raise click.ClickException("failed: " + ", ".join(failed))
+
     @app.cli.command("bootstrap-super-admin")
     def bootstrap_super_admin():
         """Non-interactive counterpart to create-super-admin, driven by
@@ -597,10 +669,11 @@ def _register_cli(app: Flask) -> None:
 def _app_version() -> str:
     """Short commit id of the code that is running, shown on the POS
     screen so "which version is this server on?" has a one-glance
-    answer. Render sets RENDER_GIT_COMMIT; elsewhere ask git; else dev."""
+    answer. Cloud Build sets APP_VERSION, Render RENDER_GIT_COMMIT;
+    elsewhere ask git; else dev."""
     import subprocess
 
-    for key in ("RENDER_GIT_COMMIT", "GIT_COMMIT", "SOURCE_VERSION"):
+    for key in ("APP_VERSION", "RENDER_GIT_COMMIT", "GIT_COMMIT", "SOURCE_VERSION"):
         value = os.environ.get(key)
         if value:
             return value[:7]

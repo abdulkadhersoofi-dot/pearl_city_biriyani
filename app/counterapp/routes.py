@@ -78,6 +78,7 @@ def _signed_in_as(user, device, method):
     login_user(user, remember=True)
     session["last_active"] = time.time()
     session["counter_device_id"] = device.id
+    session[APP_COOKIE] = True
     user.last_login_at = utcnow()
     record_audit(user, "login_success", tenant_id=user.tenant_id,
                  details={"method": method, "device": device.code})
