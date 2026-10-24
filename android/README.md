@@ -132,7 +132,7 @@ and `MainActivity` copies everything the app keeps on the old address
 ("arfa.*" in localStorage: pairing, mode, held bills, waiting KOTs) and
 writes it back on the new one. It moves only when no offline bill is
 waiting on the phone (they are sent first, while online) and only to an
-address whose `/healthz` answers.
+address whose `/health` (or, on an older server, `/healthz`) answers.
 
 ### Update check
 

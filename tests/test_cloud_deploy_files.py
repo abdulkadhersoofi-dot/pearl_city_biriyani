@@ -82,5 +82,5 @@ def test_the_phones_can_be_moved_to_a_new_address_without_reinstalling():
     assert "server_url" in (ROOT / ".github/workflows/android-apk.yml").read_text()
     activity = (ROOT / "android/app/src/main/java/com/arfa/pos/MainActivity.kt").read_text()
     assert "startMove()" in activity and "restoreCarried()" in activity and '"AndroidMove"' in activity
-    assert "/healthz" in activity                       # never moves to an address that doesn't answer
+    assert '"/health", "/healthz"' in activity        # never moves to an address that doesn't answer (Cloud Run: /health)
     assert "server.offer(" in (ROOT / "android/app/src/main/java/com/arfa/pos/UpdateChecker.kt").read_text()
