@@ -101,6 +101,7 @@ JSON/Enum columns - is exercised faithfully.
 ```bash
 sudo -u postgres psql -c "CREATE DATABASE gst_billing_test OWNER gst_app;"
 export FLASK_ENV=testing
+pip install -r requirements-dev.txt   # the app's requirements plus pytest
 pytest
 ```
 
@@ -2961,6 +2962,81 @@ and numbering are the website's. Stage 1 is how a phone gets in.
     0.15 s; bytes per reopen ~300 KB -> ~3 KB.
   - Tests: `tests/test_app_fast_offline.py`.
 
+### Google Cloud (Phase 1 of the move from Render)
+
+The app now runs on Render **and** on Google Cloud from the same code;
+which one it is decides only through settings. Setup: `docs/cloud-setup.md`
+(Abdul's one-time steps); the move itself: `docs/cloud-cutover.md`.
+
+- **Where it runs:** Cloud Run (Mumbai, `asia-south1`) behind Firebase
+  Hosting on arfa.live; Cloud SQL for PostgreSQL 17 (`db-custom-1-3840`,
+  zonal, nightly backups kept 14, 7 days of point-in-time recovery, deletion
+  protection); Secret Manager for every secret; Cloud Build on every push;
+  Cloud Scheduler for the nightly job. Settings: `deploy/gcp/settings.env`.
+- **Push = deploy** (`cloudbuild.yaml`, `scripts/gcp/release.sh`): build the
+  image; staging first - migrate its database (the `arfa-migrate` job, never
+  the web containers), deploy a new revision **with no traffic**, check its
+  `/healthz` answers with the new version, then move traffic; then the same
+  for production (only once `PRODUCTION_ENABLED=1`, i.e. after the cutover);
+  then Firebase Hosting. A failure leaves the serving version untouched.
+  Migrations must keep working with the version still serving.
+- **Sign-in sessions in Postgres** (`SESSION_TYPE=database`,
+  `app/utils/web_session.py`, table `web_sessions`) - Cloud Run has no Redis.
+  The cookie holds a random id; the table its SHA-256. Per request: one
+  primary-key read; a write only when the session changed or every
+  `SESSION_REFRESH_MINUTES` (10), not per request (idle tracking writes at
+  most once a minute). Saving never commits a view's unfinished work (it
+  rolls back first, as the request's end would). A new id on every sign-in.
+  `flask sessions-cleanup` (in `flask nightly`) deletes expired rows. Render
+  keeps Redis (`REDIS_URL` set). Extra load at 30 requests in flight: about
+  150 key lookups a second - small next to the pages' own queries.
+- **Firebase Hosting passes only `__session`**: the cookie name is a setting
+  (`SESSION_COOKIE_NAME`, `__session` on Cloud Run); the app-detection cookie
+  `arfa_app` is now also a session flag; `remember_token` is dropped there
+  (phones sign back in with their device secret).
+- **The 60-second limit**: gunicorn's timeout is 55 s; one bulk GST export
+  ZIP holds at most 2 clients (`PACKS_PER_REQUEST`), and the page downloads
+  more **one by one** (`static/js/gst_exports.js`); GSTR-1/3B and the
+  purchase register load lines in batches (GSTR-1 for a 5,000-bill month: 5.6 s and
+  5,008 queries -> 1.2 s and 18).
+- **Connections** (`settings.env`): 2 gunicorn workers x 4 threads, Cloud Run
+  concurrency 8, pool 4 + 1 per worker = 10 per instance; `max_connections`
+  set to 150 and read back by `setup.sh connections`, which derives
+  `MAX_INSTANCES` = (80% - 30 reserved) / 10 = **9 instances, 72 requests at
+  once**; at least 2 instances always warm. If the live number gives fewer
+  than 9, the database tier goes up rather than the cap down.
+  `statement_timeout` 45 s and `idle_in_transaction_session_timeout` 60 s on
+  every connection (`DB_*` settings; migrations switch the first off).
+- **Indexes by business and date** on the 12 high-volume tables
+  (`app/models/indexes.py`, migration `f3a9c1e7b254`, built `CONCURRENTLY`);
+  the four single-column number indexes dropped (the unique per-business
+  ones cover every lookup).
+- **Images can't be walked**: `/media/<id>-<sig>`, a keyed signature of the
+  id (`main.media_sig`, added by `url_for` itself); `/media/<id>` alone is a 404.
+- **Real client IP**: `PROXY_FIX_X_FOR` / `PROXY_FIX_X_HOST`;
+  `LOG_FORWARDED_FOR=1` (on staging) logs what arrives, to set the count -
+  the sign-in limit per network depends on it.
+- **Safety**: production refuses to start on the development `SECRET_KEY`;
+  `EINVOICE_SECRET_KEY` is its own secret (saved e-invoice logins stay
+  readable when `SECRET_KEY` rotates); `scripts/gcp/sql.sh` refuses any
+  change unless `--destructive`, and then takes an on-demand backup first.
+- **Render read-only**: committing `deploy/render-read-only` makes the Render
+  copy refuse every change (503, "billing has moved") while signing in and
+  viewing work; `READ_ONLY_MODE=1` does the same anywhere. Cloud Run never
+  reads the flag file.
+- **The phones' address is a setting**: `android/server.json` -> the release's
+  `version.json` (`server_url`) -> the app moves on its next update check,
+  carrying its pairing, mode, held bills and waiting KOTs (`ServerAddress`,
+  `MainActivity.startMove / restoreCarried`) - only once no offline bill is
+  waiting on the phone, and only to an address whose `/healthz` answers.
+- **Dependencies**: `cryptography` 50.0.2, Flask 3.1.3, Pillow 13.0.0, pypdf
+  6.21.2, python-dotenv 1.2.2, gunicorn 23.0.0 (pip-audit: no known
+  vulnerabilities); pytest and pytest-flask moved to `requirements-dev.txt`,
+  Faker removed (unused).
+- Tests: `tests/test_web_sessions.py`, `test_read_only_copy.py`,
+  `test_cloud_deploy_files.py`, the image test in `test_branding.py`, the
+  one-by-one export in `test_admin_drilldown.py`.
+
 ### Counter app - how to run it (hand-over)
 
 **The owner, once per phone**
@@ -3227,6 +3303,20 @@ before packages.
   - The app's screens refresh in the background, so a new price shows
     after a few seconds (and the screen reloads only while no bill is
     open); the website counter still asks the network first (up to 4 s).
+- **Google Cloud, Phase 1** (code done - see Design notes "Google Cloud";
+  waiting on the owner's one-time setup, `docs/cloud-setup.md`): Cloud Run +
+  Cloud SQL + Firebase Hosting + Secret Manager + Cloud Build + Cloud
+  Scheduler, staging before production on every push, the cutover and its
+  rollback written (`docs/cloud-cutover.md`).
+  Limits:
+  - The scripts in `scripts/gcp/` run against Google Cloud only; they were
+    syntax-checked here, and are first run for real during setup - expect
+    small fixes then.
+  - Zonal database: a zone outage stops the app (no data is lost); high
+    availability doubles the database's cost.
+  - Platform subscription invoices and the owner's day summary email are
+    still not scheduled (they never were on Render): turning them on is a
+    business decision.
 
   Interface redesign limits:
   - Stage 3 changed pages through shared CSS and two small scripts, not

@@ -694,6 +694,34 @@ this list is just the index.
     `test_module_locks.py`, `test_pos_module.py`,
     `test_app_fast_offline.py`.
 
+- **Google Cloud Phase 1.** Settings `deploy/gcp/settings.env`; pipeline
+  `cloudbuild.yaml` -> `scripts/gcp/release.sh` (migrate job, no-traffic
+  revision tagged `candidate`, `/healthz` version check, traffic) ->
+  `scripts/gcp/hosting.sh`; `PRODUCTION_ENABLED=0` until the cutover. Owner's
+  one-time script `scripts/gcp/bootstrap.sh` (Cloud Shell); Claude's
+  `scripts/gcp/setup.sh database|connections|image|staging|scheduler|trigger|domain`,
+  `auth.sh` (key from env `GCP_SA_KEY_JSON`), `deploy.sh`, `logs.sh`,
+  `sql.sh` (Data API, IAM user `claude-deployer@PROJECT.iam`, `--destructive`
+  guard + backup), `secret.sh`, `db.sh` (Fedora proxy), `transfer.sh`
+  (Render -> Cloud SQL via `deploy/gcp/cloudbuild-transfer.yaml`, compared
+  with `deploy/gcp/verify_counts.sql`), `transfer_back.sh` (rollback).
+  Jobs: `arfa-migrate(-staging)` (`deploy/migrate.sh`), `arfa-nightly`
+  (`flask nightly`), `arfa-admin-sql` (`deploy/run_sql.py`, SQL_B64).
+  App: `SESSION_TYPE=database` (`app/utils/web_session.py`, table
+  `web_sessions`, migration `e8b2c4d6f013`; sign-in regenerates the id via a
+  module-level `user_logged_in` receiver - a per-app `connect_via` held every
+  test app in memory and leaked connections), `SESSION_COOKIE_NAME`,
+  `PROXY_FIX_X_HOST`, `LOG_FORWARDED_FOR`, `DB_POOL_SIZE/MAX_OVERFLOW/
+  POOL_TIMEOUT/STATEMENT_TIMEOUT_MS/IDLE_IN_TRANSACTION_TIMEOUT_MS`,
+  `GUNICORN_THREADS/TIMEOUT`, `RUN_MIGRATIONS_ON_START`, `APP_VERSION`,
+  `PUBLIC_URL`, `REQUIRE_SECRET_KEY`; read-only copy (`app.read_only_mode`,
+  `deploy/render-read-only` + `RENDER`, or `READ_ONLY_MODE=1`); `/media/<id>-<sig>`;
+  `app/models/indexes.py` + migration `f3a9c1e7b254`; selectinload in
+  `reports/gstr.py` and `reports/registers.py`; `PACKS_PER_REQUEST` +
+  `static/js/gst_exports.js`. Android: `ServerAddress.kt`, `MainActivity`
+  `startMove / MoveBridge / restoreCarried`, `android/server.json` ->
+  `version.json server_url`. Docs: `docs/cloud-setup.md`, `docs/cloud-cutover.md`.
+
 ## 5. Chronological development history (this session)
 
 This is the part README.md doesn't capture — the actual sequence of
