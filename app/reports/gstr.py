@@ -28,6 +28,8 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, time
 from decimal import Decimal
 
+from sqlalchemy.orm import selectinload
+
 from app.models.invoice import Invoice, InvoiceStatus
 from app.models.invoice_series import DocumentType, DOCUMENT_TYPE_LABELS
 from app.models.note import CreditDebitNote, NoteStatus
@@ -176,6 +178,7 @@ def _collect_supply_lines(tenant: Tenant, gstin: Gstin, period: str) -> tuple[li
             Invoice.status != InvoiceStatus.VOID,
             Invoice.document_type != DocumentType.BILL_OF_SUPPLY,
         )
+        .options(selectinload(Invoice.lines))
         .order_by(Invoice.invoice_date, Invoice.invoice_number)
         .all()
     )
@@ -197,6 +200,7 @@ def _collect_supply_lines(tenant: Tenant, gstin: Gstin, period: str) -> tuple[li
             POSBill.completed_at >= day_start,
             POSBill.completed_at <= day_end,
         )
+        .options(selectinload(POSBill.lines))
         .order_by(POSBill.completed_at)
         .all()
     )
@@ -216,6 +220,7 @@ def _collect_supply_lines(tenant: Tenant, gstin: Gstin, period: str) -> tuple[li
             POSReturn.returned_at >= day_start,
             POSReturn.returned_at <= day_end,
         )
+        .options(selectinload(POSReturn.lines), selectinload(POSReturn.bill))
         .order_by(POSReturn.returned_at)
         .all()
     )
@@ -228,6 +233,7 @@ def _collect_supply_lines(tenant: Tenant, gstin: Gstin, period: str) -> tuple[li
             CreditDebitNote.note_date <= end,
             CreditDebitNote.status != NoteStatus.VOID,
         )
+        .options(selectinload(CreditDebitNote.lines))
         .order_by(CreditDebitNote.note_date)
         .all()
     )

@@ -26,7 +26,7 @@ class Invoice(db.Model, TenantScopedMixin, TimestampMixin):
     invoice_series_id = db.Column(
         db.Integer, db.ForeignKey("invoice_series.id"), nullable=False
     )
-    invoice_number = db.Column(db.String(64), nullable=False, index=True)
+    invoice_number = db.Column(db.String(64), nullable=False)   # looked up within a business: uq_*_tenant_number covers it
     document_type = db.Column(db.Enum(DocumentType, name="document_type"), nullable=False)
 
     # Exactly one of customer_id/branch_user_id is set - an invoice bills

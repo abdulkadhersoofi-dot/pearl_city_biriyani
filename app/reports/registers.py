@@ -15,6 +15,7 @@ from io import BytesIO
 
 from openpyxl import Workbook
 from openpyxl.styles import Font
+from sqlalchemy.orm import selectinload
 
 from app.models.expense import PAYMENT_MODE_LABELS, Expense, ExpenseStatus
 from app.models.purchase import ITC_LABELS, ItcEligibility, PurchaseBill, PurchaseReturn, PurchaseStatus
@@ -44,7 +45,7 @@ def purchase_register_rows(tenant, start: date, end: date, gstin_id: int | None 
                                           PurchaseReturn.return_date >= start, PurchaseReturn.return_date <= end)
     if gstin_id:
         bills, returns = bills.filter(PurchaseBill.gstin_id == gstin_id), returns.filter(PurchaseReturn.gstin_id == gstin_id)
-    for bill in bills.order_by(PurchaseBill.bill_date, PurchaseBill.number):
+    for bill in bills.options(selectinload(PurchaseBill.lines)).order_by(PurchaseBill.bill_date, PurchaseBill.number):
         snap = bill.supplier_snapshot or {}
         for i, (rate, r) in enumerate(_rate_rows(bill.lines, bill.itc_cgst + bill.itc_sgst + bill.itc_igst > 0)):
             rows.append({"date": bill.bill_date, "number": bill.number, "kind": "Purchase bill",
@@ -52,7 +53,8 @@ def purchase_register_rows(tenant, start: date, end: date, gstin_id: int | None 
                          "supplier": snap.get("name", ""), "gstin": snap.get("gstin") or "", "state": snap.get("state_code") or "",
                          "rcm": bill.is_rcm, "rate": rate, **r, "total": Decimal(bill.grand_total) if i == 0 else None,
                          "sign": 1})
-    for ret in returns.order_by(PurchaseReturn.return_date, PurchaseReturn.number):
+    for ret in returns.options(selectinload(PurchaseReturn.lines), selectinload(PurchaseReturn.bill)).order_by(
+            PurchaseReturn.return_date, PurchaseReturn.number):
         snap = ret.supplier_snapshot or {}
         for i, (rate, r) in enumerate(_rate_rows(ret.lines, ret.itc_cgst + ret.itc_sgst + ret.itc_igst > 0)):
             rows.append({"date": ret.return_date, "number": ret.number, "kind": "Debit note (return)",

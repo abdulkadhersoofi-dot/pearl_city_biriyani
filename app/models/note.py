@@ -25,7 +25,7 @@ class CreditDebitNote(db.Model, TenantScopedMixin, TimestampMixin):
     id = db.Column(db.Integer, primary_key=True)
     gstin_id = db.Column(db.Integer, db.ForeignKey("gstins.id"), nullable=False, index=True)
     invoice_series_id = db.Column(db.Integer, db.ForeignKey("invoice_series.id"), nullable=False)
-    note_number = db.Column(db.String(64), nullable=False, index=True)
+    note_number = db.Column(db.String(64), nullable=False)   # looked up within a business: uq_*_tenant_number covers it
     document_type = db.Column(db.Enum(DocumentType, name="document_type"), nullable=False)
 
     original_invoice_id = db.Column(db.Integer, db.ForeignKey("invoices.id"), nullable=False, index=True)

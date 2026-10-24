@@ -83,7 +83,7 @@ class POSBill(db.Model, TenantScopedMixin, TimestampMixin):
     id = db.Column(db.Integer, primary_key=True)
     gstin_id = db.Column(db.Integer, db.ForeignKey("gstins.id"), nullable=False, index=True)
     invoice_series_id = db.Column(db.Integer, db.ForeignKey("invoice_series.id"))
-    bill_number = db.Column(db.String(64), index=True)
+    bill_number = db.Column(db.String(64))   # looked up within a business: uq_*_tenant_number covers it
 
     customer_id = db.Column(db.Integer, db.ForeignKey("customers.id"))
     customer_snapshot = db.Column(db.JSON)

@@ -29,7 +29,7 @@ class POSReturn(db.Model, TenantScopedMixin, TimestampMixin):
     id = db.Column(db.Integer, primary_key=True)
     gstin_id = db.Column(db.Integer, db.ForeignKey("gstins.id", name="fk_pos_returns_gstin"), nullable=False, index=True)
     invoice_series_id = db.Column(db.Integer, db.ForeignKey("invoice_series.id", name="fk_pos_returns_series"), nullable=False)
-    return_number = db.Column(db.String(64), nullable=False, index=True)
+    return_number = db.Column(db.String(64), nullable=False)   # looked up within a business: uq_*_tenant_number covers it
     bill_id = db.Column(db.Integer, db.ForeignKey("pos_bills.id", name="fk_pos_returns_bill"), nullable=False, index=True)
     customer_snapshot = db.Column(db.JSON)
 
