@@ -111,6 +111,32 @@ def test_bulk_gst_export_zip_contains_each_selected_clients_workbooks(client, db
     assert any("Second Biriyani Co" in n and "GSTR3B" in n for n in names)
 
 
+def test_more_clients_than_one_zip_holds_go_one_by_one(client, db, super_admin, tenant, client_admin):
+    """A request behind Firebase Hosting is cut off at 60 seconds, so one
+    ZIP holds at most PACKS_PER_REQUEST clients; the page offers the rest
+    client by client, each through the single-client monthly pack."""
+    from app.models.tenant import Gstin, RegistrationType, Tenant
+    from app.tenants.routes import PACKS_PER_REQUEST
+
+    ids = [tenant.id]
+    for n in range(PACKS_PER_REQUEST):
+        extra = Tenant(legal_name=f"Extra {n}", registration_type=RegistrationType.REGULAR)
+        db.session.add(extra)
+        db.session.flush()
+        db.session.add(Gstin(tenant_id=extra.id, gstin=f"29CCCCC000{n}C1Z5", state_code="29", state_name="Karnataka",
+                             is_primary=True))
+        ids.append(extra.id)
+    db.session.commit()
+    _login(client, super_admin.email, "SuperSecret123")
+    resp = client.post("/admin/gst-exports/download",
+                       data={"period": date.today().strftime("%Y-%m"), "tenant_ids": [str(i) for i in ids]})
+    assert resp.status_code == 302
+    page = client.get("/admin/gst-exports").get_data(as_text=True)
+    assert "one by one" in page and 'data-pack-url="/admin/clients/0/monthly-pack.zip"' in page
+    one = client.get(f"/admin/clients/{tenant.id}/monthly-pack.zip?period={date.today():%Y-%m}")
+    assert one.status_code == 200 and one.content_type == "application/zip"
+
+
 def test_bulk_gst_export_excludes_unregistered_tenants(client, db, super_admin, tenant, client_admin):
     from app.models.tenant import RegistrationType
 

@@ -18,7 +18,8 @@
   {% if not tenants %}
   <p class="empty-state">No Regular-scheme clients with a GSTIN on file yet.</p>
   {% else %}
-  <form method="post" action="{{ url_for('tenants.gst_exports_download') }}" class="stack">
+  <form method="post" action="{{ url_for('tenants.gst_exports_download') }}" class="stack" id="gst-exports"
+        data-pack-url="{{ url_for('tenants.monthly_pack', tenant_id=0) }}" data-per-zip="{{ packs_per_request }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="field">
       <label class="field-label" for="period">Month</label>
@@ -33,7 +34,7 @@
           <tbody>
           {% for t in tenants %}
             <tr>
-              <td><input type="checkbox" class="client-check" name="tenant_ids" value="{{ t.id }}"></td>
+              <td><input type="checkbox" class="client-check" name="tenant_ids" value="{{ t.id }}" data-name="{{ t.legal_name }}"></td>
               <td>{{ t.legal_name }}</td>
               <td>{{ (t.gstins.filter_by(is_primary=True, is_active=True).first() or t.gstins.filter_by(is_active=True).first()).display_label }}</td>
             </tr>
@@ -43,8 +44,15 @@
       </div>
     </div>
 
-    <button type="submit" class="btn btn-primary btn-lg">Download ZIP</button>
+    <p class="text-muted m-0">Up to {{ packs_per_request }} clients go in one ZIP. For more, "Download one by one"
+      saves a ZIP per client, one after another (the browser may ask once to allow several downloads).</p>
+    <div class="row">
+      <button type="submit" class="btn btn-primary btn-lg">Download ZIP</button>
+      <button type="button" class="btn btn-lg" data-one-by-one>Download one by one</button>
+    </div>
+    <ul class="plain-facts" data-progress hidden></ul>
   </form>
   {% endif %}
 </div>
+<script src="{{ url_for('static', filename='js/gst_exports.js') }}" defer></script>
 {% endblock %}

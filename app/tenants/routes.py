@@ -1302,11 +1302,15 @@ def _exportable_tenants():
     ]
 
 
+PACKS_PER_REQUEST = 2
+
+
 @tenants_bp.route("/gst-exports")
 @roles_required(UserRole.SUPER_ADMIN)
 def gst_exports():
     return render_template(
-        "tenants/gst_exports.html", tenants=_exportable_tenants(), period=_current_period()
+        "tenants/gst_exports.html", tenants=_exportable_tenants(), period=_current_period(),
+        packs_per_request=PACKS_PER_REQUEST,
     )
 
 
@@ -1320,6 +1324,12 @@ def gst_exports_download():
 
     if not selected:
         flash("Pick at least one client to export.", "error")
+        return redirect(url_for("tenants.gst_exports"))
+    # One request builds at most this many packs: each takes several
+    # seconds, and a request behind Firebase Hosting is cut off at 60. The
+    # page downloads a longer list client by client instead (gst_exports.js).
+    if len(selected) > PACKS_PER_REQUEST:
+        flash(f"Up to {PACKS_PER_REQUEST} clients go in one ZIP - use \"Download one by one\" for more.", "error")
         return redirect(url_for("tenants.gst_exports"))
 
     # Each client's full monthly pack (GSTR-1/3B in Excel, PDF and JSON per
