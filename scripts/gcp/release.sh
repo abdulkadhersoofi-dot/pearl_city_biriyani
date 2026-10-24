@@ -2,7 +2,8 @@
 # Releases one built image to staging or production:
 #   1. the "migrate" job brings that database's schema up to date,
 #   2. the new revision is deployed with no traffic,
-#   3. its /healthz must answer 200 with the new version,
+#   3. its /health must answer 200 with the new version (not /healthz:
+#      Cloud Run keeps paths ending in "z" for itself),
 #   4. only then does it take the traffic (and the nightly job is updated).
 # If 2-3 fail, the version already serving keeps serving.
 #
@@ -78,10 +79,10 @@ gcloud run deploy "$SVC" --project "$PROJECT_ID" --region "$REGION" --image "$IM
 
 URL=$(gcloud run services describe "$SVC" --project "$PROJECT_ID" --region "$REGION" \
   --format 'value(status.traffic[].url)' | tr ';' '\n' | grep '^https://candidate---' | head -1)
-echo "== $TARGET: checking $URL/healthz"
+echo "== $TARGET: checking $URL/health"
 ok=""
 for attempt in 1 2 3 4 5 6; do
-  body=$(curl -fsS --max-time 20 "$URL/healthz" || true)
+  body=$(curl -fsS --max-time 20 "$URL/health" || true)
   if echo "$body" | grep -q "\"version\": *\"${VERSION:0:7}\"" && echo "$body" | grep -q '"status": *"ok"'; then
     ok=1; break
   fi

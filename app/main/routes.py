@@ -10,6 +10,9 @@ from app.models.media import UploadedImage
 
 
 @main_bp.route("/healthz")
+# Cloud Run's front end keeps every path ending in "z" for itself and
+# answers 404 there without reaching the app, so the deploy checks /health.
+@main_bp.route("/health")
 def healthz():
     # Unauthenticated, no template render - proves the app can reach its
     # database (and Redis, where sessions live). Used by the hosting
