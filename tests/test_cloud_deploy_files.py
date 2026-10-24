@@ -39,7 +39,8 @@ def test_the_connection_budget_fits_the_database():
 def test_production_waits_for_its_data_and_a_healthy_candidate():
     release = (ROOT / "scripts/gcp/release.sh").read_text()
     assert 'PRODUCTION_ENABLED" != "1"' in release
-    assert "--no-traffic --tag candidate" in release and "update-traffic" in release
+    assert "NO_TRAFFIC=\"--no-traffic\"" in release and "$NO_TRAFFIC --tag candidate" in release
+    assert "update-traffic" in release
     assert release.index("jobs execute") < release.index("gcloud run deploy")      # migrate before deploy
     assert _settings()["PRODUCTION_ENABLED"] in ("0", "1")
     assert "SUPER_ADMIN_PASSWORD=arfa-super-admin-password" in release   # the first login, for the job only

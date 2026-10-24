@@ -64,11 +64,17 @@ gcloud run jobs deploy "arfa-migrate$SUFFIX" --project "$PROJECT_ID" --region "$
 gcloud run jobs execute "arfa-migrate$SUFFIX" --project "$PROJECT_ID" --region "$REGION" --wait
 
 echo "== $TARGET: new revision, no traffic yet"
+# Cloud Run can't create a service with --no-traffic. The very first deploy
+# of each service has no older version to protect, so it takes the traffic
+# at once; the health check below still has to pass before the release is
+# reported done.
+NO_TRAFFIC="--no-traffic"
+gcloud run services describe "$SVC" --project "$PROJECT_ID" --region "$REGION" >/dev/null 2>&1 || NO_TRAFFIC=""
 gcloud run deploy "$SVC" --project "$PROJECT_ID" --region "$REGION" --image "$IMAGE" \
   --service-account "$RUN_SA" --add-cloudsql-instances "$CONN" \
   --cpu "$CPU" --memory "$MEMORY" --concurrency "$CONCURRENCY" --min-instances "$MIN" --max-instances "$MAX" \
   --timeout 60 --cpu-boost --set-env-vars "$ENV_VARS" --set-secrets "$SECRETS" \
-  --allow-unauthenticated --no-traffic --tag candidate --quiet
+  --allow-unauthenticated $NO_TRAFFIC --tag candidate --quiet
 
 URL=$(gcloud run services describe "$SVC" --project "$PROJECT_ID" --region "$REGION" \
   --format 'value(status.traffic[].url)' | tr ';' '\n' | grep '^https://candidate---' | head -1)
