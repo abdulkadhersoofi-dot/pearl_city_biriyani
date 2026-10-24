@@ -17,7 +17,7 @@ availableSecrets:
       env: CLOUD_URL
 steps:
   - id: copy-back
-    name: postgres:17-bookworm
+    name: postgres:18-bookworm
     entrypoint: bash
     secretEnv: ["RENDER_URL", "CLOUD_URL"]
     args:

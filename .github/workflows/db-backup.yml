@@ -21,7 +21,7 @@ permissions:
 
 jobs:
   backup:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04   # pinned: ubuntu-latest moves to 26.04, where the PostgreSQL apt repo may lag
     steps:
       - name: Check a database URL is configured
         id: check
@@ -39,11 +39,12 @@ jobs:
         if: steps.check.outputs.configured == 'true'
         run: |
           # A client at least as new as the server: pg_dump refuses to dump
-          # a newer server version.
+          # a newer server version (Render runs PostgreSQL 18). A newer
+          # pg_dump dumps older servers fine.
           sudo apt-get update -q
           sudo apt-get install -yq postgresql-common
           sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
-          sudo apt-get install -yq postgresql-client-17
+          sudo apt-get install -yq postgresql-client-18
 
       - name: Dump and compress
         if: steps.check.outputs.configured == 'true'
@@ -53,7 +54,7 @@ jobs:
           set -o pipefail
           mkdir -p out
           name="arfa-$(TZ=Asia/Kolkata date +%Y%m%d-%H%M%S).sql.gz"
-          /usr/lib/postgresql/17/bin/pg_dump --no-owner --no-privileges --format=plain "$BACKUP_DATABASE_URL" | gzip > "out/$name"
+          /usr/lib/postgresql/18/bin/pg_dump --no-owner --no-privileges --format=plain "$BACKUP_DATABASE_URL" | gzip > "out/$name"
           test -s "out/$name"
           echo "Wrote $name ($(stat -c %s "out/$name") bytes)"
 

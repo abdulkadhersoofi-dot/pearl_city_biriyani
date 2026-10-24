@@ -2969,7 +2969,7 @@ which one it is decides only through settings. Setup: `docs/cloud-setup.md`
 (Abdul's one-time steps); the move itself: `docs/cloud-cutover.md`.
 
 - **Where it runs:** Cloud Run (Mumbai, `asia-south1`) behind Firebase
-  Hosting on arfa.live; Cloud SQL for PostgreSQL 17 (`db-custom-1-3840`,
+  Hosting on arfa.live; Cloud SQL for PostgreSQL 18 (the same as Render; `db-custom-1-3840`,
   zonal, nightly backups kept 14, 7 days of point-in-time recovery, deletion
   protection); Secret Manager for every secret; Cloud Build on every push;
   Cloud Scheduler for the nightly job. Settings: `deploy/gcp/settings.env`.

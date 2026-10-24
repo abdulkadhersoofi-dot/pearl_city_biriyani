@@ -1,6 +1,6 @@
 # The one-time copy of the Render database into Cloud SQL
 # (scripts/gcp/transfer.sh starts it - for staging rehearsals, then for
-# the cutover). Runs inside Google Cloud: dump Render with pg_dump 17,
+# the cutover). Runs inside Google Cloud: dump Render with pg_dump 18,
 # keep the dump and Render's counts in the transfer bucket, import the
 # dump into the target database as the app's login.
 substitutions:
@@ -17,7 +17,7 @@ availableSecrets:
       env: RENDER_URL
 steps:
   - id: dump
-    name: postgres:17-bookworm
+    name: postgres:18-bookworm
     entrypoint: bash
     secretEnv: ["RENDER_URL"]
     args:
