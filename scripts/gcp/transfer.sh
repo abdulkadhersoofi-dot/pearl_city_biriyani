@@ -53,7 +53,7 @@ gcloud storage buckets add-iam-policy-binding "gs://$PROJECT_ID-transfer" --memb
   --role roles/storage.objectViewer --quiet >/dev/null
 
 echo "== Copying Render -> $DB (run $RUN_ID)"
-gcloud builds submit --project "$PROJECT_ID" --region "$REGION" \
+gcloud builds submit --project "$PROJECT_ID" --region "$REGION" --gcs-source-staging-dir "gs://$PROJECT_ID-transfer/_source" \
   --service-account "projects/$PROJECT_ID/serviceAccounts/arfa-build@$PROJECT_ID.iam.gserviceaccount.com" \
   --config deploy/gcp/cloudbuild-transfer.yaml \
   --substitutions "_TARGET_DB=$DB,_TARGET_USER=$USER,_RUN_ID=$RUN_ID,_INSTANCE=$SQL_INSTANCE" .

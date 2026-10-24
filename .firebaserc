@@ -1,10 +1,10 @@
 {
-  "projects": {"default": "REPLACE_WITH_PROJECT_ID"},
+  "projects": {"default": "arfa-gst-prod-1"},
   "targets": {
-    "REPLACE_WITH_PROJECT_ID": {
+    "arfa-gst-prod-1": {
       "hosting": {
-        "production": ["REPLACE_WITH_PROJECT_ID"],
-        "staging": ["REPLACE_WITH_PROJECT_ID-staging"]
+        "production": ["arfa-gst-prod-1"],
+        "staging": ["arfa-gst-prod-1-staging"]
       }
     }
   }

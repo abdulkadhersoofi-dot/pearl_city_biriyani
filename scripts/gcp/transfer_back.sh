@@ -8,7 +8,7 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 source deploy/gcp/settings.env
 [ "${1:-}" = "--replace-render-database" ] || { sed -n '2,7p' "$0"; exit 2; }
-gcloud builds submit --project "$PROJECT_ID" --region "$REGION" \
+gcloud builds submit --project "$PROJECT_ID" --region "$REGION" --gcs-source-staging-dir "gs://$PROJECT_ID-transfer/_source" \
   --service-account "projects/$PROJECT_ID/serviceAccounts/arfa-build@$PROJECT_ID.iam.gserviceaccount.com" \
   --config deploy/gcp/cloudbuild-transfer-back.yaml \
   --substitutions "_CONN=$PROJECT_ID:$REGION:$SQL_INSTANCE,_DB=$DB_NAME,_RUN_ID=back-$(date -u +%Y%m%d-%H%M%S)" .

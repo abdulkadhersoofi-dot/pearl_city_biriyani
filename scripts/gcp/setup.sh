@@ -108,7 +108,7 @@ connections)
   ;;
 
 image)
-  gcloud builds submit --project "$PROJECT_ID" --region "$REGION" \
+  gcloud builds submit --project "$PROJECT_ID" --region "$REGION" --gcs-source-staging-dir "gs://$PROJECT_ID-transfer/_source" \
     --service-account "projects/$PROJECT_ID/serviceAccounts/$(sa arfa-build)" \
     --config deploy/gcp/cloudbuild-image.yaml --substitutions "_REGION=$REGION,_REPO=$REPO" .
   ;;
