@@ -156,7 +156,8 @@ fi
 
 step "9/9 Claude's key"
 KEY=~/claude-deployer-key.json
-if [ -f "$KEY" ]; then
+[ -s "$KEY" ] || rm -f "$KEY"   # a refused attempt leaves an empty file behind
+if [ -s "$KEY" ]; then
   echo "  $KEY already exists - not making another."
 elif gcloud iam service-accounts keys create "$KEY" --iam-account "$(sa claude-deployer)"; then
   echo "  Made $KEY"
