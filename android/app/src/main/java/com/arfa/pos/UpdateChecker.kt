@@ -25,7 +25,7 @@ object UpdateChecker {
     fun latestUrl(file: String): String =
         "https://github.com/${BuildConfig.RELEASE_REPO}/releases/download/android-latest/$file"
 
-    fun check(activity: MainActivity, settings: PrinterSettings, manual: Boolean) {
+    fun check(activity: MainActivity, settings: PrinterSettings, server: ServerAddress, manual: Boolean) {
         val now = System.currentTimeMillis()
         if (!manual && now - settings.lastUpdateCheck < INTERVAL_MS) return
         Thread {
@@ -43,6 +43,8 @@ object UpdateChecker {
                 val latest = json.optInt("versionCode", 0)
                 val name = json.optString("versionName", latest.toString())
                 val apk = json.optString("apk", latestUrl("ARFA-Counter.apk"))
+                // The server's address, when it has moved (android/server.json).
+                server.offer(json.optString("server_url", ""))
                 activity.runOnUiThread {
                     if (activity.isFinishing) return@runOnUiThread
                     if (latest > BuildConfig.VERSION_CODE) {

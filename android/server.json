@@ -1,0 +1,4 @@
+{
+  "_about": "The server the ARFA Counter app talks to. Empty = the address built into the app (app/build.gradle SERVER_BASE_URL). Set it to a new https address and push: the build publishes it in version.json, and every phone moves on its next update check (at most 12 hours), carrying its pairing, once no offline bill is waiting on it.",
+  "server_url": ""
+}

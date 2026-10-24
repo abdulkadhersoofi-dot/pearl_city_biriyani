@@ -122,6 +122,18 @@ waits at most 1.5 s (`SPLASH_MAX_MS`) and the page shows as soon as it is
 drawn (`onPageCommitVisible`), so the app never sits on the splash
 waiting for a slow server.
 
+### Server address (moving the server without reinstalling)
+
+The address built in is `SERVER_BASE_URL` (app/build.gradle). The release's
+`version.json` also carries `server_url`, taken from `android/server.json`:
+set it to a new https address and push, and each phone moves on its next
+update check (at most 12 hours) - `ServerAddress.kt` keeps the address,
+and `MainActivity` copies everything the app keeps on the old address
+("arfa.*" in localStorage: pairing, mode, held bills, waiting KOTs) and
+writes it back on the new one. It moves only when no offline bill is
+waiting on the phone (they are sent first, while online) and only to an
+address whose `/healthz` answers.
+
 ### Update check
 
 `.github/workflows/android-apk.yml` builds with `ANDROID_VERSION_CODE`

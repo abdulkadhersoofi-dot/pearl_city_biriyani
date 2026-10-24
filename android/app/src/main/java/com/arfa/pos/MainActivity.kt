@@ -81,8 +81,11 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private lateinit var settings: PrinterSettings
     private lateinit var printer: EscPosPrinter
-    private val baseUrl: String = BuildConfig.SERVER_BASE_URL
-    private val baseHost: String = Uri.parse(baseUrl).host ?: ""
+    private lateinit var server: ServerAddress
+    private val baseUrl: String get() = server.current
+    private val baseHost: String get() = Uri.parse(baseUrl).host ?: ""
+    // Moving to a new server address (ServerAddress) is under way.
+    private var moving = false
 
     // Paths a counter login is allowed to be on. Anything else means the
     // account that just signed in isn't a counter login - see
@@ -124,6 +127,7 @@ class MainActivity : AppCompatActivity() {
         splash.setKeepOnScreenCondition { !hasLoadedOnce && System.currentTimeMillis() - startedAt < SPLASH_MAX_MS }
 
         settings = PrinterSettings(this)
+        server = ServerAddress(this)
         printer = EscPosPrinter(this, settings)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
@@ -149,7 +153,7 @@ class MainActivity : AppCompatActivity() {
             // saved copy when there's no connection.
             openApp()
         }
-        UpdateChecker.check(this, settings, manual = false)
+        UpdateChecker.check(this, settings, server, manual = false)
     }
 
     override fun onResume() {
@@ -212,6 +216,7 @@ class MainActivity : AppCompatActivity() {
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, false)
 
         webView.addJavascriptInterface(PrintBridge(), "AndroidPrint")
+        webView.addJavascriptInterface(MoveBridge(), "AndroidMove")
         webView.webViewClient = AppWebViewClient()
         webView.webChromeClient = AppChromeClient()
     }
@@ -299,6 +304,13 @@ class MainActivity : AppCompatActivity() {
         hasLoadedOnce = true
 
         val path = Uri.parse(url).path ?: ""
+        if (Uri.parse(url).host == baseHost) {
+            if (server.carried != null) {
+                restoreCarried()
+                return
+            }
+            if (server.pending != null && path.startsWith("/app/")) startMove()
+        }
         // The kitchen screen stays lit on its tablet.
         if (path.startsWith("/app/kitchen")) {
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -322,6 +334,66 @@ class MainActivity : AppCompatActivity() {
                 binding.webView.loadUrl("$baseUrl/auth/logout")
             }
             .show()
+    }
+
+    /**
+     * Step 1 of a move, on the old address: count the offline bills still
+     * on the phone and copy what the app keeps. With bills waiting, nothing
+     * moves - the page sends them while online, and the move is tried
+     * again on the next start.
+     */
+    private fun startMove() {
+        if (moving) return
+        moving = true
+        binding.webView.evaluateJavascript(COLLECT_JS, null)
+    }
+
+    /** Step 2, on the new address: write the copy back, then open the app there. */
+    private fun restoreCarried() {
+        val carried = server.carried ?: return
+        val js = "(function(d){for(var k in d){try{localStorage.setItem(k,d[k]);}catch(e){}}return 'ok';})(" +
+            carried + ")"
+        binding.webView.evaluateJavascript(js) {
+            server.carried = null
+            moving = false
+            openApp()
+        }
+    }
+
+    /** Called from COLLECT_JS (a WebView thread). */
+    inner class MoveBridge {
+        @JavascriptInterface
+        fun ready(waitingBills: Int, kept: String) {
+            runOnUiThread {
+                val target = server.pending
+                if (waitingBills != 0 || target == null) {
+                    moving = false
+                    return@runOnUiThread
+                }
+                // Only to an address that answers: a new address whose DNS
+                // isn't ready yet must not strand the phone.
+                Thread {
+                    val healthy = try {
+                        val c = URL("$target/healthz").openConnection() as HttpURLConnection
+                        c.connectTimeout = 10000
+                        c.readTimeout = 10000
+                        c.responseCode == HttpURLConnection.HTTP_OK
+                    } catch (e: Exception) {
+                        false
+                    }
+                    runOnUiThread {
+                        if (!healthy) {
+                            moving = false
+                            return@runOnUiThread
+                        }
+                        server.carried = kept
+                        server.current = target
+                        server.pending = null
+                        binding.webView.loadUrl("$target/app/ping")
+                    }
+                }.start()
+            }
+        }
     }
 
     private inner class AppWebViewClient : WebViewClient() {
@@ -572,7 +644,7 @@ class MainActivity : AppCompatActivity() {
                     4 -> if (settings.hasPrinter) sendToPrinter(EscPosPrinter.DRAWER_KICK, null)
                         else toast(getString(R.string.printer_choose_first))
                     5 -> if (settings.kioskEnabled) askKioskPin(unlock = true) else askKioskPin(unlock = false)
-                    6 -> UpdateChecker.check(this, settings, manual = true)
+                    6 -> UpdateChecker.check(this, settings, server, manual = true)
                 }
             }
             .setNegativeButton(R.string.close, null)
@@ -736,6 +808,24 @@ class MainActivity : AppCompatActivity() {
         private const val ACTION_USB_PERMISSION = "com.arfa.pos.USB_PERMISSION"
         // The longest the splash may stay up waiting for the first screen.
         private const val SPLASH_MAX_MS = 1500L
+        // Counts the offline bills on the phone (IndexedDB "arfa-offline", any
+        // state - a refused one needs looking at on the old address first) and
+        // copies every "arfa.*" key from localStorage, then calls
+        // AndroidMove.ready(count, json). -1 = couldn't tell: don't move.
+        private const val COLLECT_JS = """(function(){
+  var kept = {};
+  try { for (var i = 0; i < localStorage.length; i++) { var k = localStorage.key(i);
+    if (k && k.indexOf('arfa.') === 0) kept[k] = localStorage.getItem(k); } } catch (e) {}
+  function done(n) { AndroidMove.ready(n, JSON.stringify(kept)); }
+  try {
+    var req = indexedDB.open('arfa-offline', 1);
+    req.onupgradeneeded = function () { var s = req.result.createObjectStore('bills', {keyPath: 'uuid'});
+      s.createIndex('owner', 'owner'); };
+    req.onsuccess = function () { try { var c = req.result.transaction('bills').objectStore('bills').count();
+      c.onsuccess = function () { done(c.result); }; c.onerror = function () { done(-1); }; } catch (e) { done(-1); } };
+    req.onerror = function () { done(-1); };
+  } catch (e) { done(-1); }
+})();"""
     }
 }
 

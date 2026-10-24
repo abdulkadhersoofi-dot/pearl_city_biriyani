@@ -76,8 +76,11 @@ jobs:
           # The old file name too, for links handed out before the rename.
           cp dist/ARFA-Counter.apk dist/ARFA-POS-debug.apk
           # What the app's update check reads (android/app/.../UpdateChecker.kt).
-          printf '{"versionCode": %s, "versionName": "1.%s", "commit": "%s", "apk": "https://github.com/%s/releases/download/android-latest/ARFA-Counter.apk"}\n' \
-            "${{ github.run_number }}" "${{ github.run_number }}" "${{ github.sha }}" "${{ github.repository }}" > dist/version.json
+          # server_url: where the phones should talk to (android/server.json) -
+          # a move of the server is a setting, not a reinstall.
+          SERVER_URL=$(python3 -c 'import json; print(json.load(open("server.json")).get("server_url", ""))')
+          printf '{"versionCode": %s, "versionName": "1.%s", "commit": "%s", "apk": "https://github.com/%s/releases/download/android-latest/ARFA-Counter.apk", "server_url": "%s"}\n' \
+            "${{ github.run_number }}" "${{ github.run_number }}" "${{ github.sha }}" "${{ github.repository }}" "$SERVER_URL" > dist/version.json
 
       # Always available from this run's "Summary" page, even for a
       # push that isn't on the branch the release step publishes from.
