@@ -42,7 +42,7 @@ the schema version. **Any difference stops the cutover.**
 | C1 | Claude | Commit `deploy/render-read-only`, push. Render redeploys (3-5 min) into read-only: every page shows "This copy is read-only"; saving anything is refused (503); phones keep their offline bills queued | 5 min |
 | C2 | Claude | Check Render refuses a change (a POST answers 503) and no request is still writing (Render's last `audit_logs` row stops moving) | 2 min |
 | C3 | Claude | `scripts/gcp/transfer.sh production` - copy and compare | from A2 |
-| C4 | Claude | Set `PRODUCTION_ENABLED="1"` in `deploy/gcp/settings.env`, push. Cloud Build: migrate production (no-op), deploy with no traffic, health check, traffic, then Firebase Hosting for both sites | 10 min |
+| C4 | Claude | Set `PRODUCTION_ENABLED="1"` in `deploy/gcp/settings.env`, push. Cloud Build: migrate production (no-op), deploy with no traffic, health check, traffic, then Firebase Hosting for both sites. Then `scripts/gcp/setup.sh scheduler` again: it binds and resumes the nightly job (created paused before production existed) | 10 min |
 | C5 | Claude | On https://PROJECT_ID.web.app: sign in (3 roles), latest invoice numbers of 5 clients **equal Render's**, a PDF opens, `/healthz` shows the new version | 5 min |
 | C6 | Abdul | At the registrar: replace the Render records for arfa.live with the ones `setup.sh domain` printed | 5 min + DNS |
 | C7 | Claude | Watch: `logs.sh errors`, `/healthz` on arfa.live, the first counter bills arriving, queued phone bills syncing (each once) | 2 h |

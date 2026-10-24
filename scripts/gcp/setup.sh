@@ -120,8 +120,15 @@ staging)
   ;;
 
 scheduler)
-  gcloud run jobs add-iam-policy-binding arfa-nightly --project "$PROJECT_ID" --region "$REGION" \
-    --member "serviceAccount:$(sa arfa-scheduler)" --role roles/run.invoker --quiet >/dev/null
+  # The nightly Cloud Run job exists only once production is released
+  # (release.sh). Until then the schedule is created paused; running this
+  # step again after the cutover binds the invoker and resumes it.
+  HAVE_JOB=""
+  if gcloud run jobs describe arfa-nightly --project "$PROJECT_ID" --region "$REGION" >/dev/null 2>&1; then
+    HAVE_JOB=1
+    gcloud run jobs add-iam-policy-binding arfa-nightly --project "$PROJECT_ID" --region "$REGION" \
+      --member "serviceAccount:$(sa arfa-scheduler)" --role roles/run.invoker --quiet >/dev/null
+  fi
   URI="https://run.googleapis.com/v2/projects/$PROJECT_ID/locations/$REGION/jobs/arfa-nightly:run"
   if gcloud scheduler jobs describe arfa-nightly --location "$REGION" --project "$PROJECT_ID" >/dev/null 2>&1; then
     VERB=update
@@ -131,12 +138,21 @@ scheduler)
   gcloud scheduler jobs "$VERB" http arfa-nightly --location "$REGION" --project "$PROJECT_ID" \
     --schedule "30 1 * * *" --time-zone "Asia/Kolkata" --uri "$URI" --http-method POST \
     --oauth-service-account-email "$(sa arfa-scheduler)" --attempt-deadline 30m
+  if [ -n "$HAVE_JOB" ]; then
+    gcloud scheduler jobs resume arfa-nightly --location "$REGION" --project "$PROJECT_ID" --quiet 2>/dev/null || true
+    echo "Nightly job scheduled at 01:30 IST and enabled."
+  else
+    gcloud scheduler jobs pause arfa-nightly --location "$REGION" --project "$PROJECT_ID" --quiet
+    echo "Nightly job scheduled at 01:30 IST but PAUSED: the arfa-nightly job appears with the production release."
+    echo "Run scripts/gcp/setup.sh scheduler again after the cutover to enable it."
+  fi
   ;;
 
 trigger)
-  REPO_PATH=$(gcloud builds repositories list --connection github --region "$REGION" --project "$PROJECT_ID" \
+  REPO_NAME=$(gcloud builds repositories list --connection github --region "$REGION" --project "$PROJECT_ID" \
     --format 'value(name)' | head -1)
-  [ -n "$REPO_PATH" ] || { echo "No GitHub connection yet (setup guide step 5)."; exit 1; }
+  [ -n "$REPO_NAME" ] || { echo "No GitHub connection yet (setup guide step 5)."; exit 1; }
+  REPO_PATH="projects/$PROJECT_ID/locations/$REGION/connections/github/repositories/${REPO_NAME##*/}"
   gcloud builds triggers describe arfa-push --region "$REGION" --project "$PROJECT_ID" >/dev/null 2>&1 && \
     { echo "Trigger arfa-push exists."; exit 0; }
   gcloud builds triggers create github --name arfa-push --region "$REGION" --project "$PROJECT_ID" \
