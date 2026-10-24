@@ -222,24 +222,31 @@ address change never needs the phones.
 
 ---
 
-## A VVIP client's own sign-in address (any time)
+## VVIP sign-in domains (any time)
 
-A client whose package includes own branding can have their sign-in page
-on a domain they own - for example `login.theirbrand.com`. That address
-shows only their sign-in page (their logo and colours, two-step sign-in
-too); once the password is right, they carry on at https://arfa.live. Only
-that client's own logins can sign in there.
+A sign-in domain (for example `pcbinvoice.com`) shows only a sign-in page.
+You decide which clients may use it: every login of those clients - the
+owner's, staff and every branch login - can sign in there, and so can you
+as Ultra Admin. After signing in, everyone carries on at
+https://arfa.live. Anyone else is sent to https://arfa.live. Any client
+can be put on a domain at any time, whatever their package - that is how
+a client becomes a VVIP client.
 
-1. The client must **own** the domain (bought at GoDaddy or similar). A
-   sub-address such as `login.theirbrand.com` keeps their main website free.
-2. Ultra Admin: **Clients** -> the client -> **Logo** card -> **Own sign-in
-   address** -> type the domain -> **Save address**.
-3. Claude runs `scripts/gcp/setup.sh domain login.theirbrand.com` and gives
-   you its two DNS records (an A or CNAME record and a TXT record).
-4. At the registrar of that domain, add exactly those records. The
-   certificate follows by itself within a few hours.
+1. The domain must be **owned** by you or the client (GoDaddy or similar).
+   One domain can serve several clients; each client is on at most one.
+2. Ultra Admin: menu **Sign-in domains** -> type the domain -> **Add
+   domain**.
+3. On the domain's page: **Add client** for each client who may use it
+   (or, from any client's page, **Logo** card -> **Sign-in domain** -> pick
+   it -> **Save**). Choose whose logo and colours the page wears under
+   **Look and status** (with one client, theirs).
+4. Claude runs `scripts/gcp/setup.sh domain THE-DOMAIN` and gives you its
+   DNS records; add exactly those at the registrar. The certificate
+   follows by itself within a few hours.
 
-To stop using it: the same card -> **Remove address**.
+To pause a domain: its page -> switch **On** off -> **Save**. To stop using
+it: **Remove domain** (its clients go back to arfa.live; ask Claude to
+disconnect it from hosting).
 
 ---
 

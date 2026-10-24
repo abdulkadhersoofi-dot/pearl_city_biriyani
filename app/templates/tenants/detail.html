@@ -196,22 +196,24 @@
         </form>
         {% endif %}
         {% if current_user.is_super_admin %}
-        <h3 class="mt-16">Own sign-in address</h3>
-        <p class="text-muted mt-0">A domain the client owns (like <code>login.theirbrand.com</code>) that shows only their
-          branded sign-in page; after signing in, they carry on at {{ config.PUBLIC_URL }}.
-          {% if tenant.login_domain %}Now: <a href="https://{{ tenant.login_domain }}" target="_blank" rel="noopener">https://{{ tenant.login_domain }}</a>{% endif %}</p>
-        <form method="post" action="{{ url_for('tenants.set_login_domain', tenant_id=tenant.id) }}" class="row">
+        <h3 class="mt-16">Sign-in domain</h3>
+        <p class="text-muted mt-0">Every login of this client - the owner's, staff and branch logins - can sign in at the
+          chosen domain; after signing in they carry on at {{ config.PUBLIC_URL }}.
+          {% if tenant.sign_in_domain %}Now: <a href="https://{{ tenant.sign_in_domain.domain }}" target="_blank" rel="noopener">https://{{ tenant.sign_in_domain.domain }}</a>{% if not tenant.sign_in_domain.is_active %} (switched off){% endif %}{% endif %}
+          <a href="{{ url_for('tenants.sign_in_domains') }}">Manage sign-in domains</a></p>
+        {% if sign_in_domains %}
+        <form method="post" action="{{ url_for('tenants.set_client_sign_in_domain', tenant_id=tenant.id) }}" class="row">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <input type="text" name="login_domain" value="{{ tenant.login_domain or '' }}" class="field-input"
-                 placeholder="login.theirbrand.com" aria-label="Own sign-in address" autocapitalize="off" spellcheck="false">
-          <button type="submit" class="btn btn-secondary">Save address</button>
+          <select name="domain_id" class="field-input" aria-label="Sign-in domain">
+            <option value="">The main address only</option>
+            {% for d in sign_in_domains %}
+            <option value="{{ d.id }}" {{ 'selected' if tenant.sign_in_domain_id == d.id }}>{{ d.domain }}{{ '' if d.is_active else ' (switched off)' }}</option>
+            {% endfor %}
+          </select>
+          <button type="submit" class="btn btn-secondary">Save</button>
         </form>
-        {% if tenant.login_domain %}
-        <form method="post" action="{{ url_for('tenants.set_login_domain', tenant_id=tenant.id) }}" class="mt-8">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <input type="hidden" name="login_domain" value="">
-          <button type="submit" class="btn btn-quiet btn-sm">Remove address</button>
-        </form>
+        {% else %}
+        <p class="text-muted m-0">No sign-in domains yet - <a href="{{ url_for('tenants.sign_in_domains') }}">add one</a>.</p>
         {% endif %}
         {% endif %}
       </div>

@@ -1,22 +1,22 @@
-"""A client's own sign-in address (Tenant.login_domain).
-
-A client with their own branding can have their sign-in page on a domain
-they own (say login.theirbrand.com), pointed at this server like
-arfa.live is. Only the sign-in screens are served there - the email and
-password page, two-step sign-in, the logo - in the client's colours.
-Every other address on that domain goes to the same path on PUBLIC_URL.
+"""Sign-in domains (SignInDomain): a domain the firm points at this server
+for sign-in only - say pcbinvoice.com - and the clients whose logins may
+use it. The Ultra Admin adds the domain and lets clients onto it; every
+login of such a client (the owner's, staff, every branch login) may sign
+in there, and so may the Ultra Admin. Only the sign-in screens are served
+there - the email and password page, two-step sign-in, the logo - in the
+look of the domain's brand client. Every other address on that domain
+goes to the same path on PUBLIC_URL.
 
 A browser's sign-in (its session cookie) belongs to one domain and can't
 be carried to another. So when the password (and two-step code, where the
-account has one) is right, nothing is signed in on the client's domain:
+account has one) is right, nothing is signed in on the sign-in domain:
 it issues a one-time hand-over (LoginHandoff, valid for a minute, only its
 hash kept; ten when the recovery codes of a new two-step set-up are
 shown first) and the browser posts it straight on to PUBLIC_URL/auth/handoff,
 which signs the user in there. The token travels in a POST body, never in
 an address, so it isn't left in browser history or request logs.
 
-Only the client's own logins sign in on their domain; anyone else is told
-to use the main address."""
+Anyone else is told to use the main address."""
 
 import hashlib
 import re
@@ -81,20 +81,34 @@ def domain_problem(domain: str) -> str | None:
     return None
 
 
-def tenant_for_host(host: str):
-    """The client whose sign-in domain this is, or None. Only looked up for
-    an address that isn't the platform's own."""
+def domain_for_host(host: str):
+    """The sign-in domain this address is, or None. Only looked up for an
+    address that isn't the platform's own."""
     if not host or host in _LOCAL_HOSTS or host == main_host() or host.endswith(_PLATFORM_SUFFIXES):
         return None
-    from app.models.tenant import Tenant
+    from app.models.platform import SignInDomain
 
-    return Tenant.query.filter_by(login_domain=host).first()
+    return SignInDomain.query.filter_by(domain=host).first()
+
+
+def on_sign_in_domain():
+    """The sign-in domain this request came in on (None on the main address)."""
+    return g.get("sign_in_domain")
 
 
 def current_login_tenant():
-    """The client whose sign-in domain this request came in on (None on the
-    main address)."""
+    """Whose look the sign-in page wears on this sign-in domain (None on the
+    main address, or when the domain has no brand client)."""
     return g.get("login_domain_tenant")
+
+
+def may_sign_in_here(user, domain) -> bool:
+    """The Ultra Admin always; anyone else only as a login of a client the
+    Ultra Admin has let onto this domain."""
+    if user.is_super_admin:
+        return True
+    tenant = user.tenant if user.tenant_id is not None else None
+    return tenant is not None and tenant.sign_in_domain_id == domain.id
 
 
 def _hash(token: str) -> str:
@@ -134,16 +148,13 @@ def redeem(token: str):
 
 
 def sign_in_address_for(user) -> str | None:
-    """Where this user signs in again after signing out: their client's own
-    domain when it is in use, else None (the main sign-in page)."""
+    """Where this user signs in again after signing out: their client's
+    sign-in domain when it is in use, else None (the main sign-in page)."""
     tenant = getattr(user, "tenant", None)
-    if tenant is None or not tenant.login_domain or not tenant.is_active:
+    domain = tenant.sign_in_domain if tenant is not None else None
+    if domain is None or not domain.is_active:
         return None
-    from app.utils.entitlements import own_branding
-
-    if not own_branding(tenant):
-        return None
-    return f"https://{tenant.login_domain}/auth/login"
+    return f"https://{domain.domain}/auth/login"
 
 
 def delete_expired() -> int:
@@ -158,16 +169,16 @@ def delete_expired() -> int:
 def init_login_domains(app) -> None:
     @app.before_request
     def serve_login_domains():
-        tenant = tenant_for_host(request_host())
+        g.sign_in_domain = None
         g.login_domain_tenant = None
-        if tenant is None:
+        domain = domain_for_host(request_host())
+        if domain is None:
             return None
-        from app.utils.entitlements import own_branding
-
-        if not tenant.is_active or not own_branding(tenant):
-            # Not (or no longer) entitled to its own address: the main one.
+        if not domain.is_active:
+            # Switched off by the Ultra Admin: the main sign-in page.
             return redirect(public_url() + "/auth/login")
-        g.login_domain_tenant = tenant
+        g.sign_in_domain = domain
+        g.login_domain_tenant = domain.brand
         if request.endpoint in SERVED_ENDPOINTS:
             return None
         if request.path in ("", "/"):
@@ -177,5 +188,6 @@ def init_login_domains(app) -> None:
 
     @app.context_processor
     def login_domain_context():
-        tenant = g.get("login_domain_tenant")
-        return {"login_tenant": tenant} if tenant is not None else {}
+        if g.get("sign_in_domain") is None:
+            return {}
+        return {"login_tenant": g.get("login_domain_tenant"), "sign_in_domain": g.sign_in_domain}

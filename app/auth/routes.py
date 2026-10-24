@@ -62,7 +62,8 @@ def _login_view(login_tenant=None):
     # /app/ (its device secret), and the app pairs a new phone there - send
     # it there instead of asking for an email and password. ?web=1 still
     # shows this form.
-    if request.method == "GET" and in_counter_app() and not request.args.get("web") and login_tenant is None:
+    if (request.method == "GET" and in_counter_app() and not request.args.get("web") and login_tenant is None
+            and login_domain.on_sign_in_domain() is None):
         return redirect(url_for("counterapp.index"))
 
     form = LoginForm()
@@ -91,9 +92,9 @@ def _login_view(login_tenant=None):
 
         if user and user.is_active and user.check_password(form.password.data):
             security.clear_failures(user)
-            domain_tenant = login_domain.current_login_tenant()
-            if domain_tenant is not None and user.tenant_id != domain_tenant.id:
-                # A client's own sign-in address is for that client's logins.
+            domain = login_domain.on_sign_in_domain()
+            if domain is not None and not login_domain.may_sign_in_here(user, domain):
+                # A sign-in domain is for the logins of the clients on it.
                 record_audit(user, "login_refused_other_domain", tenant_id=user.tenant_id,
                              details={"host": login_domain.request_host()})
                 db.session.commit()
@@ -141,8 +142,8 @@ def _login_view(login_tenant=None):
 
 
 def _finish_login(user, method: str = "password"):
-    if login_domain.current_login_tenant() is not None:
-        # On a client's own sign-in address: hand over to the main address,
+    if login_domain.on_sign_in_domain() is not None:
+        # On a sign-in domain: hand over to the main address,
         # which does the signing in (app/auth/login_domain.py).
         handoff = login_domain.start_handoff(user, method)
         db.session.commit()
@@ -244,7 +245,7 @@ def two_factor_setup():
             codes = security.enable_two_factor(user, secret)
             session.pop("2fa_new_secret", None)
             record_audit(user, "two_factor_enabled", tenant_id=user.tenant_id)
-            if pending and login_domain.current_login_tenant() is not None:
+            if pending and login_domain.on_sign_in_domain() is not None:
                 _clear_pending()
                 handoff = login_domain.start_handoff(user, "totp_setup", login_domain.HANDOFF_AFTER_SETUP_SECONDS)
                 db.session.commit()
@@ -305,7 +306,7 @@ def account_security():
 
 @auth_bp.route("/login", methods=["GET", "POST"])
 def login():
-    # On a client's own sign-in address, their branded page.
+    # On a sign-in domain, the page in its brand client's look.
     return _login_view(login_tenant=login_domain.current_login_tenant())
 
 
@@ -316,7 +317,7 @@ def handoff():
     checked on their client's own sign-in address a moment ago. CSRF-exempt:
     the post comes from that other address; the one-time token is what
     proves it."""
-    if request.method != "POST" or login_domain.current_login_tenant() is not None:
+    if request.method != "POST" or login_domain.on_sign_in_domain() is not None:
         return redirect(url_for("auth.login"))
     user = login_domain.redeem(request.form.get("token", ""))
     if user is None:

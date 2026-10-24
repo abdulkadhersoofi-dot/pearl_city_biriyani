@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}{{ domain.domain }} - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <p class="m-0"><a href="{{ url_for('tenants.sign_in_domains') }}">Sign-in domains</a></p>
+    <h1>{{ domain.domain }}</h1>
+    <p class="text-muted mt-0">Sign-in page: <a href="https://{{ domain.domain }}" target="_blank" rel="noopener">https://{{ domain.domain }}</a>
+      {% if not domain.is_active %} - switched off: it sends everyone to the main sign-in page.{% endif %}</p>
+  </div>
+</div>
+
+<section class="card">
+  <h2 class="mt-0">Clients on this domain</h2>
+  <p class="text-muted mt-0">Every login of these clients - the owner's, staff and every branch login - can sign in here.
+    Anyone else is sent to {{ config.PUBLIC_URL }}.</p>
+  {% if on_domain %}
+  <ul class="stack m-0 plain-list">
+    {% for t in on_domain %}
+    <li class="row items-center gap-16">
+      <a href="{{ url_for('tenants.detail', tenant_id=t.id) }}"><strong>{{ t.display_name }}</strong></a>
+      <span class="text-muted">{{ t.legal_name if t.trade_name else '' }}</span>
+      <form method="post" class="m-0">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="remove_client">
+        <input type="hidden" name="tenant_id" value="{{ t.id }}">
+        <button type="submit" class="btn btn-quiet btn-sm">Remove</button>
+      </form>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="m-0">No clients yet.</p>
+  {% endif %}
+  {% if others %}
+  <form method="post" class="row mt-16">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="add_client">
+    <select name="tenant_id" class="field-input" aria-label="Client to add" required>
+      <option value="">Choose a client…</option>
+      {% for t in others %}
+      <option value="{{ t.id }}">{{ t.display_name }}{% if t.sign_in_domain %} (now on {{ t.sign_in_domain.domain }}){% endif %}{% if not t.is_active %} (inactive){% endif %}</option>
+      {% endfor %}
+    </select>
+    <button type="submit" class="btn btn-secondary">{{ icon('plus') }}Add client</button>
+  </form>
+  {% endif %}
+</section>
+
+<section class="card mt-16">
+  <h2 class="mt-0">Look and status</h2>
+  <form method="post" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="settings">
+    <div class="field">
+      <label class="field-label" for="brand_tenant_id">Sign-in page wears the look of</label>
+      <select name="brand_tenant_id" id="brand_tenant_id" class="field-input">
+        <option value="">{{ 'Its only client' if on_domain|length == 1 else 'ARFA (no client look)' }}</option>
+        {% for t in on_domain %}
+        <option value="{{ t.id }}" {{ 'selected' if domain.brand_tenant_id == t.id }}>{{ t.display_name }}</option>
+        {% endfor %}
+      </select>
+      <p class="field-help">That client's logo, name and colours (from their Settings).</p>
+    </div>
+    <label class="switch-row">
+      <span class="switch"><input type="checkbox" name="is_active" value="1" role="switch" {{ 'checked' if domain.is_active }}><span class="switch-track"></span></span>
+      <span><strong>On</strong><small>Off sends everyone to the main sign-in page without removing the domain.</small></span>
+    </label>
+    <div><button type="submit" class="btn btn-primary">Save</button></div>
+  </form>
+</section>
+
+<section class="card mt-16">
+  <h2 class="mt-0">Remove this domain</h2>
+  <p class="text-muted mt-0">Its clients go back to signing in at {{ config.PUBLIC_URL }}. Ask Claude to disconnect it from hosting too.</p>
+  <form method="post" data-confirm="Remove {{ domain.domain }}?">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="delete">
+    <button type="submit" class="btn btn-danger">Remove domain</button>
+  </form>
+</section>
+{% endblock %}

@@ -70,9 +70,38 @@ class DevicePairing(db.Model, TenantScopedMixin, TimestampMixin):
     device = db.relationship("CounterDevice")
 
 
+class SignInDomain(db.Model, TimestampMixin):
+    """A domain the firm points at this server for sign-in only (say
+    pcbinvoice.com), and the clients whose logins may use it - every login
+    of each client: the owner's, staff and branch logins. The Ultra Admin
+    adds a domain, chooses the clients, and whose logo and colours the
+    sign-in page wears (brand_tenant; with none chosen and one client, that
+    client's). app/auth/login_domain.py serves it."""
+
+    __tablename__ = "sign_in_domains"
+
+    id = db.Column(db.Integer, primary_key=True)
+    domain = db.Column(db.String(253), nullable=False, unique=True)
+    brand_tenant_id = db.Column(db.Integer, db.ForeignKey("tenants.id", name="fk_sign_in_domains_brand_tenant"))
+    is_active = db.Column(db.Boolean, nullable=False, default=True, server_default=db.true())
+    created_by_id = db.Column(db.Integer, db.ForeignKey("users.id", name="fk_sign_in_domains_created_by"))
+
+    brand_tenant = db.relationship("Tenant", foreign_keys=[brand_tenant_id])
+    tenants = db.relationship("Tenant", foreign_keys="Tenant.sign_in_domain_id", back_populates="sign_in_domain",
+                              order_by="Tenant.legal_name")
+
+    @property
+    def brand(self):
+        """Whose look the sign-in page wears (None: the platform's own)."""
+        if self.brand_tenant is not None:
+            return self.brand_tenant
+        clients = list(self.tenants)
+        return clients[0] if len(clients) == 1 else None
+
+
 class LoginHandoff(db.Model, TimestampMixin):
-    """A one-time hand-over from a client's own sign-in address
-    (Tenant.login_domain) to the main address: a browser's sign-in can't
+    """A one-time hand-over from a sign-in domain (SignInDomain) to the
+    main address: a browser's sign-in can't
     cross from one domain to another, so the sign-in address issues this
     and the main address redeems it (app/auth/login_domain.py). Valid for
     a minute, used once; only its hash is kept."""

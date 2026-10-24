@@ -273,7 +273,14 @@ def detail(tenant_id):
         gstin_meter=limit_meter(tenant, "gstins"),
         login_switches={u.id: branch_login_context(u) for u in users if u.is_staff} if current_user.is_super_admin else {},
         changes=changes,
+        sign_in_domains=_sign_in_domains() if current_user.is_super_admin else [],
     )
+
+
+def _sign_in_domains():
+    from app.models.platform import SignInDomain
+
+    return SignInDomain.query.order_by(SignInDomain.domain).all()
 
 
 def _client_tabs(tenant, users, pkg, change_count, document_count):
@@ -501,51 +508,6 @@ def update_logo(tenant_id):
         flash("Choose an image file first.", "error")
 
     return redirect(url_for("tenants.detail", tenant_id=tenant.id))
-
-
-@tenants_bp.route("/clients/<int:tenant_id>/login-domain", methods=["POST"])
-@roles_required(UserRole.SUPER_ADMIN)
-def set_login_domain(tenant_id):
-    """The client's own sign-in address (app/auth/login_domain.py). Empty
-    removes it. The domain then needs its DNS records pointed at this
-    server (scripts/gcp/setup.sh domain DOMAIN prints them)."""
-    from app.auth.login_domain import domain_problem, normalise_domain
-    from app.utils.entitlements import own_branding
-
-    tenant = Tenant.query.get_or_404(tenant_id)
-    back = redirect(url_for("tenants.detail", tenant_id=tenant.id) + "#sec-branding")
-    raw = request.form.get("login_domain", "").strip()
-    old = tenant.login_domain
-    if not raw:
-        tenant.login_domain = None
-    else:
-        domain = normalise_domain(raw)
-        if domain is None:
-            flash("That isn't a domain name - enter it like login.theirbrand.com.", "error")
-            return back
-        problem = domain_problem(domain)
-        if problem:
-            flash(problem, "error")
-            return back
-        taken = Tenant.query.filter(Tenant.login_domain == domain, Tenant.id != tenant.id).first()
-        if taken:
-            flash(f"{domain} is already {taken.display_name}'s sign-in address.", "error")
-            return back
-        tenant.login_domain = domain
-    if tenant.login_domain == old:
-        return back
-    record_audit(current_user, "tenant_login_domain_changed", tenant_id=tenant.id, entity_type="tenant",
-                 entity_id=tenant.id, details={"from": old, "to": tenant.login_domain})
-    db.session.commit()
-    if tenant.login_domain is None:
-        flash(f"{tenant.display_name} no longer has its own sign-in address.", "success")
-    else:
-        flash(f"Saved. {tenant.login_domain} shows {tenant.display_name}'s sign-in page once its DNS points "
-              "here - Claude runs scripts/gcp/setup.sh domain " + tenant.login_domain + " for the records.", "success")
-        if not own_branding(tenant):
-            flash("This client's package has no own branding, so the address sends people to the main sign-in "
-                  "page until it does.", "info")
-    return back
 
 
 @tenants_bp.route("/clients/<int:tenant_id>/details", methods=["GET", "POST"])

@@ -56,12 +56,12 @@
   </section>
   {% endif %}
 
-  {% if tenant.login_slug and not arfa_look %}
+  {% if (tenant.sign_in_domain and tenant.sign_in_domain.is_active) or (tenant.login_slug and not arfa_look) %}
   <section class="card settings-card">
     <h2>Your branded sign-in page</h2>
     <p class="text-muted mt-0">Share this link with your staff instead of the general sign-in page - it shows your own logo and theme.</p>
     <div class="copy-row" x-data="{ copied: false }">
-      <code id="login-link">{% if tenant.login_domain %}https://{{ tenant.login_domain }}{% else %}{{ url_for('auth.tenant_login', slug=tenant.login_slug, _external=True) }}{% endif %}</code>
+      <code id="login-link">{% if tenant.sign_in_domain and tenant.sign_in_domain.is_active %}https://{{ tenant.sign_in_domain.domain }}{% else %}{{ url_for('auth.tenant_login', slug=tenant.login_slug, _external=True) }}{% endif %}</code>
       <button type="button" class="btn btn-secondary btn-sm"
               @click="navigator.clipboard && navigator.clipboard.writeText(document.getElementById('login-link').textContent).then(() => { copied = true; setTimeout(() => copied = false, 1600) })">
         <span x-text="copied ? 'Copied' : 'Copy link'">Copy link</span>
