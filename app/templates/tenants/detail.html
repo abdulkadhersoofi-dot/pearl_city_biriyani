@@ -244,7 +244,8 @@
               <td><strong>{{ u.name }}</strong><small class="block text-muted">{{ u.email }}</small></td>
               <td>{{ 'Owner (Client Admin)' if u.role.value == 'client_admin' else u.role_label }}</td>
               <td>{% if u.is_active %}<span class="status-badge status-issued">Active</span>{% else %}<span class="status-badge status-draft">Blocked</span>{% endif %}
-                {% if u.has_two_factor %}<span class="pill pill-muted">two-step</span>{% endif %}</td>
+                {% if u.has_two_factor %}<span class="pill pill-muted">two-step</span>{% endif %}
+                {% if locked_logins.get(u.id) %}<span class="pill pill-warn" title="Too many wrong passwords - resetting the password unlocks it">locked until {{ locked_logins[u.id]|ist('%H:%M') }}</span>{% endif %}</td>
               <td class="num">
                 {% if u.role.value in ('client_admin', 'staff') %}
                 <div class="row row-end gap-6">
@@ -255,11 +256,11 @@
                   </form>
                   {% endif %}
                   {% if console_can('reset_logins') %}
+                  <a href="{{ url_for('tenants.reset_client_password', tenant_id=tenant.id, user_id=u.id) }}" class="btn btn-secondary btn-sm">{{ icon('key-round') }}Reset password</a>
                   <div class="pop-wrap menu-wrap" x-data="{ open: false }" @click.outside="open = false" @keydown.escape.window="open = false">
                     <button type="button" class="btn btn-quiet btn-sm" @click="open = !open" aria-haspopup="menu" :aria-expanded="open.toString()"
                             aria-label="More for {{ u.name }}">{{ icon('ellipsis') }}</button>
                     <div class="pop pop-right more-pop" role="menu" x-show="open" x-transition.opacity x-cloak>
-                      <a href="{{ url_for('tenants.reset_client_password', tenant_id=tenant.id, user_id=u.id) }}" class="btn" role="menuitem">Reset password</a>
                       {% if u.has_two_factor %}
                       <form method="post" action="{{ url_for('tenants.reset_client_two_factor', tenant_id=tenant.id, user_id=u.id) }}"
                             data-confirm="Turn off two-step sign-in for {{ u.name }}? Only do this if they lost their phone." data-danger>

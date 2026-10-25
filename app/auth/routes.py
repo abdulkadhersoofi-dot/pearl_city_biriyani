@@ -32,8 +32,21 @@ def in_counter_app() -> bool:
             or APP_AGENT in (request.user_agent.string or ""))
 
 
+# An administrator setting someone's password: wrong guesses before it no
+# longer count against signing in (the forgotten-password case).
+PASSWORD_RESET_ACTIONS = ("client_password_reset_by_firm", "auditor_password_reset_by_ultra_admin",
+                          "branch_password_reset")
+
+
 def _recent_failed_logins(email: str, window_minutes: int) -> int:
     since = utcnow() - timedelta(minutes=window_minutes)
+    account = User.query.filter_by(email=email).first()
+    if account is not None:
+        last_reset = db.session.query(db.func.max(AuditLog.created_at)).filter(
+            AuditLog.action.in_(PASSWORD_RESET_ACTIONS), AuditLog.entity_type == "user",
+            AuditLog.entity_id == account.id, AuditLog.created_at >= since).scalar()
+        if last_reset is not None:
+            since = last_reset
     recent = AuditLog.query.filter(
         AuditLog.action == "login_failed", AuditLog.created_at >= since
     ).all()

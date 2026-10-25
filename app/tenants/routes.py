@@ -8,6 +8,7 @@ from flask_login import current_user, login_user
 
 from app.auth.decorators import admin_or_auditor_required, roles_required
 from app.auth.forms import SetPasswordForm
+from app.auth.security import locked_until
 from app.extensions import db
 from app.invoicing.pdf import render_invoice_pdf
 from app.models.audit_log import AuditLog
@@ -274,6 +275,7 @@ def detail(tenant_id):
         login_switches={u.id: branch_login_context(u) for u in users if u.is_staff} if current_user.is_super_admin else {},
         changes=changes,
         sign_in_domains=_sign_in_domains() if current_user.is_super_admin else [],
+        locked_logins={u.id: until for u in users if (until := locked_until(u))},
     )
 
 
@@ -811,6 +813,9 @@ def reset_client_password(tenant_id, user_id):
     user = User.query.filter_by(id=user_id, tenant_id=tenant_id).first_or_404()
     form = SetPasswordForm()
     if form.validate_on_submit():
+        was_locked = locked_until(user) is not None
+        # Also unlocks the login, and earlier wrong guesses stop counting
+        # (auth.routes._recent_failed_logins): the new password works now.
         user.set_password(form.new_password.data)
         user.must_change_password = True
         record_audit(
@@ -819,11 +824,14 @@ def reset_client_password(tenant_id, user_id):
             tenant_id=tenant_id,
             entity_type="user",
             entity_id=user.id,
+            details={"unlocked": was_locked},
         )
         db.session.commit()
-        flash(f"Password updated for {user.email}. Share it with them directly.", "success")
+        flash(f"Password updated for {user.email}{' and the account unlocked' if was_locked else ''}. Share it with "
+              "them directly - they choose their own at their next sign-in.", "success")
         return redirect(url_for("tenants.detail", tenant_id=tenant_id, tab="users"))
-    return render_template("tenants/reset_password.html", form=form, tenant_user=user, tenant_id=tenant_id)
+    return render_template("tenants/reset_password.html", form=form, tenant_user=user, tenant=tenant,
+                           locked=locked_until(user))
 
 
 @tenants_bp.route("/clients/<int:tenant_id>/users/<int:user_id>/reset-two-factor", methods=["POST"])

@@ -1121,6 +1121,7 @@ td.num, th.num { text-align: right; white-space: nowrap; }
 .icon-flip { transform: scaleX(-1); }
 .pill { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 0.78rem; font-weight: 700; }
 .pill-ok { background: var(--color-success-bg); color: var(--color-primary-dark); }
+.pill-warn { background: var(--color-warn-bg); color: var(--color-warn-text); }
 .pill-muted { background: var(--color-surface); border: 1px solid var(--color-border); color: var(--color-text-muted); }
 .copy-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .copy-row code { padding: 8px 12px; border-radius: 8px; background: var(--color-surface-2); border: 1px solid var(--color-border); word-break: break-all; }
