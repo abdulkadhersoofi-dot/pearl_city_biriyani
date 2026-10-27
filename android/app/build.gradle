@@ -32,11 +32,10 @@ android {
         versionCode ciVersionCode
         versionName "1.${ciVersionCode}"
 
-        // The ARFA server this app talks to. Change this one line (and
-        // bump versionCode/versionName below) to point a rebuild at a
-        // different server - e.g. once a real domain replaces this
-        // Render.com URL. No trailing slash.
-        buildConfigField "String", "SERVER_BASE_URL", "\"https://gst-billing-app-prdx.onrender.com\""
+        // The ARFA server a NEW install talks to. A phone already in use
+        // keeps its own address (ServerAddress) and is moved by
+        // android/server.json instead. No trailing slash.
+        buildConfigField "String", "SERVER_BASE_URL", "\"https://arfa.live\""
         // Where the update check looks for the "android-latest" release.
         buildConfigField "String", "RELEASE_REPO", "\"abdulkadhersoofi-dot/pearl_city_biriyani\""
     }

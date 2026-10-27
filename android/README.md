@@ -44,16 +44,17 @@ update - see "Signing" below for the one-time reinstall.
 
 ## Server URL
 
-Set once, in `app/build.gradle`:
+A **new install** talks to the address built into `app/build.gradle`:
 
 ```groovy
-buildConfigField "String", "SERVER_BASE_URL", "\"https://gst-billing-app-prdx.onrender.com\""
+buildConfigField "String", "SERVER_BASE_URL", "\"https://arfa.live\""
 ```
 
-This is the Render.com URL in use right now. When a real domain
-replaces it, change this one line (and bump `versionCode`/`versionName`
-just above it) and let the GitHub Actions workflow below rebuild - no
-other file references the server URL.
+A phone **already in use** keeps its own address and is moved by
+`android/server.json` (see "Server address" below) - changing the built-in
+address never moves it. A phone updated from a version before 1.9 (built
+for Render) stays on Render until that move, so its pairing and any bill
+still waiting to be sent go with it.
 
 ## Printing
 
@@ -124,7 +125,8 @@ waiting for a slow server.
 
 ### Server address (moving the server without reinstalling)
 
-The address built in is `SERVER_BASE_URL` (app/build.gradle). The release's
+A new install starts on `SERVER_BASE_URL` (app/build.gradle); from then on
+the phone keeps its address in `ServerAddress.kt`. The release's
 `version.json` also carries `server_url`, taken from `android/server.json`:
 set it to a new https address and push, and each phone moves on its next
 update check (at most 12 hours) - `ServerAddress.kt` keeps the address,

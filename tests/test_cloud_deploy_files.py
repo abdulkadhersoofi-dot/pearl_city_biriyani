@@ -84,3 +84,16 @@ def test_the_phones_can_be_moved_to_a_new_address_without_reinstalling():
     assert "startMove()" in activity and "restoreCarried()" in activity and '"AndroidMove"' in activity
     assert '"/health", "/healthz"' in activity        # never moves to an address that doesn't answer (Cloud Run: /health)
     assert "server.offer(" in (ROOT / "android/app/src/main/java/com/arfa/pos/UpdateChecker.kt").read_text()
+
+
+def test_phones_move_to_arfa_live_the_careful_way():
+    # New installs start on arfa.live; installed phones are told to move.
+    gradle = (ROOT / "android/app/build.gradle").read_text()
+    assert '"SERVER_BASE_URL", "\\"https://arfa.live\\""' in gradle
+    assert json.loads((ROOT / "android/server.json").read_text())["server_url"] == "https://arfa.live"
+    # A phone updated from a Render-built version stays on Render until that
+    # move (which sends its waiting bills first) - never a jump on update.
+    address = (ROOT / "android/app/src/main/java/com/arfa/pos/ServerAddress.kt").read_text()
+    assert 'EARLIER_BUILT_IN = "https://gst-billing-app-prdx.onrender.com"' in address
+    assert "lastUpdateTime > info.firstInstallTime" in address
+    assert 'putString("current", it)' in address  # written down once, so a later rebuild never moves it

@@ -17,14 +17,37 @@ import android.content.SharedPreferences
  * localStorage) - only once no offline bill is waiting on the phone - and
  * on the new address it writes the copy back before the app's screens open.
  */
-class ServerAddress(context: Context) {
+class ServerAddress(private val context: Context) {
+
+    companion object {
+        /** The address built into every version before 1.9 (Render). */
+        const val EARLIER_BUILT_IN = "https://gst-billing-app-prdx.onrender.com"
+    }
 
     private val prefs: SharedPreferences = context.getSharedPreferences("arfa_server", Context.MODE_PRIVATE)
 
-    /** The address in use. */
+    /** The address in use - written down the first time it is read, so a
+     * later change of the built-in address never moves a phone by itself. */
     var current: String
-        get() = prefs.getString("current", null) ?: BuildConfig.SERVER_BASE_URL
+        get() = prefs.getString("current", null) ?: startingAddress().also { prefs.edit().putString("current", it).apply() }
         set(value) = prefs.edit().putString("current", clean(value)).apply()
+
+    /**
+     * Where a phone starts. A new install: the address built in. An older
+     * version updated to this one never wrote its address down - it was
+     * using the one built into that version, and its pairing and any bill
+     * still waiting to be sent are there. It stays there and moves the
+     * careful way (offer() below, then MainActivity), never by a jump.
+     */
+    private fun startingAddress(): String {
+        val updated = try {
+            val info = context.packageManager.getPackageInfo(context.packageName, 0)
+            info.lastUpdateTime > info.firstInstallTime
+        } catch (e: Exception) {
+            false
+        }
+        return if (updated) EARLIER_BUILT_IN else BuildConfig.SERVER_BASE_URL
+    }
 
     /** A new address named by the update check, not moved to yet. */
     var pending: String?
