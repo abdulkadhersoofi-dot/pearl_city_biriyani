@@ -48,7 +48,8 @@ def test_production_waits_for_its_data_and_a_healthy_candidate():
     assert release.index("JOB_SECRETS") < release.index("gcloud run deploy")
     # The build account can't look secrets up, so optional ones are listed, never probed.
     assert "gcloud secrets versions describe" not in release
-    assert set(_settings()["OPTIONAL_SECRETS"].split()) <= {"sentry", "smtp", "super-admin"}
+    assert set(_settings()["OPTIONAL_SECRETS"].split()) <= {"sentry", "smtp", "super-admin", "gemini"}
+    assert "GEMINI_API_KEY=arfa-gemini-key" in release
     assert 'COMMIT=$SHORT_SHA' in (ROOT / "cloudbuild.yaml").read_text()
     assert "SHORT_SHA:-" not in (ROOT / "cloudbuild.yaml").read_text()   # Cloud Build has no ${X:-default}
     build = (ROOT / "cloudbuild.yaml").read_text()

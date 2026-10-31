@@ -33,6 +33,7 @@ MODULE_RECORDS = {
     "loyalty": (("LoyaltyEntry",), "loyalty.index"),
     "restaurant_mode": (("KitchenTicket",), "restaurant.tables"),
     "eway_bill": (("EWayBill",), "einvoice.eway_bills"),
+    "doc_scan": (("ScanDocument",), "scan.index"),
     "batch_expiry": (("ProductBatch",), "inventory.expiry"),
     "serial_imei": (("ProductSerial",), "inventory.serials"),
     "wholesale": (("Salesman", "CustomerGroup"), "wholesale.index"),

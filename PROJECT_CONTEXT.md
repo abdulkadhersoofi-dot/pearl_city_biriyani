@@ -729,6 +729,13 @@ this list is just the index.
   (organisation account arfasoftware@gmail.com; key creation allowed for
   this project by `scripts/gcp/allow_key.sh`). Render's database is
   PostgreSQL 18 - so is Cloud SQL (`POSTGRES_18`).
+  **Scan bills (flag `doc_scan`, 31 Oct 2026):** the ARFA Invoice Parser
+  merged in as a module - `app/scan/engine/` (reader.py: e-invoice QR read in
+  parallel, two-tier Gemini read, GSTIN repair, retry; validators.py ported
+  unchanged), `app/scan/services.py` (store in `scan_documents`, bundle split,
+  duplicates, post as PurchaseBill / Expense with the picture attached),
+  `/scan` pages + JSON endpoints for a future phone app. Needs the secret
+  `arfa-gemini-key` (docs/cloud-setup.md) and `gemini` in OPTIONAL_SECRETS.
 
 ## 5. Chronological development history (this session)
 

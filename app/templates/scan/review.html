@@ -1,0 +1,222 @@
+{% extends "base.html" %}
+{% block title %}Check a scanned bill - {{ firm_name }}{% endblock %}
+{% macro val(name, default='') -%}{{ form.get(name, default) if form else default }}{%- endmacro %}
+{% block content %}
+{% set check = v.get('status') %}
+{% set einv = ex.get('einvoice') or {} %}
+{% set sup_gstin = (val('supplier_gstin', ex.get('supplier_gstin') or '')) %}
+<div class="page-header">
+  <div>
+    <p class="m-0"><a href="{{ url_for('scan.index') }}">Scan bills</a></p>
+    <h1>{{ ex.get('supplier_name') or doc.filename }}</h1>
+    <p class="text-muted mt-0">{{ labels.get(doc.category or '', doc.category or 'Not read yet') }}{% if doc.page_count and doc.page_count > 1 %} · {{ doc.page_count }} pages{% endif %}</p>
+  </div>
+</div>
+
+<div class="scan-review">
+  <aside class="scan-picture card">
+    {% if doc.preview or not doc.is_pdf %}
+    <a href="{{ url_for('scan.file', doc_id=doc.id) }}" target="_blank" rel="noopener" title="Open full size">
+      <img src="{{ url_for('scan.preview', doc_id=doc.id) }}" alt="The scanned bill"></a>
+    {% endif %}
+    <p class="m-0 text-center"><a href="{{ url_for('scan.file', doc_id=doc.id) }}" target="_blank" rel="noopener">Open the {{ 'PDF' if doc.is_pdf else 'photo' }} full size</a></p>
+  </aside>
+
+  <div class="stack">
+    {# --- what the checks found ------------------------------------------------------------ #}
+    {% if doc.status in ('posted', 'filed') %}
+    <section class="card">
+      <h2 class="mt-0">{{ 'Posted' if doc.status == 'posted' else 'Kept on file' }}</h2>
+      {% if posted_url %}<p><a href="{{ posted_url }}" class="btn btn-primary">Open the {{ 'purchase bill' if doc.posted_type == 'purchase_bill' else 'expense' }}</a></p>{% endif %}
+      {% if doc.message %}<p class="text-muted m-0">{{ doc.message }}</p>{% endif %}
+    </section>
+    {% else %}
+    <section class="card scan-checks">
+      {% if doc.status == 'rejected' %}
+        <p class="scan-verdict is-bad">{{ icon('circle-x') }}<span>{{ doc.message }}</span></p>
+      {% elif doc.status == 'failed' %}
+        <p class="scan-verdict is-bad">{{ icon('triangle-alert') }}<span>{{ doc.message or "This file couldn't be read." }}</span></p>
+      {% elif doc.status in ('uploaded', 'reading') %}
+        <p class="scan-verdict">{{ icon('clock') }}<span>Not read yet - <a href="{{ url_for('scan.index', tab='reading') }}">open Scan bills</a> to read it.</span></p>
+      {% elif check == 'verified' %}
+        <p class="scan-verdict is-ok">{{ icon('circle-check') }}<span>Every check passed. Glance over it and post.</span></p>
+      {% else %}
+        <p class="scan-verdict is-warn">{{ icon('triangle-alert') }}<span>Check the fields marked below against the bill before posting.</span></p>
+      {% endif %}
+      {% if einv.get('present') %}
+        <p class="m-0"><span class="pill {{ 'pill-ok' if einv.get('verified') else 'pill-warn' }}">e-Invoice QR {{ 'matches' if einv.get('verified') else 'found' }}</span>
+        {% for n in einv.get('notes') or [] %}<small class="block text-muted">{{ n }}</small>{% endfor %}</p>
+      {% endif %}
+      {% if doc.duplicate_of %}<p class="scan-warn m-0">{{ icon('triangle-alert', 'icon-sm') }} This bill looks already entered: <strong>{{ doc.duplicate_of }}</strong>.</p>{% endif %}
+      {% set failed = (v.get('checks') or [])|rejectattr('ok')|list %}
+      {% if failed %}
+      <ul class="scan-check-list">
+        {% for c in failed %}<li class="{{ 'is-bad' if c.level == 'hard' else 'is-warn' }}"><strong>{{ c.label }}</strong> <span class="text-muted">{{ c.detail }}</span></li>{% endfor %}
+      </ul>
+      {% endif %}
+      {% if v.get('repairs') %}
+      <details><summary class="text-muted">{{ v.get('repairs')|length }} automatic correction{{ 's' if v.get('repairs')|length != 1 }}</summary>
+        <ul class="scan-check-list">{% for r in v.get('repairs') %}<li>{{ r }}</li>{% endfor %}</ul></details>
+      {% endif %}
+    </section>
+    {% endif %}
+
+    {# --- the form ----------------------------------------------------------------------------- #}
+    {% if doc.status == 'to_check' %}
+    {% set flagged = (v.get('field_flags') or []) + (ex.get('flags') or []) %}
+    <form method="post" action="{{ url_for('scan.post', doc_id=doc.id) }}" class="stack" novalidate
+          x-data="scanReview({{ lines|tojson }}, {{ (ex.get('invoice_value') or 0)|tojson }}, '{{ kind }}')">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <section class="card stack">
+        <div class="filter-chips m-0" role="radiogroup" aria-label="Post this as">
+          {% if purchases_on %}<label class="filter-chip" :class="{ 'is-on': kind === 'purchase' }"><input type="radio" name="kind" value="purchase" x-model="kind" class="sr-only">Purchase bill</label>{% endif %}
+          {% if expenses_on %}<label class="filter-chip" :class="{ 'is-on': kind === 'expense' }"><input type="radio" name="kind" value="expense" x-model="kind" class="sr-only">Expense</label>{% endif %}
+          <label class="filter-chip" :class="{ 'is-on': kind === 'file' }"><input type="radio" name="kind" value="file" x-model="kind" class="sr-only">Keep on file only</label>
+        </div>
+        <p class="text-muted m-0" x-show="kind === 'file'">For a bill ARFA doesn't post from here - a sales invoice, a credit note, a receipt. The picture is kept with your scanned bills.</p>
+
+        <div class="form-grid" x-show="kind !== 'file'">
+          {% if supplier %}
+          <label class="field"><span class="field-label">Supplier</span>
+            <select name="supplier_id" class="field-input">
+              {% for s in suppliers %}<option value="{{ s.id }}" {{ 'selected' if s.id == supplier.id }}>{{ s.name }}{{ ' · ' ~ s.gstin if s.gstin }}</option>{% endfor %}
+            </select></label>
+          {% else %}
+          <label class="field {{ 'scan-flag' if 'supplier_name' in flagged }}"><span class="field-label">Supplier name <small class="text-muted">(new - it will be added to your suppliers)</small></span>
+            <input type="text" name="supplier_name" class="field-input" value="{{ val('supplier_name', ex.get('supplier_name') or '') }}" maxlength="255"></label>
+          <label class="field {{ 'scan-flag' if 'supplier_gstin' in flagged or (sup_gstin and not gstin_ok(sup_gstin)) }}"><span class="field-label">Supplier GSTIN</span>
+            <input type="text" name="supplier_gstin" class="field-input" value="{{ sup_gstin }}" maxlength="15" autocapitalize="characters" spellcheck="false">
+            {% if sup_gstin and not gstin_ok(sup_gstin) %}<span class="field-help">This GSTIN fails its check digit - compare it with the bill.</span>{% endif %}</label>
+          <input type="hidden" name="supplier_address" value="{{ ex.get('supplier_address') or '' }}">
+          <input type="hidden" name="supplier_phone" value="{{ ex.get('supplier_phone') or '' }}">
+          {% endif %}
+          <label class="field {{ 'scan-flag' if 'invoice_number' in flagged }}"><span class="field-label">Bill number</span>
+            <input type="text" name="invoice_number" class="field-input" value="{{ val('invoice_number', ex.get('invoice_number') or '') }}" maxlength="50"></label>
+          <label class="field {{ 'scan-flag' if 'invoice_date' in flagged }}"><span class="field-label">Bill date</span>
+            <input type="date" name="invoice_date" class="field-input" value="{{ val('invoice_date', ex.get('invoice_date') or '') }}"></label>
+          {% if gstins|length > 1 %}
+          <label class="field"><span class="field-label">Your registration</span>
+            <select name="gstin_id" class="field-input">
+              {% for g in gstins %}<option value="{{ g.id }}" {{ 'selected' if g.id == (doc.gstin_id or gstins[0].id) }}>{{ g.gstin or 'Unregistered' }} · {{ g.state_name }}</option>{% endfor %}
+            </select></label>
+          {% elif gstins %}<input type="hidden" name="gstin_id" value="{{ gstins[0].id }}">{% endif %}
+          <label class="field {{ 'scan-flag' if 'invoice_value' in flagged }}"><span class="field-label">Total on the bill</span>
+            <input type="text" name="bill_total" class="field-input num" inputmode="decimal" x-model="billTotal"></label>
+        </div>
+      </section>
+
+      {# purchase bill #}
+      <section class="card stack" x-show="kind === 'purchase'" x-cloak>
+        <div class="row row-between items-center">
+          <h2 class="m-0">Items</h2>
+          {% if locations|length > 1 %}
+          <label class="row gap-6"><span class="text-muted">Received at</span>
+            <select name="location_id" class="field-input">{% for l in locations %}<option value="{{ l.id }}">{{ l.name }}</option>{% endfor %}</select></label>
+          {% endif %}
+        </div>
+        <div class="table-wrap">
+          <table class="scan-lines">
+            <thead><tr><th>Item</th><th>HSN</th><th class="num">Qty</th><th>Unit</th><th class="num">Rate</th><th class="num">Disc %</th><th class="num">GST %</th><th class="num">Taxable</th><th><span class="sr-only">Remove</span></th></tr></thead>
+            <tbody>
+              <template x-for="(l, i) in lines" :key="i">
+                <tr>
+                  <td><input class="field-input" name="line_description[]" x-model="l.description" :disabled="kind !== 'purchase'" aria-label="Item"></td>
+                  <td><input class="field-input scan-w-hsn" name="line_hsn[]" x-model="l.hsn" inputmode="numeric" :disabled="kind !== 'purchase'" aria-label="HSN"></td>
+                  <td><input class="field-input num scan-w-num" name="line_qty[]" x-model="l.qty" inputmode="decimal" :disabled="kind !== 'purchase'" aria-label="Quantity"></td>
+                  <td><input class="field-input scan-w-unit" name="line_unit[]" x-model="l.unit" :disabled="kind !== 'purchase'" aria-label="Unit"></td>
+                  <td><input class="field-input num scan-w-num" name="line_rate[]" x-model="l.rate" inputmode="decimal" :disabled="kind !== 'purchase'" aria-label="Rate"></td>
+                  <td><input class="field-input num scan-w-small" name="line_discount[]" x-model="l.discount" inputmode="decimal" :disabled="kind !== 'purchase'" aria-label="Discount percent"></td>
+                  <td><select class="field-input scan-w-small" name="line_gst_rate[]" x-model="l.gst_rate" :disabled="kind !== 'purchase'" aria-label="GST rate">
+                    {% for r in ['0','0.1','0.25','1','1.5','3','5','6','7.5','12','18','28','40'] %}<option value="{{ r }}">{{ r }}</option>{% endfor %}</select>
+                    <input type="hidden" name="line_itc[]" value="eligible" :disabled="kind !== 'purchase'"></td>
+                  <td class="num" x-text="money(taxable(l))"></td>
+                  <td><button type="button" class="btn btn-quiet btn-sm" @click="lines.splice(i, 1)" :disabled="lines.length < 2" aria-label="Remove this line">{{ icon('x') }}</button></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+        <div class="row row-between">
+          <button type="button" class="btn btn-secondary btn-sm" @click="lines.push({description: '', hsn: '', qty: '1', unit: 'NOS', rate: '0', discount: '0', gst_rate: '18'})">{{ icon('plus') }}Add a line</button>
+          <label class="row gap-6"><input type="checkbox" name="is_rcm" value="1" x-model="rcm" {{ 'checked' if (ex.get('reverse_charge') or '')|lower in ('y', 'yes', 'true') }}> Reverse charge</label>
+        </div>
+        <div class="scan-total" :class="{ 'is-off': Math.abs(diff()) > 1 }">
+          <span>ARFA works it out to <strong x-text="'Rs. ' + money(total())"></strong></span>
+          <span x-show="billTotal > 0">· the bill says <strong x-text="'Rs. ' + money(billTotal)"></strong></span>
+          <span x-show="billTotal > 0 && Math.abs(diff()) > 1" class="scan-warn"> · differs by <strong x-text="'Rs. ' + money(Math.abs(diff()))"></strong></span>
+        </div>
+        <label class="row gap-6" x-show="billTotal > 0 && Math.abs(diff()) > 1"><input type="checkbox" name="accept_difference" value="1"> Post anyway, with ARFA's total</label>
+      </section>
+
+      {# expense #}
+      <section class="card form-grid" x-show="kind === 'expense'" x-cloak>
+        <label class="field"><span class="field-label">Category</span>
+          <select name="category_id" class="field-input" :disabled="kind !== 'expense'">
+            {% for c in categories %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+          </select></label>
+        <label class="field"><span class="field-label">Paid by</span>
+          <select name="payment_mode" class="field-input" :disabled="kind !== 'expense'">
+            {% for mode, label in payment_modes.items() %}<option value="{{ mode.value }}">{{ label }}</option>{% endfor %}
+          </select></label>
+        <label class="field"><span class="field-label">Amount (with GST)</span>
+          <input type="text" name="amount" class="field-input num" inputmode="decimal" :value="billTotal" :disabled="kind !== 'expense'"></label>
+        {% set has_tax = (ex.get('igst') or 0) + (ex.get('cgst') or 0) + (ex.get('sgst') or 0) > 0 %}
+        <label class="row gap-6 field"><input type="checkbox" name="is_gst_bill" value="1" {{ 'checked' if has_tax and gstin_ok(sup_gstin) }} :disabled="kind !== 'expense'"> A GST bill (the supplier's GSTIN is on it)</label>
+        {% if supplier %}<input type="hidden" name="supplier_gstin" value="{{ supplier.gstin or '' }}" :disabled="kind !== 'expense'">{% endif %}
+        <label class="field"><span class="field-label">GST rate</span>
+          <select name="gst_rate" class="field-input" :disabled="kind !== 'expense'">
+            {% for r in ['0','5','12','18','28','40','0.1','0.25','1','1.5','3','6','7.5'] %}<option value="{{ r }}" {{ 'selected' if r == main_rate|string or (r ~ '.00') == main_rate|string }}>{{ r }}%</option>{% endfor %}
+          </select></label>
+        <label class="field"><span class="field-label">Input tax credit</span>
+          <select name="itc" class="field-input" :disabled="kind !== 'expense'">
+            <option value="eligible">Can be claimed</option><option value="blocked">Blocked (food, travel, ...)</option><option value="ineligible">Not claimable</option>
+          </select></label>
+      </section>
+
+      <section class="card stack">
+        <label class="field"><span class="field-label">Note <small class="text-muted">(optional)</small></span>
+          <input type="text" name="notes" class="field-input" maxlength="500" value="{{ val('notes') }}"></label>
+        <button type="submit" class="btn btn-primary btn-lg btn-block"
+                x-text="kind === 'purchase' ? 'Post the purchase bill' : (kind === 'expense' ? 'Post the expense' : 'Keep on file')">Post</button>
+      </section>
+    </form>
+    {% endif %}
+
+    {% if doc.status in ('to_check', 'rejected', 'failed') %}
+    <div class="row">
+      {% if doc.status != 'to_check' %}
+      <form method="post" action="{{ url_for('scan.post', doc_id=doc.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="kind" value="file">
+        <button class="btn btn-secondary">Keep on file anyway</button></form>
+      {% endif %}
+      <form method="post" action="{{ url_for('scan.reread', doc_id=doc.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-secondary">Read it again</button></form>
+      <form method="post" action="{{ url_for('scan.discard', doc_id=doc.id) }}" data-confirm="Discard this scan?" data-danger>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-quiet">Discard</button></form>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  function scanReview(lines, billTotal, kind) {
+    return {
+      lines: lines, billTotal: Number(billTotal) || 0, kind: kind, rcm: false,
+      num: function (v) { var n = parseFloat(String(v || "").replace(/,/g, "")); return isNaN(n) ? 0 : n; },
+      taxable: function (l) { return this.num(l.qty) * this.num(l.rate) * (1 - this.num(l.discount) / 100); },
+      total: function () {
+        var self = this, exact = 0;
+        this.lines.forEach(function (l) {
+          var t = Math.round(self.taxable(l) * 100) / 100;
+          exact += self.rcm ? t : t + Math.round(t * self.num(l.gst_rate)) / 100;
+        });
+        return Math.round(exact);
+      },
+      diff: function () { return this.total() - this.num(this.billTotal); },
+      money: function (v) { return Number(v || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+    };
+  }
+</script>
+{% endblock %}

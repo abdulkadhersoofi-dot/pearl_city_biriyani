@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Scan bills - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Scan bills</h1>
+    <p class="text-muted mt-0">Photograph or upload your purchase and expense bills. ARFA reads them, checks the
+      arithmetic, and you post each one with a tap.</p>
+  </div>
+</div>
+
+{% if not set_up %}
+<p class="flash flash-warning">Reading bills isn't switched on for this server yet - you can upload now and they'll be
+  read once it is.</p>
+{% endif %}
+
+<section class="card scan-drop" id="scan-app"
+         data-csrf="{{ csrf_token() }}" data-upload="{{ url_for('scan.upload') }}"
+         data-read="{{ url_for('scan.read', doc_id=0) }}" data-review="{{ url_for('scan.review', doc_id=0) }}"
+         data-pending="{{ pending|join(',') }}" data-ready="{{ '1' if set_up else '0' }}">
+  <div class="scan-drop-inner">
+    {{ icon('scan-line', 'scan-drop-icon') }}
+    <p class="m-0"><strong>Drop bills here</strong> <span class="text-muted">- photos or PDFs, as many as you like</span></p>
+    <div class="row scan-pick">
+      <label class="btn btn-primary btn-lg scan-camera">{{ icon('scan-line') }}Take a photo
+        <input type="file" accept="image/*" capture="environment" multiple hidden data-scan-input></label>
+      <label class="btn btn-secondary btn-lg">{{ icon('plus') }}Choose files
+        <input type="file" accept="image/*,application/pdf" multiple hidden data-scan-input></label>
+    </div>
+    <p class="text-muted m-0 scan-tip">Tip: lay the bill flat, fill the frame, avoid shadows. A PDF of several invoices is
+      split by itself.</p>
+  </div>
+  <ul class="scan-queue" data-scan-queue aria-live="polite"></ul>
+  <div class="scan-queue-done" data-scan-done hidden>
+    <a href="{{ url_for('scan.index', tab='check') }}" class="btn btn-primary">Check them now</a>
+  </div>
+</section>
+
+<div class="filter-chips mt-16" role="tablist" aria-label="Scanned bills">
+  {% for key, (label, _) in scan_tabs.items() %}
+  <a href="{{ url_for('scan.index', tab=key) }}" class="filter-chip {{ 'is-on' if key == tab }}"
+     role="tab" aria-selected="{{ 'true' if key == tab else 'false' }}">{{ label }} <b>{{ counts[key] }}</b></a>
+  {% endfor %}
+</div>
+
+<div class="scan-list">
+  {% for d in docs %}
+  {% set ex = d.extracted or {} %}
+  <a class="card scan-item" href="{{ url_for('scan.review', doc_id=d.id) }}">
+    <span class="scan-thumb">{% if d.read_at or not d.is_pdf %}<img src="{{ url_for('scan.preview', doc_id=d.id) }}" alt="" loading="lazy">{% else %}{{ icon('file-text') }}{% endif %}</span>
+    <span class="scan-item-body">
+      <strong>{{ ex.supplier_name or d.filename }}</strong>
+      <small class="text-muted block">
+        {% if ex.invoice_number %}{{ ex.invoice_number }} · {% endif %}{% if ex.invoice_date %}{{ ex.invoice_date }} · {% endif %}{{ labels.get(d.category or '', d.category or ('PDF' if d.is_pdf else 'Photo')) }}
+      </small>
+      {% if d.status == 'rejected' or d.status == 'failed' %}<small class="scan-warn block">{{ d.message }}</small>{% endif %}
+      {% if d.duplicate_of and d.status == 'to_check' %}<small class="scan-warn block">Looks already entered: {{ d.duplicate_of }}</small>{% endif %}
+    </span>
+    <span class="scan-item-end">
+      {% if ex.invoice_value %}<strong class="num">{{ ex.invoice_value|inr }}</strong>{% endif %}
+      {% set check = (d.validation or {}).get('status') %}
+      {% if d.status == 'to_check' %}
+        <span class="pill {{ 'pill-ok' if check == 'verified' else 'pill-warn' }}">{{ 'Checks passed' if check == 'verified' else 'Needs a look' }}</span>
+      {% elif d.status == 'posted' %}<span class="pill pill-ok">Posted</span>
+      {% elif d.status == 'filed' %}<span class="pill pill-muted">On file</span>
+      {% elif d.status == 'rejected' %}<span class="pill pill-warn">Rejected</span>
+      {% elif d.status == 'failed' %}<span class="pill pill-warn">Couldn't read</span>
+      {% else %}<span class="pill pill-muted">Reading…</span>{% endif %}
+    </span>
+  </a>
+  {% else %}
+  <p class="empty-state card">{{ {'check': 'Nothing waiting to be checked.', 'reading': 'Nothing being read.', 'done': 'No bills posted from scans yet.', 'rejected': 'Nothing rejected.'}[tab] }}</p>
+  {% endfor %}
+</div>
+<p class="text-muted text-center mt-16">{{ used }} of {{ limit }} bills read today.</p>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/scan.js') }}" defer></script>{% endblock %}

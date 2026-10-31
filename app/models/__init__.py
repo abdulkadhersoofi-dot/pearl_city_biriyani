@@ -38,6 +38,7 @@ from app.models.note import CreditDebitNote, NoteLine, NoteStatus
 from app.models.audit_log import AuditLog
 from app.models.package import AuditorPowers, LoginGrant, ModuleRequest, Package, TenantPackage
 from app.models.stock import BranchStockAllocation
+from app.models.scan import ScanDocument
 from app.models import indexes as _indexes  # noqa: E402,F401 - registers the business+date indexes
 
 __all__ = [
@@ -78,4 +79,5 @@ __all__ = [
     "NoteStatus",
     "AuditLog",
     "BranchStockAllocation",
+    "ScanDocument",
 ]

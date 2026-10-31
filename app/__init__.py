@@ -115,6 +115,7 @@ def _register_blueprints(app: Flask) -> None:
     from app.sales import sales_bp
     from app.settings import settings_bp
     from app.tenants import tenants_bp
+    from app.scan import scan_bp
     from app.main import main_bp
 
     app.register_blueprint(main_bp)
@@ -146,6 +147,7 @@ def _register_blueprints(app: Flask) -> None:
     app.register_blueprint(wholesale_bp)
     app.register_blueprint(loyalty_bp)
     app.register_blueprint(subscriptions_bp)
+    app.register_blueprint(scan_bp)
 
 
 def _register_error_handlers(app: Flask) -> None:

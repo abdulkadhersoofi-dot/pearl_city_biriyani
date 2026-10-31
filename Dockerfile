@@ -2,8 +2,9 @@
 FROM python:3.11-slim-bookworm
 
 # WeasyPrint's native dependencies for PDF generation (invoices, POS
-# receipts). Package names verified against a working install, not
-# guessed - a missing one here fails silently deep inside WeasyPrint.
+# receipts), and libzbar0 for reading e-invoice QR codes on scanned bills.
+# Package names verified against a working install, not guessed - a
+# missing one here fails silently deep inside WeasyPrint.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpango-1.0-0 \
     libpangoft2-1.0-0 \
@@ -15,6 +16,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-liberation \
     fonts-dejavu-core \
     shared-mime-info \
+    libzbar0 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

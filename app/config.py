@@ -130,6 +130,16 @@ class Config:
     # "android-latest" release carries the APK and version.json.
     ANDROID_RELEASE_REPO = os.environ.get("ANDROID_RELEASE_REPO", "abdulkadhersoofi-dot/pearl_city_biriyani")
 
+    # Scan bills (app/scan): the Gemini API key reads the photos. Without
+    # it the module says it isn't set up yet. The model names and the daily
+    # cap per client are settings, so a better model is a config change.
+    GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+    SCAN_MODELS = [m.strip() for m in os.environ.get("SCAN_MODELS", "gemini-2.5-flash-lite,gemini-2.5-flash").split(",")
+                   if m.strip()]
+    SCAN_STRONG_MODEL = os.environ.get("SCAN_STRONG_MODEL", "gemini-2.5-pro")
+    SCAN_DAILY_LIMIT = int(os.environ.get("SCAN_DAILY_LIMIT", "300"))
+    SCAN_MAX_FILE_MB = int(os.environ.get("SCAN_MAX_FILE_MB", "15"))
+
 
 class DevelopmentConfig(Config):
     DEBUG = True

@@ -90,6 +90,7 @@ ENTRIES = [
     Entry("purchases", MODULE, "truck", "buying", setup="purchases.suppliers", setup_label="Suppliers"),
     Entry("payables", MODULE, "landmark", "buying", setup="accounts.payables_index", setup_label="Supplier accounts"),
     Entry("expenses", MODULE, "wallet", "buying", setup="expenses.categories", setup_label="Expense categories"),
+    Entry("doc_scan", MODULE, "scan-line", "buying", setup="scan.index", setup_label="Scan bills"),
     # --- stock ---
     Entry("inventory", MODULE, "warehouse", "stock", setup="inventory.locations", setup_label="Stock locations"),
     Entry("batch_expiry", MODULE, "calendar-clock", "stock", needs=("inventory",), setup="inventory.expiry",

@@ -34,7 +34,7 @@ def test_presets_differ_by_business_type():
 
 def test_settings_only_offers_modules_that_are_built():
     # Every module is built since Phase 9 (business-type modules).
-    assert [f.key for f in AVAILABLE_FEATURES] == ["pos", "categories", "inventory", "purchases", "expenses", "variants", "batch_expiry", "serial_imei", "margin_scheme", "receivables", "payables", "sales_documents", "recurring_invoices", "cash_bank_book", "business_reports", "weighing", "restaurant_mode", "job_cards", "pharmacy", "electronics", "jewellery", "wholesale", "credit_sales", "multi_price_list", "favourites", "day_close", "einvoice", "eway_bill", "loyalty", "offline_pos", "cashier_pin", "daily_summary"]
+    assert [f.key for f in AVAILABLE_FEATURES] == ["pos", "categories", "inventory", "purchases", "expenses", "variants", "batch_expiry", "serial_imei", "margin_scheme", "receivables", "payables", "sales_documents", "recurring_invoices", "cash_bank_book", "business_reports", "weighing", "restaurant_mode", "job_cards", "pharmacy", "electronics", "jewellery", "wholesale", "credit_sales", "multi_price_list", "favourites", "day_close", "einvoice", "eway_bill", "loyalty", "offline_pos", "cashier_pin", "doc_scan", "daily_summary"]
     assert len(AVAILABLE_FEATURES) == len(FEATURES)
 
 

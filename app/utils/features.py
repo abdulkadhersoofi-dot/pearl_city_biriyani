@@ -253,6 +253,14 @@ FEATURES = {
             available=True,
         ),
         Feature(
+            "doc_scan",
+            "Scan bills",
+            "Photograph or upload purchase bills and expense bills - the AI reads the supplier, GSTINs, items and "
+            "tax, checks the arithmetic and any e-invoice QR, and you post it as a purchase bill or an expense in "
+            "one tap. PDFs holding several invoices are split by themselves.",
+            available=True,
+        ),
+        Feature(
             "daily_summary",
             "Daily owner summary",
             "The end-of-day picture - sales, payment modes, branches, top items, low and oversold stock - on the "
