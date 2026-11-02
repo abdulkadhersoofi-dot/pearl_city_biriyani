@@ -540,3 +540,75 @@ def test_the_models_are_a_setting(app):
     finally:
         del os.environ["SCAN_MODELS"]
     assert Config.SCAN_MODELS is None or isinstance(Config.SCAN_MODELS, list)
+
+
+# --- the review screen's matching (and the bug where quotes broke it) ----------------------------
+
+def test_the_review_form_gets_its_data_safely_even_with_quotes(client, db, scanning, client_admin, monkeypatch):
+    _login(client)
+    quoted = _bill(line_items=[{"description": 'Ball joint "upper" arm <oem>', "hsn_sac": "87089900", "quantity": 2,
+                                "rate_per_unit": 650, "gst_rate": 28, "taxable_value": 1300, "igst": 364}],
+                   taxable_value=1300, igst=364, invoice_value=1664)
+    doc_id = _ready_doc(client, monkeypatch, bill=quoted)
+    html = client.get(f"/scan/{doc_id}").get_data(as_text=True)
+    assert 'x-data="scanReview()"' in html            # no data inside the attribute any more
+    block = html.split('<script type="application/json" id="scan-data">', 1)[1].split("</script>", 1)[0]
+    data = json.loads(block)
+    assert data["lines"][0]["description"] == 'Ball joint "upper" arm <oem>'
+    assert data["lines"][0]["product_id"] == "new"   # goods not in the catalogue: a new item
+
+
+def test_posting_creates_new_items_and_links_existing_ones(client, db, scanning, client_admin, monkeypatch):
+    from app.models.product import Product
+
+    existing = Product(tenant_id=scanning.id, name="Cumin seeds 1kg", hsn_or_sac_code="0909", gst_rate=5, unit="KGS",
+                       sale_price=0)
+    db.session.add(existing)
+    db.session.commit()
+    _login(client)
+    doc_id = _ready_doc(client, monkeypatch)
+    data = json.loads(client.get(f"/scan/{doc_id}").get_data(as_text=True)
+                      .split('id="scan-data">', 1)[1].split("</script>", 1)[0])
+    assert data["lines"][0]["product_id"] == str(existing.id)   # matched by name
+    assert data["lines"][1]["product_id"] == "new"
+    res = client.post(f"/scan/{doc_id}/post", data=_purchase_form(**{"line_product_id[]": [str(existing.id), "new"]}))
+    assert res.status_code == 302, res.data[:400]
+    bill = PurchaseBill.query.one()
+    container = Product.query.filter_by(name="Steel container").one()
+    assert container.hsn_or_sac_code == "7323" and container.purchase_rate == Decimal("500.00")
+    assert [l.product_id for l in bill.lines] == [existing.id, container.id]
+
+
+def test_a_new_item_needs_a_proper_hsn(client, db, scanning, client_admin, monkeypatch):
+    _login(client)
+    doc_id = _ready_doc(client, monkeypatch)
+    res = client.post(f"/scan/{doc_id}/post", data=_purchase_form(**{"line_product_id[]": ["new", ""],
+                                                                     "line_hsn[]": ["329269099", "7323"]}))
+    assert res.status_code == 422 and b"has 9 digits" in res.data
+    assert PurchaseBill.query.count() == 0
+    res = client.post(f"/scan/{doc_id}/post", data=_purchase_form(**{"line_product_id[]": ["", "new"],
+                                                                     "line_hsn[]": ["0909", "73"]}))
+    assert res.status_code == 422 and b"has 2 digits" in res.data
+
+
+def test_an_expense_adds_a_new_supplier_too(client, db, scanning, client_admin, monkeypatch):
+    from app.expenses.services import ensure_categories
+
+    _login(client)
+    doc_id = _ready_doc(client, monkeypatch, bill=_bill(category="Expenses"))
+    category = ensure_categories(scanning.id)[0]
+    db.session.commit()
+    res = client.post(f"/scan/{doc_id}/post", data={
+        "kind": "expense", "supplier_id": "new", "supplier_name": "Balaji Autos", "supplier_gstin": "",
+        "invoice_number": "B-1", "invoice_date": "2026-10-20", "amount": "5380", "category_id": category.id,
+        "payment_mode": "cash"})
+    assert res.status_code == 302, res.data[:400]
+    supplier = Supplier.query.filter_by(name="Balaji Autos").one()
+    assert Expense.query.one().supplier_id == supplier.id
+
+
+def test_units_become_gst_unit_codes():
+    from app.scan.services import unit_code
+
+    assert [unit_code(u) for u in ("Kg", "pcs", "EA", "Lt", "nos.", "", "widgets")] == \
+        ["KGS", "PCS", "NOS", "LTR", "NOS", "NOS", "OTH"]

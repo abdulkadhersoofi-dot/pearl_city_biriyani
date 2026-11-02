@@ -343,8 +343,8 @@ def line_rows(doc: ScanDocument) -> list[dict]:
             if tax > 0:
                 gst = _slab(tax / taxable * 100)
         rows.append({"description": (item.get("description") or "Item").strip()[:255] or "Item",
-                     "hsn": re.sub(r"\D", "", str(item.get("hsn_sac") or ""))[:8],
-                     "qty": f"{qty.normalize():f}", "unit": (item.get("unit") or "NOS").strip().upper()[:20] or "NOS",
+                     "hsn": re.sub(r"\D", "", str(item.get("hsn_sac") or "")),
+                     "qty": f"{qty.normalize():f}", "unit": unit_code(item.get("unit") or ""),
                      "rate": f"{rate:.2f}", "discount": f"{discount:.2f}", "gst_rate": f"{gst.normalize():f}"})
     return rows or [{"description": "Item", "hsn": "", "qty": "1", "unit": "NOS",
                      "rate": f"{_money((doc.extracted or {}).get('taxable_value')):.2f}", "discount": "0.00",
@@ -359,19 +359,81 @@ def main_gst_rate(doc: ScanDocument) -> Decimal:
     return Decimal(max(by_rate, key=by_rate.get)) if by_rate else Decimal("0")
 
 
-def matched_supplier(tenant, doc: ScanDocument):
+UNIT_ALIASES = {"KG": "KGS", "KGS.": "KGS", "PC": "PCS", "PCS.": "PCS", "EA": "NOS", "EACH": "NOS", "NO": "NOS",
+                "NOS.": "NOS", "UNIT": "UNT", "UNITS": "UNT", "LT": "LTR", "L": "LTR", "LTRS": "LTR", "M": "MTR",
+                "MTRS": "MTR", "GM": "GMS", "G": "GMS", "GRAMS": "GMS", "PKT": "PAC", "PACK": "PAC", "PKTS": "PAC",
+                "DOZEN": "DOZ", "PAIR": "PRS", "PAIRS": "PRS", "BOTTLE": "BTL", "SETS": "SET", "ROLL": "ROL"}
+
+
+def unit_code(unit: str) -> str:
+    """A unit as printed -> the GST portal's unit code (OTH when unknown)."""
+    from app.utils.gst_config import UQC_CODES
+
+    u = re.sub(r"[^A-Z.]", "", (unit or "").upper())
+    u = UNIT_ALIASES.get(u, u.rstrip("."))
+    return u if u in UQC_CODES else ("NOS" if not u else "OTH")
+
+
+def supplier_choices(tenant, doc: ScanDocument) -> tuple[object, list]:
+    """(the supplier this bill is from, if known, [suppliers it could be]):
+    the same GSTIN first, then the same or a similar name."""
     from app.models.purchase import Supplier
 
-    gstin = clean_gstin((doc.extracted or {}).get("supplier_gstin") or "")
+    ex = doc.extracted or {}
+    gstin = clean_gstin(ex.get("supplier_gstin") or "")
+    name = (ex.get("supplier_name") or "").strip()
+    suppliers = Supplier.query.filter_by(tenant_id=tenant.id, is_active=True).order_by(Supplier.name).all()
     if gstin:
-        found = Supplier.query.filter_by(tenant_id=tenant.id, gstin=gstin).first()
-        if found is not None:
-            return found
-    name = ((doc.extracted or {}).get("supplier_name") or "").strip()
-    if name and not gstin:
-        return Supplier.query.filter(Supplier.tenant_id == tenant.id,
-                                     db.func.lower(Supplier.name) == name.lower()).first()
-    return None
+        exact = next((s for s in suppliers if s.gstin == gstin), None)
+        if exact is not None:
+            return exact, [exact]
+    same_name = [s for s in suppliers if name and s.name.strip().lower() == name.lower()
+                 and (not gstin or not s.gstin)]
+    similar = [s for s in suppliers if name and s not in same_name and reader.name_matches(s.name, name)]
+    candidates = (same_name + similar)[:6]
+    return (same_name[0] if same_name else None), candidates
+
+
+def matched_supplier(tenant, doc: ScanDocument):
+    return supplier_choices(tenant, doc)[0]
+
+
+def _tokens(text: str) -> set:
+    return {w for w in re.sub(r"[^a-z0-9 ]", " ", (text or "").lower()).split() if len(w) > 1}
+
+
+def item_choices(tenant, rows: list[dict]) -> list[dict]:
+    """For each bill line, the catalogue items it could be and the one to
+    start with: an item of the same name (or a close name with the same
+    HSN); else a new item for goods, no item for a service."""
+    from app.models.product import Product
+
+    products = [p for p in Product.query.filter_by(tenant_id=tenant.id, is_active=True).all() if not p.has_variants]
+    goods_module = tenant.has_feature("inventory") or tenant.has_feature("purchases")
+    out = []
+    for row in rows:
+        desc, hsn = (row.get("description") or "").strip(), (row.get("hsn") or "").strip()
+        words = _tokens(desc)
+        scored = []
+        for p in products:
+            if p.name.strip().lower() == desc.lower():
+                score = 100
+            else:
+                overlap = len(words & _tokens(p.name))
+                if not overlap:
+                    continue
+                score = 40 + 10 * overlap + (25 if hsn and p.hsn_or_sac_code == hsn else 0)
+            scored.append((score, p))
+        scored.sort(key=lambda sp: (-sp[0], sp[1].name))
+        options = [{"id": str(p.id), "name": p.name} for _, p in scored[:6]]
+        if scored and scored[0][0] >= 80:   # the same name, or most of it with the same HSN
+            choice = str(scored[0][1].id)
+        elif goods_module and hsn and not hsn.startswith("99"):
+            choice = "new"
+        else:
+            choice = ""
+        out.append({**row, "product_id": row.get("product_id") or choice, "options": options})
+    return out
 
 
 # --- posting ---------------------------------------------------------------------------------
@@ -451,6 +513,12 @@ def post_purchase(tenant, user, doc: ScanDocument, form):
     if not tenant.has_feature("purchases"):
         raise ScanError("Purchases is switched off - post this as an expense, or turn Purchases on in Settings.")
     gstin_id = form.get("gstin_id", type=int) or doc.gstin_id
+    for name, code in zip(form.getlist("line_description[]"), form.getlist("line_hsn[]")):
+        digits = re.sub(r"\D", "", code or "")
+        if digits and len(digits) not in (4, 6, 8):
+            raise ScanError(f"{(name or 'A line').strip()}: the HSN {digits} has {len(digits)} digits - an HSN or SAC "
+                            "code has 4, 6 or 8. Check it against the bill.")
+    form = _with_new_items(tenant, user, form)
     try:
         lines = parse_purchase_lines(form)
         supplier = _supplier_from_form(tenant, form)
@@ -472,6 +540,46 @@ def post_purchase(tenant, user, doc: ScanDocument, form):
     return bill
 
 
+def _with_new_items(tenant, user, form):
+    """Lines marked "new item" become catalogue items first, so the bill
+    links to them (and receives their stock)."""
+    from app.models.product import Product
+
+    choices = form.getlist("line_product_id[]")
+    if "new" not in choices:
+        return form
+    form = form.copy()
+    get = form.getlist
+    ids = []
+    for i, choice in enumerate(choices):
+        if choice != "new":
+            ids.append(choice)
+            continue
+        at = lambda key: (get(key)[i] if i < len(get(key)) else "").strip()  # noqa: E731
+        name = at("line_description[]")[:255]
+        hsn = re.sub(r"\D", "", at("line_hsn[]"))   # never trimmed: a misread code must be fixed, not cut
+        if not name:
+            ids.append("")
+            continue
+        if len(hsn) not in (4, 6, 8):
+            raise ScanError(f"{name}: an HSN code of 4, 6 or 8 digits is needed to add it as a new item.")
+        try:
+            rate = Decimal(at("line_gst_rate[]") or "0")
+            cost = _money(at("line_rate[]"))
+        except InvalidOperation:
+            raise ScanError(f"{name}: check the rate and GST.")
+        product = Product(tenant_id=tenant.id, name=name, hsn_or_sac_code=hsn, gst_rate=_slab(rate),
+                          unit=unit_code(at("line_unit[]")), sale_price=Decimal("0"), purchase_rate=cost,
+                          is_service=hsn.startswith("99"), price_includes_tax=False)
+        db.session.add(product)
+        db.session.flush()
+        record_audit(user, "product_created_from_scan", tenant_id=tenant.id, entity_type="product",
+                     entity_id=product.id, details={"name": name})
+        ids.append(str(product.id))
+    form.setlist("line_product_id[]", ids)
+    return form
+
+
 def post_expense(tenant, user, doc: ScanDocument, form):
     from app.expenses.services import ExpenseError, ExpenseInput, create_expense
     from app.models.expense import ExpensePaymentMode
@@ -485,9 +593,9 @@ def post_expense(tenant, user, doc: ScanDocument, form):
     except ValueError:
         raise ScanError("Pick how it was paid.")
     is_gst = form.get("is_gst_bill") == "1"
-    supplier = None
-    if form.get("supplier_id", type=int):
-        supplier = _supplier_from_form(tenant, form)
+    # The supplier is matched or, when the screen says "new", added to the
+    # suppliers - as for a purchase bill - so the expense sits on their account.
+    supplier = _supplier_from_form(tenant, form) if form.get("supplier_id") else None
     try:
         amount = _money((form.get("amount") or "").replace(",", ""))
         rate = Decimal(form.get("gst_rate") or "0")

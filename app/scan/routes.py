@@ -172,12 +172,13 @@ def _review_context(doc, form=None):
 
     tenant = _tenant()
     ex = doc.extracted or {}
+    supplier, supplier_options = services.supplier_choices(tenant, doc)
     return {
         "doc": doc, "ex": ex, "v": doc.validation or {}, "form": form,
         "kind": (form or {}).get("kind") or services.suggested_kind(tenant, doc),
-        "lines": _form_lines(form) or services.line_rows(doc), "main_rate": services.main_gst_rate(doc),
-        "supplier": services.matched_supplier(tenant, doc),
-        "suppliers": Supplier.query.filter_by(tenant_id=tenant.id, is_active=True).order_by(Supplier.name).all(),
+        "lines": services.item_choices(tenant, _form_lines(form) or services.line_rows(doc)),
+        "main_rate": services.main_gst_rate(doc),
+        "supplier": supplier, "supplier_options": supplier_options,
         "gstins": tenant.gstins.filter(Gstin.is_active.is_(True)).order_by(Gstin.is_primary.desc(), Gstin.id).all(),
         "locations": StockLocation.query.filter_by(tenant_id=tenant.id, is_active=True)
         .order_by(StockLocation.is_default.desc(), StockLocation.name).all(),
@@ -193,7 +194,8 @@ def _form_lines(form):
     if not form or not hasattr(form, "getlist"):
         return None
     keys = {"description": "line_description[]", "hsn": "line_hsn[]", "qty": "line_qty[]", "unit": "line_unit[]",
-            "rate": "line_rate[]", "discount": "line_discount[]", "gst_rate": "line_gst_rate[]"}
+            "rate": "line_rate[]", "discount": "line_discount[]", "gst_rate": "line_gst_rate[]",
+            "product_id": "line_product_id[]"}
     columns = {k: form.getlist(v) for k, v in keys.items()}
     count = len(columns["description"])
     rows = [{k: (columns[k][i] if i < len(columns[k]) else "") for k in keys} for i in range(count)]
