@@ -160,6 +160,16 @@ def _own_gstin_row(tenant, gstin: str):
     return tenant.gstins.filter(Gstin.gstin == gstin, Gstin.is_active.is_(True)).first()
 
 
+def display_category(extracted: dict) -> str | None:
+    """What the bill is, for the screens: the validated direction, except a
+    bill bought for the business's own use (the model's "Expenses") shows
+    as an expense bill."""
+    category = extracted.get("category")
+    if category == "Purchase" and (extracted.get("model_category") or "").strip().lower() == "expenses":
+        return "Expenses"
+    return category
+
+
 def find_duplicate(tenant, doc: ScanDocument) -> str | None:
     """An already-entered bill with the same seller GSTIN and number."""
     from app.models.expense import Expense, ExpenseStatus
@@ -237,7 +247,7 @@ def read_document(tenant, user, doc: ScanDocument, http=None) -> list[ScanDocume
     doc.engine = result["engine"]
     doc.preview = result["preview"]
     doc.page_count = result["pages_total"]
-    doc.category = (result["extracted"] or {}).get("category")
+    doc.category = display_category(result["extracted"] or {})
     doc.read_at = utcnow()
     own = _own_gstin_row(tenant, result.get("own_gstin"))
     doc.gstin_id = own.id if own else None

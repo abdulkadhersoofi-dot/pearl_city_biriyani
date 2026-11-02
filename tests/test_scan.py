@@ -166,7 +166,38 @@ def test_an_expense_bill_reads_as_an_expense(monkeypatch):
                   taxable_value=1000, igst=0, cgst=25, sgst=25, invoice_value=1050)
     monkeypatch.setattr(reader, "call_model", FakeModel(hotel))
     result = reader.read(_jpeg(), False, reader.Context(own_gstins=[OWN]), _settings())
-    assert result["extracted"]["category"] == "Expenses"
+    # The direction is the parser's own (the validator depends on it); the
+    # expense is a separate hint the screens use.
+    assert result["extracted"]["category"] == "Purchase"
+    assert result["extracted"]["model_category"] == "Expenses"
+    from app.scan.services import display_category
+    assert display_category(result["extracted"]) == "Expenses"
+
+
+def test_the_direction_is_decided_exactly_as_the_parser_did(monkeypatch):
+    # The validator's swap repair reads the direction, so ARFA must give it
+    # the parser's own: our GSTIN on the seller's side means "Sales" (the
+    # parser's pass 1a) even when the model called it an expense - never
+    # "Expenses", which would silently skip that repair.
+    mine = _bill(supplier_name="Acme Traders", supplier_gstin=OWN, receiver_name="Hotel Saravana Bhavan",
+                 receiver_gstin=SELLER, category="Expenses")
+    monkeypatch.setattr(reader, "call_model", FakeModel(mine))
+    result = reader.read(_jpeg(), False, reader.Context(own_gstins=[OWN]), _settings())
+    assert result["extracted"]["category"] == "Sales"
+    bought = _bill(category="Expenses")   # our GSTIN as the buyer
+    monkeypatch.setattr(reader, "call_model", FakeModel(bought))
+    result = reader.read(_jpeg(), False, reader.Context(own_gstins=[OWN]), _settings())
+    assert result["extracted"]["category"] == "Purchase"
+
+
+def test_the_validator_is_the_parsers_unchanged():
+    from pathlib import Path
+
+    from app.scan.engine import validators
+
+    text = Path(validators.__file__).read_text()
+    assert text.startswith("# Ported unchanged from the ARFA Invoice Parser")
+    assert "def validate_and_repair(rec: dict, repair: bool = True," in text
 
 
 def test_bundle_pages_group_into_invoices():

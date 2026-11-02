@@ -351,6 +351,10 @@ def _shape(parsed: dict) -> dict:
                       "amount": out["invoice_value"] or 0})
     out["line_items"] = items
     out["category"] = parsed.get("category") or "Purchase"
+    # The model's own word, kept apart: classify_category() decides the
+    # direction exactly as the parser did (the validator's swap repair
+    # depends on it), and "it's an expense" is only a hint for posting.
+    out["model_category"] = out["category"]
     try:
         out["confidence"] = float(parsed.get("confidence", 0.8))
     except (TypeError, ValueError):
@@ -661,7 +665,8 @@ def pick_own_gstin(extracted: dict, own_gstins: list[str]) -> str:
 
 def classify_category(extracted: dict, company_gstin: str, company_name: str = "") -> str:
     """Direction from the GSTINs first (exact, then PAN, then elimination),
-    then the company name, then the model's own word, then Purchase."""
+    then the company name, then the model's own word, then Purchase -
+    exactly the parser's _classify_category, which the validator relies on."""
     def ng(g):
         return re.sub(r"[^A-Z0-9]", "", str(g or "").upper().strip())
     own, sup_g, rec_g = ng(company_gstin), ng(extracted.get("supplier_gstin")), ng(extracted.get("receiver_gstin"))
@@ -674,8 +679,6 @@ def classify_category(extracted: dict, company_gstin: str, company_name: str = "
             return f"{direction} - Credit Note"
         if is_dn:
             return f"{direction} - Debit Note"
-        if direction == "Purchase" and gem_l == "expenses":
-            return "Expenses"   # bought for the business's own use
         return direction
 
     if own and len(own) >= 10:
