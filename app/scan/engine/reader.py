@@ -48,6 +48,11 @@ GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:ge
 # no API key (the server's own service account), billed with the project.
 VERTEX_URL = ("https://{host}/v1/projects/{project}/locations/{location}/publishers/google/models/"
               "{model}:generateContent")
+# Checked against this project's Vertex AI on 2 Nov 2026: the 2.5 models the
+# parser used are withdrawn; 3.5 Flash reads in Mumbai, 3.8 Flash only on the
+# global endpoint. A setting (SCAN_MODELS / SCAN_STRONG_MODEL), not code.
+DEFAULT_MODELS = ("gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-3.8-flash")
+DEFAULT_STRONG_MODEL = "gemini-4-argon"   # generally available; read the test bill correctly
 METADATA_TOKEN_URL = "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token"
 
 # Pixel-heavy work (rasterising, compressing, QR) is serialised per
@@ -63,8 +68,8 @@ class Settings:
     provider: str = "gemini"        # "gemini" (an AI Studio key) or "vertex" (the Cloud project)
     project: str = ""               # vertex: the Google Cloud project
     location: str = "asia-south1"   # vertex: where the model runs; "global" if a model isn't offered there
-    models: list[str] = field(default_factory=lambda: ["gemini-2.5-flash-lite", "gemini-2.5-flash"])
-    strong_model: str = "gemini-2.5-pro"
+    models: list[str] = field(default_factory=lambda: list(DEFAULT_MODELS))
+    strong_model: str = DEFAULT_STRONG_MODEL
     call_timeout: int = 25          # one model call
     budget: float = 48.0            # the whole read - under Cloud Run's 60 s request limit
     cheap_px: int = 1600
@@ -326,7 +331,7 @@ def call_model(parts: list, settings: Settings, models: list[str], deadline: flo
                 "generationConfig": {"temperature": 0.0, "topK": 1, "topP": 1.0, "seed": 42,
                                      "maxOutputTokens": max_tokens + thinking["thinkingBudget"],
                                      "responseMimeType": "application/json", "thinkingConfig": thinking}}
-        for _attempt in range(2):
+        for _attempt in range(3):
             left = deadline - time.time()
             if left < 4:
                 return None, None
@@ -337,6 +342,12 @@ def call_model(parts: list, settings: Settings, models: list[str], deadline: flo
                         and settings.location != "global"):
                     log.warning("model %s isn't offered in %s - using the global endpoint", model, settings.location)
                     _GLOBAL_ONLY.add(model)
+                    continue
+                if r.status_code == 400 and "thinking" in (r.text or "").lower() \
+                        and "thinkingConfig" in body["generationConfig"]:
+                    # A model that takes a thinking level, not a budget (or neither).
+                    body["generationConfig"].pop("thinkingConfig")
+                    body["generationConfig"]["maxOutputTokens"] = max_tokens
                     continue
                 if r.status_code in (404, 429, 500, 503):
                     log.info("model %s answered %s - trying the next", model, r.status_code)

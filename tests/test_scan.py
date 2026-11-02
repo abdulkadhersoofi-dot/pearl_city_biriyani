@@ -438,6 +438,7 @@ class FakeHttp:
     class Res:
         def __init__(self, status, body):
             self.status_code, self._body = status, body
+            self.text = ""
 
         def json(self):
             return self._body
@@ -505,3 +506,37 @@ def test_the_module_is_set_up_by_vertex_without_any_key(app, client, db, scannin
     assert settings.provider == "vertex" and settings.project == "arfa-gst-prod-1" and not settings.api_key
     _login(client)
     assert b"isn&#39;t switched on" not in client.get("/scan/").data
+
+
+def test_a_model_that_refuses_the_thinking_setting_is_asked_again_without_it():
+    class Http(FakeHttp):
+        def post(self, url, json=None, headers=None, timeout=None):
+            self.posts.append((url, headers, {**json, "generationConfig": dict(json["generationConfig"])}))
+            if "thinkingConfig" in json["generationConfig"]:
+                res = self.Res(400, {})
+                res.text = "Thinking budget is not supported for this model. Use thinking level instead."
+                return res
+            res = self.Res(200, {"candidates": [{"content": {"parts": [{"text": '{"ok": 1}'}]}}]})
+            res.text = ""
+            return res
+
+    http = Http([])
+    text, model = reader.call_model([{"text": "a"}], _vertex("global"), ["gemini-4-argon"], reader.time.time() + 30,
+                                    http=http)
+    assert model == "gemini-4-argon" and len(http.posts) == 2
+    assert "thinkingConfig" not in http.posts[1][2]["generationConfig"]
+
+
+def test_the_models_are_a_setting(app):
+    from app.config import Config
+
+    assert reader.Settings().models == list(reader.DEFAULT_MODELS)
+    assert "2.5" not in " ".join(reader.DEFAULT_MODELS)   # withdrawn on Vertex AI
+    import os
+    import re
+    os.environ["SCAN_MODELS"] = "gemini-x gemini-y"
+    try:
+        assert [m for m in re.split(r"[,;\s]+", os.environ["SCAN_MODELS"]) if m] == ["gemini-x", "gemini-y"]
+    finally:
+        del os.environ["SCAN_MODELS"]
+    assert Config.SCAN_MODELS is None or isinstance(Config.SCAN_MODELS, list)

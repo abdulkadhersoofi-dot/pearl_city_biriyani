@@ -1,4 +1,5 @@
 import os
+import re
 from datetime import timedelta
 
 
@@ -139,9 +140,8 @@ class Config:
     SCAN_PROVIDER = os.environ.get("SCAN_PROVIDER", "gemini")
     SCAN_VERTEX_LOCATION = os.environ.get("SCAN_VERTEX_LOCATION", "asia-south1")
     GCP_PROJECT = os.environ.get("GCP_PROJECT", "")
-    SCAN_MODELS = [m.strip() for m in os.environ.get("SCAN_MODELS", "gemini-2.5-flash-lite,gemini-2.5-flash").split(",")
-                   if m.strip()]
-    SCAN_STRONG_MODEL = os.environ.get("SCAN_STRONG_MODEL", "gemini-2.5-pro")
+    SCAN_MODELS = [m for m in re.split(r"[,;\s]+", os.environ.get("SCAN_MODELS", "")) if m] or None
+    SCAN_STRONG_MODEL = os.environ.get("SCAN_STRONG_MODEL") or None
     SCAN_DAILY_LIMIT = int(os.environ.get("SCAN_DAILY_LIMIT", "300"))
     SCAN_MAX_FILE_MB = int(os.environ.get("SCAN_MAX_FILE_MB", "15"))
 

@@ -59,8 +59,8 @@ def engine_settings() -> reader.Settings | None:
     (no key) when SCAN_PROVIDER is "vertex", else an AI Studio key. None
     when neither is set up."""
     cfg = current_app.config
-    common = {"models": list(cfg.get("SCAN_MODELS") or ["gemini-2.5-flash-lite", "gemini-2.5-flash"]),
-              "strong_model": cfg.get("SCAN_STRONG_MODEL") or "gemini-2.5-pro"}
+    common = {"models": list(cfg.get("SCAN_MODELS") or reader.DEFAULT_MODELS),
+              "strong_model": cfg.get("SCAN_STRONG_MODEL") or reader.DEFAULT_STRONG_MODEL}
     if cfg.get("SCAN_PROVIDER") == "vertex":
         project = (cfg.get("GCP_PROJECT") or "").strip()
         if not project:
