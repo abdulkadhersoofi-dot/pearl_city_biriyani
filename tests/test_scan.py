@@ -257,7 +257,7 @@ def test_upload_read_and_post_a_purchase_bill(client, db, scanning, client_admin
     _login(client)
     doc_id = _ready_doc(client, monkeypatch)
     page = client.get(f"/scan/{doc_id}")
-    assert page.status_code == 200 and b"Tumkur Spices" in page.data and b"Post the purchase bill" in page.data
+    assert page.status_code == 200 and b"Tumkur Spices" in page.data and b"post the purchase bill" in page.data
     res = client.post(f"/scan/{doc_id}/post", data=_purchase_form())
     assert res.status_code == 302, res.data[:500]
     bill = PurchaseBill.query.one()
@@ -327,7 +327,7 @@ def test_someone_elses_bill_can_only_be_filed_or_discarded(client, db, scanning,
     assert _read(client, doc_id).get_json()["status"] == REJECTED
     page = client.get(f"/scan/{doc_id}")
     assert b"isn&#39;t addressed to your business" in page.data or b"isn't addressed to your business" in page.data
-    assert b"Post the purchase bill" not in page.data
+    assert b"post the purchase bill" not in page.data
     client.post(f"/scan/{doc_id}/post", data={"kind": "file"})
     assert db.session.get(ScanDocument, doc_id).status == FILED
 
@@ -612,3 +612,41 @@ def test_units_become_gst_unit_codes():
 
     assert [unit_code(u) for u in ("Kg", "pcs", "EA", "Lt", "nos.", "", "widgets")] == \
         ["KGS", "PCS", "NOS", "LTR", "NOS", "NOS", "OTH"]
+
+
+def test_a_category_offered_on_the_page_can_be_posted_with(app, client, db, scanning, client_admin, monkeypatch):
+    """The "Pick a category" bug: the page made the standard categories but
+    never kept them, so the one chosen didn't exist when posting."""
+    import re as _re
+
+    from app.models.expense import ExpenseCategory
+
+    assert ExpenseCategory.query.count() == 0
+    _login(client)
+    service = _bill(supplier_name="Balaji Autos", category="Expenses",
+                    line_items=[{"description": "Wheel alignment and vehicle washing", "hsn_sac": "998714",
+                                 "quantity": 1, "rate_per_unit": 1000, "gst_rate": 18, "taxable_value": 1000,
+                                 "igst": 180}], taxable_value=1000, igst=180, invoice_value=1180)
+    doc_id = _ready_doc(client, monkeypatch, bill=service)
+    with app.app_context():   # its own session, thrown away afterwards - as in production
+        html = client.get(f"/scan/{doc_id}").get_data(as_text=True)
+    chosen = _re.search(r'<option value="(\d+)" selected>Repairs</option>', html)
+    assert chosen, "the bill's wording should pick Repairs"
+    assert db.session.get(ExpenseCategory, int(chosen.group(1))) is not None   # it was kept
+    res = client.post(f"/scan/{doc_id}/post", data={
+        "kind": "expense", "supplier_id": "new", "supplier_name": "Balaji Autos", "invoice_number": "B-7",
+        "invoice_date": "2026-10-20", "amount": "1180", "category_id": chosen.group(1), "payment_mode": "cash"})
+    assert res.status_code == 302, res.data[:300]
+    assert Expense.query.one().category.name == "Repairs"
+
+
+def test_the_bills_to_check_are_a_table_in_upload_order(client, db, scanning, client_admin, monkeypatch):
+    _login(client)
+    first = _ready_doc(client, monkeypatch)
+    second = _ready_doc(client, monkeypatch, photo=_jpeg("second bill"))
+    html = client.get("/scan/?tab=check").get_data(as_text=True)
+    assert "scan-queue-table" in html and html.index(f"/scan/{first}") < html.index(f"/scan/{second}")
+    page = client.get(f"/scan/{first}").get_data(as_text=True)
+    assert "Bill 1 of 2" in page and f'/scan/{second}"' in page   # Next
+    res = client.post(f"/scan/{first}/post", data=_purchase_form())
+    assert res.headers["Location"].endswith(f"/scan/{second}")   # straight on to the next bill

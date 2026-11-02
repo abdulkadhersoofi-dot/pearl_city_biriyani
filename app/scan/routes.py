@@ -64,8 +64,10 @@ def index():
               for key, (_, statuses) in TABS.items()}
     if tab is None:
         tab = "check" if counts["check"] or not counts["reading"] else "reading"
+    # Bills to check run in the order they were uploaded, to be taken one by one.
+    order = ScanDocument.id.asc() if tab == "check" else ScanDocument.id.desc()
     docs = (tenant_query(ScanDocument).filter(ScanDocument.status.in_(TABS[tab][1]))
-            .order_by(ScanDocument.id.desc()).limit(200).all())
+            .order_by(order).limit(200).all())
     # Waiting to be read - and any read cut off part-way (a restarted server)
     # for more than three minutes, which is read again.
     stale = utcnow() - timedelta(minutes=3)
@@ -173,16 +175,26 @@ def _review_context(doc, form=None):
     tenant = _tenant()
     ex = doc.extracted or {}
     supplier, supplier_options = services.supplier_choices(tenant, doc)
+    categories = ensure_categories(tenant.id) if tenant.has_feature("expenses") else []
+    # The standard categories are made the first time they're needed: keep
+    # them, or the one picked here wouldn't exist when the bill is posted.
+    db.session.commit()
+    queue = [d.id for d in tenant_query(ScanDocument).filter(ScanDocument.status == TO_CHECK)
+             .order_by(ScanDocument.id).with_entities(ScanDocument.id)]
+    position = queue.index(doc.id) if doc.id in queue else None
+    gstins = tenant.gstins.filter(Gstin.is_active.is_(True)).order_by(Gstin.is_primary.desc(), Gstin.id).all()
     return {
         "doc": doc, "ex": ex, "v": doc.validation or {}, "form": form,
         "kind": (form or {}).get("kind") or services.suggested_kind(tenant, doc),
         "lines": services.item_choices(tenant, _form_lines(form) or services.line_rows(doc)),
         "main_rate": services.main_gst_rate(doc),
         "supplier": supplier, "supplier_options": supplier_options,
-        "gstins": tenant.gstins.filter(Gstin.is_active.is_(True)).order_by(Gstin.is_primary.desc(), Gstin.id).all(),
+        "gstins": gstins, "tenant": tenant,
+        "queue": queue, "position": position,
+        "category": services.guess_category(doc, categories),
         "locations": StockLocation.query.filter_by(tenant_id=tenant.id, is_active=True)
         .order_by(StockLocation.is_default.desc(), StockLocation.name).all(),
-        "categories": ensure_categories(tenant.id) if tenant.has_feature("expenses") else [],
+        "categories": categories,
         "payment_modes": PAYMENT_MODE_LABELS, "labels": CATEGORY_LABELS,
         "purchases_on": tenant.has_feature("purchases"), "expenses_on": tenant.has_feature("expenses"),
         "gstin_ok": services.gstin_ok, "posted_url": _posted_url(doc),

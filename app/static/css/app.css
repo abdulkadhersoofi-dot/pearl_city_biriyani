@@ -2147,3 +2147,75 @@ html.arfa-dialog-open { overflow: hidden; }
   .scan-line-top { grid-template-columns: minmax(0, 1fr); }
   .scan-line-nums { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
+
+/* Scan bills - the review screen as a tax invoice */
+.scan-invoice { display: grid; gap: 14px; padding: 18px 20px; }
+.inv-head { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 18px;
+  padding-bottom: 14px; border-bottom: 2px solid var(--color-text, #1f2a24); }
+.inv-party, .inv-meta { display: grid; gap: 6px; align-content: start; }
+.inv-meta { border-left: 1px solid var(--color-border); padding-left: 16px; }
+.inv-meta label, .inv-pair label { display: grid; gap: 2px; }
+.inv-pair { display: grid; grid-template-columns: 1.3fr 1fr; gap: 10px; }
+.inv-ledger { display: grid; gap: 2px; padding-bottom: 6px; margin-bottom: 2px; border-bottom: 1px dashed var(--color-border); }
+.inv-title { margin: 0 0 4px; font-weight: 800; letter-spacing: 0.08em; font-size: 0.95rem; }
+.inv-title small { font-weight: 500; letter-spacing: 0; color: var(--color-text-muted); }
+.inv-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-muted); }
+.scan-invoice .inv-input, .scan-invoice .inv-select { width: 100%; min-width: 0; min-height: 0; font: inherit;
+  font-size: inherit; color: inherit; background: transparent; border: 0;
+  border-bottom: 1px dashed var(--color-border-strong); border-radius: 0; padding: 4px 2px; box-shadow: none; }
+.scan-invoice .inv-input:hover, .scan-invoice .inv-select:hover { background: var(--color-surface); }
+.scan-invoice .inv-input:focus, .scan-invoice .inv-select:focus { outline: none; box-shadow: none;
+  border-bottom: 2px solid var(--color-primary); background: var(--color-surface); }
+.scan-invoice .inv-input.is-flagged, .scan-invoice .is-flagged .inv-input, .scan-invoice .inv-select.is-flagged {
+  background: var(--color-warn-bg); border-bottom-color: var(--color-warn-text); }
+.scan-invoice .inv-name { font-size: 1.15rem; font-weight: 700; }
+.inv-mono { font-variant-numeric: tabular-nums; letter-spacing: 0.02em; }
+.inv-static { padding: 4px 2px; }
+.inv-note { margin: 0; font-size: 0.82rem; color: var(--color-text-muted); }
+.inv-check { display: flex !important; align-items: center; gap: 6px; font-size: 0.9rem; }
+.inv-table-wrap { margin: 0; }
+.inv-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+.inv-table th { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-muted);
+  text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--color-border-strong); white-space: nowrap; }
+.inv-table td { padding: 4px 3px; border-bottom: 1px solid var(--color-border); vertical-align: top; }
+.inv-table td.num { padding-top: 8px; white-space: nowrap; }
+.inv-table th.num, .inv-summary th.num { text-align: right; }
+.inv-sno { color: var(--color-text-muted); width: 24px; }
+.inv-desc { min-width: 150px; width: 30%; }
+.inv-item { font-size: 0.78rem; color: var(--color-text-muted); }
+.scan-invoice .inv-w-hsn { width: 78px; } .scan-invoice .inv-w-qty { width: 46px; } .scan-invoice .inv-w-unit { width: 50px; }
+.scan-invoice .inv-w-rate { width: 84px; }
+.scan-invoice .inv-w-disc { width: 44px; } .scan-invoice .inv-w-gst { width: 66px; padding-right: 0; }
+.scan-invoice .inv-table .inv-input, .scan-invoice .inv-table .inv-select { font-size: 0.86rem; padding: 4px 1px; }
+.inv-remove { border: 0; background: none; color: var(--color-text-muted); cursor: pointer; padding: 6px 2px; }
+.inv-remove:hover { color: var(--color-danger); }
+.inv-remove:disabled { opacity: 0.3; cursor: default; }
+.inv-foot { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 0.9fr); gap: 18px; align-items: start;
+  border-top: 2px solid var(--color-text, #1f2a24); padding-top: 12px; }
+.inv-summary { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.inv-summary th { font-size: 0.7rem; text-transform: uppercase; color: var(--color-text-muted); padding: 4px; border-bottom: 1px solid var(--color-border); }
+.inv-summary td { padding: 4px; border-bottom: 1px solid var(--color-border); }
+.inv-totals { margin: 0; display: grid; gap: 2px; }
+.inv-totals > div { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; }
+.inv-totals dt { color: var(--color-text-muted); }
+.inv-totals dd { margin: 0; font-variant-numeric: tabular-nums; text-align: right; }
+.inv-grand { border-top: 1px solid var(--color-border-strong); margin-top: 4px; padding-top: 6px !important; font-weight: 800; font-size: 1.05rem; }
+.inv-grand dt { color: inherit; }
+.inv-printed dd { width: 120px; }
+.scan-invoice .inv-printed .inv-input { text-align: right; font-weight: 700; }
+.inv-diff { color: var(--color-warn-text); font-weight: 700; }
+.inv-diff dt { color: inherit; }
+/* The invoice needs the width: side by side with the picture only on wide screens. */
+@media (min-width: 1680px) { .scan-review { grid-template-columns: minmax(0, 0.6fr) minmax(0, 1.4fr); } }
+@media (max-width: 1679px) {
+  .scan-review { grid-template-columns: minmax(0, 1fr); }
+  .scan-picture { position: static; }
+  .scan-picture img { max-height: 46vh; }
+}
+@media (max-width: 760px) {
+  .inv-head, .inv-foot, .inv-pair { grid-template-columns: minmax(0, 1fr); }
+  .inv-meta { border-left: 0; padding-left: 0; border-top: 1px solid var(--color-border); padding-top: 10px; }
+}
+.scan-queue-table td { white-space: nowrap; vertical-align: middle; }
+.scan-queue-table td:nth-child(2) { white-space: normal; min-width: 180px; }
+.scan-queue-table .pill { white-space: nowrap; }

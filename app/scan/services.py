@@ -398,6 +398,39 @@ def matched_supplier(tenant, doc: ScanDocument):
     return supplier_choices(tenant, doc)[0]
 
 
+# Words on a bill that say which expense category it belongs to (matched
+# against the client's own category names, which they can rename).
+CATEGORY_HINTS = (
+    ("repair", ("repair", "service", "servicing", "spare", "mechanic", "garage", "workshop", "auto", "motor",
+                "alignment", "washing", "labour", "tyre", "battery", "check charges")),
+    ("fuel", ("petrol", "diesel", "fuel", "hpcl", "iocl", "bpcl", "indian oil", "bharat petroleum", "filling station")),
+    ("transport", ("transport", "logistic", "courier", "freight", "cargo", "travel", "taxi", "cab ", "uber", "ola ",
+                   "bus ", "railway", "airline", "flight", "parcel")),
+    ("telephone", ("airtel", "jio", "vodafone", "bsnl", "broadband", "internet", "telephone", "recharge")),
+    ("electricity", ("electricity", "tneb", "bescom", "msedcl", "tangedco", "power bill", "energy charges")),
+    ("rent", (" rent", "rental", "lease")),
+    ("professional", ("consult", "professional", "legal", "advocate", "chartered", "audit fee")),
+    ("bank", ("bank charges", "processing fee")),
+    ("packing", ("packing", "carton", "corrugated", "tape", "pouch")),
+    ("advert", ("advertis", "flex", "banner", "hoarding", "marketing", "pamphlet")),
+    ("office", ("stationery", "xerox", "cartridge", "toner", "printing", "office")),
+)
+
+
+def guess_category(doc: ScanDocument, categories: list):
+    """The expense category the bill's wording points to, among the client's
+    own categories (Miscellaneous, or the first, when nothing fits)."""
+    ex = doc.extracted or {}
+    text = " " + " ".join([ex.get("supplier_name") or "", ex.get("notes") or ""] +
+                          [i.get("description") or "" for i in ex.get("line_items") or []]).lower() + " "
+    for key, words in CATEGORY_HINTS:
+        if any(w in text for w in words):
+            found = next((c for c in categories if key in c.name.lower()), None)
+            if found is not None:
+                return found
+    return next((c for c in categories if "misc" in c.name.lower()), categories[0] if categories else None)
+
+
 def _tokens(text: str) -> set:
     return {w for w in re.sub(r"[^a-z0-9 ]", " ", (text or "").lower()).split() if len(w) > 1}
 
@@ -608,7 +641,8 @@ def post_expense(tenant, user, doc: ScanDocument, form):
             supplier_id=supplier.id if supplier else None, reference=form.get("invoice_number"),
             notes=(form.get("notes") or "").strip() or "Entered from a scanned bill.", attachment_id=_attachment(doc),
             is_gst_bill=is_gst, gstin_id=form.get("gstin_id", type=int) or doc.gstin_id,
-            supplier_gstin=clean_gstin(form.get("supplier_gstin") or "") or None,
+            supplier_gstin=(supplier.gstin if supplier is not None and supplier.gstin
+                            else clean_gstin(form.get("supplier_gstin") or "") or None),
             bill_number=form.get("invoice_number"), gst_rate=rate, amount_includes_gst=True,
             is_rcm=form.get("is_rcm") == "1",
             itc_eligibility=ItcEligibility(form.get("itc") or "eligible") if is_gst else ItcEligibility.ELIGIBLE))
