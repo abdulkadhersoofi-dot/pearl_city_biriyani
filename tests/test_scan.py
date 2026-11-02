@@ -424,3 +424,84 @@ def test_a_read_cut_off_part_way_is_picked_up_again(client, db, scanning, client
                        {"t": utcnow() - timedelta(minutes=10), "i": doc_id})
     db.session.commit()
     assert f'data-pending="{doc_id}"'.encode() in client.get("/scan/").data
+
+
+# --- Vertex AI (Gemini through the Cloud project, no key) ------------------------------------------
+
+class FakeHttp:
+    """Records the calls; answers the token request and the model calls."""
+
+    def __init__(self, statuses):
+        self.statuses = list(statuses)
+        self.posts, self.gets = [], []
+
+    class Res:
+        def __init__(self, status, body):
+            self.status_code, self._body = status, body
+
+        def json(self):
+            return self._body
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise RuntimeError(self.status_code)
+
+    def get(self, url, headers=None, timeout=None):
+        self.gets.append((url, headers))
+        return self.Res(200, {"access_token": "server-token", "expires_in": 3600})
+
+    def post(self, url, json=None, headers=None, timeout=None):
+        self.posts.append((url, headers, json))
+        status = self.statuses.pop(0) if self.statuses else 200
+        body = {"candidates": [{"content": {"parts": [{"text": '{"invoice_number": "X1"}'}]}}]}
+        return self.Res(status, body if status == 200 else {})
+
+
+def _vertex(location="asia-south1"):
+    reader._TOKEN.update(value=None, expires=0)
+    reader._GLOBAL_ONLY.clear()
+    return reader.Settings(provider="vertex", project="arfa-gst-prod-1", location=location)
+
+
+def test_vertex_calls_the_project_endpoint_with_the_servers_own_token():
+    http = FakeHttp([200])
+    text, model = reader.call_model([{"text": "hi"}], _vertex(), ["gemini-2.5-flash-lite"], reader.time.time() + 30,
+                                    http=http)
+    assert model == "gemini-2.5-flash-lite" and "X1" in text
+    url, headers, body = http.posts[0]
+    assert url == ("https://asia-south1-aiplatform.googleapis.com/v1/projects/arfa-gst-prod-1/locations/asia-south1/"
+                   "publishers/google/models/gemini-2.5-flash-lite:generateContent")
+    assert headers == {"Authorization": "Bearer server-token"} and "key" not in url
+    assert body["contents"][0]["role"] == "user"
+    assert http.gets[0][1] == {"Metadata-Flavor": "Google"}
+
+
+def test_a_model_the_region_lacks_moves_to_the_global_endpoint_and_stays():
+    http = FakeHttp([404, 200, 200])
+    settings = _vertex()
+    deadline = reader.time.time() + 30
+    assert reader.call_model([{"text": "a"}], settings, ["gemini-2.5-flash"], deadline, http=http)[1]
+    assert http.posts[1][0].startswith("https://aiplatform.googleapis.com/v1/projects/arfa-gst-prod-1/locations/global/")
+    reader.call_model([{"text": "b"}], settings, ["gemini-2.5-flash"], deadline, http=http)
+    assert "/locations/global/" in http.posts[2][0]   # remembered - no second detour
+    assert len(http.gets) == 1                        # the token is reused
+
+
+def test_the_pro_model_gets_a_thinking_budget_the_fast_ones_none():
+    http = FakeHttp([200, 200])
+    deadline = reader.time.time() + 30
+    reader.call_model([{"text": "a"}], _vertex("global"), ["gemini-2.5-pro"], deadline, http=http)
+    reader.call_model([{"text": "a"}], _vertex("global"), ["gemini-2.5-flash-lite"], deadline, http=http)
+    assert http.posts[0][2]["generationConfig"]["thinkingConfig"]["thinkingBudget"] > 0
+    assert http.posts[1][2]["generationConfig"]["thinkingConfig"]["thinkingBudget"] == 0
+
+
+def test_the_module_is_set_up_by_vertex_without_any_key(app, client, db, scanning, client_admin):
+    from app.scan import services
+
+    app.config.update(GEMINI_API_KEY="", SCAN_PROVIDER="vertex", GCP_PROJECT="arfa-gst-prod-1")
+    with app.test_request_context():
+        settings = services.engine_settings()
+    assert settings.provider == "vertex" and settings.project == "arfa-gst-prod-1" and not settings.api_key
+    _login(client)
+    assert b"isn&#39;t switched on" not in client.get("/scan/").data

@@ -55,16 +55,26 @@ class ScanError(Exception):
 # --- set-up ----------------------------------------------------------------------------------
 
 def engine_settings() -> reader.Settings | None:
+    """How the engine reaches Gemini: Vertex AI through the Cloud project
+    (no key) when SCAN_PROVIDER is "vertex", else an AI Studio key. None
+    when neither is set up."""
     cfg = current_app.config
+    common = {"models": list(cfg.get("SCAN_MODELS") or ["gemini-2.5-flash-lite", "gemini-2.5-flash"]),
+              "strong_model": cfg.get("SCAN_STRONG_MODEL") or "gemini-2.5-pro"}
+    if cfg.get("SCAN_PROVIDER") == "vertex":
+        project = (cfg.get("GCP_PROJECT") or "").strip()
+        if not project:
+            return None
+        return reader.Settings(provider="vertex", project=project,
+                               location=cfg.get("SCAN_VERTEX_LOCATION") or "asia-south1", **common)
     key = (cfg.get("GEMINI_API_KEY") or "").strip()
     if not key:
         return None
-    return reader.Settings(api_key=key, models=list(cfg.get("SCAN_MODELS") or reader.Settings.models),
-                           strong_model=cfg.get("SCAN_STRONG_MODEL") or "gemini-2.5-pro")
+    return reader.Settings(api_key=key, **common)
 
 
 def is_set_up() -> bool:
-    return bool((current_app.config.get("GEMINI_API_KEY") or "").strip())
+    return engine_settings() is not None
 
 
 def reads_today(tenant_id: int) -> int:

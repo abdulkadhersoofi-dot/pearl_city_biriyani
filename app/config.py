@@ -134,6 +134,11 @@ class Config:
     # it the module says it isn't set up yet. The model names and the daily
     # cap per client are settings, so a better model is a config change.
     GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+    # "vertex": Gemini through the Google Cloud project (Vertex AI) with the
+    # server's own service account - no key; billed with the project.
+    SCAN_PROVIDER = os.environ.get("SCAN_PROVIDER", "gemini")
+    SCAN_VERTEX_LOCATION = os.environ.get("SCAN_VERTEX_LOCATION", "asia-south1")
+    GCP_PROJECT = os.environ.get("GCP_PROJECT", "")
     SCAN_MODELS = [m.strip() for m in os.environ.get("SCAN_MODELS", "gemini-2.5-flash-lite,gemini-2.5-flash").split(",")
                    if m.strip()]
     SCAN_STRONG_MODEL = os.environ.get("SCAN_STRONG_MODEL", "gemini-2.5-pro")

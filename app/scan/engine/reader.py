@@ -44,6 +44,11 @@ from app.scan.engine.validators import _n as _to_num
 log = logging.getLogger("arfa.scan")
 
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+# Vertex AI: the same Gemini models through the Google Cloud project itself -
+# no API key (the server's own service account), billed with the project.
+VERTEX_URL = ("https://{host}/v1/projects/{project}/locations/{location}/publishers/google/models/"
+              "{model}:generateContent")
+METADATA_TOKEN_URL = "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token"
 
 # Pixel-heavy work (rasterising, compressing, QR) is serialised per
 # process so a burst of uploads can't multiply peak memory; the network
@@ -54,7 +59,10 @@ _QR_POOL = ThreadPoolExecutor(max_workers=2, thread_name_prefix="scan-qr")
 
 @dataclass
 class Settings:
-    api_key: str
+    api_key: str = ""
+    provider: str = "gemini"        # "gemini" (an AI Studio key) or "vertex" (the Cloud project)
+    project: str = ""               # vertex: the Google Cloud project
+    location: str = "asia-south1"   # vertex: where the model runs; "global" if a model isn't offered there
     models: list[str] = field(default_factory=lambda: ["gemini-2.5-flash-lite", "gemini-2.5-flash"])
     strong_model: str = "gemini-2.5-pro"
     call_timeout: int = 25          # one model call
@@ -272,37 +280,83 @@ def _f(val):
         return None
 
 
+_TOKEN = {"value": None, "expires": 0.0}
+_TOKEN_LOCK = threading.Lock()
+# Models a region turned out not to offer: they go to the global endpoint.
+_GLOBAL_ONLY: set[str] = set()
+
+
+def _vertex_token(http=requests) -> str:
+    """The server's own access token from the metadata server (Cloud Run),
+    reused until a minute before it expires."""
+    with _TOKEN_LOCK:
+        if _TOKEN["value"] and time.time() < _TOKEN["expires"] - 60:
+            return _TOKEN["value"]
+        r = http.get(METADATA_TOKEN_URL, headers={"Metadata-Flavor": "Google"}, timeout=5)
+        r.raise_for_status()
+        data = r.json()
+        _TOKEN["value"], _TOKEN["expires"] = data["access_token"], time.time() + float(data.get("expires_in", 300))
+        return _TOKEN["value"]
+
+
+def _thinking(model: str) -> dict:
+    # The Pro model can't switch thinking off (a budget of 0 is refused),
+    # so it gets a small one; the fast models answer straight away.
+    return {"thinkingBudget": 1024} if "pro" in model else {"thinkingBudget": 0}
+
+
+def _request(model: str, settings: Settings, http) -> tuple[str, dict]:
+    if settings.provider == "vertex":
+        location = "global" if model in _GLOBAL_ONLY else (settings.location or "global")
+        host = "aiplatform.googleapis.com" if location == "global" else f"{location}-aiplatform.googleapis.com"
+        url = VERTEX_URL.format(host=host, project=settings.project, location=location, model=model)
+        return url, {"Authorization": f"Bearer {_vertex_token(http)}"}
+    return GEMINI_URL.format(model=model), {"x-goog-api-key": settings.api_key}
+
+
 def call_model(parts: list, settings: Settings, models: list[str], deadline: float, max_tokens: int = 8192,
                http=requests) -> tuple[str | None, str | None]:
     """One prompt through the model list, falling back on 404 / 429 / 503 /
-    errors, never past the deadline. Returns (text, model) or (None, None)."""
+    errors, never past the deadline. Returns (text, model) or (None, None).
+    On Vertex AI, a model the region doesn't offer (404) is tried once more
+    on the global endpoint, and kept there."""
     for model in models:
-        left = deadline - time.time()
-        if left < 4:
-            break
-        body = {"contents": [{"parts": parts}],
+        thinking = _thinking(model)
+        body = {"contents": [{"role": "user", "parts": parts}],
                 "generationConfig": {"temperature": 0.0, "topK": 1, "topP": 1.0, "seed": 42,
-                                     "maxOutputTokens": max_tokens, "responseMimeType": "application/json",
-                                     "thinkingConfig": {"thinkingBudget": 0}}}
-        try:
-            r = http.post(GEMINI_URL.format(model=model), json=body,
-                          headers={"x-goog-api-key": settings.api_key},
-                          timeout=(5, min(settings.call_timeout, max(4, int(left)))))
-            if r.status_code in (404, 429, 500, 503):
-                log.info("model %s answered %s - trying the next", model, r.status_code)
-                continue
-            r.raise_for_status()
-            cands = r.json().get("candidates") or []
-            text = ((cands[0].get("content") or {}).get("parts") or [{}])[0].get("text") if cands else None
-            if text:
-                return text, model
-        except Exception as exc:  # noqa: BLE001 - next model
-            log.info("model %s failed: %s", model, exc)
+                                     "maxOutputTokens": max_tokens + thinking["thinkingBudget"],
+                                     "responseMimeType": "application/json", "thinkingConfig": thinking}}
+        for _attempt in range(2):
+            left = deadline - time.time()
+            if left < 4:
+                return None, None
+            try:
+                url, headers = _request(model, settings, http)
+                r = http.post(url, json=body, headers=headers, timeout=(5, min(settings.call_timeout, max(4, int(left)))))
+                if (r.status_code == 404 and settings.provider == "vertex" and model not in _GLOBAL_ONLY
+                        and settings.location != "global"):
+                    log.warning("model %s isn't offered in %s - using the global endpoint", model, settings.location)
+                    _GLOBAL_ONLY.add(model)
+                    continue
+                if r.status_code in (404, 429, 500, 503):
+                    log.info("model %s answered %s - trying the next", model, r.status_code)
+                    break
+                r.raise_for_status()
+                cands = r.json().get("candidates") or []
+                content_parts = (cands[0].get("content") or {}).get("parts") or [] if cands else []
+                # A thinking model may put its thoughts first: the answer is the last text part.
+                texts = [p.get("text") for p in content_parts if p.get("text") and not p.get("thought")]
+                if texts:
+                    return texts[-1], model
+                break
+            except Exception as exc:  # noqa: BLE001 - next model
+                log.info("model %s failed: %s", model, exc)
+                break
     return None, None
 
 
 def _image_part(jpeg: bytes) -> dict:
-    return {"inline_data": {"mime_type": "image/jpeg", "data": base64.b64encode(jpeg).decode()}}
+    return {"inlineData": {"mimeType": "image/jpeg", "data": base64.b64encode(jpeg).decode()}}
 
 
 def _stitch_pages(jpeg_list):

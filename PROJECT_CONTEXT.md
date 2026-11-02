@@ -734,8 +734,10 @@ this list is just the index.
   parallel, two-tier Gemini read, GSTIN repair, retry; validators.py ported
   unchanged), `app/scan/services.py` (store in `scan_documents`, bundle split,
   duplicates, post as PurchaseBill / Expense with the picture attached),
-  `/scan` pages + JSON endpoints for a future phone app. Needs the secret
-  `arfa-gemini-key` (docs/cloud-setup.md) and `gemini` in OPTIONAL_SECRETS.
+  `/scan` pages + JSON endpoints for a future phone app. Reads through Vertex
+  AI with the server's service account (SCAN_PROVIDER="vertex" in
+  settings.env; Vertex API on + roles/aiplatform.user for arfa-run, see
+  docs/cloud-setup.md); an AI Studio key (arfa-gemini-key) also works.
 
 ## 5. Chronological development history (this session)
 

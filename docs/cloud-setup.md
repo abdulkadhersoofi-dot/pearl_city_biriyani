@@ -250,27 +250,31 @@ disconnect it from hosting).
 
 ---
 
-## Scan bills: the AI key (once)
+## Scan bills: switch on Gemini through Google Cloud (once)
 
-The Scan bills module reads photos of bills with Google's Gemini AI. It
-needs one API key for the whole server; until it has one, bills can be
-uploaded but wait to be read.
+The Scan bills module reads photos of bills with Google's Gemini AI,
+through this Google Cloud project (Vertex AI): no API key, and the cost is
+on the same Google Cloud bill as everything else (paid after use; the
+free sign-up credit covers it while it lasts). Until this is done, bills
+can be uploaded but wait to be read.
 
-1. Open https://aistudio.google.com, sign in with the Google account that
-   owns the ARFA project, and click **Get API key** -> **Create API key** ->
-   choose the `ARFA` project. Copy the key.
-2. Make sure billing is on for that key (AI Studio shows "Paid tier"). On
-   the free tier Google may use what it reads to improve its models - not
-   acceptable for your clients' bills.
-3. In Cloud Shell (signed in as the owner), run these three commands; the
-   last one asks you to paste the key (nothing shows while you paste):
+1. Open https://console.cloud.google.com signed in as the project's owner,
+   pick the **ARFA** project at the top, and click **Activate Cloud Shell**
+   (the `>_` button, top right).
+2. Run, one at a time:
    ```
-   gcloud secrets create arfa-gemini-key --replication-policy user-managed --locations asia-south1
-   gcloud secrets add-iam-policy-binding arfa-gemini-key --member serviceAccount:arfa-run@arfa-gst-prod-1.iam.gserviceaccount.com --role roles/secretmanager.secretAccessor
-   read -rsp "Paste the Gemini API key, then Enter: " V && printf '%s' "$V" | gcloud secrets versions add arfa-gemini-key --data-file=- && unset V
+   gcloud config set project arfa-gst-prod-1
+   gcloud services enable aiplatform.googleapis.com
+   gcloud projects add-iam-policy-binding arfa-gst-prod-1 --member serviceAccount:arfa-run@arfa-gst-prod-1.iam.gserviceaccount.com --role roles/aiplatform.user --condition=None
    ```
-4. Tell Claude "the Gemini key is in". Claude adds `gemini` to
-   `OPTIONAL_SECRETS` in `deploy/gcp/settings.env` and deploys.
+   The second takes up to a minute and ends with "finished successfully";
+   the third prints the project's permissions (a long list) - that's success.
+3. Tell Claude "Vertex is on, deploy it". Claude deploys and reads one test
+   bill to confirm.
+
+(`deploy/gcp/settings.env` has `SCAN_PROVIDER="vertex"`. To use an AI
+Studio key instead, store it in the secret `arfa-gemini-key`, set
+`SCAN_PROVIDER="gemini"` and add `gemini` to `OPTIONAL_SECRETS`.)
 
 Then, per client: **Settings -> Modules -> Scan bills** (or the Ultra Admin
 under the client's package). Each client can read up to 300 bills a day
