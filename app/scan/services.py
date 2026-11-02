@@ -519,9 +519,14 @@ def names_alike(a: str, b: str) -> bool:
     if small and small <= big and len(big) - len(small) == 1 and \
             ((big - small) <= _OPTIONAL_WORDS or len(small) >= 3):
         return True
+    # The name with a place or tagline after it on the letterhead:
+    # "Balaji Autos" / "Balaji Autos (Kavangarai)".
+    wa, wb = na.split(), nb.split()
+    short, long_ = (wa, wb) if len(wa) <= len(wb) else (wb, wa)
+    if len(short) >= 2 and long_[:len(short)] == short:
+        return True
     # A misread or plural: every word the same but one, and that one
     # nearly so ("Spares" / "Spare", "Enterprlses" / "Enterprises").
-    wa, wb = na.split(), nb.split()
     if len(wa) != len(wb) or len(wa) < 2:
         return False
     differ = [(x, y) for x, y in zip(wa, wb) if x != y]

@@ -661,6 +661,8 @@ def test_names_written_differently_are_one_supplier():
     assert names_alike("Sri Balaji Traders", "Balaji Traders")
     assert names_alike("Kumar Auto Spares", "Kumar Auto Spare")
     assert names_alike("S K Hardware", "SK Hardware & Co")
+    assert names_alike('BALAJI AUTOS "Kavangarai"', "Balaji Autos")      # a place after the name
+    assert not names_alike("Balaji", "Balaji Autos")                     # one word is too little
     assert not names_alike("Balaji Traders", "Balaji Steel Traders")
     assert not names_alike("Sri Ram Traders", "Sri Ram Enterprises")
     assert not names_alike("Vijay Electricals", "Ajay Electricals")
