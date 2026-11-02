@@ -10,6 +10,7 @@ from app.models.scan import (
     DISCARDED, FAILED, FILED, POSTED, READING, REJECTED, SPLIT, TO_CHECK, UPLOADED, ScanDocument,
 )
 from app.models.user import UserRole
+from app.purchases.services import TDS_SECTIONS
 from app.scan import scan_bp, services
 from app.scan.services import CATEGORY_LABELS, KIND_EXPENSE, KIND_FILE, KIND_PURCHASE, ScanError
 from app.utils.features import feature_required
@@ -198,7 +199,17 @@ def _review_context(doc, form=None):
         "payment_modes": PAYMENT_MODE_LABELS, "labels": CATEGORY_LABELS,
         "purchases_on": tenant.has_feature("purchases"), "expenses_on": tenant.has_feature("expenses"),
         "gstin_ok": services.gstin_ok, "posted_url": _posted_url(doc),
+        "detail_fields": services.DETAIL_FIELDS, "details": _form_details(form) or services.detail_values(doc),
+        "tds": services.tds_read(doc) if form is None else (form.get("tds_amount", ""), form.get("tds_section", "")),
+        "tds_sections": TDS_SECTIONS,
     }
+
+
+def _form_details(form):
+    if not form or not hasattr(form, "getlist"):
+        return None
+    keys = [k for k, _ in services.DETAIL_FIELDS] + ["discount"]
+    return {k: form.get(f"detail_{k}", "") for k in keys}
 
 
 def _form_lines(form):
@@ -207,7 +218,8 @@ def _form_lines(form):
         return None
     keys = {"description": "line_description[]", "hsn": "line_hsn[]", "qty": "line_qty[]", "unit": "line_unit[]",
             "rate": "line_rate[]", "discount": "line_discount[]", "gst_rate": "line_gst_rate[]",
-            "product_id": "line_product_id[]"}
+            "product_id": "line_product_id[]", "serials": "line_serials[]", "item_code": "line_item_code[]",
+            "batch": "line_batch[]", "mfg": "line_mfg[]", "expiry": "line_expiry[]", "mrp": "line_mrp[]"}
     columns = {k: form.getlist(v) for k, v in keys.items()}
     count = len(columns["description"])
     rows = [{k: (columns[k][i] if i < len(columns[k]) else "") for k in keys} for i in range(count)]

@@ -3,7 +3,8 @@ the documents - same shape as app.accounts.receivables:
 
   + opening balance (Supplier.opening_balance)
   + posted purchase bills (grand total = what's payable; under reverse
-    charge that's without the tax, which goes to the government)
+    charge that's without the tax, which goes to the government; less
+    any TDS deducted, which is paid to the government too)
   - posted purchase returns (debit notes) against those bills
   + posted expenses booked to this supplier as "unpaid"
   - payment vouchers (a bounced cheque pays nothing)
@@ -79,12 +80,17 @@ def supplier_account(tenant, supplier: Supplier, with_entries: bool = True) -> S
     if start:
         bills = bills.filter(PurchaseBill.bill_date >= start)
     for bill in bills.order_by(PurchaseBill.bill_date, PurchaseBill.id).all():
-        amount = Decimal(bill.grand_total)
+        amount, tds = Decimal(bill.grand_total), Decimal(bill.tds_amount or 0)
+        # TDS held back is paid to the government, not the supplier.
         item = OpenItem("purchase_bill", bill.id, f"{bill.number} ({bill.supplier_invoice_no})", bill.bill_date,
-                        _due(bill.bill_date, supplier), amount)
+                        _due(bill.bill_date, supplier), amount - tds)
         items[item.key] = item
         entries.append(LedgerEntry(bill.bill_date, "purchase_bill", bill.number, f"Purchase bill {bill.supplier_invoice_no}",
                                    credit=amount, link=("purchases.view_bill", {"bill_id": bill.id}), order=1))
+        if tds:
+            entries.append(LedgerEntry(bill.bill_date, "tds", bill.number,
+                                       f"TDS deducted{' u/s ' + bill.tds_section if bill.tds_section else ''}",
+                                       debit=tds, link=("purchases.view_bill", {"bill_id": bill.id}), order=2))
     bill_ids = [i.id for i in items.values() if i.kind == "purchase_bill"]
     if bill_ids:
         for ret in PurchaseReturn.query.filter(PurchaseReturn.tenant_id == tenant.id,

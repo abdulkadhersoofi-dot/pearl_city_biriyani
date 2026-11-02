@@ -342,13 +342,114 @@ def line_rows(doc: ScanDocument) -> list[dict]:
             tax = _money(item.get("igst")) + _money(item.get("cgst")) + _money(item.get("sgst"))
             if tax > 0:
                 gst = _slab(tax / taxable * 100)
+        mrp = _money(item.get("mrp"))
         rows.append({"description": (item.get("description") or "Item").strip()[:255] or "Item",
                      "hsn": re.sub(r"\D", "", str(item.get("hsn_sac") or "")),
                      "qty": f"{qty.normalize():f}", "unit": unit_code(item.get("unit") or ""),
-                     "rate": f"{rate:.2f}", "discount": f"{discount:.2f}", "gst_rate": f"{gst.normalize():f}"})
+                     "rate": f"{rate:.2f}", "discount": f"{discount:.2f}", "gst_rate": f"{gst.normalize():f}",
+                     "serials": "\n".join(item.get("serial_numbers") or []),
+                     "item_code": (item.get("item_code") or "").strip()[:64],
+                     "batch": (item.get("batch") or "").strip()[:64],
+                     "mfg": iso_date(item.get("mfg_date"), month_end=False),
+                     "expiry": iso_date(item.get("expiry"), month_end=True),
+                     "mrp": f"{mrp:.2f}" if mrp > 0 else ""})
     return rows or [{"description": "Item", "hsn": "", "qty": "1", "unit": "NOS",
                      "rate": f"{_money((doc.extracted or {}).get('taxable_value')):.2f}", "discount": "0.00",
-                     "gst_rate": "18"}]
+                     "gst_rate": "18", "serials": "", "item_code": "", "batch": "", "mfg": "", "expiry": "",
+                     "mrp": ""}]
+
+
+def iso_date(text, month_end: bool = False) -> str:
+    """A date as printed -> YYYY-MM-DD ("" when it can't be told). A
+    month and year alone (an expiry "03/27", "MAR 2027") is that month's
+    last day for an expiry, its first for a manufacturing date."""
+    import calendar
+
+    t = str(text or "").strip().upper()
+    if not t:
+        return ""
+    m = re.fullmatch(r"(\d{4})-(\d{1,2})-(\d{1,2})", t)
+    if m:
+        y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
+    else:
+        m = re.fullmatch(r"(\d{1,2})[/.-](\d{1,2})[/.-](\d{2}|\d{4})", t)
+        if m:
+            d, mo, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        else:
+            months = {n.upper(): i for i, n in enumerate(calendar.month_abbr) if n}
+            m = re.fullmatch(r"(\d{1,2}|[A-Z]{3})[A-Z]*[\s/.-]*(\d{2}|\d{4})", t)
+            if not m:
+                m2 = re.fullmatch(r"(\d{4})-(\d{1,2})", t)
+                if not m2:
+                    return ""
+                y, mo = int(m2.group(1)), int(m2.group(2))
+            else:
+                mo = int(m.group(1)) if m.group(1).isdigit() else months.get(m.group(1), 0)
+                y = int(m.group(2))
+            if not 1 <= mo <= 12:
+                return ""
+            y = y + 2000 if y < 100 else y
+            d = calendar.monthrange(y, mo)[1] if month_end else 1
+    y = y + 2000 if y < 100 else y
+    try:
+        return date(y, mo, d).isoformat()
+    except ValueError:
+        return ""
+
+
+# What else a bill says - kept with the posted bill for warranty and
+# follow-up ({key read: label shown}).
+DETAIL_FIELDS = (
+    ("po_number", "Your order (PO) no."), ("po_date", "PO date"), ("order_number", "Supplier's order no."),
+    ("challan_number", "Challan / delivery note"), ("dispatch_doc_number", "Dispatch doc. no."),
+    ("dispatched_through", "Dispatched through"), ("vehicle_number", "Vehicle no."),
+    ("lr_number", "LR / docket no."), ("ewb_number", "E-way bill no."), ("irn", "IRN"),
+    ("ack_number", "Ack. no."), ("ack_date", "Ack. date"), ("due_date", "Due date"),
+    ("payment_terms", "Payment terms"), ("supplier_reference", "Supplier's reference"),
+    ("other_references", "Other references"), ("warranty", "Warranty"), ("bank_name", "Bank"),
+    ("bank_account", "Account no."), ("bank_ifsc", "IFSC"), ("bank_branch", "Branch"), ("bank_upi", "UPI ID"),
+)
+TDS_SECTION_CODES = ("194Q", "194C", "194J", "194H", "194I")
+
+
+def detail_values(doc: ScanDocument) -> dict:
+    """The bill's other details as read, for the review screen."""
+    ex = doc.extracted or {}
+    out = {key: str(ex.get(key) or "").strip() for key, _ in DETAIL_FIELDS}
+    if _money(ex.get("discount")) > 0:
+        out["discount"] = f"{_money(ex.get('discount')):.2f}"
+    return out
+
+
+def tds_read(doc: ScanDocument) -> tuple[str, str]:
+    """(amount, section) of any TDS printed on the bill."""
+    ex = doc.extracted or {}
+    amount = _money(ex.get("tds"))
+    section = re.sub(r"[^0-9A-Z]", "", str(ex.get("tds_section") or "").upper())
+    section = next((c for c in TDS_SECTION_CODES if c in section), "OTHER" if section else "")
+    return (f"{amount:.2f}" if amount > 0 else ""), (section if amount > 0 else "")
+
+
+def _details_from_form(form) -> dict:
+    out = {}
+    for key, label in DETAIL_FIELDS:
+        value = (form.get(f"detail_{key}") or "").strip()[:500]
+        if value:
+            out[label] = value
+    discount = (form.get("detail_discount") or "").strip()
+    if discount and _money(discount) > 0:
+        out["Discount on the bill"] = f"Rs. {_money(discount):,.2f}"
+    return out
+
+
+def _tds_from_form(form) -> tuple[Decimal, str | None]:
+    try:
+        tds = _money((form.get("tds_amount") or "0").replace(",", "").strip() or "0")
+    except InvalidOperation:
+        raise ScanError("Enter the TDS as a number.")
+    if tds < 0:
+        raise ScanError("TDS can't be negative.")
+    return tds, ((form.get("tds_section") or "").strip()[:10] or None) if tds else None
 
 
 def main_gst_rate(doc: ScanDocument) -> Decimal:
@@ -374,24 +475,126 @@ def unit_code(unit: str) -> str:
     return u if u in UQC_CODES else ("NOS" if not u else "OTH")
 
 
+_LEGAL_WORDS = {"ms", "messrs", "the", "pvt", "private", "ltd", "limited", "llp", "co", "company",
+                "corpn", "inc", "and"}
+# A word a name is often written with or without.
+_OPTIONAL_WORDS = {"sri", "shri", "shree", "sree", "sre", "new", "m", "s"}
+
+
+def norm_name(name: str) -> str:
+    """A business name with its legal form, punctuation and spacing taken
+    out: "M/s. A.B.C. Traders Pvt. Ltd." and "ABC TRADERS" agree."""
+    text = re.sub(r"^\s*m\s*/\s*s\b\.?", " ", (name or "").lower())
+    text = re.sub(r"[^a-z0-9 ]", " ", text.replace("&", " and "))
+    words = [w for w in text.split() if w not in _LEGAL_WORDS]
+    # Initials written apart ("A B C") join up like "ABC".
+    out, run = [], ""
+    for w in words:
+        if len(w) == 1:
+            run += w
+            continue
+        if run:
+            out.append(run)
+            run = ""
+        out.append(w)
+    if run:
+        out.append(run)
+    return " ".join(out)
+
+
+def names_alike(a: str, b: str) -> bool:
+    """The same business written differently: equal once tidied, one the
+    other with a word more ("Sri Balaji Traders" / "Balaji Traders"), or a
+    near-identical spelling. Stricter than reader.name_matches - this one
+    decides that two names are one supplier."""
+    from difflib import SequenceMatcher
+
+    na, nb = norm_name(a), norm_name(b)
+    if not na or not nb:
+        return False
+    if na == nb or na.replace(" ", "") == nb.replace(" ", ""):
+        return True
+    ta, tb = set(na.split()), set(nb.split())
+    small, big = (ta, tb) if len(ta) <= len(tb) else (tb, ta)
+    if small and small <= big and len(big) - len(small) == 1 and \
+            ((big - small) <= _OPTIONAL_WORDS or len(small) >= 3):
+        return True
+    # A misread or plural: every word the same but one, and that one
+    # nearly so ("Spares" / "Spare", "Enterprlses" / "Enterprises").
+    wa, wb = na.split(), nb.split()
+    if len(wa) != len(wb) or len(wa) < 2:
+        return False
+    differ = [(x, y) for x, y in zip(wa, wb) if x != y]
+    return len(differ) == 1 and min(len(differ[0][0]), len(differ[0][1])) >= 4 and \
+        SequenceMatcher(None, *differ[0]).ratio() >= 0.9
+
+
+def find_supplier(tenant, name: str, gstin: str):
+    """The supplier already in the books this bill is from, or None:
+      1. the same GSTIN;
+      2. a GSTIN off by a character or two (a misread) - when the one read
+         fails its check digit or the names agree;
+      3. the same name, written alike, when the GSTINs don't conflict
+         (one of them blank - an unregistered supplier, or one entered
+         before its GSTIN was known).
+    Two different valid GSTINs are two registrations, never merged."""
+    from app.models.purchase import Supplier
+
+    gstin = clean_gstin(gstin or "")
+    gstin = gstin if len(gstin) == 15 else ""
+    suppliers = (Supplier.query.filter_by(tenant_id=tenant.id)
+                 .order_by(Supplier.is_active.desc(), Supplier.id).all())
+    if gstin:
+        exact = next((s for s in suppliers if clean_gstin(s.gstin or "") == gstin), None)
+        if exact is not None:
+            return exact
+        valid = gstin_checksum_ok(gstin)
+        near = [s for s in suppliers if s.gstin and reader.gstin_near(s.gstin, gstin, 2)
+                and (not valid or names_alike(s.name, name))]
+        if near:
+            return near[0]
+    if not (name or "").strip():
+        return None
+    for s in suppliers:
+        if names_alike(s.name, name) and (not gstin or not s.gstin):
+            return s
+    return None
+
+
+def _fill_in(supplier, gstin: str, address: str, phone: str, terms_days: int | None) -> None:
+    """What the bill tells us that the supplier's record was missing."""
+    from app.models.purchase import Supplier
+
+    gstin = clean_gstin(gstin or "")
+    if not supplier.gstin and len(gstin) == 15 and re.match(GSTIN_REGEX, gstin) and gstin_checksum_ok(gstin) \
+            and Supplier.query.filter_by(tenant_id=supplier.tenant_id, gstin=gstin).first() is None:
+        supplier.gstin = gstin
+        supplier.state_code = gstin[:2]
+        supplier.state_name = STATE_NAME_BY_CODE.get(gstin[:2])
+    if not supplier.address_line1 and address:
+        supplier.address_line1 = address[:255]
+    if not supplier.phone and phone:
+        supplier.phone = phone[:20]
+    if supplier.payment_terms_days is None and terms_days:
+        supplier.payment_terms_days = terms_days
+    if not supplier.is_active:
+        supplier.is_active = True
+
+
 def supplier_choices(tenant, doc: ScanDocument) -> tuple[object, list]:
     """(the supplier this bill is from, if known, [suppliers it could be]):
-    the same GSTIN first, then the same or a similar name."""
+    find_supplier's match first, then other similar names to pick from."""
     from app.models.purchase import Supplier
 
     ex = doc.extracted or {}
     gstin = clean_gstin(ex.get("supplier_gstin") or "")
     name = (ex.get("supplier_name") or "").strip()
+    match = find_supplier(tenant, name, gstin)
     suppliers = Supplier.query.filter_by(tenant_id=tenant.id, is_active=True).order_by(Supplier.name).all()
-    if gstin:
-        exact = next((s for s in suppliers if s.gstin == gstin), None)
-        if exact is not None:
-            return exact, [exact]
-    same_name = [s for s in suppliers if name and s.name.strip().lower() == name.lower()
-                 and (not gstin or not s.gstin)]
-    similar = [s for s in suppliers if name and s not in same_name and reader.name_matches(s.name, name)]
-    candidates = (same_name + similar)[:6]
-    return (same_name[0] if same_name else None), candidates
+    similar = [s for s in suppliers if name and s is not match
+               and (names_alike(s.name, name) or reader.name_matches(s.name, name))]
+    candidates = ([match] if match is not None else []) + similar
+    return match, candidates[:6]
 
 
 def matched_supplier(tenant, doc: ScanDocument):
@@ -483,29 +686,41 @@ def _date(value, label) -> date:
         raise ScanError(f"Enter the {label}.")
 
 
+def _terms_days(text: str) -> int | None:
+    m = re.search(r"(\d{1,3})\s*days?", text or "", re.I)
+    return int(m.group(1)) if m and 0 < int(m.group(1)) <= 365 else None
+
+
 def _supplier_from_form(tenant, form):
+    """The supplier picked on the screen - or, for "new", the one already
+    in the books under a matching GSTIN or name (never a second copy), or
+    else a new one."""
     from app.models.purchase import Supplier
 
+    address = (form.get("supplier_address") or "").strip()[:255]
+    phone = (form.get("supplier_phone") or "").strip()[:20]
+    terms = _terms_days(form.get("detail_payment_terms") or "")
     sid = form.get("supplier_id", type=int)
     if sid:
         supplier = Supplier.query.filter_by(id=sid, tenant_id=tenant.id).first()
         if supplier is None:
             raise ScanError("Pick a valid supplier.")
+        _fill_in(supplier, form.get("supplier_gstin") or "", address, phone, terms)
         return supplier
     name = (form.get("supplier_name") or "").strip()[:255]
     gstin = clean_gstin(form.get("supplier_gstin") or "") or None
     if not name:
         raise ScanError("Enter the supplier's name.")
-    if gstin:
-        if not re.match(GSTIN_REGEX, gstin):
-            raise ScanError(f"{gstin} isn't a valid 15-character GSTIN.")
-        existing = Supplier.query.filter_by(tenant_id=tenant.id, gstin=gstin).first()
-        if existing is not None:
-            return existing
+    if gstin and not re.match(GSTIN_REGEX, gstin):
+        raise ScanError(f"{gstin} isn't a valid 15-character GSTIN.")
+    existing = find_supplier(tenant, name, gstin or "")
+    if existing is not None:
+        _fill_in(existing, gstin or "", address, phone, terms)
+        return existing
     state = (gstin[:2] if gstin else (form.get("supplier_state") or "")).strip()
     supplier = Supplier(tenant_id=tenant.id, name=name, gstin=gstin, state_code=state or None,
-                        state_name=STATE_NAME_BY_CODE.get(state), address_line1=(form.get("supplier_address") or "")
-                        .strip()[:255] or None, phone=(form.get("supplier_phone") or "").strip()[:20] or None)
+                        state_name=STATE_NAME_BY_CODE.get(state), address_line1=address or None,
+                        phone=phone or None, payment_terms_days=terms)
     db.session.add(supplier)
     db.session.flush()
     return supplier
@@ -531,6 +746,13 @@ def _expected_total(doc: ScanDocument, form) -> Decimal:
     return _money(raw) if raw else _money((doc.extracted or {}).get("invoice_value"))
 
 
+def total_difference(total: Decimal, tds: Decimal, printed: Decimal) -> Decimal:
+    """How far ARFA's total is from the one printed - which is either the
+    invoice total or, on a bill that prints "Less TDS", the net after it."""
+    gross = (Decimal(total) - printed).copy_abs()
+    return min(gross, (Decimal(total) - tds - printed).copy_abs()) if tds else gross
+
+
 def _finish(doc, user, kind, record_id, label):
     doc.status, doc.posted_type, doc.posted_id = POSTED, kind, record_id
     doc.posted_by_id, doc.posted_at = user.id, utcnow()
@@ -551,6 +773,7 @@ def post_purchase(tenant, user, doc: ScanDocument, form):
         if digits and len(digits) not in (4, 6, 8):
             raise ScanError(f"{(name or 'A line').strip()}: the HSN {digits} has {len(digits)} digits - an HSN or SAC "
                             "code has 4, 6 or 8. Check it against the bill.")
+    tds, tds_section = _tds_from_form(form)
     form = _with_new_items(tenant, user, form)
     try:
         lines = parse_purchase_lines(form)
@@ -560,15 +783,17 @@ def post_purchase(tenant, user, doc: ScanDocument, form):
             supplier_invoice_date=_date(form.get("invoice_date"), "bill date"),
             location_id=form.get("location_id", type=int) or default_location(tenant.id).id, lines=lines,
             is_rcm=form.get("is_rcm") == "1", notes=(form.get("notes") or "").strip() or "Entered from a scanned bill.",
-            attachment_id=_attachment(doc)))
+            attachment_id=_attachment(doc), tds_amount=tds, tds_section=tds_section,
+            details=_details_from_form(form)))
     except PurchaseError as exc:
         raise ScanError(exc.message)
     expected = _expected_total(doc, form)
-    difference = (bill.grand_total - expected).copy_abs()
+    difference = total_difference(bill.grand_total, tds, expected)
     if expected > 0 and difference > Decimal("1.00") and form.get("accept_difference") != "1":
-        raise ScanError(f"ARFA works this bill out to Rs. {bill.grand_total:,.2f} but the bill says "
-                        f"Rs. {expected:,.2f} (a difference of Rs. {difference:,.2f}). Check the lines, or tick "
-                        "\"Post anyway\".")
+        net = f" (Rs. {bill.grand_total - tds:,.2f} after the TDS)" if tds else ""
+        raise ScanError(f"ARFA works this bill out to Rs. {bill.grand_total:,.2f}{net} but the bill says "
+                        f"Rs. {expected:,.2f} (a difference of Rs. {difference:,.2f}). Check the lines and the TDS, "
+                        "or tick \"Post anyway\".")
     _finish(doc, user, "purchase_bill", bill.id, bill.number)
     return bill
 
@@ -601,9 +826,19 @@ def _with_new_items(tenant, user, form):
             cost = _money(at("line_rate[]"))
         except InvalidOperation:
             raise ScanError(f"{name}: check the rate and GST.")
+        serials = [x for x in re.split(r"[,\n]+", at("line_serials[]")) if x.strip()]
+        try:
+            qty = Decimal(at("line_qty[]") or "0")
+        except InvalidOperation:
+            qty = Decimal("0")
+        goods = not hsn.startswith("99")
         product = Product(tenant_id=tenant.id, name=name, hsn_or_sac_code=hsn, gst_rate=_slab(rate),
                           unit=unit_code(at("line_unit[]")), sale_price=Decimal("0"), purchase_rate=cost,
-                          is_service=hsn.startswith("99"), price_includes_tax=False)
+                          is_service=not goods, price_includes_tax=False,
+                          # A bill printing a serial per unit, or a batch: the new item tracks them.
+                          track_serial=goods and tenant.has_feature("serial_imei") and qty > 0
+                          and len(serials) == qty,
+                          track_batch=goods and tenant.has_feature("batch_expiry") and bool(at("line_batch[]")))
         db.session.add(product)
         db.session.flush()
         record_audit(user, "product_created_from_scan", tenant_id=tenant.id, entity_type="product",
@@ -634,12 +869,30 @@ def post_expense(tenant, user, doc: ScanDocument, form):
         rate = Decimal(form.get("gst_rate") or "0")
     except InvalidOperation:
         raise ScanError("Enter the amount as a number.")
+    tds, tds_section = _tds_from_form(form)
+    extra = {**_details_from_form(form)}
+    if tds:
+        extra[f"TDS deducted{' u/s ' + tds_section if tds_section and tds_section != 'OTHER' else ''}"] = \
+            f"Rs. {tds:,.2f} (paid Rs. {amount - tds:,.2f})"
+    get = form.getlist
+    for i, name in enumerate(get("line_description[]")):
+        at = lambda key: (get(key)[i] if i < len(get(key)) else "").strip()  # noqa: E731
+        bits = [f"code {at('line_item_code[]')}" if at("line_item_code[]") else "",
+                f"batch {at('line_batch[]')}" if at("line_batch[]") else "",
+                "serial nos. " + ", ".join(x.strip() for x in re.split(r"[,\n]+", at("line_serials[]")) if x.strip())
+                if at("line_serials[]") else ""]
+        bits = [b for b in bits if b]
+        if bits and (name or "").strip():
+            extra[name.strip()[:80]] = "; ".join(bits)
+    notes = (form.get("notes") or "").strip() or "Entered from a scanned bill."
+    if extra:
+        notes += "\n" + "\n".join(f"{k}: {v}" for k, v in extra.items())
     try:
         expense = create_expense(tenant, user, ExpenseInput(
             expense_date=_date(form.get("invoice_date"), "bill date"), category_id=form.get("category_id", type=int),
             amount=amount, payment_mode=mode, payee_name=(form.get("supplier_name") or "").strip() or None,
             supplier_id=supplier.id if supplier else None, reference=form.get("invoice_number"),
-            notes=(form.get("notes") or "").strip() or "Entered from a scanned bill.", attachment_id=_attachment(doc),
+            notes=notes, attachment_id=_attachment(doc),
             is_gst_bill=is_gst, gstin_id=form.get("gstin_id", type=int) or doc.gstin_id,
             supplier_gstin=(supplier.gstin if supplier is not None and supplier.gstin
                             else clean_gstin(form.get("supplier_gstin") or "") or None),

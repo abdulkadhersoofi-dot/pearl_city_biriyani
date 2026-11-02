@@ -243,11 +243,12 @@ Match each GSTIN to the party it is printed NEXT TO. The header GSTIN is the sup
 GSTIN=exactly 15 chars, copy verbatim char-by-char. Common scan confusions to read CAREFULLY: I vs 1, O vs 0, K vs A, J vs U vs V, S vs 5, B vs 8, Z vs 2, G vs 6. The GSTIN is ALWAYS present on a tax invoice (labelled 'GSTIN/UIN') even if a watermark/logo overlaps it — look under the watermark and transcribe every character; NEVER leave GSTIN blank if any 15-char code is visible. Positions 3-7 are letters (PAN), 8-11 digits, 12 letter, 13 digit, 14='Z', 15 alnum.
 invoice_number: transcribe the 'Invoice No.' field character-for-character EXACTLY as printed — every slash '/', dash '-', letter and digit. Do NOT normalise, simplify, merge adjacent strokes (e.g. two strokes 'VV' are 'VV', not 'W'), or expand ligatures. If two characters touch or a separator is faint, prefer what is literally drawn. It is ALWAYS printed near the top — never leave it blank.
 taxable_value=TAXABLE column (not unit price); invoice_value=grand total.
-One line_item per SKU; skip serial/IMEI lists. For EACH line item ALWAYS fill gst_rate (the % rate for that item, e.g. 18) AND taxable_value (that line's taxable amount before tax). If the invoice prints tax per line, fill the line's cgst/sgst/igst too; if tax is shown only as one consolidated total at the bottom, still fill each line's gst_rate and taxable_value and leave the per-line tax 0 — the rate and taxable are enough.
+One line_item per SKU. Serial / IMEI numbers printed for an item go in THAT line's serial_numbers list (every one, exactly as printed) - never as extra line_items. Also copy per line, when printed: item_code (the supplier's item / part / model / SKU code), batch, mfg_date, expiry (YYYY-MM-DD; a month-year expiry like 03/27 is the month's last day), mrp, discount_percent and discount_amount. For EACH line item ALWAYS fill gst_rate (the % rate for that item, e.g. 18) AND taxable_value (that line's taxable amount before tax). If the invoice prints tax per line, fill the line's cgst/sgst/igst too; if tax is shown only as one consolidated total at the bottom, still fill each line's gst_rate and taxable_value and leave the per-line tax 0 — the rate and taxable are enough.
 Pages may be STACKED vertically in one image, separated by dark 'PAGE x of y' bars. Totals (CGST/SGST/IGST, grand total, HSN summary) usually sit at the BOTTOM of the LAST page — read the ENTIRE image to the bottom before answering.
 category: "Expenses" for a bill for a service or a consumable the business uses itself (restaurant / hotel / fuel / travel / telephone / internet / electricity / rent / repairs / courier / stationery / professional fees); "Purchase" for goods or services bought from a supplier on a tax invoice addressed to the business; "Sales" only when the business itself issued the invoice; a credit or debit note is "... - Credit Note" / "... - Debit Note"; a payment receipt is "Receipts".
-{"supplier_name":"","supplier_gstin":"","supplier_address":"","supplier_phone":"","supplier_email":"","supplier_pan":"","supplier_state":"","receiver_name":"","receiver_gstin":"","receiver_address":"","receiver_state":"","invoice_number":"","invoice_date":"YYYY-MM-DD","due_date":"","place_of_supply":"","reverse_charge":"","irn":"","ack_number":"","ack_date":"","ewb_number":"","bank_name":"","bank_account":"","bank_ifsc":"","bank_branch":"","hsn_sac":"","notes":"","category":"Purchase or Sales or Purchase - Credit Note or Purchase - Debit Note or Sales - Credit Note or Sales - Debit Note or Expenses or Receipts","line_items":[{"description":"","hsn_sac":"","quantity":0,"unit":"","rate_per_unit":0,"gst_rate":0,"taxable_value":0,"igst":0,"cgst":0,"sgst":0,"cess":0,"amount":0}],"taxable_value":0,"igst":0,"cgst":0,"sgst":0,"cess":0,"tds":0,"discount":0,"round_off":0,"invoice_value":0,"confidence":0.9,"flags":[]}
+{"supplier_name":"","supplier_gstin":"","supplier_address":"","supplier_phone":"","supplier_email":"","supplier_pan":"","supplier_state":"","receiver_name":"","receiver_gstin":"","receiver_address":"","receiver_state":"","invoice_number":"","invoice_date":"YYYY-MM-DD","due_date":"","place_of_supply":"","reverse_charge":"","irn":"","ack_number":"","ack_date":"","ewb_number":"","bank_name":"","bank_account":"","bank_ifsc":"","bank_branch":"","bank_upi":"","po_number":"","po_date":"","order_number":"","challan_number":"","dispatch_doc_number":"","dispatched_through":"","vehicle_number":"","lr_number":"","payment_terms":"","supplier_reference":"","other_references":"","warranty":"","tds_section":"","hsn_sac":"","notes":"","category":"Purchase or Sales or Purchase - Credit Note or Purchase - Debit Note or Sales - Credit Note or Sales - Debit Note or Expenses or Receipts","line_items":[{"description":"","item_code":"","hsn_sac":"","quantity":0,"unit":"","rate_per_unit":0,"discount_percent":0,"discount_amount":0,"gst_rate":0,"taxable_value":0,"igst":0,"cgst":0,"sgst":0,"cess":0,"amount":0,"serial_numbers":[],"batch":"","mfg_date":"","expiry":"","mrp":0}],"taxable_value":0,"igst":0,"cgst":0,"sgst":0,"cess":0,"tds":0,"discount":0,"round_off":0,"invoice_value":0,"confidence":0.9,"flags":[]}
 Amounts=numbers; dates=YYYY-MM-DD; root totals=Σ line_items.
+References, when printed: po_number/po_date = the buyer's order no. and date; order_number = the supplier's own order / sales order no.; challan_number = delivery note / challan no.; dispatch_doc_number, dispatched_through, vehicle_number, lr_number (LR / RR / docket / AWB no.); payment_terms (e.g. "30 days"); supplier_reference = the supplier's internal reference no.; other_references = any other reference numbers, as "label: value; ...". warranty = warranty terms printed. tds = TDS deducted on the bill (a "Less: TDS" line), tds_section its section (194Q, 194C, 194J...).
 SELF-CHECK (re-read any digit that fails):
 1. taxable+igst+cgst+sgst+cess-tds-discount+round_off == invoice_value.
 2. CGST==SGST. Same state code→CGST+SGST only; different→IGST only; never both.
@@ -258,8 +259,10 @@ SELF-CHECK (re-read any digit that fails):
 TEXT_FIELDS = ("supplier_name", "supplier_gstin", "supplier_address", "supplier_phone", "supplier_email",
                "supplier_pan", "supplier_state", "receiver_name", "receiver_gstin", "receiver_address",
                "receiver_state", "invoice_number", "invoice_date", "due_date", "irn", "ack_number", "ack_date",
-               "ewb_number", "bank_name", "bank_account", "bank_ifsc", "bank_branch", "hsn_sac",
-               "place_of_supply", "reverse_charge", "notes")
+               "ewb_number", "bank_name", "bank_account", "bank_ifsc", "bank_branch", "bank_upi", "hsn_sac",
+               "place_of_supply", "reverse_charge", "notes", "po_number", "po_date", "order_number",
+               "challan_number", "dispatch_doc_number", "dispatched_through", "vehicle_number", "lr_number",
+               "payment_terms", "supplier_reference", "other_references", "warranty", "tds_section")
 MONEY_FIELDS = ("igst", "cgst", "sgst", "cess", "tds", "discount", "round_off")
 
 
@@ -403,11 +406,19 @@ def _shape(parsed: dict) -> dict:
         if not isinstance(item, dict):
             continue
         fi = lambda k: _f(item.get(k)) or 0  # noqa: E731
+        serials = item.get("serial_numbers") or []
+        if isinstance(serials, str):
+            serials = re.split(r"[,;\n]+", serials)
+        ft = lambda k, n=64: str(item.get(k) or "").strip()[:n]  # noqa: E731
         items.append({
             "description": str(item.get("description") or "")[:255], "hsn_sac": str(item.get("hsn_sac") or ""),
             "quantity": fi("quantity"), "unit": str(item.get("unit") or ""), "rate_per_unit": fi("rate_per_unit"),
             "gst_rate": fi("gst_rate"), "taxable_value": fi("taxable_value"), "igst": fi("igst"),
             "cgst": fi("cgst"), "sgst": fi("sgst"), "cess": fi("cess"), "amount": fi("amount"),
+            "discount_percent": fi("discount_percent"), "discount_amount": fi("discount_amount"),
+            "serial_numbers": [str(x).strip()[:64] for x in serials if str(x).strip()][:500] if isinstance(serials, list) else [],
+            "item_code": ft("item_code"), "batch": ft("batch"), "mfg_date": ft("mfg_date", 20),
+            "expiry": ft("expiry", 20), "mrp": fi("mrp"),
         })
     if not items and out["taxable_value"]:
         items.append({"description": "Total", "hsn_sac": out["hsn_sac"] or "", "quantity": 0, "unit": "",
@@ -791,41 +802,60 @@ def _gstin_suspect(ex: dict) -> bool:
 
 
 def _apply_qr(extracted: dict, qr: dict) -> None:
-    """GSTINs from the signed QR replace a different read (flagged); the
-    number, date and total are only flagged when they differ."""
-    replaced, mismatch, notes = [], [], []
+    """The e-invoice QR is signed by the IRP, so what it says wins: the
+    GSTINs, invoice number, date and total from it replace a different
+    read (the print's reading is kept in a note)."""
+    replaced, notes = [], []
     for fld in ("supplier_gstin", "receiver_gstin"):
         qv, ov = clean_gstin(qr.get(fld)), clean_gstin(extracted.get(fld))
         if qv and ov != qv:
             extracted[fld] = qv
             replaced.append(fld)
-            notes.append(f"{fld.replace('_', ' ')} corrected from the e-invoice QR (read '{ov or 'blank'}', "
-                         f"QR '{qv}')")
+            notes.append(f"{fld.replace('_', ' ').capitalize()} taken from the e-invoice QR (the print read "
+                         f"'{ov or 'blank'}').")
     q_inv, o_inv = (qr.get("invoice_number") or "").strip(), (extracted.get("invoice_number") or "").strip()
-    if q_inv and norm_invno(o_inv) != norm_invno(q_inv):
-        if not o_inv:
-            extracted["invoice_number"] = q_inv
-        else:
-            mismatch.append("invoice_number")
-            notes.append(f"Invoice number differs from the e-invoice QR (read '{o_inv}', QR '{q_inv}').")
+    if q_inv and o_inv != q_inv:
+        extracted["invoice_number"] = q_inv
+        replaced.append("invoice_number")
+        if o_inv and norm_invno(o_inv) != norm_invno(q_inv):
+            notes.append(f"Invoice number taken from the e-invoice QR (the print read '{o_inv}').")
     q_dt, o_dt = (qr.get("invoice_date") or "").strip(), (extracted.get("invoice_date") or "").strip()
-    if q_dt and o_dt and q_dt != o_dt:
-        mismatch.append("invoice_date")
-        notes.append(f"Invoice date differs from the e-invoice QR (read {o_dt}, QR {q_dt}).")
-    elif q_dt and not o_dt:
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", q_dt) and q_dt != o_dt:
         extracted["invoice_date"] = q_dt
+        replaced.append("invoice_date")
+        if o_dt:
+            notes.append(f"Invoice date taken from the e-invoice QR (the print read {o_dt}).")
     q_val, o_val = _to_num(qr.get("invoice_value")), _to_num(extracted.get("invoice_value"))
-    if q_val > 0 and o_val > 0 and abs(q_val - o_val) > 1.0:
-        mismatch.append("invoice_value")
-        notes.append(f"Total differs from the e-invoice QR (read Rs. {o_val:,.2f}, QR Rs. {q_val:,.2f}).")
-    elif q_val > 0 and o_val == 0:
+    tds = _to_num(extracted.get("tds"))
+    # The QR carries the invoice's total; a bill printing "Less TDS" was
+    # read as the net, which already agrees with it.
+    net_agrees = tds > 0 and abs(q_val - (o_val + tds)) <= 1.0
+    if q_val > 0 and abs(q_val - o_val) > 0.009 and not net_agrees:
         extracted["invoice_value"] = q_val
+        replaced.append("invoice_value")
+        if o_val > 0 and abs(q_val - o_val) > 1.0:
+            notes.append(f"Total taken from the e-invoice QR: Rs. {q_val:,.2f} (the print read Rs. {o_val:,.2f}).")
     if qr.get("irn"):
         extracted["irn"] = qr["irn"]
-    extracted["einvoice"] = {"present": True, "verified": not (replaced or mismatch), "replaced": replaced,
-                             "mismatch": mismatch, "notes": notes}
-    flags = list(extracted.get("flags") or [])
-    extracted["flags"] = flags + [f for f in replaced + mismatch if f not in flags]
+    extracted["einvoice"] = {"present": True, "verified": not notes, "replaced": replaced, "mismatch": [],
+                             "notes": notes, "qr": {k: qr.get(k) for k in ("supplier_gstin", "receiver_gstin",
+                                                                          "invoice_number", "invoice_date",
+                                                                          "invoice_value")}}
+    # A value from the QR is certain: never flagged for a second look.
+    extracted["flags"] = [f for f in (extracted.get("flags") or []) if f not in replaced]
+
+
+def _hold_qr(extracted: dict) -> None:
+    """After every repair: the QR's values stand (a repair or a near-miss
+    snap must not undo them)."""
+    qr = (extracted.get("einvoice") or {}).get("qr") or {}
+    for fld in ("supplier_gstin", "receiver_gstin"):
+        if clean_gstin(qr.get(fld)):
+            extracted[fld] = clean_gstin(qr.get(fld))
+    if (qr.get("invoice_number") or "").strip():
+        extracted["invoice_number"] = qr["invoice_number"].strip()
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", (qr.get("invoice_date") or "").strip()):
+        extracted["invoice_date"] = qr["invoice_date"].strip()
 
 
 def read(file_bytes: bytes, is_pdf: bool, ctx: Context, settings: Settings, http=requests) -> dict:
@@ -925,9 +955,10 @@ def read(file_bytes: bytes, is_pdf: bool, ctx: Context, settings: Settings, http
 
     # Snap near-misses: to our own GSTIN, then to a supplier we already know.
     known = [clean_gstin(g) for g in ctx.known_gstins if g]
+    qr_held = (extracted.get("einvoice") or {}).get("qr") or {}
     for fld in ("supplier_gstin", "receiver_gstin"):
         val = clean_gstin(extracted.get(fld) or "")
-        if not val:
+        if not val or clean_gstin(qr_held.get(fld)):   # from the signed QR: right as it is
             continue
         if own and val != own and gstin_near(own, val):
             extracted[fld] = own
@@ -938,6 +969,9 @@ def read(file_bytes: bytes, is_pdf: bool, ctx: Context, settings: Settings, http
                 extracted[fld] = match
                 validation.setdefault("repairs", []).append(f"{fld.replace('_', ' ')} matched to your supplier "
                                                             f"{match} (read '{val}')")
+
+    if qr_held:
+        _hold_qr(extracted)
 
     rejection, reason = None, ""
     sup_g, rec_g = clean_gstin(extracted.get("supplier_gstin") or ""), clean_gstin(extracted.get("receiver_gstin") or "")

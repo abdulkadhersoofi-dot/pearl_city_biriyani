@@ -63,6 +63,7 @@ class PurchaseLineInput:
     expiry_date: date | None = None
     mrp: Decimal | None = None
     serials: list = field(default_factory=list)
+    item_code: str | None = None     # the supplier's code / part no. for the item
 
 
 @dataclass
@@ -84,6 +85,16 @@ class PurchaseInput:
     # own series; with no seller invoice, the voucher is the document.
     kind: str = "bill"
     seller_details: dict | None = None
+    # Income tax deducted at source from the supplier's payment.
+    tds_amount: Decimal = Decimal("0")
+    tds_section: str | None = None
+    details: dict | None = None      # references, bank details... as printed
+
+
+# Sections TDS is usually deducted under on a supplier's bill.
+TDS_SECTIONS = (("", "-"), ("194Q", "194Q - goods bought"), ("194C", "194C - contract / job work"),
+                ("194J", "194J - professional / technical fees"), ("194H", "194H - commission"),
+                ("194I", "194I - rent"), ("OTHER", "Another section"))
 
 
 def _num(value, label, default=None):
@@ -137,6 +148,7 @@ def parse_purchase_lines(form) -> list[PurchaseLineInput]:
             mfg_date=_date(at("line_mfg[]"), "Manufacturing date"),
             mrp=_num(at("line_mrp[]"), "MRP", ZERO) or None,
             serials=[s.strip() for s in at("line_serials[]").replace("\n", ",").split(",") if s.strip()],
+            item_code=at("line_item_code[]").strip()[:64] or None,
         ))
     if not lines:
         raise PurchaseError("Add at least one item.")
@@ -239,6 +251,9 @@ def create_purchase_bill(tenant, user, data: PurchaseInput) -> PurchaseBill:
     other_charges = Decimal(data.other_charges or 0)
     if other_charges < 0:
         raise PurchaseError("Other charges can't be negative.")
+    tds = Decimal(data.tds_amount or 0).quantize(Decimal("0.01"))
+    if tds < 0:
+        raise PurchaseError("TDS can't be negative.")
     products = _catalog(tenant, data.lines)
     _validate_lines(tenant, data.lines, products)
     if not can_claim_itc(tenant, gstin):
@@ -275,8 +290,11 @@ def create_purchase_bill(tenant, user, data: PurchaseInput) -> PurchaseBill:
         purchase_order_id=data.purchase_order_id, other_charges=other_charges,
         other_charges_label=(data.other_charges_label or "").strip()[:60] or None,
         notes=(data.notes or "").strip() or None, attachment_id=data.attachment_id, created_by_id=user.id,
-        **totals,
+        tds_amount=tds, tds_section=((data.tds_section or "").strip().upper()[:10] or None) if tds else None,
+        details=_clean_details(data.details), **totals,
     )
+    if tds >= Decimal(bill.grand_total or 0) and tds > 0:
+        raise PurchaseError("The TDS can't be the whole bill - check the amount.")
     db.session.add(bill)
     db.session.flush()
 
@@ -291,7 +309,7 @@ def create_purchase_bill(tenant, user, data: PurchaseInput) -> PurchaseBill:
             hsn_or_sac_code=line.hsn_or_sac_code, qty=line.qty, unit=line.unit, rate=line.rate,
             discount_percent=line.discount_percent, gst_rate=line.gst_rate, itc_eligibility=line.itc_eligibility,
             charges_share=share, unit_cost=unit_cost, batch_id=batch.id if batch else None, sort_order=order,
-            is_margin_scheme=line.product_id in margin_ids,
+            is_margin_scheme=line.product_id in margin_ids, details=_line_details(line),
             **{f: amounts[f] for f in _AMOUNT_FIELDS},
         )
         db.session.add(bill_line)
@@ -320,6 +338,24 @@ def create_purchase_bill(tenant, user, data: PurchaseInput) -> PurchaseBill:
             order.status = PurchaseOrderStatus.CONVERTED
     db.session.flush()
     return bill
+
+
+def _clean_details(details: dict | None) -> dict | None:
+    """{label: value} with the blanks dropped (None when nothing is left)."""
+    out = {str(k)[:60]: str(v).strip()[:500] for k, v in (details or {}).items() if v is not None and str(v).strip()}
+    return out or None
+
+
+def _line_details(line: PurchaseLineInput) -> dict | None:
+    """What was printed against a line, kept on it whether or not the item
+    tracks batches or serial numbers - for warranty claims and stock
+    queries later."""
+    out = {"serials": list(line.serials) or None, "item_code": line.item_code, "batch": line.batch_no,
+           "mfg": line.mfg_date.isoformat() if line.mfg_date else None,
+           "expiry": line.expiry_date.isoformat() if line.expiry_date else None,
+           "mrp": f"{line.mrp:.2f}" if line.mrp else None}
+    out = {k: v for k, v in out.items() if v}
+    return out or None
 
 
 def void_purchase_bill(bill: PurchaseBill, user, reason: str) -> None:

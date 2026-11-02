@@ -738,6 +738,15 @@ this list is just the index.
   AI with the server's service account (SCAN_PROVIDER="vertex" in
   settings.env; Vertex API on + roles/aiplatform.user for arfa-run, see
   docs/cloud-setup.md); an AI Studio key (arfa-gemini-key) also works.
+  Since 2 Nov 2026: a supplier is never added twice (services.find_supplier
+  - same GSTIN, a misread GSTIN, or the same name written differently when
+  the GSTINs don't conflict; even when "new" is picked); the e-invoice QR's
+  GSTINs / number / date / total win over the print; per-line serial nos.,
+  item code, batch, dates, MRP and the bill's references / bank details are
+  read and kept (PurchaseBill.details, PurchaseBillLine.details); TDS on a
+  purchase bill (PurchaseBill.tds_amount / tds_section - also on the manual
+  bill form) leaves the supplier owed the net, and the Tally journal credits
+  "TDS Payable".
 
 ## 5. Chronological development history (this session)
 

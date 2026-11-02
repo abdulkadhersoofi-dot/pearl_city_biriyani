@@ -182,6 +182,7 @@ def _bill_form(form=None, rows=None, order=None, status=200):
         "purchases/bill_form.html", form=form or {}, rows=rows or [], suppliers=_suppliers(), gstins=_gstins(),
         locations=_locations(), catalog=_catalog_json(), itc_labels=_itc_choices(),
         slabs=[float(s) for s in GST_RATE_SLABS], order=order, today=date.today(), claims_itc=services.can_claim_itc(_tenant()),
+        tds_sections=services.TDS_SECTIONS,
     ), status
 
 
@@ -222,8 +223,9 @@ def new_bill():
         form = request.form
         try:
             other = Decimal((form.get("other_charges") or "0").strip() or "0")
+            tds = Decimal((form.get("tds_amount") or "0").replace(",", "").strip() or "0")
         except InvalidOperation:
-            flash("Other charges must be a number.", "error")
+            flash("Other charges and TDS must be numbers.", "error")
             return _bill_form(form, _rows_from_form(form), order, 400)
         try:
             lines = services.parse_purchase_lines(form)
@@ -235,6 +237,7 @@ def new_bill():
                 location_id=_int(form.get("location_id")), lines=lines, bill_date=_date(form.get("bill_date")),
                 is_rcm=bool(form.get("is_rcm")), other_charges=other, other_charges_label=form.get("other_charges_label"),
                 notes=form.get("notes"), purchase_order_id=order.id if order else None, attachment_id=attachment_id,
+                tds_amount=tds, tds_section=form.get("tds_section"),
             )
             bill = services.create_purchase_bill(_tenant(), current_user, data)
         except (services.PurchaseError, UploadError) as e:

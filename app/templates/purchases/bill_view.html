@@ -22,6 +22,11 @@
   </div>
   {% if bill.purchase_order %}<p>From order <a href="{{ url_for('purchases.view_order', order_id=bill.purchase_order.id) }}">{{ bill.purchase_order.number }}</a></p>{% endif %}
   {% if bill.notes %}<p><strong>Notes:</strong> {{ bill.notes }}</p>{% endif %}
+  {% if bill.details %}
+  <details class="bill-details" open><summary><strong>Other details on the bill</strong></summary>
+    <dl class="detail-list">{% for label, value in bill.details.items() %}<div><dt>{{ label }}</dt><dd>{{ value }}</dd></div>{% endfor %}</dl>
+  </details>
+  {% endif %}
   {% if bill.void_reason %}<p><strong>Voided:</strong> {{ bill.void_reason }}</p>{% endif %}
 </div>
 <div class="table-wrap card">
@@ -30,7 +35,11 @@
     <tbody>
     {% for l in bill.lines %}
       <tr>
-        <td>{{ l.description }}{% if l.batch %}<br><small class="text-muted">Batch {{ l.batch.batch_no }}{% if l.batch.expiry_date %} · exp {{ l.batch.expiry_date.strftime('%d %b %Y') }}{% endif %}</small>{% endif %}</td>
+        {% set d = l.details or {} %}
+        <td>{{ l.description }}{% if l.batch %}<br><small class="text-muted">Batch {{ l.batch.batch_no }}{% if l.batch.expiry_date %} · exp {{ l.batch.expiry_date.strftime('%d %b %Y') }}{% endif %}</small>
+          {% elif d.batch or d.expiry %}<br><small class="text-muted">{% if d.batch %}Batch {{ d.batch }}{% endif %}{% if d.expiry %} · exp {{ d.expiry }}{% endif %}</small>{% endif %}
+          {% if d.item_code or d.mrp or d.mfg %}<br><small class="text-muted">{% if d.item_code %}Code {{ d.item_code }}{% endif %}{% if d.mfg %} · mfg {{ d.mfg }}{% endif %}{% if d.mrp %} · MRP {{ d.mrp }}{% endif %}</small>{% endif %}
+          {% if d.serials %}<br><small class="text-muted">Serial no{{ 's' if d.serials|length > 1 }}: <span class="mono">{{ d.serials|join(', ') }}</span></small>{% endif %}</td>
         <td>{{ l.hsn_or_sac_code or '' }}</td>
         <td class="num">{{ l.qty|qty }} {{ l.unit }}</td>
         <td class="num">{{ '%.2f'|format(l.rate) }}{% if l.discount_percent %}<br><small class="text-muted">-{{ l.discount_percent|qty }}%</small>{% endif %}</td>
@@ -52,6 +61,10 @@
     {% if bill.other_charges %}<div class="totals-row"><span>{{ bill.other_charges_label or 'Other charges' }}</span><span>{{ '%.2f'|format(bill.other_charges) }}</span></div>{% endif %}
     {% if bill.round_off %}<div class="totals-row"><span>Round off</span><span>{{ '%.2f'|format(bill.round_off) }}</span></div>{% endif %}
     <div class="totals-row grand"><span>{{ 'Payable to supplier' if bill.is_rcm else 'Bill total' }}</span><span>Rs. {{ '%.2f'|format(bill.grand_total) }}</span></div>
+    {% if bill.tds_amount %}
+    <div class="totals-row"><span>Less TDS{% if bill.tds_section %} ({{ bill.tds_section }}){% endif %}</span><span>- {{ '%.2f'|format(bill.tds_amount) }}</span></div>
+    <div class="totals-row grand"><span>Net payable to supplier</span><span>Rs. {{ '%.2f'|format(bill.net_payable) }}</span></div>
+    {% endif %}
     {% if bill.is_rcm %}<div class="totals-row"><span>GST you pay (RCM)</span><span>{{ '%.2f'|format(bill.total_tax) }}</span></div>{% endif %}
     <div class="totals-row"><span>Input tax credit</span><span>{{ '%.2f'|format(bill.itc_total) }}</span></div>
   </div>

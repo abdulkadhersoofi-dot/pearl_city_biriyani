@@ -53,7 +53,8 @@
         <p class="scan-verdict is-warn">{{ icon('triangle-alert') }}<span>Check the highlighted fields against the bill, correct them, then approve.</span></p>
       {% endif %}
       {% if einv.get('present') %}
-        <p class="m-0"><span class="pill {{ 'pill-ok' if einv.get('verified') else 'pill-warn' }}">e-Invoice QR {{ 'matches' if einv.get('verified') else 'found' }}</span>
+        <p class="m-0"><span class="pill pill-ok">{{ 'e-Invoice QR matches the print' if einv.get('verified') else 'e-Invoice QR used' }}</span>
+        <small class="block text-muted">The QR is signed by the government's invoice portal, so its GSTINs, invoice number, date and total are used over the print.</small>
         {% for n in einv.get('notes') or [] %}<small class="block text-muted">{{ n }}</small>{% endfor %}</p>
       {% endif %}
       {% if doc.duplicate_of %}<p class="scan-warn m-0">{{ icon('triangle-alert', 'icon-sm') }} This bill looks already entered: <strong>{{ doc.duplicate_of }}</strong>.</p>{% endif %}
@@ -83,7 +84,7 @@
       'gstin': val('gstin_id', (own.id|string) if own else ''),
       'gstinStates': gstins|map(attribute='id')|map('string')|list,
       'gstinStateCodes': gstins|map(attribute='state_code')|map('default', '', true)|list,
-      'readIgst': ex.get('igst') or 0,
+              'readIgst': ex.get('igst') or 0, 'tds': tds[0], 'tdsSection': tds[1],
       'rcm': (val('is_rcm', '1' if (ex.get('reverse_charge') or '')|lower in ('y', 'yes', 'true') else '')) == '1'
     }|tojson }}</script>
     <form method="post" action="{{ url_for('scan.post', doc_id=doc.id) }}" class="stack" novalidate x-data="scanReview()">
@@ -114,10 +115,11 @@
           {# the invoice #}
           <div class="inv-meta">
             <p class="inv-title">TAX INVOICE <small>(as read)</small></p>
-            <label><span class="inv-label">Invoice no.</span>
-              <input type="text" name="invoice_number" class="inv-input inv-mono {{ flag(flagged, 'invoice_number', 'inv_number') }}" value="{{ val('invoice_number', ex.get('invoice_number') or '') }}" maxlength="50"></label>
-            <label><span class="inv-label">Date</span>
-              <input type="date" name="invoice_date" class="inv-input {{ flag(flagged, 'invoice_date', 'date_sane') }}" value="{{ val('invoice_date', ex.get('invoice_date') or '') }}"></label>
+            {% set qr = einv.get('qr') or {} %}
+            <label><span class="inv-label">Invoice no.{% if qr.get('invoice_number') %} <span class="inv-qr" title="From the e-invoice QR">QR</span>{% endif %}</span>
+              <input type="text" name="invoice_number" class="inv-input inv-mono {{ flag(flagged, 'invoice_number', 'inv_number') if not qr.get('invoice_number') }}" value="{{ val('invoice_number', ex.get('invoice_number') or '') }}" maxlength="50"></label>
+            <label><span class="inv-label">Date{% if qr.get('invoice_date') %} <span class="inv-qr" title="From the e-invoice QR">QR</span>{% endif %}</span>
+              <input type="date" name="invoice_date" class="inv-input {{ flag(flagged, 'invoice_date', 'date_sane') if not qr.get('invoice_date') }}" value="{{ val('invoice_date', ex.get('invoice_date') or '') }}"></label>
             <label><span class="inv-label">Billed to</span>
               {% if gstins|length > 1 %}
               <select name="gstin_id" class="inv-select" x-model="gstin">
@@ -144,12 +146,13 @@
                 <th class="num" x-text="intra() ? 'CGST+SGST' : 'IGST'">GST</th>
                 <th class="num">Amount</th><th><span class="sr-only">Remove</span></th></tr>
             </thead>
-            <tbody>
-              <template x-for="(l, i) in lines" :key="i">
+            <template x-for="(l, i) in lines" :key="i">
+              <tbody class="inv-line">
                 <tr>
                   <td class="num inv-sno" x-text="i + 1"></td>
                   <td class="inv-desc">
                     <input class="inv-input" name="line_description[]" x-model="l.description" aria-label="Description">
+                    <button type="button" class="inv-more-btn" @click="l.open = !l.open" :aria-expanded="l.open ? 'true' : 'false'" x-text="moreLabel(l)"></button>
                     <select class="inv-select inv-item" name="line_product_id[]" x-model="l.product_id" x-show="kind === 'purchase'" :disabled="kind !== 'purchase'" aria-label="Item in your catalogue">
                       <option value="new" :selected="l.product_id === 'new'">+ New item in catalogue</option>
                       <option value="" :selected="l.product_id === ''">Not a stock item</option>
@@ -170,11 +173,30 @@
                   <td class="num"><strong x-text="money(taxable(l) + tax(l))"></strong></td>
                   <td><button type="button" class="inv-remove" @click="lines.splice(i, 1)" :disabled="lines.length < 2" aria-label="Remove this line">{{ icon('x') }}</button></td>
                 </tr>
-              </template>
-            </tbody>
+                <tr class="inv-more" x-show="l.open">
+                  <td></td>
+                  <td colspan="11">
+                    <div class="inv-more-grid">
+                      <label class="inv-more-serials"><span class="inv-label">Serial / IMEI nos. <small x-show="serialCount(l)" x-text="'(' + serialCount(l) + ')'"></small></span>
+                        <textarea class="inv-input inv-mono" name="line_serials[]" x-model="l.serials" rows="2" placeholder="One per line, or separated by commas" spellcheck="false"></textarea></label>
+                      <label><span class="inv-label">Item / part code</span>
+                        <input class="inv-input inv-mono" name="line_item_code[]" x-model="l.item_code" maxlength="64"></label>
+                      <label><span class="inv-label">Batch</span>
+                        <input class="inv-input inv-mono" name="line_batch[]" x-model="l.batch" maxlength="64"></label>
+                      <label><span class="inv-label">Mfg. date</span>
+                        <input type="date" class="inv-input" name="line_mfg[]" x-model="l.mfg"></label>
+                      <label><span class="inv-label">Expiry</span>
+                        <input type="date" class="inv-input" name="line_expiry[]" x-model="l.expiry"></label>
+                      <label><span class="inv-label">MRP</span>
+                        <input class="inv-input num" name="line_mrp[]" x-model="l.mrp" inputmode="decimal"></label>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </template>
           </table>
         </div>
-        <button type="button" class="btn btn-quiet btn-sm" @click="lines.push({product_id: '', options: [], description: '', hsn: '', qty: '1', unit: 'NOS', rate: '0', discount: '0', gst_rate: '18'})">{{ icon('plus') }}Add a line</button>
+        <button type="button" class="btn btn-quiet btn-sm" @click="lines.push({product_id: '', options: [], description: '', hsn: '', qty: '1', unit: 'NOS', rate: '0', discount: '0', gst_rate: '18', serials: '', item_code: '', batch: '', mfg: '', expiry: '', mrp: '', open: false})">{{ icon('plus') }}Add a line</button>
 
         {# tax summary and totals #}
         <div class="inv-foot">
@@ -195,14 +217,35 @@
             <div x-show="!intra()"><dt>IGST</dt><dd x-text="money(sum('tax'))"></dd></div>
             <div><dt>Round off</dt><dd x-text="money(total() - exact())"></dd></div>
             <div class="inv-grand"><dt>Total</dt><dd x-text="'Rs. ' + money(total())"></dd></div>
-            <div class="inv-printed {{ flag(flagged, 'invoice_value', 'totals_match') }}"><dt>Total printed on the bill</dt>
+            <div class="inv-tds"><dt>Less TDS
+                <select name="tds_section" class="inv-select" x-model="tdsSection" aria-label="TDS section">
+                  {% for code, label in tds_sections %}<option value="{{ code }}">{{ code if code and code != 'OTHER' else ('section' if not code else 'other') }}</option>{% endfor %}
+                </select></dt>
+              <dd><input type="text" name="tds_amount" class="inv-input num" inputmode="decimal" x-model="tds" placeholder="0.00" aria-label="TDS deducted"></dd></div>
+            <div class="inv-grand" x-show="num(tds) > 0" x-cloak><dt>Net payable</dt><dd x-text="'Rs. ' + money(total() - num(tds))"></dd></div>
+            <div class="inv-printed {{ flag(flagged, 'invoice_value', 'totals_match') if not (einv.get('qr') or {}).get('invoice_value') }}"><dt>Total printed on the bill</dt>
               <dd><input type="text" name="bill_total" class="inv-input num" inputmode="decimal" x-model="billTotal" aria-label="Total printed on the bill"></dd></div>
             <div class="inv-diff" x-show="billTotal > 0 && Math.abs(diff()) > 1"><dt>Difference</dt><dd x-text="'Rs. ' + money(Math.abs(diff()))"></dd></div>
           </dl>
         </div>
+        <p class="inv-note" x-show="num(tds) > 0" x-cloak>TDS is income tax you hold back and pay to the government: the bill and its GST stay at the full total; the supplier is owed the net.</p>
         {% if ex.get('cgst') or ex.get('sgst') or ex.get('igst') %}
         <p class="inv-note">As read from the bill: taxable {{ (ex.get('taxable_value') or 0)|inr }}{% if ex.get('cgst') %}, CGST {{ ex.get('cgst')|inr }}{% endif %}{% if ex.get('sgst') %}, SGST {{ ex.get('sgst')|inr }}{% endif %}{% if ex.get('igst') %}, IGST {{ ex.get('igst')|inr }}{% endif %}{% if ex.get('round_off') %}, round off {{ ex.get('round_off')|inr }}{% endif %}, total {{ (ex.get('invoice_value') or 0)|inr }}.</p>
         {% endif %}
+
+        {% set any_detail = details.values()|select|list %}
+        <details class="inv-details" {{ 'open' if any_detail }}>
+          <summary><strong>Other details on the bill</strong> <span class="text-muted">- references, bank details, terms{% if any_detail %} · {{ any_detail|length }} found{% endif %}</span></summary>
+          <div class="inv-details-grid">
+            {% for key, label in detail_fields %}
+            <label><span class="inv-label">{{ label }}</span>
+              <input type="text" name="detail_{{ key }}" class="inv-input {{ 'inv-mono' if key in ('irn', 'bank_account', 'bank_ifsc', 'ewb_number', 'ack_number') }}" value="{{ details.get(key, '') }}" maxlength="500"></label>
+            {% endfor %}
+            <label><span class="inv-label">Discount on the bill (Rs.)</span>
+              <input type="text" name="detail_discount" class="inv-input num" inputmode="decimal" value="{{ details.get('discount', '') }}"></label>
+          </div>
+          <p class="inv-note">Not needed for GST - kept with the posted bill for warranty claims, follow-ups and payments.</p>
+        </details>
       </section>
 
       {# where it goes #}
@@ -228,7 +271,7 @@
               {% for mode, label in payment_modes.items() %}<option value="{{ mode.value }}">{{ label }}</option>{% endfor %}
             </select></label>
           <label class="field"><span class="field-label">Amount (with GST)</span>
-            <input type="text" name="amount" class="field-input num" inputmode="decimal" :value="billTotal || total()" :disabled="kind !== 'expense'"></label>
+            <input type="text" name="amount" class="field-input num" inputmode="decimal" :value="num(tds) > 0 ? total() : (billTotal || total())" :disabled="kind !== 'expense'"></label>
           <label class="field"><span class="field-label">GST rate</span>
             <select name="gst_rate" class="field-input" :disabled="kind !== 'expense'">
               {% for r in ['0','5','12','18','28','40','0.1','0.25','1','1.5','3','6','7.5'] %}<option value="{{ r }}" {{ 'selected' if r == main_rate|string }}>{{ r }}%</option>{% endfor %}
@@ -277,7 +320,12 @@
     var d = el ? JSON.parse(el.textContent) : {};
     var r2 = function (v) { return Math.round(v * 100) / 100; };
     return {
-      lines: d.lines || [], billTotal: Number(d.billTotal) || 0, kind: d.kind || "purchase",
+      lines: (d.lines || []).map(function (l) {
+        l.open = !!(l.serials || l.item_code || l.batch || l.mfg || l.expiry || parseFloat(l.mrp));
+        return l;
+      }),
+      billTotal: Number(d.billTotal) || 0, kind: d.kind || "purchase",
+      tds: d.tds || "", tdsSection: d.tdsSection || "",
       supplier: String(d.supplier || "new"), supplierGstin: d.supplierGstin || "", gstin: String(d.gstin || ""),
       rcm: !!d.rcm,
       num: function (v) { var n = parseFloat(String(v === undefined || v === null ? "" : v).replace(/,/g, "")); return isNaN(n) ? 0 : n; },
@@ -316,7 +364,21 @@
       },
       exact: function () { return this.sum("taxable") + (this.rcm ? 0 : this.sum("tax")); },
       total: function () { return Math.round(this.exact()); },
-      diff: function () { return this.total() - this.num(this.billTotal); },
+      diff: function () {
+        // The printed total is the invoice total - or, on a bill that
+        // prints "Less TDS", the net after it: whichever is nearer.
+        var gross = this.total() - this.num(this.billTotal), net = gross - this.num(this.tds);
+        return this.num(this.tds) > 0 && Math.abs(net) < Math.abs(gross) ? net : gross;
+      },
+      serialCount: function (l) { return String(l.serials || "").split(/[,\n]+/).filter(function (x) { return x.trim(); }).length; },
+      moreLabel: function (l) {
+        var bits = [], n = this.serialCount(l);
+        if (n) bits.push(n + " serial no" + (n > 1 ? "s" : ""));
+        if (l.batch) bits.push("batch " + l.batch);
+        if (l.item_code) bits.push("code " + l.item_code);
+        if (l.expiry) bits.push("exp " + l.expiry);
+        return (l.open ? "▾ " : "▸ ") + (bits.length ? bits.join(" · ") : "Serial nos., batch, code, MRP");
+      },
       money: function (v) { return Number(v || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
     };
   }

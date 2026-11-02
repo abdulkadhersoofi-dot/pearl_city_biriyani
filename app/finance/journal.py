@@ -12,7 +12,7 @@ Ledgers used:
   Sundry Creditors   each supplier
   Sales Accounts     "Sales @ <rate>%" (and "Sales - Margin Scheme")
   Purchase Accounts  "Purchases @ <rate>%"
-  Duties & Taxes     Output / Input CGST, SGST, IGST; "RCM Tax Payable"
+  Duties & Taxes     Output / Input CGST, SGST, IGST; "RCM Tax Payable"; "TDS Payable"
   Cash-in-Hand       "Cash"
   Bank Accounts      "Bank" (UPI, card, transfer, cheque, wallet)
   Indirect Expenses  each expense category; "Round Off"
@@ -49,6 +49,7 @@ GROUPS = {
 CASH, BANK, ROUND_OFF, COUNTER = "Cash", "Bank", "Round Off", "Counter Sales"
 FREIGHT = "Freight & Other Charges on Purchases"
 RCM_PAYABLE = "RCM Tax Payable"
+TDS_PAYABLE = "TDS Payable"
 MARGIN_SALES = "Sales - Margin Scheme"
 
 
@@ -253,7 +254,11 @@ def _purchase_vouchers(tenant, start, end, book) -> list[Voucher]:
         if bill.is_rcm:
             v.cr(book.add(RCM_PAYABLE, "tax"), bill.total_tax)
             # non-claimable RCM tax already went into cost above
-        v.cr(party, bill.grand_total)
+        # TDS held back from the supplier is owed to the government instead.
+        tds = Decimal(bill.tds_amount or 0)
+        v.cr(party, Decimal(bill.grand_total) - tds)
+        if tds:
+            v.cr(book.add(TDS_PAYABLE, "tax"), tds)
         out.append(v.balance())
     for ret in PurchaseReturn.query.filter(PurchaseReturn.tenant_id == tenant.id,
                                            PurchaseReturn.status == PurchaseStatus.POSTED,

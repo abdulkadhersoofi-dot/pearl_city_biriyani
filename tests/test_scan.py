@@ -650,3 +650,158 @@ def test_the_bills_to_check_are_a_table_in_upload_order(client, db, scanning, cl
     assert "Bill 1 of 2" in page and f'/scan/{second}"' in page   # Next
     res = client.post(f"/scan/{first}/post", data=_purchase_form())
     assert res.headers["Location"].endswith(f"/scan/{second}")   # straight on to the next bill
+
+
+# --- the same supplier never twice; the QR wins; TDS; the bill's other details -----------------
+
+def test_names_written_differently_are_one_supplier():
+    from app.scan.services import names_alike
+
+    assert names_alike("M/s. A.B.C. Traders Pvt. Ltd.", "ABC TRADERS")
+    assert names_alike("Sri Balaji Traders", "Balaji Traders")
+    assert names_alike("Kumar Auto Spares", "Kumar Auto Spare")
+    assert names_alike("S K Hardware", "SK Hardware & Co")
+    assert not names_alike("Balaji Traders", "Balaji Steel Traders")
+    assert not names_alike("Sri Ram Traders", "Sri Ram Enterprises")
+    assert not names_alike("Vijay Electricals", "Ajay Electricals")
+
+
+def _supplier(db, tenant, **kw):
+    supplier = Supplier(tenant_id=tenant.id, **kw)
+    db.session.add(supplier)
+    db.session.commit()
+    return supplier
+
+
+def test_new_on_the_screen_still_posts_to_the_supplier_already_there(client, db, scanning, client_admin, monkeypatch):
+    # entered earlier by hand, without a GSTIN and in another style
+    earlier = _supplier(db, scanning, name="TUMKUR SPICES PRIVATE LIMITED")
+    _login(client)
+    doc_id = _ready_doc(client, monkeypatch)
+    data = json.loads(client.get(f"/scan/{doc_id}").get_data(as_text=True)
+                      .split('id="scan-data">', 1)[1].split("</script>", 1)[0])
+    assert data["supplier"] == str(earlier.id)          # picked on the screen
+    res = client.post(f"/scan/{doc_id}/post", data=_purchase_form(supplier_id="new"))
+    assert res.status_code == 302, res.data[:400]
+    assert Supplier.query.count() == 1                  # no second copy
+    assert PurchaseBill.query.one().supplier_id == earlier.id
+    assert earlier.gstin == SELLER and earlier.state_code == "29"   # what was missing is filled in
+
+
+def test_a_misread_gstin_or_a_second_bill_reuses_the_supplier(client, db, scanning, client_admin, monkeypatch):
+    _login(client)
+    first = _ready_doc(client, monkeypatch)
+    assert client.post(f"/scan/{first}/post", data=_purchase_form(supplier_id="new")).status_code == 302
+    near = SELLER[:-1] + ("B" if SELLER[-1] != "B" else "C")   # one character off: fails its check digit
+    second = _ready_doc(client, monkeypatch, bill=_bill(invoice_number="TS/26-27/0050"), photo=_jpeg("ANOTHER BILL"))
+    res = client.post(f"/scan/{second}/post", data=_purchase_form(
+        supplier_id="new", supplier_gstin=near, supplier_name="Tumkur Spices", invoice_number="TS/26-27/0050"))
+    assert res.status_code == 302, res.data[:400]
+    assert Supplier.query.count() == 1 and PurchaseBill.query.count() == 2
+
+
+def test_two_registrations_are_two_suppliers(app, db, scanning):
+    from app.scan.services import find_supplier
+
+    with app.test_request_context():
+        _supplier(db, scanning, name="Tumkur Spices", gstin=SELLER, state_code="29")
+        assert find_supplier(scanning, "Tumkur Spices Pvt Ltd", SELLER).gstin == SELLER
+        assert find_supplier(scanning, "Tumkur Spices", "27AAPFU0939F1ZV") is None   # a valid, different GSTIN
+        assert find_supplier(scanning, "Tumkur Spices", "").gstin == SELLER          # GSTIN not read: by name
+        assert find_supplier(scanning, "Mysore Spices", "") is None
+
+
+def test_the_einvoice_qr_number_date_and_total_win_over_the_print():
+    ex = _bill(invoice_number="TS/26-27/OO42", invoice_date="2026-10-02", invoice_value=5830,
+               flags=["invoice_number"])
+    reader._apply_qr(ex, {"supplier_gstin": SELLER, "receiver_gstin": OWN, "invoice_number": "TS/26-27/0042",
+                          "invoice_date": "2026-10-20", "invoice_value": 5380, "irn": "ab" * 32})
+    assert ex["invoice_number"] == "TS/26-27/0042" and ex["invoice_date"] == "2026-10-20"
+    assert ex["invoice_value"] == 5380 and "invoice_number" not in ex["flags"]
+    assert set(ex["einvoice"]["replaced"]) >= {"invoice_number", "invoice_date", "invoice_value"}
+    assert any("print read 'TS/26-27/OO42'" in n for n in ex["einvoice"]["notes"])
+    # a later repair can't undo it
+    ex["invoice_number"], ex["supplier_gstin"] = "X", STRANGER
+    reader._hold_qr(ex)
+    assert ex["invoice_number"] == "TS/26-27/0042" and ex["supplier_gstin"] == SELLER
+
+
+def test_a_bill_printing_less_tds_keeps_its_net_against_the_qr():
+    ex = _bill(tds=5, invoice_value=5375)
+    reader._apply_qr(ex, {"supplier_gstin": SELLER, "invoice_number": "TS/26-27/0042", "invoice_value": 5380})
+    assert ex["invoice_value"] == 5375
+
+
+def test_tds_on_a_bill_posts_and_the_supplier_is_owed_the_net(client, db, scanning, client_admin, monkeypatch):
+    from datetime import date as _d
+
+    from app.accounts.payables import supplier_account
+    from app.finance import journal
+
+    _login(client)
+    doc_id = _ready_doc(client, monkeypatch, bill=_bill(tds=5, tds_section="u/s 194Q", invoice_value=5375))
+    html = client.get(f"/scan/{doc_id}").get_data(as_text=True)
+    data = json.loads(html.split('id="scan-data">', 1)[1].split("</script>", 1)[0])
+    assert data["tds"] == "5.00" and data["tdsSection"] == "194Q"
+    # the printed total is the net: no "difference" to accept
+    res = client.post(f"/scan/{doc_id}/post", data=_purchase_form(bill_total="5375", tds_amount="5",
+                                                                  tds_section="194Q"))
+    assert res.status_code == 302, res.data[:600]
+    bill = PurchaseBill.query.one()
+    assert bill.grand_total == Decimal("5380.00") and bill.tds_amount == Decimal("5.00")
+    assert bill.tds_section == "194Q" and bill.net_payable == Decimal("5375.00")
+    account = supplier_account(scanning, bill.supplier)
+    assert account.balance == Decimal("5375.00")
+    _, vouchers = journal.build(scanning, _d(2000, 1, 1), _d(2100, 1, 1))
+    v = next(v for v in vouchers if v.number == bill.number)
+    assert v.debits == v.credits and any(e.ledger == "TDS Payable" and e.credit == Decimal("5.00") for e in v.entries)
+    view = client.get(f"/purchases/{bill.id}").get_data(as_text=True)
+    assert "Less TDS" in view and "5375.00" in view
+
+
+def test_serial_numbers_and_the_bills_references_are_kept(client, db, scanning, client_admin, monkeypatch):
+    _login(client)
+    laptop = _bill(po_number="PO-778", challan_number="DC/91", bank_name="HDFC Bank", bank_ifsc="HDFC0001234",
+                   line_items=[{"description": "Laptop i5", "item_code": "LT-5520", "hsn_sac": "84713010",
+                                "quantity": 2, "unit": "NOS", "rate_per_unit": 2500, "gst_rate": 18,
+                                "taxable_value": 5000, "igst": 900, "serial_numbers": ["SN-A1", "SN-A2"],
+                                "expiry": "", "mfg_date": "03/2026"}],
+                   taxable_value=5000, igst=900, invoice_value=5900)
+    doc_id = _ready_doc(client, monkeypatch, bill=laptop)
+    html = client.get(f"/scan/{doc_id}").get_data(as_text=True)
+    data = json.loads(html.split('id="scan-data">', 1)[1].split("</script>", 1)[0])
+    line = data["lines"][0]
+    assert line["serials"] == "SN-A1\nSN-A2" and line["item_code"] == "LT-5520" and line["mfg"] == "2026-03-01"
+    assert 'name="detail_po_number"' in html and 'value="PO-778"' in html and "Other details on the bill" in html
+    res = client.post(f"/scan/{doc_id}/post", data=_purchase_form(**{
+        "bill_total": "5900", "line_description[]": ["Laptop i5"], "line_hsn[]": ["84713010"], "line_qty[]": ["2"],
+        "line_unit[]": ["NOS"], "line_rate[]": ["2500"], "line_discount[]": ["0"], "line_gst_rate[]": ["18"],
+        "line_itc[]": ["eligible"], "line_serials[]": ["SN-A1\nSN-A2"], "line_item_code[]": ["LT-5520"],
+        "line_batch[]": [""], "line_mfg[]": ["2026-03-01"], "line_expiry[]": [""], "line_mrp[]": [""],
+        "detail_po_number": "PO-778", "detail_challan_number": "DC/91", "detail_bank_ifsc": "HDFC0001234"}))
+    assert res.status_code == 302, res.data[:600]
+    bill = PurchaseBill.query.one()
+    assert bill.details == {"Your order (PO) no.": "PO-778", "Challan / delivery note": "DC/91",
+                            "IFSC": "HDFC0001234"}
+    assert bill.lines[0].details == {"serials": ["SN-A1", "SN-A2"], "item_code": "LT-5520", "mfg": "2026-03-01"}
+    view = client.get(f"/purchases/{bill.id}").get_data(as_text=True)
+    assert "SN-A1, SN-A2" in view and "PO-778" in view and "LT-5520" in view
+
+
+def test_the_reader_keeps_serials_and_references():
+    shaped = reader._shape(_bill(po_number="PO-1", line_items=[
+        {"description": "Phone", "quantity": 1, "taxable_value": 100, "serial_numbers": "IMEI1, IMEI2",
+         "batch": "B7", "mrp": "120"}]))
+    assert shaped["po_number"] == "PO-1"
+    assert shaped["line_items"][0]["serial_numbers"] == ["IMEI1", "IMEI2"]
+    assert shaped["line_items"][0]["batch"] == "B7" and shaped["line_items"][0]["mrp"] == 120
+
+
+def test_printed_dates_become_iso():
+    from app.scan.services import iso_date
+
+    assert iso_date("03/27", month_end=True) == "2027-03-31"
+    assert iso_date("MAR 2027", month_end=True) == "2027-03-31"
+    assert iso_date("05/10/2026") == "2026-10-05"
+    assert iso_date("2026-10-05") == "2026-10-05"
+    assert iso_date("soon") == ""

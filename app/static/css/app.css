@@ -2205,6 +2205,28 @@ html.arfa-dialog-open { overflow: hidden; }
 .scan-invoice .inv-printed .inv-input { text-align: right; font-weight: 700; }
 .inv-diff { color: var(--color-warn-text); font-weight: 700; }
 .inv-diff dt { color: inherit; }
+.inv-qr { display: inline-block; padding: 0 5px; border-radius: 4px; background: var(--color-primary-soft);
+  color: var(--color-primary); font-weight: 700; font-size: 0.62rem; letter-spacing: 0.04em; vertical-align: 1px; }
+.inv-more-btn { display: block; border: 0; background: none; padding: 2px 1px; cursor: pointer; text-align: left;
+  font: inherit; font-size: 0.76rem; color: var(--color-primary); }
+.inv-more-btn:hover { text-decoration: underline; }
+.inv-table tr.inv-more td { background: var(--color-surface-alt, rgba(0, 0, 0, 0.025)); padding: 6px 4px 10px; }
+.inv-line tr:first-child td { border-bottom-style: dashed; }
+.inv-more-grid { display: grid; gap: 8px 12px; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
+.inv-more-grid label, .inv-details-grid label { display: grid; gap: 2px; }
+.inv-more-serials { grid-column: span 2; }
+.scan-invoice .inv-more-grid textarea { resize: vertical; min-height: 44px; }
+.inv-tds dt { display: flex; align-items: center; gap: 6px; }
+.scan-invoice .inv-tds .inv-select { width: auto; font-size: 0.8rem; padding: 2px; }
+.inv-tds dd { width: 120px; }
+.scan-invoice .inv-tds .inv-input { text-align: right; }
+.inv-details { border-top: 1px solid var(--color-border); padding-top: 10px; }
+.inv-details summary { cursor: pointer; }
+.inv-details-grid { display: grid; gap: 8px 14px; margin: 10px 0 6px;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
+.detail-list { display: grid; gap: 6px 18px; margin: 8px 0 0; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); }
+.detail-list dt { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-muted); }
+.detail-list dd { margin: 0; overflow-wrap: anywhere; }
 /* The invoice needs the width: side by side with the picture only on wide screens. */
 @media (min-width: 1680px) { .scan-review { grid-template-columns: minmax(0, 0.6fr) minmax(0, 1.4fr); } }
 @media (max-width: 1679px) {

@@ -119,6 +119,15 @@ class PurchaseBill(db.Model, TenantScopedMixin, TimestampMixin):
     # For a margin voucher: who sold the goods - address, ID proof, how
     # they were paid ({"address", "id_type", "id_no", "paid_by"}).
     seller_details = db.Column(db.JSON)
+    # Income tax deducted at source on this bill (194Q on goods, 194C /
+    # 194J on work and fees): the supplier is owed the total less it, and
+    # it is paid to the government instead. It doesn't touch the GST.
+    tds_amount = db.Column(db.Numeric(12, 2), nullable=False, default=0, server_default="0")
+    tds_section = db.Column(db.String(10))
+    # Everything else printed on the bill that isn't needed for GST but is
+    # for warranty and follow-up: order / challan / dispatch references,
+    # the supplier's bank details, payment terms ({"label": "value"}).
+    details = db.Column(db.JSON)
     notes = db.Column(db.Text)
     attachment_id = db.Column(db.Integer, db.ForeignKey("uploaded_images.id", name="fk_purchase_bills_attachment"))
     created_by_id = db.Column(db.Integer, db.ForeignKey("users.id", name="fk_purchase_bills_created_by"), nullable=False)
@@ -139,6 +148,11 @@ class PurchaseBill(db.Model, TenantScopedMixin, TimestampMixin):
     @property
     def itc_total(self):
         return self.itc_cgst + self.itc_sgst + self.itc_igst
+
+    @property
+    def net_payable(self):
+        """What the supplier is paid: the bill's total less the TDS."""
+        return self.grand_total - (self.tds_amount or 0)
 
 
 class PurchaseBillLine(db.Model, TimestampMixin):
@@ -170,6 +184,10 @@ class PurchaseBillLine(db.Model, TimestampMixin):
     # unit's price is what the margin is later worked out against.
     is_margin_scheme = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
     sort_order = db.Column(db.Integer, nullable=False, default=0)
+    # As printed against the line: serial / IMEI numbers, the supplier's
+    # item code, batch, dates, MRP - kept for warranty and stock queries
+    # even when the item doesn't track them ({"serials": [...], ...}).
+    details = db.Column(db.JSON)
 
     product = db.relationship("Product")
     batch = db.relationship("ProductBatch")
