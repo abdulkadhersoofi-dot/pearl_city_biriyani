@@ -251,8 +251,10 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     addPdf(pdf, pages, retake)
                 }
-            } catch (e: IOException) {
-                withContext(Dispatchers.Main) { Toast.makeText(this@MainActivity, e.message, Toast.LENGTH_LONG).show() }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@MainActivity, e.message ?: "That bill couldn't be saved - try again.", Toast.LENGTH_LONG).show()
+                }
             }
             SendWorker.start(applicationContext)
         }
@@ -309,8 +311,10 @@ class MainActivity : AppCompatActivity() {
                 try {
                     val type = contentResolver.getType(uri) ?: ""
                     if (type == "application/pdf") addPickedPdf(uri) else addPhoto(uri, null)
-                } catch (e: IOException) {
-                    withContext(Dispatchers.Main) { Toast.makeText(this@MainActivity, e.message, Toast.LENGTH_LONG).show() }
+                } catch (e: Exception) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(this@MainActivity, e.message ?: "That file couldn't be added.", Toast.LENGTH_LONG).show()
+                    }
                 }
             }
             SendWorker.start(applicationContext)

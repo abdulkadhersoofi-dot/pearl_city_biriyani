@@ -18,9 +18,12 @@ object Images {
      * slow part on mobile data. */
     fun prepareJpeg(context: Context, uri: Uri, out: File, maxPx: Int = 2400, quality: Int = 88) {
         val resolver = context.contentResolver
+        // Only the size first: this decode gives no picture back (null) by design,
+        // so the size it fills in is what tells whether the file is a picture.
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
-            ?: throw IOException("That picture couldn't be opened.")
+        val stream = resolver.openInputStream(uri) ?: throw IOException("That picture couldn't be opened.")
+        stream.use { BitmapFactory.decodeStream(it, null, bounds) }
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) throw IOException("That file isn't a picture ARFA can read.")
         var sample = 1
         while (max(bounds.outWidth, bounds.outHeight) / (sample * 2) >= maxPx) sample *= 2
         val decoded = resolver.openInputStream(uri)?.use {
