@@ -155,8 +155,10 @@ class BillActivity : AppCompatActivity() {
         if (showKinds) {
             for (i in 0 until kinds.length()) {
                 val k = kinds.getString(i)
+                val labels = body.optJSONObject("kind_labels")
                 b.kinds.addView(Chip(this).apply {
-                    text = when (k) { "purchase" -> "Purchase bill"; "expense" -> "Expense"; else -> "Keep on file" }
+                    text = labels?.optString(k)?.takeIf { it.isNotEmpty() }
+                        ?: when (k) { "purchase" -> "Purchase bill"; "expense" -> "Expense"; else -> "Keep on file" }
                     isCheckable = true
                     isChecked = k == kind
                     setOnClickListener { kind = k; paidByChips() }
@@ -349,7 +351,8 @@ class BillActivity : AppCompatActivity() {
         lifecycleScope.launch {
             try {
                 withContext(Dispatchers.IO) { Api.post("/bills/$id/approve", changes) }
-                Toast.makeText(this@BillActivity, if (kind == "file") "Kept on file." else "Posted.", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@BillActivity, when (kind) { "file" -> "Kept on file."; "purchase", "expense" -> "Posted."
+                    else -> "Entered." }, Toast.LENGTH_SHORT).show()
                 finish()
             } catch (e: ApiError) {
                 if (e.code == "difference") {

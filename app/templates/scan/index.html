@@ -103,19 +103,20 @@
       {% set check = (d.validation or {}).get('status') %}
       {% set gst = (ex.cgst or 0) + (ex.sgst or 0) + (ex.igst or 0) %}
       {% set state = 'dup' if d.duplicate_of else ('passed' if check == 'verified' else 'look') %}
-      <tr data-supplier="{{ (ex.supplier_gstin or ex.supplier_name or '')|trim }}" data-check="{{ state }}"
+      {% set who = party(d) %}
+      <tr data-supplier="{{ (who[1] or who[0] or '')|trim }}" data-check="{{ state }}"
           data-kind="{{ d.category or '' }}" data-uploaded="{{ d.created_at|ist('%Y-%m-%d') }}"
-          data-s-supplier="{{ (ex.supplier_name or d.filename)|lower }}" data-s-bill="{{ ex.invoice_number or '' }}"
+          data-s-supplier="{{ (who[0] or d.filename)|lower }}" data-s-bill="{{ ex.invoice_number or '' }}"
           data-s-date="{{ ex.invoice_date or '' }}" data-s-taxable="{{ ex.taxable_value or 0 }}" data-s-gst="{{ gst }}"
           data-s-total="{{ ex.invoice_value or 0 }}" data-s-kind="{{ d.category or '' }}" data-s-check="{{ state }}"
           data-s-uploaded="{{ d.created_at.isoformat() if d.created_at else '' }}" data-s-read="{{ d.read_at.isoformat() if d.read_at else '' }}"
-          data-text="{{ [ex.supplier_name, ex.supplier_gstin, ex.invoice_number, ex.invoice_date, d.filename,
+          data-text="{{ [who[0], who[1], ex.invoice_number, ex.invoice_date, d.filename,
                          ((ex.invoice_value or 0)|inr), ex.invoice_value, ex.taxable_value, (ex.taxable_value or 0)|inr,
                          labels.get(d.category or '', d.category), d.created_at|ist('%d %b %Y'), d.duplicate_of, d.message]
                         |select|join(' ')|lower }}">
         <td class="num" data-n>{{ loop.index }}</td>
-        <td><a href="{{ url_for('scan.review', doc_id=d.id) }}"><strong data-hl>{{ ex.supplier_name or d.filename }}</strong></a>
-          <small class="block text-muted" data-hl>{{ ex.supplier_gstin or ('No GSTIN' if d.read_at else d.filename) }}</small></td>
+        <td><a href="{{ url_for('scan.review', doc_id=d.id) }}"><strong data-hl>{{ who[0] or d.filename }}</strong></a>
+          <small class="block text-muted" data-hl>{{ who[1] or ('No GSTIN' if d.read_at else d.filename) }}</small></td>
         <td data-hl>{{ ex.invoice_number or '-' }}</td>
         <td>{{ ex.invoice_date or '-' }}</td>
         <td class="num">{{ (ex.taxable_value or 0)|inr }}</td>

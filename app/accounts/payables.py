@@ -6,6 +6,7 @@ the documents - same shape as app.accounts.receivables:
     charge that's without the tax, which goes to the government; less
     any TDS deducted, which is paid to the government too)
   - posted purchase returns (debit notes) against those bills
+  - / + the supplier's own credit / debit notes (SupplierNote)
   + posted expenses booked to this supplier as "unpaid"
   - payment vouchers (a bounced cheque pays nothing)
 
@@ -19,7 +20,7 @@ from decimal import Decimal
 from app.accounts.receivables import AGE_BUCKETS, LedgerEntry, OpenItem
 from app.models.accounts import ChequeStatus, SupplierPayment, VoucherStatus
 from app.models.expense import Expense, ExpensePaymentMode, ExpenseStatus
-from app.models.purchase import PurchaseBill, PurchaseReturn, PurchaseStatus, Supplier
+from app.models.purchase import PurchaseBill, PurchaseReturn, PurchaseStatus, Supplier, SupplierNote
 
 ZERO = Decimal("0.00")
 
@@ -100,6 +101,33 @@ def supplier_account(tenant, supplier: Supplier, with_entries: bool = True) -> S
             items[f"purchase_bill:{ret.purchase_bill_id}"].amount -= amount
             entries.append(LedgerEntry(ret.return_date, "purchase_return", ret.number, "Goods returned (debit note)",
                                        debit=amount, link=("purchases.view_return", {"return_id": ret.id}), order=2))
+
+    # The supplier's own notes: a credit note takes off what is owed (off its
+    # bill, when it names one); a debit note is owed like a bill.
+    notes = SupplierNote.query.filter_by(tenant_id=tenant.id, supplier_id=supplier.id, status=PurchaseStatus.POSTED)
+    if start:
+        notes = notes.filter(SupplierNote.note_date >= start)
+    for note in notes.order_by(SupplierNote.note_date, SupplierNote.id).all():
+        amount = Decimal(note.grand_total)
+        link = ("purchases.view_supplier_note", {"note_id": note.id})
+        if note.is_credit:
+            key = f"purchase_bill:{note.purchase_bill_id}"
+            if note.purchase_bill_id and key in items:
+                items[key].amount -= amount
+            else:
+                account.on_account += amount
+            entries.append(LedgerEntry(note.note_date, "supplier_note", note.note_number,
+                                       f"Credit note {note.note_number}", debit=amount, link=link, order=2))
+        else:
+            key = f"purchase_bill:{note.purchase_bill_id}"
+            if note.purchase_bill_id and key in items:
+                items[key].amount += amount   # paid with its bill
+            else:
+                item = OpenItem("supplier_note", note.id, f"Debit note {note.note_number}", note.note_date,
+                                _due(note.note_date, supplier), amount)
+                items[item.key] = item
+            entries.append(LedgerEntry(note.note_date, "supplier_note", note.note_number,
+                                       f"Debit note {note.note_number}", credit=amount, link=link, order=1))
 
     expenses = Expense.query.filter_by(tenant_id=tenant.id, supplier_id=supplier.id, status=ExpenseStatus.POSTED,
                                        payment_mode=ExpensePaymentMode.UNPAID)

@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Supplier credit / debit notes - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header"><h1>Credit and debit notes from suppliers</h1></div>
+{% include "purchases/_nav.html" %}
+<p class="text-muted">A supplier's credit note takes off what you owe them and its GST off your input tax credit; a debit note adds to both. Scan the note in <a href="{{ url_for('scan.index') }}">Scan bills</a> to enter it. Goods sent back are a <a href="{{ url_for('purchases.returns') }}">return</a> instead.</p>
+<div class="table-wrap card">
+  <table>
+    <thead><tr><th>Note</th><th>Supplier</th><th>Against</th><th>Date</th><th class="num">Value</th><th class="num">ITC</th><th>Status</th></tr></thead>
+    <tbody>
+    {% for n in notes %}
+      <tr>
+        <td><a href="{{ url_for('purchases.view_supplier_note', note_id=n.id) }}">{{ n.note_number }}</a>
+          <small class="block text-muted">{{ 'Credit note' if n.is_credit else 'Debit note' }}</small></td>
+        <td>{{ n.supplier_snapshot.name }}</td>
+        <td>{% if n.bill %}<a href="{{ url_for('purchases.view_bill', bill_id=n.purchase_bill_id) }}">{{ n.bill.supplier_invoice_no }}</a>{% else %}-{% endif %}</td>
+        <td>{{ n.note_date.strftime('%d %b %Y') }}</td>
+        <td class="num">{{ '- ' if n.is_credit else '' }}{{ '%.2f'|format(n.grand_total) }}</td>
+        <td class="num">{{ '- ' if n.is_credit else '' }}{{ '%.2f'|format(n.itc_total) }}</td>
+        <td><span class="status-badge {{ 'status-void' if n.status.value == 'voided' else 'status-issued' }}">{{ n.status.value|title }}</span></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="7" class="empty-state">No notes from suppliers yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

@@ -844,6 +844,19 @@ def itc_summary(tenant: Tenant, gstin: Gstin, period: str) -> dict:
         b2["cgst"] += ret.itc_cgst
         b2["sgst"] += ret.itc_sgst
         b2["igst"] += ret.itc_igst
+    # The suppliers' own notes: a credit note's GST comes back off the
+    # credit (with the returns, 4B(2)); a debit note's is credit (4A(5)).
+    from app.models.purchase import SupplierNote
+
+    for note in SupplierNote.query.filter(
+        SupplierNote.tenant_id == tenant.id, SupplierNote.gstin_id == gstin.id,
+        SupplierNote.status == PurchaseStatus.POSTED, SupplierNote.note_date >= start, SupplierNote.note_date <= end,
+    ):
+        target = b2 if note.is_credit else a5
+        target["taxable_value"] += note.total_taxable_value
+        target["cgst"] += note.itc_cgst
+        target["sgst"] += note.itc_sgst
+        target["igst"] += note.itc_igst
     # Expenses with a GST bill count exactly like a purchase bill: their
     # tax is availed in 4A and whatever of it isn't credit (blocked, or
     # the client can't claim) is reversed in 4B(1).

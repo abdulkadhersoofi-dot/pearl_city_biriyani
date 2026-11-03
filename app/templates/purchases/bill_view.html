@@ -86,6 +86,23 @@
 </div>
 {% endif %}
 
+{% if bill.supplier_notes %}
+<h2>Supplier's credit / debit notes</h2>
+<div class="table-wrap card">
+  <table>
+    <thead><tr><th>Note</th><th>Date</th><th class="num">Value</th><th>Status</th></tr></thead>
+    <tbody>
+    {% for n in bill.supplier_notes %}
+      <tr><td><a href="{{ url_for('purchases.view_supplier_note', note_id=n.id) }}">{{ n.note_number }}</a> <span class="tag">{{ 'Credit' if n.is_credit else 'Debit' }}</span></td>
+        <td>{{ n.note_date.strftime('%d %b %Y') }}</td>
+        <td class="num">{{ '- ' if n.is_credit else '+ ' }}{{ '%.2f'|format(n.grand_total) }}</td>
+        <td><span class="status-badge {{ 'status-void' if n.status.value == 'voided' else 'status-issued' }}">{{ n.status.value|title }}</span></td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
 {% if bill.status.value == 'posted' %}
 <form method="post" action="{{ url_for('purchases.void_bill', bill_id=bill.id) }}" class="card row void-box gap-10 items-end">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

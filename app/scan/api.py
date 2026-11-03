@@ -225,7 +225,7 @@ def _bubble(doc: ScanDocument) -> dict:
     phone = doc.phone_read or {}
     return {
         "id": doc.id, "status": doc.status, "state": _state(doc),
-        "supplier": ex.get("supplier_name") or "", "gstin": ex.get("supplier_gstin") or "",
+        "supplier": services.party(doc)[0], "gstin": services.party(doc)[1],
         "invoice_number": ex.get("invoice_number") or "", "invoice_date": ex.get("invoice_date") or "",
         "total": ex.get("invoice_value"), "category": CATEGORY_LABELS.get(doc.category or "", doc.category or ""),
         "issues": len(issues), "issue": (issues[0]["label"] if issues else ""),
@@ -367,8 +367,8 @@ def bill(doc_id):
                    "difference": f"{services.total_difference(total, tds, printed):.2f}" if printed else "0.00"},
         "supplier_match": {"id": supplier.id, "name": supplier.name} if supplier is not None else None,
         "kind": services.suggested_kind(tenant, doc) if rows else KIND_FILE,
-        "kinds": [k for k, on in ((KIND_PURCHASE, tenant.has_feature("purchases")),
-                                  (KIND_EXPENSE, tenant.has_feature("expenses")), (KIND_FILE, True)) if on],
+        "kinds": services.kinds_on(tenant), "kind_labels": services.KIND_LABELS,
+        "note_type": services.note_type(doc), "original_number": services.original_number(doc),
         "page_url": url_for("scan_api.page", doc_id=doc.id, n=0, v=body["thumb"].split("v=")[-1]).replace(
             "/page/0.jpg", "/page/{n}.jpg"),
         "turned": bool((ex.get("turned") or {})),
@@ -386,14 +386,7 @@ def approve(doc_id):
     changes = request.get_json(silent=True) or {}
     form = services.approval_form(user.tenant, user, doc, changes)
     try:
-        if form["kind"] == KIND_PURCHASE:
-            services.post_purchase(user.tenant, user, doc, form)
-        elif form["kind"] == KIND_EXPENSE:
-            services.post_expense(user.tenant, user, doc, form)
-        elif form["kind"] == KIND_FILE:
-            services.file_document(user, doc, changes.get("notes") or "")
-        else:
-            raise ScanError("Choose what this bill is.")
+        services.post(user.tenant, user, doc, form)
         db.session.commit()
     except ScanError as exc:
         db.session.rollback()

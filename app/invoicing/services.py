@@ -56,6 +56,8 @@ class InvoiceInput:
     # itself from the branch's own branch_type.
     branch_user_id: int | None = None
     lines: list[LineInput] = field(default_factory=list)
+    # The number of an invoice issued outside ARFA (scanned); None = ARFA's next.
+    number: str | None = None
 
 
 def _to_decimal(value: str, field_name: str) -> Decimal:
@@ -271,7 +273,13 @@ def create_invoice(tenant: Tenant, created_by, data: InvoiceInput) -> Invoice:
     series = get_or_create_series(
         tenant.id, gstin.id, document_type, financial_year_for(data.invoice_date)
     )
-    invoice_number = allocate_number(series)
+    if data.number:
+        # A document issued outside ARFA (a scanned invoice) keeps the number printed on it.
+        invoice_number = data.number.strip()[:64]
+        if Invoice.query.filter_by(tenant_id=tenant.id, invoice_number=invoice_number).first() is not None:
+            raise InvoiceValidationError(f"Invoice {invoice_number} is already in your books.")
+    else:
+        invoice_number = allocate_number(series)
 
     invoice = Invoice(
         tenant_id=tenant.id,

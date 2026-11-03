@@ -30,6 +30,8 @@ class NoteInput:
     note_date: date
     reason: str
     lines: list[LineInput] = field(default_factory=list)
+    # The number of a note issued outside ARFA (scanned); None = ARFA's next.
+    number: str | None = None
 
 
 def create_note(tenant: Tenant, created_by, data: NoteInput) -> CreditDebitNote:
@@ -75,7 +77,13 @@ def create_note(tenant: Tenant, created_by, data: NoteInput) -> CreditDebitNote:
     series = get_or_create_series(
         tenant.id, gstin.id, data.document_type, financial_year_for(data.note_date)
     )
-    note_number = allocate_number(series)
+    if data.number:
+        # A note issued outside ARFA (a scanned one) keeps the number printed on it.
+        note_number = data.number.strip()[:64]
+        if CreditDebitNote.query.filter_by(tenant_id=tenant.id, note_number=note_number).first() is not None:
+            raise NoteValidationError(f"Note {note_number} is already in your books.")
+    else:
+        note_number = allocate_number(series)
 
     note = CreditDebitNote(
         tenant_id=tenant.id,

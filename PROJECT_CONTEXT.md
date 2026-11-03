@@ -782,6 +782,14 @@ this list is just the index.
   (module_settings "scan".approvers: "admin" | "branches"). The phone's OCR
   text goes to the reader as a hint (Context.phone_text); its QR is used when
   the picture's can't be decoded.
+  Scan bills posts more than purchases and expenses (services.post):
+  a sales invoice issued outside ARFA (create_invoice with its own number -
+  InvoiceInput.number), a credit / debit note issued to a customer (against
+  its ARFA invoice, found from the "against invoice" printed - NoteInput.number),
+  and a credit / debit note from a supplier - SupplierNote (app/models/purchase.py,
+  value only, no stock): the supplier's account (payables), the ITC (GSTR-3B
+  4B(2) for credit, 4A(5) for debit) and Tally (Debit Note / Credit Note).
+  Purchases > Supplier credit / debit notes lists them.
 
 ## 5. Chronological development history (this session)
 

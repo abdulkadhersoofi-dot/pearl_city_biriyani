@@ -39,7 +39,7 @@ from app.models.invoice_series import DocumentType
 from app.models.note import CreditDebitNote, NoteStatus
 from app.models.pos_bill import PaymentMode, POSBill, POSBillStatus
 from app.models.pos_return import POSReturn, POSReturnStatus
-from app.models.purchase import PurchaseBill, PurchaseReturn, PurchaseStatus
+from app.models.purchase import PurchaseBill, PurchaseReturn, PurchaseStatus, SupplierNote
 
 GROUPS = {
     "debtor": "Sundry Debtors", "creditor": "Sundry Creditors", "sales": "Sales Accounts",
@@ -275,6 +275,28 @@ def _purchase_vouchers(tenant, start, end, book) -> list[Voucher]:
             v.cr(book.add(f"Purchases @ {rate.normalize():f}%", "purchase"), amount)
         for head in ("cgst", "sgst", "igst"):
             v.cr(f"Input {head.upper()}", getattr(ret, f"itc_{head}"))
+        out.append(v.balance())
+    # A supplier's credit note is a Debit Note in the client's books (the
+    # supplier is debited, purchases and credit come down); its debit note
+    # the other way round.
+    for note in SupplierNote.query.filter(SupplierNote.tenant_id == tenant.id,
+                                          SupplierNote.status == PurchaseStatus.POSTED,
+                                          SupplierNote.note_date >= start, SupplierNote.note_date <= end):
+        party = book.party("supplier", note.supplier_id, note.supplier_snapshot)
+        credit = note.is_credit
+        v = Voucher("Debit Note" if credit else "Credit Note", note.note_date, note.note_number, party,
+                    f"{note.label} {note.note_number}" + (f": {note.reason}" if note.reason else ""))
+        by_rate = defaultdict(lambda: ZERO)
+        for line in note.lines or []:
+            tax = sum((Decimal(line.get(k) or 0) for k in ("cgst_amount", "sgst_amount", "igst_amount")), ZERO)
+            claimed = tax if note.itc_total > 0 else ZERO
+            by_rate[Decimal(line.get("gst_rate") or 0)] += Decimal(line.get("taxable_value") or 0) + tax - claimed
+        post_party, post_other = (v.dr, v.cr) if credit else (v.cr, v.dr)
+        post_party(party, note.grand_total)
+        for rate, amount in sorted(by_rate.items()):
+            post_other(book.add(f"Purchases @ {rate.normalize():f}%", "purchase"), amount)
+        for head in ("cgst", "sgst", "igst"):
+            post_other(f"Input {head.upper()}", getattr(note, f"itc_{head}"))
         out.append(v.balance())
     return out
 

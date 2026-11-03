@@ -15,7 +15,7 @@ from app.models.inventory import (
 )
 from app.models.purchase import (
     Supplier, PurchaseBill, PurchaseBillLine, PurchaseReturn, PurchaseReturnLine, PurchaseOrder,
-    PurchaseOrderLine, Gstr2bImport, Gstr2bEntry,
+    PurchaseOrderLine, Gstr2bImport, Gstr2bEntry, SupplierNote,
 )
 from app.models.margin import MarginAllocation
 from app.models.expense import ExpenseCategory, Expense, RecurringExpense

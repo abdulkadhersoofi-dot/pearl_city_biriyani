@@ -19,6 +19,7 @@ from app.models.invoice_series import DocumentType
 from app.models.mixins import utcnow
 from app.models.product import Product
 from app.models.purchase import (
+    SupplierNote,
     ItcEligibility,
     PurchaseBill,
     PurchaseBillLine,
@@ -560,3 +561,92 @@ def cancel_purchase_order(order: PurchaseOrder, reason: str) -> None:
         raise PurchaseError("A reason is required to cancel an order.")
     order.status = PurchaseOrderStatus.CANCELLED
     order.cancel_reason = reason.strip()
+
+
+# --- credit and debit notes from suppliers ----------------------------------------------------
+
+@dataclass
+class SupplierNoteInput:
+    kind: str                       # "credit" (owed less) / "debit" (owed more)
+    supplier_id: int
+    gstin_id: int
+    note_number: str                # the supplier's own number
+    note_date: date
+    lines: list[PurchaseLineInput]
+    purchase_bill_id: int | None = None
+    reason: str | None = None
+    notes: str | None = None
+    attachment_id: int | None = None
+
+
+def create_supplier_note(tenant, user, data: SupplierNoteInput) -> SupplierNote:
+    """A note the supplier issued (SupplierNote): value only - no stock
+    moves (goods sent back are a purchase return). A credit note takes its
+    GST back off the input tax credit; a debit note adds to it."""
+    if data.kind not in ("credit", "debit"):
+        raise PurchaseError("Pick a credit note or a debit note.")
+    supplier = _supplier(tenant, data.supplier_id)
+    gstin = _gstin(tenant, data.gstin_id)
+    number = (data.note_number or "").strip()[:50]
+    if not number:
+        raise PurchaseError("Enter the supplier's note number.")
+    if not data.note_date:
+        raise PurchaseError("Enter the note's date.")
+    if not data.lines:
+        raise PurchaseError("Add at least one line.")
+    duplicate = SupplierNote.query.filter(
+        SupplierNote.tenant_id == tenant.id, SupplierNote.supplier_id == supplier.id,
+        db.func.lower(SupplierNote.note_number) == number.lower(), SupplierNote.status == PurchaseStatus.POSTED,
+    ).first()
+    if duplicate is not None:
+        raise PurchaseError(f"Note {number} from {supplier.name} is already entered.")
+    bill = None
+    if data.purchase_bill_id:
+        bill = PurchaseBill.query.filter_by(id=data.purchase_bill_id, tenant_id=tenant.id,
+                                            supplier_id=supplier.id).first()
+        if bill is None:
+            raise PurchaseError("That purchase bill isn't from this supplier.")
+    slabs = {Decimal(str(s)) for s in GST_RATE_SLABS}
+    is_intra = (supplier.state_code or gstin.state_code) == gstin.state_code
+    claims = can_claim_itc(tenant, gstin)
+    rows, computed = [], []
+    for line in data.lines:
+        if line.qty <= 0 or line.rate < 0:
+            raise PurchaseError(f"Check the quantity and rate of {line.description}.")
+        if line.gst_rate not in slabs:
+            raise PurchaseError(f"{line.gst_rate}% isn't a GST rate.")
+        amounts = itc.compute_purchase_line(line.qty, line.rate, line.discount_percent, line.gst_rate, is_intra,
+                                            line.discount_flat)
+        computed.append(amounts)
+        rows.append({"description": line.description, "hsn": line.hsn_or_sac_code, "qty": f"{line.qty.normalize():f}",
+                     "unit": line.unit, "rate": f"{line.rate:.2f}", "discount_percent": f"{line.discount_percent:.2f}",
+                     "discount_flat": f"{(line.discount_flat or 0):.2f}", "gst_rate": f"{line.gst_rate.normalize():f}",
+                     **{k: f"{amounts[k]:.2f}" for k in ("taxable_value", "cgst_amount", "sgst_amount",
+                                                         "igst_amount", "line_total")}})
+    totals = compute_invoice_totals(computed)
+    exact = totals["total_taxable_value"] + totals["total_cgst"] + totals["total_sgst"] + totals["total_igst"]
+    grand = exact.quantize(Decimal("1"), rounding="ROUND_HALF_UP")
+    note = SupplierNote(
+        tenant_id=tenant.id, kind=data.kind, gstin_id=gstin.id, supplier_id=supplier.id,
+        supplier_snapshot=supplier.snapshot(), note_number=number, note_date=data.note_date,
+        purchase_bill_id=bill.id if bill else None, reason=(data.reason or "").strip() or None, lines=rows,
+        total_taxable_value=totals["total_taxable_value"], total_cgst=totals["total_cgst"],
+        total_sgst=totals["total_sgst"], total_igst=totals["total_igst"], round_off=grand - exact, grand_total=grand,
+        itc_cgst=totals["total_cgst"] if claims else ZERO, itc_sgst=totals["total_sgst"] if claims else ZERO,
+        itc_igst=totals["total_igst"] if claims else ZERO, attachment_id=data.attachment_id,
+        notes=(data.notes or "").strip() or None, created_by_id=user.id,
+    )
+    db.session.add(note)
+    db.session.flush()
+    return note
+
+
+def void_supplier_note(note: SupplierNote, user, reason: str) -> None:
+    if note.status != PurchaseStatus.POSTED:
+        raise PurchaseError("This note is already voided.")
+    if not (reason or "").strip():
+        raise PurchaseError("A reason is required to void a note.")
+    note.status = PurchaseStatus.VOIDED
+    note.void_reason = reason.strip()
+    note.voided_at = utcnow()
+    note.voided_by_id = user.id

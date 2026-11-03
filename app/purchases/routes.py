@@ -12,6 +12,7 @@ from app.models.inventory import StockLocation
 from app.models.media import UploadedImage
 from app.models.product import Product
 from app.models.purchase import (
+    SupplierNote,
     ITC_LABELS,
     ItcEligibility,
     MATCH_STATUS_LABELS,
@@ -555,3 +556,56 @@ def gstr2b_rematch(import_id):
     db.session.commit()
     flash("Matched again against your purchase bills.", "success")
     return redirect(url_for("purchases.gstr2b_view", import_id=imp.id))
+
+
+# --- credit and debit notes from suppliers ------------------------------------------------------
+
+@purchases_bp.route("/supplier-notes")
+@roles_required(ADMIN)
+@feature_required("purchases")
+def supplier_notes():
+    rows = tenant_query(SupplierNote).order_by(SupplierNote.note_date.desc(), SupplierNote.id.desc()).limit(300).all()
+    return render_template("purchases/supplier_notes.html", notes=rows)
+
+
+@purchases_bp.route("/supplier-notes/<int:note_id>")
+@roles_required(ADMIN)
+@feature_required("purchases")
+def view_supplier_note(note_id):
+    note = tenant_query(SupplierNote).filter_by(id=note_id).first_or_404()
+    assert_owns(note)
+    return render_template("purchases/supplier_note_view.html", note=note)
+
+
+@purchases_bp.route("/supplier-notes/<int:note_id>/attachment")
+@roles_required(ADMIN)
+@feature_required("purchases")
+def supplier_note_attachment(note_id):
+    note = tenant_query(SupplierNote).filter_by(id=note_id).first_or_404()
+    assert_owns(note)
+    record = db.session.get(UploadedImage, note.attachment_id) if note.attachment_id else None
+    if record is None:
+        abort(404)
+    ext = {"application/pdf": "pdf", "image/png": "png"}.get(record.content_type, "jpg")
+    return Response(record.data, mimetype=record.content_type, headers={
+        "Content-Disposition": f'inline; filename="supplier-note-{note.id}.{ext}"',
+        "Cache-Control": "private, no-store"})
+
+
+@purchases_bp.route("/supplier-notes/<int:note_id>/void", methods=["POST"])
+@roles_required(ADMIN)
+@feature_required("purchases")
+def void_supplier_note(note_id):
+    note = tenant_query(SupplierNote).filter_by(id=note_id).first_or_404()
+    assert_owns(note)
+    try:
+        services.void_supplier_note(note, current_user, request.form.get("reason"))
+    except services.PurchaseError as e:
+        db.session.rollback()
+        flash(e.message, "error")
+        return redirect(url_for("purchases.view_supplier_note", note_id=note.id))
+    record_audit(current_user, "supplier_note_voided", tenant_id=current_user.tenant_id, entity_type="supplier_note",
+                 entity_id=note.id, details={"number": note.note_number, "reason": note.void_reason})
+    db.session.commit()
+    flash(f"Note {note.note_number} voided.", "success")
+    return redirect(url_for("purchases.view_supplier_note", note_id=note.id))

@@ -251,6 +251,72 @@ class PurchaseReturn(db.Model, TenantScopedMixin, TimestampMixin):
     lines = db.relationship("PurchaseReturnLine", backref="purchase_return", cascade="all, delete-orphan", order_by="PurchaseReturnLine.id")
 
 
+class SupplierNote(db.Model, TenantScopedMixin, TimestampMixin):
+    """A credit or debit note a supplier issued: "credit" - the supplier
+    takes something off (a rate difference, a discount, a bill charged too
+    high): the client owes them less and its input tax credit comes back
+    down; "debit" - the supplier charges more: owed more, more credit.
+    Goods sent back are a PurchaseReturn instead (it moves the stock).
+    Recorded under the supplier's own note number; never deleted -
+    voided with a reason."""
+
+    __tablename__ = "supplier_notes"
+    __table_args__ = (
+        db.Index("ix_supplier_notes_tenant_supplier", "tenant_id", "supplier_id"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    kind = db.Column(db.String(10), nullable=False)   # credit / debit
+    gstin_id = db.Column(db.Integer, db.ForeignKey("gstins.id", name="fk_supplier_notes_gstin"), nullable=False)
+    supplier_id = db.Column(db.Integer, db.ForeignKey("suppliers.id", name="fk_supplier_notes_supplier"), nullable=False)
+    supplier_snapshot = db.Column(db.JSON, nullable=False)
+    note_number = db.Column(db.String(50), nullable=False)
+    note_date = db.Column(db.Date, nullable=False)
+    purchase_bill_id = db.Column(db.Integer, db.ForeignKey("purchase_bills.id", name="fk_supplier_notes_bill"), index=True)
+    reason = db.Column(db.Text)
+    # [{description, hsn, qty, unit, rate, discount_percent, discount_flat,
+    #   gst_rate, taxable_value, cgst, sgst, igst, line_total}]
+    lines = db.Column(db.JSON, nullable=False, default=list)
+    total_taxable_value = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    total_cgst = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    total_sgst = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    total_igst = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    round_off = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    grand_total = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    # The input tax credit it takes back (credit) or gives (debit).
+    itc_cgst = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    itc_sgst = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    itc_igst = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    status = db.Column(db.Enum(PurchaseStatus, name="purchase_status"), nullable=False, default=PurchaseStatus.POSTED)
+    attachment_id = db.Column(db.Integer, db.ForeignKey("uploaded_images.id", name="fk_supplier_notes_attachment"))
+    notes = db.Column(db.Text)
+    created_by_id = db.Column(db.Integer, db.ForeignKey("users.id", name="fk_supplier_notes_created_by"), nullable=False)
+    voided_at = db.Column(db.DateTime(timezone=True))
+    void_reason = db.Column(db.Text)
+    voided_by_id = db.Column(db.Integer, db.ForeignKey("users.id", name="fk_supplier_notes_voided_by"))
+
+    gstin = db.relationship("Gstin")
+    supplier = db.relationship("Supplier")
+    bill = db.relationship("PurchaseBill", backref=db.backref("supplier_notes", order_by="SupplierNote.id"))
+    created_by = db.relationship("User", foreign_keys=[created_by_id])
+
+    @property
+    def is_credit(self) -> bool:
+        return self.kind == "credit"
+
+    @property
+    def total_tax(self):
+        return self.total_cgst + self.total_sgst + self.total_igst
+
+    @property
+    def itc_total(self):
+        return self.itc_cgst + self.itc_sgst + self.itc_igst
+
+    @property
+    def label(self) -> str:
+        return "Credit note from supplier" if self.is_credit else "Debit note from supplier"
+
+
 class PurchaseReturnLine(db.Model):
     __tablename__ = "purchase_return_lines"
 

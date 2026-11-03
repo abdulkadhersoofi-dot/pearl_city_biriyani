@@ -85,7 +85,8 @@ def index():
                            limit=services.daily_limit(), labels=CATEGORY_LABELS, filters=filters, total=total,
                            shown_limit=LIST_LIMIT, suppliers=_supplier_options(in_tab), checks=CHECKS, spans=UPLOAD_SPANS,
                            kinds=_kind_options(in_tab), posted_urls={d.id: _posted_url(d) for d in docs},
-                           approvers=services.approvers(tenant), approver_choices=services.APPROVERS)
+                           approvers=services.approvers(tenant), approver_choices=services.APPROVERS,
+                           party=services.party)
 
 
 @scan_bp.route("/approvers", methods=["POST"])
@@ -291,6 +292,9 @@ def _review_context(doc, form=None):
     tenant = _tenant()
     ex = doc.extracted or {}
     supplier, supplier_options = services.supplier_choices(tenant, doc)
+    customer, customer_options = services.customer_choices(tenant, doc)
+    original_invoice, invoice_options = services.invoice_choices(tenant, doc, customer)
+    original_bill, bill_options = services.bill_choices(tenant, doc, supplier)
     categories = ensure_categories(tenant.id) if tenant.has_feature("expenses") else []
     # The standard categories are made the first time they're needed: keep
     # them, or the one picked here wouldn't exist when the bill is posted.
@@ -305,6 +309,12 @@ def _review_context(doc, form=None):
         "lines": services.item_choices(tenant, _form_lines(form) or services.line_rows(doc)),
         "main_rate": services.main_gst_rate(doc),
         "supplier": supplier, "supplier_options": supplier_options,
+        "customer": customer, "customer_options": customer_options,
+        "original_invoice": original_invoice, "invoice_options": invoice_options,
+        "original_bill": original_bill, "bill_options": bill_options,
+        "kinds": services.kinds_on(tenant), "kind_labels": services.KIND_LABELS,
+        "note_type": (form or {}).get("note_type") or services.note_type(doc),
+        "original_number": services.original_number(doc),
         "gstins": gstins, "tenant": tenant,
         "queue": queue, "position": position,
         "category": services.guess_category(doc, categories),
@@ -313,7 +323,7 @@ def _review_context(doc, form=None):
         "categories": categories,
         "payment_modes": PAYMENT_MODE_LABELS, "labels": CATEGORY_LABELS,
         "purchases_on": tenant.has_feature("purchases"), "expenses_on": tenant.has_feature("expenses"),
-        "gstin_ok": services.gstin_ok, "posted_url": _posted_url(doc),
+        "gstin_ok": services.gstin_ok, "posted_url": _posted_url(doc), "party": services.party,
         "detail_fields": services.DETAIL_FIELDS, "details": _form_details(form) or services.detail_values(doc),
         "tds": services.tds_read(doc) if form is None else (form.get("tds_amount", ""), form.get("tds_section", "")),
         "tds_sections": TDS_SECTIONS,
@@ -348,10 +358,14 @@ def _form_lines(form):
 
 
 def _posted_url(doc):
-    if doc.posted_type == "purchase_bill":
-        return url_for("purchases.view_bill", bill_id=doc.posted_id)
-    if doc.posted_type == "expense":
-        return url_for("expenses.view_expense", expense_id=doc.posted_id)
+    endpoints = {"purchase_bill": ("purchases.view_bill", "bill_id"),
+                 "expense": ("expenses.view_expense", "expense_id"),
+                 "invoice": ("invoicing.view_invoice", "invoice_id"),
+                 "credit_note": ("notes.view_note", "note_id"),
+                 "supplier_note": ("purchases.view_supplier_note", "note_id")}
+    if doc.posted_type in endpoints and doc.posted_id:
+        endpoint, arg = endpoints[doc.posted_type]
+        return url_for(endpoint, **{arg: doc.posted_id})
     return None
 
 
@@ -373,14 +387,7 @@ def post(doc_id):
     doc = _doc(doc_id)
     kind = request.form.get("kind")
     try:
-        if kind == KIND_PURCHASE:
-            services.post_purchase(_tenant(), current_user, doc, request.form)
-        elif kind == KIND_EXPENSE:
-            services.post_expense(_tenant(), current_user, doc, request.form)
-        elif kind == KIND_FILE:
-            services.file_document(current_user, doc, request.form.get("notes", ""))
-        else:
-            raise ScanError("Choose what this bill is.")
+        services.post(_tenant(), current_user, doc, request.form)
         db.session.commit()
     except ScanError as exc:
         db.session.rollback()
@@ -388,7 +395,9 @@ def post(doc_id):
         doc = _doc(doc_id)
         return render_template("scan/review.html", **_review_context(doc, request.form)), 422
     flash({KIND_PURCHASE: "Posted as a purchase bill.", KIND_EXPENSE: "Posted as an expense.",
-           KIND_FILE: "Kept on file."}[kind], "success")
+           services.KIND_SALE: "Entered as a sales invoice.", services.KIND_SALES_NOTE: "Entered as a note to the customer.",
+           services.KIND_SUPPLIER_NOTE: "Entered as the supplier's note.", KIND_FILE: "Kept on file."}.get(kind, "Done."),
+          "success")
     return redirect(_next_url(doc))
 
 

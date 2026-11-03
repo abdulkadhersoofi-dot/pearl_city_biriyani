@@ -38,9 +38,15 @@ SLABS = [Decimal(str(s)) for s in GST_RATE_SLABS]
 
 # What a read's category means for what the user can do with it.
 KIND_PURCHASE, KIND_EXPENSE, KIND_FILE = "purchase", "expense", "file"
+# A sales invoice the business issued outside ARFA; a credit/debit note it
+# issued to a customer; a credit/debit note a supplier issued to it.
+KIND_SALE, KIND_SALES_NOTE, KIND_SUPPLIER_NOTE = "sale", "sales_note", "supplier_note"
+KIND_LABELS = {KIND_PURCHASE: "Purchase bill", KIND_EXPENSE: "Expense", KIND_SALE: "Sales invoice",
+               KIND_SALES_NOTE: "Credit / debit note to a customer",
+               KIND_SUPPLIER_NOTE: "Credit / debit note from a supplier", KIND_FILE: "Keep on file only"}
 CATEGORY_LABELS = {
     "Purchase": "Purchase bill", "Expenses": "Expense bill", "Sales": "Sales invoice (issued by you)",
-    "Purchase - Credit Note": "Credit note from a supplier", "Purchase - Debit Note": "Debit note to a supplier",
+    "Purchase - Credit Note": "Credit note from a supplier", "Purchase - Debit Note": "Debit note from a supplier",
     "Sales - Credit Note": "Credit note you issued", "Sales - Debit Note": "Debit note you issued",
     "Receipts": "Payment receipt",
 }
@@ -344,7 +350,35 @@ def suggested_kind(tenant, doc: ScanDocument) -> str:
         return KIND_PURCHASE if purchases else (KIND_EXPENSE if expenses else KIND_FILE)
     if cat == "Expenses":
         return KIND_EXPENSE if expenses else (KIND_PURCHASE if purchases else KIND_FILE)
+    if cat == "Sales":
+        return KIND_SALE
+    if cat.startswith("Sales - "):
+        return KIND_SALES_NOTE
+    if cat.startswith("Purchase - "):
+        return KIND_SUPPLIER_NOTE if purchases else KIND_FILE
     return KIND_FILE
+
+
+def kinds_on(tenant) -> list[str]:
+    """What a scanned document can be posted as here."""
+    out = []
+    if tenant.has_feature("purchases"):
+        out.append(KIND_PURCHASE)
+    if tenant.has_feature("expenses"):
+        out.append(KIND_EXPENSE)
+    out += [KIND_SALE, KIND_SALES_NOTE]
+    if tenant.has_feature("purchases"):
+        out.append(KIND_SUPPLIER_NOTE)
+    return out + [KIND_FILE]
+
+
+def note_type(doc: ScanDocument) -> str:
+    """"credit" or "debit" - what a note says it is (credit by default)."""
+    return "debit" if "debit note" in (doc.category or "").lower() else "credit"
+
+
+def is_sales_side(doc: ScanDocument) -> bool:
+    return (doc.category or "").startswith("Sales")
 
 
 def line_discount(gross: Decimal, taxable: Decimal, printed_percent=None) -> tuple[str, Decimal]:
@@ -1195,6 +1229,22 @@ def approval_form(tenant, user, doc: ScanDocument, changes: dict):
                            ("line_batch[]", row.get("batch") or ""), ("line_mfg[]", row.get("mfg") or ""),
                            ("line_expiry[]", row.get("expiry") or ""), ("line_mrp[]", row.get("mrp") or "")):
             form.add(key, value)
+    kind = form["kind"]
+    if kind in (KIND_SALE, KIND_SALES_NOTE):
+        customer = find_customer(tenant, ex.get("receiver_name") or "", ex.get("receiver_gstin") or "")
+        form["customer_id"] = str(customer.id) if customer is not None else ""
+        form["customer_name"] = pick("customer_name", ex.get("receiver_name") or "")
+        form["customer_gstin"] = pick("customer_gstin", ex.get("receiver_gstin") or "")
+        form["customer_address"] = ex.get("receiver_address") or ""
+        if kind == KIND_SALES_NOTE:
+            original, _ = invoice_choices(tenant, doc, customer)
+            form["original_invoice_id"] = pick("original_invoice_id", original.id if original is not None else "")
+    if kind in (KIND_SALES_NOTE, KIND_SUPPLIER_NOTE):
+        form["note_type"] = pick("note_type", note_type(doc))
+        form["reason"] = pick("reason", ex.get("notes") or "")
+    if kind == KIND_SUPPLIER_NOTE:
+        original, _ = bill_choices(tenant, doc, supplier)
+        form["purchase_bill_id"] = pick("purchase_bill_id", original.id if original is not None else "")
     if form["kind"] == KIND_EXPENSE:
         categories = ensure_categories(tenant.id) if tenant.has_feature("expenses") else []
         guess = guess_category(doc, categories)
@@ -1208,3 +1258,260 @@ def approval_form(tenant, user, doc: ScanDocument, changes: dict):
             form["is_gst_bill"] = "1"
         form["itc"] = pick("itc", "eligible")
     return form
+
+
+# --- sales invoices, and credit / debit notes ------------------------------------------------------
+
+def find_customer(tenant, name: str, gstin: str):
+    """The customer already in the books a sales document is for: the same
+    GSTIN, or the same name written alike when the GSTINs don't conflict."""
+    from app.models.customer import Customer
+
+    gstin = clean_gstin(gstin or "")
+    gstin = gstin if len(gstin) == 15 else ""
+    customers = Customer.query.filter_by(tenant_id=tenant.id).order_by(Customer.is_active.desc(), Customer.id).all()
+    if gstin:
+        exact = next((c for c in customers if clean_gstin(c.gstin or "") == gstin), None)
+        if exact is not None:
+            return exact
+    if not (name or "").strip():
+        return None
+    return next((c for c in customers if names_alike(c.name, name) and (not gstin or not c.gstin)), None)
+
+
+def customer_choices(tenant, doc: ScanDocument) -> tuple[object, list]:
+    from app.models.customer import Customer
+
+    ex = doc.extracted or {}
+    name, gstin = (ex.get("receiver_name") or "").strip(), ex.get("receiver_gstin") or ""
+    match = find_customer(tenant, name, gstin)
+    others = [c for c in Customer.query.filter_by(tenant_id=tenant.id, is_active=True).order_by(Customer.name).all()
+              if name and c is not match and (names_alike(c.name, name) or reader.name_matches(c.name, name))]
+    return match, (([match] if match is not None else []) + others)[:6]
+
+
+def _customer_from_form(tenant, form):
+    from app.models.customer import Customer
+
+    cid = form.get("customer_id", type=int)
+    if cid:
+        customer = Customer.query.filter_by(id=cid, tenant_id=tenant.id).first()
+        if customer is None:
+            raise ScanError("Pick a valid customer.")
+        return customer
+    name = (form.get("customer_name") or "").strip()[:255]
+    gstin = clean_gstin(form.get("customer_gstin") or "") or None
+    if not name:
+        raise ScanError("Enter the customer's name.")
+    if gstin and not re.match(GSTIN_REGEX, gstin):
+        raise ScanError(f"{gstin} isn't a valid 15-character GSTIN.")
+    existing = find_customer(tenant, name, gstin or "")
+    if existing is not None:
+        if not existing.gstin and gstin and gstin_checksum_ok(gstin):
+            existing.gstin, existing.state_code = gstin, gstin[:2]
+            existing.state_name = STATE_NAME_BY_CODE.get(gstin[:2])
+        return existing
+    state = gstin[:2] if gstin else re.sub(r"\D", "", form.get("customer_state") or "")[:2]
+    customer = Customer(tenant_id=tenant.id, name=name, gstin=gstin, state_code=state or None,
+                        state_name=STATE_NAME_BY_CODE.get(state) if state else None,
+                        address_line1=(form.get("customer_address") or "").strip()[:255] or None)
+    db.session.add(customer)
+    db.session.flush()
+    return customer
+
+
+def _sales_lines(form):
+    """The form's lines as sales lines. A rupee discount becomes the net
+    rate (sales lines take a percentage), so the line's value stays as
+    printed; "new item" lines aren't linked - a sale doesn't add items."""
+    from app.invoicing.services import LineInput
+
+    get = form.getlist
+    lines = []
+    for i, description in enumerate(get("line_description[]")):
+        description = (description or "").strip()
+        if not description:
+            continue
+        at = lambda key: (get(key)[i] if i < len(get(key)) else "").strip()  # noqa: E731
+        try:
+            qty = Decimal(at("line_qty[]") or "0")
+            rate = Decimal((at("line_rate[]") or "0").replace(",", ""))
+            pct = Decimal(at("line_discount[]") or "0")
+            flat = Decimal((at("line_discount_flat[]") or "0").replace(",", ""))
+            gst = Decimal(at("line_gst_rate[]") or "0")
+        except InvalidOperation:
+            raise ScanError(f"{description}: check the quantity, rate and discount.")
+        if qty <= 0:
+            raise ScanError(f"{description}: the quantity must be more than 0.")
+        if flat > 0:
+            gross = qty * rate * (1 - pct / 100)
+            rate, pct = ((gross - flat) / qty).quantize(Decimal("0.01"), ROUND_HALF_UP), Decimal("0")
+        pid = at("line_product_id[]")
+        lines.append(LineInput(description=description[:255], hsn_or_sac_code=re.sub(r"\D", "", at("line_hsn[]"))[:8],
+                               qty=qty, rate=rate, discount_percent=pct, gst_rate=gst,
+                               product_id=int(pid) if pid.isdigit() else None, unit=(at("line_unit[]") or "NOS")[:20]))
+    if not lines:
+        raise ScanError("Add at least one line.")
+    return lines
+
+
+def _check_total(record_total, doc, form, tds=Decimal("0")):
+    expected = _expected_total(doc, form)
+    difference = total_difference(Decimal(record_total), tds, expected)
+    if expected > 0 and difference > Decimal("1.00") and form.get("accept_difference") != "1":
+        raise ScanError(f"ARFA works this out to Rs. {Decimal(record_total):,.2f} but the document says "
+                        f"Rs. {expected:,.2f} (a difference of Rs. {difference:,.2f}). Check the lines, or tick "
+                        "\"Post anyway\".", code="difference")
+
+
+def post_sale(tenant, user, doc: ScanDocument, form):
+    """A sales invoice the business issued outside ARFA: into the books
+    under its own number - sales, the customer's account, GSTR-1, stock."""
+    from app.invoicing.services import InvoiceInput, InvoiceValidationError, create_invoice
+    from app.models.invoice_series import DocumentType
+    from app.models.tenant import RegistrationType
+
+    _check_open(doc)
+    customer = _customer_from_form(tenant, form)
+    gstin_id = form.get("gstin_id", type=int) or doc.gstin_id
+    own = _own_gstin_by_id(tenant, gstin_id)
+    place = (customer.state_code or re.sub(r"\D", "", (doc.extracted or {}).get("place_of_supply") or "")[:2]
+             or own.state_code)
+    try:
+        invoice = create_invoice(tenant, user, InvoiceInput(
+            gstin_id=own.id, place_of_supply_state_code=place,
+            document_type=DocumentType.TAX_INVOICE if tenant.registration_type == RegistrationType.REGULAR
+            else DocumentType.BILL_OF_SUPPLY,
+            invoice_date=_date(form.get("invoice_date"), "invoice date"), customer_id=customer.id,
+            notes=(form.get("notes") or "").strip() or "Entered from a scanned invoice.", lines=_sales_lines(form),
+            number=(form.get("invoice_number") or "").strip() or None))
+    except InvoiceValidationError as exc:
+        raise ScanError(str(exc))
+    _check_total(invoice.grand_total, doc, form)
+    _finish(doc, user, "invoice", invoice.id, invoice.invoice_number)
+    return invoice
+
+
+def _own_gstin_by_id(tenant, gstin_id):
+    from app.models.tenant import Gstin
+
+    query = tenant.gstins.filter(Gstin.is_active.is_(True))
+    own = query.filter(Gstin.id == gstin_id).first() if gstin_id else None
+    own = own or query.order_by(Gstin.is_primary.desc(), Gstin.id).first()
+    if own is None:
+        raise ScanError("Add your GST registration in Settings first.")
+    return own
+
+
+def original_number(doc: ScanDocument) -> str:
+    """The invoice a credit / debit note adjusts, as printed on it."""
+    ex = doc.extracted or {}
+    return str(ex.get("original_invoice_number") or "").strip()
+
+
+def invoice_choices(tenant, doc: ScanDocument, customer=None) -> tuple[object, list]:
+    """(the invoice a customer note is against, if found, [invoices to pick from])."""
+    from app.models.invoice import Invoice, InvoiceStatus
+
+    printed = reader.norm_invno(original_number(doc))
+    query = Invoice.query.filter(Invoice.tenant_id == tenant.id, Invoice.status != InvoiceStatus.VOID,
+                                 Invoice.branch_user_id.is_(None))
+    if customer is not None:
+        query = query.filter(Invoice.customer_id == customer.id)
+    options = query.order_by(Invoice.invoice_date.desc(), Invoice.id.desc()).limit(40).all()
+    match = None
+    if printed:
+        match = next((i for i in options if reader.norm_invno(i.invoice_number) == printed), None) or \
+            next((i for i in Invoice.query.filter(Invoice.tenant_id == tenant.id,
+                                                  Invoice.status != InvoiceStatus.VOID).limit(5000)
+                  if reader.norm_invno(i.invoice_number) == printed), None)
+    if match is not None and match not in options:
+        options.insert(0, match)
+    return match, options
+
+
+def bill_choices(tenant, doc: ScanDocument, supplier=None) -> tuple[object, list]:
+    """(the purchase bill a supplier's note is against, if found, [bills to pick from])."""
+    from app.models.purchase import PurchaseBill, PurchaseStatus
+
+    if supplier is None:
+        return None, []
+    printed = reader.norm_invno(original_number(doc))
+    options = (PurchaseBill.query.filter(PurchaseBill.tenant_id == tenant.id, PurchaseBill.supplier_id == supplier.id,
+                                         PurchaseBill.status == PurchaseStatus.POSTED)
+               .order_by(PurchaseBill.bill_date.desc(), PurchaseBill.id.desc()).limit(40).all())
+    match = next((b for b in options if printed and reader.norm_invno(b.supplier_invoice_no) == printed), None)
+    return match, options
+
+
+def post_sales_note(tenant, user, doc: ScanDocument, form):
+    """A credit / debit note the business issued to a customer: into the
+    books under its own number, against the invoice in ARFA it adjusts."""
+    from app.models.invoice_series import DocumentType
+    from app.notes.services import NoteInput, NoteValidationError, create_note
+
+    _check_open(doc)
+    invoice_id = form.get("original_invoice_id", type=int)
+    if not invoice_id:
+        number = original_number(doc)
+        raise ScanError(("The invoice this note adjusts" + (f" ({number})" if number else "") +
+                         " isn't picked. Pick it - or, if it isn't in ARFA yet, scan and post that invoice first."))
+    kind = form.get("note_type") if form.get("note_type") in ("credit", "debit") else note_type(doc)
+    try:
+        note = create_note(tenant, user, NoteInput(
+            original_invoice_id=invoice_id,
+            document_type=DocumentType.CREDIT_NOTE if kind == "credit" else DocumentType.DEBIT_NOTE,
+            note_date=_date(form.get("invoice_date"), "note date"),
+            reason=(form.get("reason") or "").strip() or (form.get("notes") or "").strip() or "As per the scanned note.",
+            lines=_sales_lines(form), number=(form.get("invoice_number") or "").strip() or None))
+    except NoteValidationError as exc:
+        raise ScanError(str(exc))
+    _check_total(note.grand_total, doc, form)
+    _finish(doc, user, "credit_note", note.id, note.note_number)
+    return note
+
+
+def post_supplier_note(tenant, user, doc: ScanDocument, form):
+    """A credit / debit note a supplier issued: what is owed to them and
+    the input tax credit go down (credit) or up (debit)."""
+    from app.purchases.services import PurchaseError, SupplierNoteInput, create_supplier_note, parse_purchase_lines
+
+    _check_open(doc)
+    if not tenant.has_feature("purchases"):
+        raise ScanError("Purchases is switched off - turn it on in Settings to enter suppliers' notes.")
+    kind = form.get("note_type") if form.get("note_type") in ("credit", "debit") else note_type(doc)
+    try:
+        lines = parse_purchase_lines(form)
+        supplier = _supplier_from_form(tenant, form)
+        note = create_supplier_note(tenant, user, SupplierNoteInput(
+            kind=kind, supplier_id=supplier.id, gstin_id=form.get("gstin_id", type=int) or doc.gstin_id or
+            _own_gstin_by_id(tenant, None).id, note_number=form.get("invoice_number", ""),
+            note_date=_date(form.get("invoice_date"), "note date"), lines=lines,
+            purchase_bill_id=form.get("purchase_bill_id", type=int), reason=form.get("reason"),
+            notes=(form.get("notes") or "").strip() or "Entered from a scanned note.", attachment_id=_attachment(doc)))
+    except PurchaseError as exc:
+        raise ScanError(exc.message)
+    _check_total(note.grand_total, doc, form)
+    _finish(doc, user, "supplier_note", note.id, note.note_number)
+    return note
+
+
+def post(tenant, user, doc: ScanDocument, form):
+    """Posts a checked document as the kind the form says."""
+    kind = form.get("kind")
+    handlers = {KIND_PURCHASE: post_purchase, KIND_EXPENSE: post_expense, KIND_SALE: post_sale,
+                KIND_SALES_NOTE: post_sales_note, KIND_SUPPLIER_NOTE: post_supplier_note}
+    if kind == KIND_FILE:
+        return file_document(user, doc, form.get("notes", ""))
+    if kind not in handlers:
+        raise ScanError("Choose what this document is.")
+    return handlers[kind](tenant, user, doc, form)
+
+
+def party(doc: ScanDocument) -> tuple[str, str]:
+    """(name, GSTIN) of the other party: the supplier - or, for a document
+    the business issued, the customer."""
+    ex = doc.extracted or {}
+    if is_sales_side(doc):
+        return ex.get("receiver_name") or "", ex.get("receiver_gstin") or ""
+    return ex.get("supplier_name") or "", ex.get("supplier_gstin") or ""
