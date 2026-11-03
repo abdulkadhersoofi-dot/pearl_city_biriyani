@@ -86,6 +86,11 @@ class Context:
     own_gstins: list[str]
     company_name: str = ""
     known_gstins: list[str] = field(default_factory=list)
+    # From the ARFA Scan app: the text its on-device OCR read, and the
+    # e-invoice QR it decoded (parse_einvoice_jwt's fields) - a second
+    # pair of eyes, never taken over what the picture shows.
+    phone_text: str = ""
+    phone_qr: dict | None = None
 
 
 class ReadError(Exception):
@@ -609,7 +614,7 @@ def _empty_read() -> dict:
 
 def extract_fields(pages: list[bytes], settings: Settings, deadline: float, hint: str = "",
                    models: list[str] | None = None, http=requests,
-                   page_map: list[int] | None = None) -> tuple[dict, str | None]:
+                   page_map: list[int] | None = None, phone_text: str = "") -> tuple[dict, str | None]:
     """`page_map`: the document page each image is (pages left out of the
     read shift the rest); the boxes read come back on those pages."""
     parts, layout = [], None
@@ -625,7 +630,12 @@ def extract_fields(pages: list[bytes], settings: Settings, deadline: float, hint
             if len(pages) > 1:
                 parts.append({"text": f"PAGE {i + 1} of {len(pages)}:"})
             parts.append(_image_part(page))
-    parts.append({"text": PROMPT + ("\nIMPORTANT CORRECTION PASS: " + hint if hint else "")})
+    prompt = PROMPT
+    if phone_text.strip():
+        prompt += ("\nTEXT THE PHONE'S OWN OCR READ FROM THIS BILL (it can contain mistakes - use it only to "
+                   "settle characters you are unsure of, never over what the image clearly shows):\n<<<\n"
+                   + phone_text.strip()[:6000] + "\n>>>")
+    parts.append({"text": prompt + ("\nIMPORTANT CORRECTION PASS: " + hint if hint else "")})
     text, model = call_model(parts, settings, models or settings.models, deadline, http=http)
     if not text:
         return _empty_read(), None
@@ -1075,7 +1085,8 @@ def read(file_bytes: bytes, is_pdf: bool, ctx: Context, settings: Settings, http
     # The QR is read alongside the model, not after it.
     qr_future = _QR_POOL.submit(decode_einvoice_qr, list(qr_candidates), settings.qr_budget)
 
-    extracted, model = extract_fields(model_pages, settings, deadline, http=http, page_map=kept)
+    extracted, model = extract_fields(model_pages, settings, deadline, http=http, page_map=kept,
+                                      phone_text=ctx.phone_text)
     engine["models"].append(model)
     if model is None:
         qr_future.cancel()
@@ -1096,8 +1107,11 @@ def read(file_bytes: bytes, is_pdf: bool, ctx: Context, settings: Settings, http
         qr = qr_future.result(timeout=max(1.0, settings.qr_budget * 3))
     except Exception:  # noqa: BLE001 - the read carries on without it
         qr = None
+    if not qr and ctx.phone_qr and ctx.phone_qr.get("supplier_gstin"):
+        qr = ctx.phone_qr   # the phone could read the QR where the picture's copy couldn't be
+        engine["qr"] = "phone"
     if qr:
-        engine["qr"] = "found"
+        engine["qr"] = engine["qr"] if engine["qr"] == "phone" else "found"
         _apply_qr(extracted, qr)
 
     own = pick_own_gstin(extracted, ctx.own_gstins)
@@ -1130,6 +1144,7 @@ def read(file_bytes: bytes, is_pdf: bool, ctx: Context, settings: Settings, http
                           if not c.get("ok") and c.get("level") == "hard")
         engine["retry"] = True
         second, model3 = extract_fields(model_pages, settings, deadline, http=http, page_map=kept,
+                                        phone_text=ctx.phone_text,
                                         hint=f"Your previous reading failed these checks: {fails}. Re-read every "
                                              "amount and GSTIN character-by-character.")
         engine["models"].append(model3)

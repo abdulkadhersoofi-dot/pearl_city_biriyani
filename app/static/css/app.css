@@ -2274,6 +2274,11 @@ html.arfa-dialog-open { overflow: hidden; }
   .inv-head, .inv-foot, .inv-pair { grid-template-columns: minmax(0, 1fr); }
   .inv-meta { border-left: 0; padding-left: 0; border-top: 1px solid var(--color-border); padding-top: 10px; }
 }
+.scan-app-card { display: flex; flex-wrap: wrap; gap: 16px 28px; align-items: flex-start; justify-content: space-between; }
+.scan-app-card-text { flex: 1 1 340px; display: grid; gap: 6px; }
+.scan-app-card h2 { font-size: 1.05rem; display: flex; gap: 8px; align-items: center; }
+.scan-approvers { display: grid; gap: 8px; flex: 0 1 420px; }
+.scan-approvers fieldset { border: 0; padding: 0; display: grid; gap: 6px; }
 /* The list's search and filters (scan_list.js). */
 .scan-finder { display: grid; gap: 10px; padding: 12px 14px; margin-bottom: 12px; }
 .scan-search { display: flex; align-items: center; gap: 8px; padding: 0 12px; border: 1px solid var(--color-border-strong);

@@ -148,6 +148,9 @@ def _register_blueprints(app: Flask) -> None:
     app.register_blueprint(loyalty_bp)
     app.register_blueprint(subscriptions_bp)
     app.register_blueprint(scan_bp)
+    from app.scan.api import scan_api_bp
+
+    app.register_blueprint(scan_api_bp)
 
 
 def _register_error_handlers(app: Flask) -> None:

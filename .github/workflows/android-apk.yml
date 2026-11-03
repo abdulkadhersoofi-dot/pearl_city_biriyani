@@ -1,4 +1,4 @@
-name: Build ARFA Counter Android APK
+name: Build the ARFA Android apps (Counter, Scan)
 
 # This builds only the android/ project - it never touches the Flask
 # app, and nothing in this workflow runs as part of (or can break) the
@@ -55,7 +55,7 @@ jobs:
             echo "ANDROID_KEYSTORE_FILE=$RUNNER_TEMP/arfa.keystore" >> "$GITHUB_ENV"
           fi
 
-      - name: Build debug APK
+      - name: Build debug APKs (ARFA Counter and ARFA Scan)
         working-directory: android
         # Every published build gets a higher versionCode (the run number),
         # which the app's update check compares against.
@@ -66,7 +66,7 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon --stacktrace
+          ./gradlew :app:assembleDebug :scan:assembleDebug --no-daemon --stacktrace
 
       - name: Rename APK for a clear download name
         working-directory: android
@@ -81,6 +81,10 @@ jobs:
           SERVER_URL=$(python3 -c 'import json; print(json.load(open("server.json")).get("server_url", ""))')
           printf '{"versionCode": %s, "versionName": "1.%s", "commit": "%s", "apk": "https://github.com/%s/releases/download/android-latest/ARFA-Counter.apk", "server_url": "%s"}\n' \
             "${{ github.run_number }}" "${{ github.run_number }}" "${{ github.sha }}" "${{ github.repository }}" "$SERVER_URL" > dist/version.json
+          # ARFA Scan - the bill-scanning app (android/scan) - and what its update check reads.
+          cp scan/build/outputs/apk/debug/scan-debug.apk dist/ARFA-Scan.apk
+          printf '{"versionCode": %s, "versionName": "1.%s", "commit": "%s", "apk": "https://github.com/%s/releases/download/android-latest/ARFA-Scan.apk"}\n' \
+            "${{ github.run_number }}" "${{ github.run_number }}" "${{ github.sha }}" "${{ github.repository }}" > dist/scan-version.json
 
       # Always available from this run's "Summary" page, even for a
       # push that isn't on the branch the release step publishes from.
@@ -91,6 +95,13 @@ jobs:
           path: android/dist/ARFA-Counter.apk
           retention-days: 90
 
+      - name: Upload the ARFA Scan build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ARFA-Scan-apk
+          path: android/dist/ARFA-Scan.apk
+          retention-days: 90
+
       # A stable, permanent download link (unlike an Actions artifact,
       # which expires) - every successful build replaces the same
       # "android-latest" release's APK, so this one URL always has the
@@ -99,7 +110,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: android-latest
-          name: "ARFA Counter (branch phone app) - latest build"
+          name: "ARFA Android apps - latest build (Counter, Scan)"
           body: |
             Auto-built from commit ${{ github.sha }} on branch `${{ github.ref_name }}`.
 
@@ -108,6 +119,10 @@ jobs:
             browser/file manager, download ARFA-Counter.apk, open it, install.
             Then ask the owner for a pairing code (Branches > Pair a phone).
 
+            ARFA-Scan.apk is the bill-scanning app for owners and branches:
+            install it the same way and sign in with your ARFA email and
+            password.
+
             Points at: see android/README.md for the server URL this build
             talks to and how to change it.
           prerelease: true
@@ -115,3 +130,5 @@ jobs:
             android/dist/ARFA-Counter.apk
             android/dist/ARFA-POS-debug.apk
             android/dist/version.json
+            android/dist/ARFA-Scan.apk
+            android/dist/scan-version.json

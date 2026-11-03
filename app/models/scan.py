@@ -55,6 +55,11 @@ class ScanDocument(db.Model, TenantScopedMixin, TimestampMixin):
     posted_by_id = db.Column(db.Integer, db.ForeignKey("users.id", name="fk_scan_documents_posted_by"))
     read_at = db.Column(db.DateTime(timezone=True))
     posted_at = db.Column(db.DateTime(timezone=True))
+    # What the phone app read on the phone itself before sending it (the
+    # ARFA Scan app): {"text": its on-device OCR, "qr": the e-invoice QR's
+    # payload, "replaces": the document it was retaken for}. Given to the
+    # reader as a second pair of eyes.
+    phone_read = db.Column(db.JSON)
 
     uploaded_by = db.relationship("User", foreign_keys=[uploaded_by_id])
     gstin = db.relationship("Gstin")
@@ -71,3 +76,24 @@ class ScanDocument(db.Model, TenantScopedMixin, TimestampMixin):
         if party and number:
             return f"{party} · {number}"
         return party or number or self.filename
+
+
+class ScanAppToken(db.Model, TenantScopedMixin, TimestampMixin):
+    """A phone signed in to the ARFA Scan app (app/scan/api.py): the app
+    sends its token with every request. Only the token's hash is kept;
+    signing out, a password change or the user being switched off ends it."""
+
+    __tablename__ = "scan_app_tokens"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id", name="fk_scan_app_tokens_user"), nullable=False,
+                        index=True)
+    token_hash = db.Column(db.String(64), nullable=False, unique=True)
+    device_name = db.Column(db.String(120))
+    # A fingerprint of the password it was signed in with: a new password
+    # (or an admin's reset) signs every phone out.
+    password_stamp = db.Column(db.String(16), nullable=False)
+    last_used_at = db.Column(db.DateTime(timezone=True))
+    revoked_at = db.Column(db.DateTime(timezone=True))
+
+    user = db.relationship("User")

@@ -47,9 +47,10 @@ CATEGORY_LABELS = {
 
 
 class ScanError(Exception):
-    def __init__(self, message: str):
+    def __init__(self, message: str, code: str = ""):
         super().__init__(message)
         self.message = message
+        self.code = code      # "difference": the total is off - post anyway?
 
 
 # --- set-up ----------------------------------------------------------------------------------
@@ -148,7 +149,7 @@ def upload(tenant, user, filename: str, data: bytes) -> tuple[ScanDocument, bool
 
 # --- reading ---------------------------------------------------------------------------------
 
-def _context(tenant) -> reader.Context:
+def _context(tenant, doc: ScanDocument | None = None) -> reader.Context:
     from app.models.customer import Customer
     from app.models.purchase import Supplier
     from app.models.tenant import Gstin
@@ -159,7 +160,10 @@ def _context(tenant) -> reader.Context:
                                                                     Supplier.gstin.isnot(None))}
     known |= {c for (c,) in db.session.query(Customer.gstin).filter(Customer.tenant_id == tenant.id,
                                                                      Customer.gstin.isnot(None))}
-    return reader.Context(own_gstins=own, company_name=tenant.legal_name or "", known_gstins=sorted(known))
+    phone = (doc.phone_read or {}) if doc is not None else {}
+    return reader.Context(own_gstins=own, company_name=tenant.legal_name or "", known_gstins=sorted(known),
+                          phone_text=str(phone.get("text") or ""),
+                          phone_qr=phone.get("qr") if isinstance(phone.get("qr"), dict) else None)
 
 
 def _own_gstin_row(tenant, gstin: str):
@@ -238,7 +242,7 @@ def read_document(tenant, user, doc: ScanDocument, http=None) -> list[ScanDocume
     doc.status = READING
     db.session.commit()
     try:
-        result = reader.read(doc.file_data, doc.is_pdf, _context(tenant), settings, **kwargs)
+        result = reader.read(doc.file_data, doc.is_pdf, _context(tenant, doc), settings, **kwargs)
     except reader.ReadError as exc:
         doc.status, doc.message, doc.rejection_code = FAILED, exc.message, exc.code
         doc.read_at = utcnow()
@@ -893,7 +897,7 @@ def post_purchase(tenant, user, doc: ScanDocument, form):
         net = f" (Rs. {bill.grand_total - tds:,.2f} after the TDS)" if tds else ""
         raise ScanError(f"ARFA works this bill out to Rs. {bill.grand_total:,.2f}{net} but the bill says "
                         f"Rs. {expected:,.2f} (a difference of Rs. {difference:,.2f}). Check the lines and the TDS, "
-                        "or tick \"Post anyway\".")
+                        "or tick \"Post anyway\".", code="difference")
     _finish(doc, user, "purchase_bill", bill.id, bill.number)
     return bill
 
@@ -1059,3 +1063,148 @@ def reread(user, doc: ScanDocument) -> None:
 def gstin_ok(value: str) -> bool:
     v = clean_gstin(value or "")
     return len(v) == 15 and gstin_checksum_ok(v)
+
+
+# --- who sees and approves what (the ARFA Scan app; the website is the owner's) -----------------
+
+APPROVERS = {"admin": "Only the owner (admins) approve - branches scan",
+             "branches": "Branches approve the bills they scan, too"}
+
+
+def approvers(tenant) -> str:
+    from app.utils.module_settings import module_settings
+
+    value = module_settings(tenant, "scan").get("approvers")
+    return value if value in APPROVERS else "admin"
+
+
+def set_approvers(tenant, user, value: str) -> None:
+    from app.utils.module_settings import module_settings, save_module_settings
+
+    if value not in APPROVERS:
+        raise ScanError("Pick who approves scanned bills.")
+    settings = module_settings(tenant, "scan")
+    settings["approvers"] = value
+    save_module_settings(tenant, "scan", settings)
+    record_audit(user, "scan_approvers_set", tenant_id=tenant.id, details={"approvers": value})
+
+
+def may_scan(user) -> bool:
+    from app.models.user import UserRole
+
+    return bool(user and user.is_active and user.tenant_id and user.role in (UserRole.CLIENT_ADMIN, UserRole.STAFF)
+                and user.tenant is not None and user.tenant.has_feature("doc_scan"))
+
+
+def is_owner(user) -> bool:
+    from app.models.user import UserRole
+
+    return user.role == UserRole.CLIENT_ADMIN
+
+
+def documents_for(user):
+    """The scanned bills a login sees: the owner every one of the
+    business's; a branch the ones it sent."""
+    query = ScanDocument.query.filter(ScanDocument.tenant_id == user.tenant_id)
+    if not is_owner(user):
+        query = query.filter(ScanDocument.uploaded_by_id == user.id)
+    return query
+
+
+def can_approve(user, doc: ScanDocument | None = None) -> bool:
+    if is_owner(user):
+        return True
+    if approvers(user.tenant) != "branches":
+        return False
+    return doc is None or doc.uploaded_by_id == user.id
+
+
+def retake(user, old: ScanDocument, new: ScanDocument) -> None:
+    """A photo taken again for a bill that couldn't be read (or was wrong):
+    the old one is put away, the new one reads in its place."""
+    if old.status in (POSTED, FILED, SPLIT):
+        raise ScanError("That bill is already dealt with - send this one as a new bill.")
+    if old.id == new.id:
+        return
+    old.status = DISCARDED
+    old.message = f"Taken again - see scanned bill #{new.id}."
+    phone = dict(new.phone_read or {})
+    phone["replaces"] = old.id
+    new.phone_read = phone
+    record_audit(user, "scan_retaken", tenant_id=old.tenant_id, entity_type="scan_document", entity_id=old.id,
+                 details={"new": new.id})
+
+
+def phone_read_from(text: str | None, qr_raw: str | None) -> dict | None:
+    """What the app read on the phone, kept with the bill: its OCR text and
+    the e-invoice QR (parsed the same way as one read from the picture)."""
+    out = {}
+    if text and text.strip():
+        out["text"] = text.strip()[:20000]
+    if qr_raw and qr_raw.strip():
+        parsed = reader.parse_einvoice_jwt(qr_raw.strip())
+        if parsed:
+            out["qr"] = parsed
+    return out or None
+
+
+def approval_form(tenant, user, doc: ScanDocument, changes: dict):
+    """What the website's review form would post for this bill, from what
+    was read plus the few things changed on the phone - so the app's
+    Approve goes through exactly the same posting as the website."""
+    from werkzeug.datastructures import MultiDict
+
+    from app.expenses.services import ensure_categories
+    from app.inventory.ledger import branch_location, default_location
+
+    ex = doc.extracted or {}
+    pick = lambda key, default="": str(changes.get(key) if changes.get(key) not in (None, "") else default)  # noqa: E731
+    supplier = matched_supplier(tenant, doc)
+    form = MultiDict()
+    form["kind"] = pick("kind", suggested_kind(tenant, doc))
+    form["supplier_id"] = str(supplier.id) if supplier is not None else "new"
+    form["supplier_name"] = pick("supplier_name", ex.get("supplier_name") or "")
+    form["supplier_gstin"] = pick("supplier_gstin", ex.get("supplier_gstin") or "")
+    form["supplier_address"] = ex.get("supplier_address") or ""
+    form["supplier_phone"] = ex.get("supplier_phone") or ""
+    form["invoice_number"] = pick("invoice_number", ex.get("invoice_number") or "")
+    form["invoice_date"] = pick("invoice_date", ex.get("invoice_date") or "")
+    form["bill_total"] = pick("bill_total", ex.get("invoice_value") or "")
+    tds, section = tds_read(doc)
+    form["tds_amount"] = pick("tds_amount", tds)
+    form["tds_section"] = pick("tds_section", section)
+    form["gstin_id"] = str(doc.gstin_id or "")
+    form["notes"] = pick("notes", "Entered from a scanned bill (ARFA Scan app).")
+    if changes.get("accept_difference"):
+        form["accept_difference"] = "1"
+    if (ex.get("reverse_charge") or "").lower() in ("y", "yes", "true"):
+        form["is_rcm"] = "1"
+    location = default_location(tenant.id) if is_owner(user) else branch_location(tenant.id, user)
+    form["location_id"] = str(location.id)
+    for key, value in detail_values(doc).items():
+        form[f"detail_{key}"] = value
+    for row in item_choices(tenant, line_rows(doc)):
+        amount = row.get("disc_type") == "amt"
+        for key, value in (("line_description[]", row["description"]), ("line_hsn[]", row["hsn"]),
+                           ("line_qty[]", row["qty"]), ("line_unit[]", row["unit"]), ("line_rate[]", row["rate"]),
+                           ("line_discount[]", "0" if amount else row["discount"]),
+                           ("line_discount_flat[]", row["discount"] if amount else "0"),
+                           ("line_gst_rate[]", row["gst_rate"]), ("line_itc[]", "eligible"),
+                           ("line_product_id[]", row.get("product_id") or ""),
+                           ("line_serials[]", row.get("serials") or ""), ("line_item_code[]", row.get("item_code") or ""),
+                           ("line_batch[]", row.get("batch") or ""), ("line_mfg[]", row.get("mfg") or ""),
+                           ("line_expiry[]", row.get("expiry") or ""), ("line_mrp[]", row.get("mrp") or "")):
+            form.add(key, value)
+    if form["kind"] == KIND_EXPENSE:
+        categories = ensure_categories(tenant.id) if tenant.has_feature("expenses") else []
+        guess = guess_category(doc, categories)
+        form["category_id"] = pick("category_id", guess.id if guess else "")
+        form["payment_mode"] = pick("payment_mode", "cash")
+        total = _money(form["bill_total"]) + (_money(form["tds_amount"]) if form["tds_amount"] else Decimal("0"))
+        form["amount"] = f"{total:.2f}"
+        form["gst_rate"] = f"{main_gst_rate(doc).normalize():f}"
+        tax = _money(ex.get("cgst")) + _money(ex.get("sgst")) + _money(ex.get("igst"))
+        if tax > 0 and gstin_ok(form["supplier_gstin"]):
+            form["is_gst_bill"] = "1"
+        form["itc"] = pick("itc", "eligible")
+    return form

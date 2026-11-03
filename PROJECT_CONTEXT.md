@@ -772,6 +772,16 @@ this list is just the index.
   column sorting run in the page (static/js/scan_list.js) and the same
   search/filters on the server (routes._apply_filters) for more than the
   1000 bills a page shows.
+  **ARFA Scan app (3 Nov 2026):** android/scan (com.arfa.scan) - native
+  Kotlin, ML Kit document scanner + on-device OCR and QR, WhatsApp-like chat,
+  background sending (WorkManager), a bill page that zooms to the value
+  tapped, Approve & post, Retake. Server: app/scan/api.py (/api/scan/v1,
+  token per phone in scan_app_tokens - only its hash, and a password stamp so
+  a new password signs phones out). Owner and branches (Staff) sign in; a
+  branch sees its own bills; who approves is the owner's choice
+  (module_settings "scan".approvers: "admin" | "branches"). The phone's OCR
+  text goes to the reader as a hint (Context.phone_text); its QR is used when
+  the picture's can't be decoded.
 
 ## 5. Chronological development history (this session)
 

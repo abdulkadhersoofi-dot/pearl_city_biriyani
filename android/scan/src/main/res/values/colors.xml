@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="arfa_primary">#1F7A4D</color>
+    <color name="arfa_primary_dark">#155C3A</color>
+    <color name="chat_bg">#ECE9E2</color>
+    <color name="bubble">#DCF3E4</color>
+    <color name="bubble_pending">#EEF6F0</color>
+    <color name="ink">#1B1F1D</color>
+    <color name="muted">#4B544F</color>
+    <color name="faint">#5E6762</color>
+    <color name="tick_read">#1A73E8</color>
+    <color name="tick_sent">#7B847F</color>
+    <color name="tag_ok_bg">#C7EAD3</color>
+    <color name="tag_ok">#155C3A</color>
+    <color name="tag_warn_bg">#FDECC8</color>
+    <color name="tag_warn">#7A4B00</color>
+    <color name="tag_bad_bg">#FBD9D4</color>
+    <color name="tag_bad">#A1281C</color>
+    <color name="tag_muted_bg">#E4E7E3</color>
+    <color name="flag_bg">#FFF3DC</color>
+    <color name="flag_line">#E67E22</color>
+    <color name="card">#FFFFFF</color>
+    <color name="page_bg">#F3F2EE</color>
+    <color name="mark">#2ECC71</color>
+    <color name="white">#FFFFFF</color>
+</resources>

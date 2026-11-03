@@ -58,6 +58,12 @@ DEFAULTS = {
         # Ask for the seller's ID proof when buying from a person.
         "id_proof_required": True,
     },
+    # Scan bills: who may approve (post) a scanned bill - "admin": only the
+    # Client Admin (branches scan, the owner approves); "branches": a
+    # branch approves the bills it scanned itself, too.
+    "scan": {
+        "approvers": "admin",
+    },
     "cashier": {
         # Lock a counter with cashier PINs after this many idle minutes
         # (0 = only when a cashier taps Lock / Switch).

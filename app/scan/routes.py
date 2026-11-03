@@ -84,7 +84,22 @@ def index():
                            set_up=services.is_set_up(), used=services.reads_today(tenant.id),
                            limit=services.daily_limit(), labels=CATEGORY_LABELS, filters=filters, total=total,
                            shown_limit=LIST_LIMIT, suppliers=_supplier_options(in_tab), checks=CHECKS, spans=UPLOAD_SPANS,
-                           kinds=_kind_options(in_tab), posted_urls={d.id: _posted_url(d) for d in docs})
+                           kinds=_kind_options(in_tab), posted_urls={d.id: _posted_url(d) for d in docs},
+                           approvers=services.approvers(tenant), approver_choices=services.APPROVERS)
+
+
+@scan_bp.route("/approvers", methods=["POST"])
+@roles_required(ADMIN)
+@feature_required("doc_scan")
+def set_approvers():
+    try:
+        services.set_approvers(_tenant(), current_user, request.form.get("approvers", ""))
+        db.session.commit()
+        flash("Saved - the ARFA Scan app follows it straight away.", "success")
+    except ScanError as exc:
+        db.session.rollback()
+        flash(exc.message, "error")
+    return redirect(url_for("scan.index", tab=request.form.get("tab") or None))
 
 
 # --- the list's search and filters (also done in the page itself, as you type) --------------------

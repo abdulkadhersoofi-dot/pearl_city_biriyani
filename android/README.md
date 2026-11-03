@@ -1,3 +1,9 @@
+# The ARFA Android apps
+
+This project builds two apps: **ARFA Counter** (`app/`, below) for a
+branch's counter, and **ARFA Scan** (`scan/`, at the end) for scanning
+purchase and expense bills.
+
 # ARFA Counter - the Android app for a branch's counter
 
 A small native Android app around the ARFA Counter screens the server
@@ -227,3 +233,34 @@ Output: `app/build/outputs/apk/debug/app-debug.apk`.
   can be a single adaptive vector (no separate legacy PNG fallback set)
   and so the real AndroidX SplashScreen API is available rather than
   its reduced compat shim for older devices.
+
+
+# ARFA Scan - scanning bills (`scan/`, `com.arfa.scan`)
+
+A native app for a business's **owner and branches**: sign in with the
+ARFA email and password (and the authenticator code, when the account has
+two-step sign-in); every bill sent is a message in a chat, ticked as it is
+sent and read, tagged by how its checks went.
+
+- **The camera** is Google's on-device document scanner (ML Kit): it finds
+  the bill's edges, takes the picture by itself when the phone is steady,
+  straightens and crops it, and takes more pages. Hold the camera button
+  for "a pile of bills" (every page its own bill). The paperclip picks
+  photos or PDFs; any app can share a bill to ARFA Scan.
+- **Read on the phone**: before a bill is sent, ML Kit's on-device text
+  recognition reads it and the e-invoice QR is decoded; both go with the
+  picture, and the server's reader uses them as a second pair of eyes.
+- **Sent in the background** (WorkManager): a bill waits on the phone
+  without internet and goes when it's back; uploads one by one, reads two
+  at a time.
+- **A bill's page**: the picture zooms to a value when it is tapped; what
+  is wrong is said plainly and the wrong values are marked; values from
+  the e-invoice QR are tagged. **Approve & post** for whoever may approve -
+  the owner, and a branch for its own bills when the owner chose
+  "Branches approve" (website: Scan bills > Who approves). A bill that
+  couldn't be read has **Retake**, which replaces it.
+- The server side is `app/scan/api.py` (`/api/scan/v1`); the same reading,
+  checks, matching and posting as the website.
+
+Built by the same workflow: `ARFA-Scan.apk` and `scan-version.json` (its
+update check) on the `android-latest` release.
