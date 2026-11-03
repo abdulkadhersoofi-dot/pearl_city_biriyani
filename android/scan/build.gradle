@@ -25,6 +25,11 @@ android {
         versionName "1.${ciVersionCode}"
         buildConfigField "String", "SERVER_BASE_URL", "\"https://arfa.live\""
         buildConfigField "String", "RELEASE_REPO", "\"abdulkadhersoofi-dot/pearl_city_biriyani\""
+        // The on-device text and QR readers carry a native library per
+        // processor: phones only (no emulator x86 copies) halves the APK.
+        ndk {
+            abiFilters 'arm64-v8a', 'armeabi-v7a'
+        }
     }
 
     // The same shared key as ARFA Counter (a different app id, so the two
