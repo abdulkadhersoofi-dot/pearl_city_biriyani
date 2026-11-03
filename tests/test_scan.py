@@ -1002,3 +1002,34 @@ def test_the_reader_places_the_tables_columns_and_every_detail():
     assert shaped["boxes"]["challan_number"] == [0, 80.0, 600.0, 95.0, 700.0]
     reader.turn_boxes(shaped, {0: 180})
     assert shaped["columns"]["hsn_sac"] == [0, 300.0, 520.0, 700.0, 600.0]
+
+
+# --- the list: when each bill came and was read, search and filters ------------------------------
+
+def test_the_list_shows_when_bills_came_and_were_read(client, db, scanning, client_admin, monkeypatch):
+    _login(client)
+    _ready_doc(client, monkeypatch)
+    html = client.get("/scan/?tab=check").get_data(as_text=True)
+    assert "Uploaded" in html and "Last read" in html and "data-scan-search" in html and "scan_list.js" in html
+    assert "is-wide" in html
+
+
+def test_the_list_searches_and_filters_on_the_server_too(client, db, scanning, client_admin, monkeypatch):
+    _login(client)
+    spices = _ready_doc(client, monkeypatch)
+    other = _ready_doc(client, monkeypatch, photo=_jpeg("another"), bill=_bill(
+        supplier_name="Blue Star Limited", supplier_gstin=STRANGER[:2] + SELLER[2:], invoice_number="5401247217",
+        receiver_gstin=OWN, invoice_value=36912.99))
+    def ids(**params):
+        html = client.get("/scan/", query_string={"tab": "check", **params}).get_data(as_text=True)
+        return {d for d in (spices, other) if f'href="/scan/{d}"' in html}
+    assert ids() == {spices, other}
+    assert ids(q="blue star") == {other}
+    assert ids(q="5401247") == {other}                 # part of a bill number
+    assert ids(q="36912") == {other}                   # an amount, without its commas
+    assert ids(q="tumkur 0042") == {spices}            # every word must match
+    assert ids(q="nothing-like-this") == set()
+    assert ids(supplier=SELLER) == {spices}
+    assert ids(check="dup") == set()
+    assert ids(uploaded="today") == {spices, other}
+    assert ids(uploaded="range", **{"from": "2001-01-01", "to": "2001-01-31"}) == set()

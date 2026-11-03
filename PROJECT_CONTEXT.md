@@ -766,7 +766,12 @@ this list is just the index.
   places the items table's columns (extracted["columns"]); each line's cell
   is its row across the column (services.line_cells), so pointing at an HSN
   or an amount zooms to that one cell. "Show all" marks every value read on
-  the bill; a mark takes you to its field.
+  the bill; a mark takes you to its field. The list (/scan, full width) is
+  one table for every tab with when each bill was uploaded and last read;
+  search as you type, filters (supplier, check result, kind, uploaded) and
+  column sorting run in the page (static/js/scan_list.js) and the same
+  search/filters on the server (routes._apply_filters) for more than the
+  1000 bills a page shows.
 
 ## 5. Chronological development history (this session)
 

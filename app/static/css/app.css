@@ -2274,6 +2274,28 @@ html.arfa-dialog-open { overflow: hidden; }
   .inv-head, .inv-foot, .inv-pair { grid-template-columns: minmax(0, 1fr); }
   .inv-meta { border-left: 0; padding-left: 0; border-top: 1px solid var(--color-border); padding-top: 10px; }
 }
+/* The list's search and filters (scan_list.js). */
+.scan-finder { display: grid; gap: 10px; padding: 12px 14px; margin-bottom: 12px; }
+.scan-search { display: flex; align-items: center; gap: 8px; padding: 0 12px; border: 1px solid var(--color-border-strong);
+  border-radius: 10px; background: var(--color-surface); }
+.scan-search:focus-within { border-color: var(--color-primary); box-shadow: 0 0 0 3px var(--color-primary-soft); }
+.scan-search input[type="search"] { flex: 1; min-width: 0; border: 0; outline: none; box-shadow: none; background: none;
+  font: inherit; font-size: 1.02rem; padding: 11px 0; margin: 0; }
+.scan-search kbd { font-size: 0.75rem; padding: 1px 6px; border: 1px solid var(--color-border); border-radius: 4px;
+  color: var(--color-text-muted); }
+.scan-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.scan-filters .field-input { width: auto; min-width: 150px; max-width: 280px; margin: 0; padding-top: 6px; padding-bottom: 6px; }
+.scan-range { display: inline-flex; gap: 6px; align-items: center; }
+.scan-range[hidden] { display: none; }
+.scan-count { font-size: 0.85rem; }
+.scan-queue-table mark { background: #fde68a; color: inherit; border-radius: 2px; padding: 0 1px; }
+.scan-queue-table th[data-sort] { cursor: pointer; user-select: none; white-space: nowrap; }
+.scan-queue-table th[data-sort]:hover { color: var(--color-text); }
+.scan-queue-table th[aria-sort="ascending"]::after { content: " ▲"; font-size: 0.7em; }
+.scan-queue-table th[aria-sort="descending"]::after { content: " ▼"; font-size: 0.7em; }
+.scan-queue-table tr[hidden] { display: none; }
+.scan-when { font-size: 0.86rem; }
+.scan-why { max-width: 260px; white-space: normal; }
 .scan-queue-table td { white-space: nowrap; vertical-align: middle; }
 .scan-queue-table td:nth-child(2) { white-space: normal; min-width: 180px; }
 .scan-queue-table .pill { white-space: nowrap; }

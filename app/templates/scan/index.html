@@ -43,69 +43,109 @@
   {% endfor %}
 </div>
 
+{% set f = filters %}
 {% if tab == 'check' and docs %}
 <div class="row row-between items-center mb-8">
   <p class="text-muted m-0">Check each bill against its picture, correct anything wrong, and approve it - the next one opens by itself.</p>
   <a href="{{ url_for('scan.review', doc_id=docs[0].id) }}" class="btn btn-primary">Start checking ›</a>
 </div>
+{% endif %}
+
+<form method="get" action="{{ url_for('scan.index') }}" class="card scan-finder" data-scan-finder>
+  <input type="hidden" name="tab" value="{{ tab }}">
+  <label class="scan-search">{{ icon('search', 'icon-sm') }}
+    <input type="search" name="q" value="{{ f.q }}" placeholder="Search supplier, GSTIN, bill no., amount, date…" autocomplete="off"
+           spellcheck="false" aria-label="Search the bills" data-scan-search>
+    <kbd title="Press / to search">/</kbd></label>
+  <div class="scan-filters">
+    <select name="supplier" class="field-input" aria-label="Supplier" data-filter="supplier">
+      <option value="">All suppliers</option>
+      {% for value, label in suppliers %}<option value="{{ value }}" {{ 'selected' if f.supplier == value }}>{{ label }}</option>{% endfor %}
+    </select>
+    <select name="check" class="field-input" aria-label="Checks" data-filter="check">
+      <option value="">Any check result</option>
+      {% for value, label in checks.items() %}<option value="{{ value }}" {{ 'selected' if f.check == value }}>{{ label }}</option>{% endfor %}
+    </select>
+    {% if kinds|length > 1 or f.kind %}
+    <select name="kind" class="field-input" aria-label="Post as" data-filter="kind">
+      <option value="">Any kind of bill</option>
+      {% for value, label in kinds %}<option value="{{ value }}" {{ 'selected' if f.kind == value }}>{{ label }}</option>{% endfor %}
+    </select>
+    {% endif %}
+    <select name="uploaded" class="field-input" aria-label="Uploaded" data-filter="uploaded">
+      <option value="">Uploaded any time</option>
+      {% for value, label in spans.items() %}<option value="{{ value }}" {{ 'selected' if f.uploaded == value }}>{{ label }}</option>{% endfor %}
+    </select>
+    <span class="scan-range" data-range {{ 'hidden' if f.uploaded != 'range' }}>
+      <input type="date" name="from" class="field-input" value="{{ f['from'] or '' }}" aria-label="Uploaded from" data-filter="from">
+      <span class="text-muted">to</span>
+      <input type="date" name="to" class="field-input" value="{{ f.to or '' }}" aria-label="Uploaded to" data-filter="to"></span>
+    <button type="button" class="btn btn-quiet btn-sm" data-clear hidden>Clear</button>
+  </div>
+  <p class="scan-count text-muted m-0" aria-live="polite"><span data-count>{{ docs|length }}</span> of {{ total }} bill{{ 's' if total != 1 }}
+    {% if total > docs|length %}<span class="scan-more">· showing the latest {{ docs|length }} - press Enter to search them all</span>{% endif %}</p>
+  <noscript><button class="btn btn-secondary btn-sm">Search</button></noscript>
+</form>
+
+{% if docs %}
 <div class="table-wrap card scan-queue-table">
-  <table>
-    <thead><tr><th class="num">#</th><th>Supplier</th><th>Bill no.</th><th>Date</th><th class="num">Taxable</th>
-      <th class="num">GST</th><th class="num">Total</th><th>Post as</th><th>Checks</th><th></th></tr></thead>
+  <table data-scan-table>
+    <thead><tr>
+      <th class="num">#</th>
+      <th data-sort="supplier">Supplier</th><th data-sort="bill">Bill no.</th><th data-sort="date">Bill date</th>
+      <th class="num" data-sort="taxable">Taxable</th><th class="num" data-sort="gst">GST</th>
+      <th class="num" data-sort="total">Total</th><th data-sort="kind">Post as</th>
+      <th data-sort="check">{{ 'Checks' if tab == 'check' else 'Status' }}</th>
+      <th data-sort="uploaded">Uploaded</th><th data-sort="read">Last read</th><th></th></tr></thead>
     <tbody>
     {% for d in docs %}
       {% set ex = d.extracted or {} %}
       {% set check = (d.validation or {}).get('status') %}
-      <tr>
-        <td class="num">{{ loop.index }}</td>
-        <td><a href="{{ url_for('scan.review', doc_id=d.id) }}"><strong>{{ ex.supplier_name or d.filename }}</strong></a>
-          <small class="block text-muted">{{ ex.supplier_gstin or 'No GSTIN' }}</small></td>
-        <td>{{ ex.invoice_number or '-' }}</td>
+      {% set gst = (ex.cgst or 0) + (ex.sgst or 0) + (ex.igst or 0) %}
+      {% set state = 'dup' if d.duplicate_of else ('passed' if check == 'verified' else 'look') %}
+      <tr data-supplier="{{ (ex.supplier_gstin or ex.supplier_name or '')|trim }}" data-check="{{ state }}"
+          data-kind="{{ d.category or '' }}" data-uploaded="{{ d.created_at|ist('%Y-%m-%d') }}"
+          data-s-supplier="{{ (ex.supplier_name or d.filename)|lower }}" data-s-bill="{{ ex.invoice_number or '' }}"
+          data-s-date="{{ ex.invoice_date or '' }}" data-s-taxable="{{ ex.taxable_value or 0 }}" data-s-gst="{{ gst }}"
+          data-s-total="{{ ex.invoice_value or 0 }}" data-s-kind="{{ d.category or '' }}" data-s-check="{{ state }}"
+          data-s-uploaded="{{ d.created_at.isoformat() if d.created_at else '' }}" data-s-read="{{ d.read_at.isoformat() if d.read_at else '' }}"
+          data-text="{{ [ex.supplier_name, ex.supplier_gstin, ex.invoice_number, ex.invoice_date, d.filename,
+                         ((ex.invoice_value or 0)|inr), ex.invoice_value, ex.taxable_value, (ex.taxable_value or 0)|inr,
+                         labels.get(d.category or '', d.category), d.created_at|ist('%d %b %Y'), d.duplicate_of, d.message]
+                        |select|join(' ')|lower }}">
+        <td class="num" data-n>{{ loop.index }}</td>
+        <td><a href="{{ url_for('scan.review', doc_id=d.id) }}"><strong data-hl>{{ ex.supplier_name or d.filename }}</strong></a>
+          <small class="block text-muted" data-hl>{{ ex.supplier_gstin or ('No GSTIN' if d.read_at else d.filename) }}</small></td>
+        <td data-hl>{{ ex.invoice_number or '-' }}</td>
         <td>{{ ex.invoice_date or '-' }}</td>
         <td class="num">{{ (ex.taxable_value or 0)|inr }}</td>
-        <td class="num">{{ ((ex.cgst or 0) + (ex.sgst or 0) + (ex.igst or 0))|inr }}</td>
-        <td class="num"><strong>{{ (ex.invoice_value or 0)|inr }}</strong></td>
-        <td>{{ labels.get(d.category or '', d.category or '') }}</td>
-        <td>{% if d.duplicate_of %}<span class="pill pill-warn" title="{{ d.duplicate_of }}">Already entered?</span>
-          {% elif check == 'verified' %}<span class="pill pill-ok">All passed</span>
-          {% else %}<span class="pill pill-warn">{{ ((d.validation or {}).get('checks') or [])|rejectattr('ok')|list|length }} to look at</span>{% endif %}</td>
-        <td><a href="{{ url_for('scan.review', doc_id=d.id) }}" class="btn btn-secondary btn-sm">Check ›</a></td>
+        <td class="num">{{ gst|inr }}</td>
+        <td class="num"><strong data-hl>{{ (ex.invoice_value or 0)|inr }}</strong></td>
+        <td>{{ labels.get(d.category or '', d.category or '-') }}</td>
+        <td>
+          {% if d.status == 'to_check' %}
+            {% if d.duplicate_of %}<span class="pill pill-warn" title="{{ d.duplicate_of }}">Already entered?</span>
+            {% elif check == 'verified' %}<span class="pill pill-ok">All passed</span>
+            {% else %}<span class="pill pill-warn">{{ ((d.validation or {}).get('checks') or [])|rejectattr('ok')|list|length or 1 }} to look at</span>{% endif %}
+          {% elif d.status == 'posted' %}{% if posted_urls[d.id] %}<a href="{{ posted_urls[d.id] }}" class="pill pill-ok">Posted ›</a>{% else %}<span class="pill pill-ok">Posted</span>{% endif %}
+            <small class="block text-muted">{{ d.posted_at|ist('%d %b %Y') }}</small>
+          {% elif d.status == 'filed' %}<span class="pill pill-muted">On file</span>
+          {% elif d.status == 'rejected' %}<span class="pill pill-warn" title="{{ d.message }}">Rejected</span><small class="block text-muted scan-why">{{ d.message }}</small>
+          {% elif d.status == 'failed' %}<span class="pill pill-warn" title="{{ d.message }}">Couldn't read</span>
+          {% else %}<span class="pill pill-muted">Reading…</span>{% endif %}</td>
+        <td class="scan-when">{{ d.created_at|ist('%d %b %Y') }}<small class="block text-muted">{{ d.created_at|ist('%I:%M %p') }}</small></td>
+        <td class="scan-when">{% if d.read_at %}{{ d.read_at|ist('%d %b %Y') }}<small class="block text-muted">{{ d.read_at|ist('%I:%M %p') }}</small>{% else %}<span class="text-muted">Not yet</span>{% endif %}</td>
+        <td><a href="{{ url_for('scan.review', doc_id=d.id) }}" class="btn btn-secondary btn-sm">{{ 'Check ›' if d.status == 'to_check' else 'Open ›' }}</a></td>
       </tr>
     {% endfor %}
     </tbody>
   </table>
+  <p class="empty-state m-0" data-none hidden>No bills match - try fewer words, or press Enter to search all of them.</p>
 </div>
 {% else %}
-<div class="scan-list">
-  {% for d in docs %}
-  {% set ex = d.extracted or {} %}
-  <a class="card scan-item" href="{{ url_for('scan.review', doc_id=d.id) }}">
-    <span class="scan-thumb">{% if d.read_at or not d.is_pdf %}<img src="{{ url_for('scan.preview', doc_id=d.id, v=(d.updated_at.timestamp()|int) if d.updated_at else 0) }}" alt="" loading="lazy">{% else %}{{ icon('file-text') }}{% endif %}</span>
-    <span class="scan-item-body">
-      <strong>{{ ex.supplier_name or d.filename }}</strong>
-      <small class="text-muted block">
-        {% if ex.invoice_number %}{{ ex.invoice_number }} · {% endif %}{% if ex.invoice_date %}{{ ex.invoice_date }} · {% endif %}{{ labels.get(d.category or '', d.category or ('PDF' if d.is_pdf else 'Photo')) }}
-      </small>
-      {% if d.status == 'rejected' or d.status == 'failed' %}<small class="scan-warn block">{{ d.message }}</small>{% endif %}
-      {% if d.duplicate_of and d.status == 'to_check' %}<small class="scan-warn block">Looks already entered: {{ d.duplicate_of }}</small>{% endif %}
-    </span>
-    <span class="scan-item-end">
-      {% if ex.invoice_value %}<strong class="num">{{ ex.invoice_value|inr }}</strong>{% endif %}
-      {% set check = (d.validation or {}).get('status') %}
-      {% if d.status == 'to_check' %}
-        <span class="pill {{ 'pill-ok' if check == 'verified' else 'pill-warn' }}">{{ 'Checks passed' if check == 'verified' else 'Needs a look' }}</span>
-      {% elif d.status == 'posted' %}<span class="pill pill-ok">Posted</span>
-      {% elif d.status == 'filed' %}<span class="pill pill-muted">On file</span>
-      {% elif d.status == 'rejected' %}<span class="pill pill-warn">Rejected</span>
-      {% elif d.status == 'failed' %}<span class="pill pill-warn">Couldn't read</span>
-      {% else %}<span class="pill pill-muted">Reading…</span>{% endif %}
-    </span>
-  </a>
-  {% else %}
-  <p class="empty-state card">{{ {'check': 'Nothing waiting to be checked.', 'reading': 'Nothing being read.', 'done': 'No bills posted from scans yet.', 'rejected': 'Nothing rejected.'}[tab] }}</p>
-  {% endfor %}
-</div>
+<p class="empty-state card">{% if f.q or f.supplier or f.check or f.kind or f.uploaded %}No bills match that search. <a href="{{ url_for('scan.index', tab=tab) }}">Show them all</a>{% else %}{{ {'check': 'Nothing waiting to be checked.', 'reading': 'Nothing being read.', 'done': 'No bills posted from scans yet.', 'rejected': 'Nothing rejected.'}[tab] }}{% endif %}</p>
 {% endif %}
 <p class="text-muted text-center mt-16">{{ used }} of {{ limit }} bills read today.</p>
 {% endblock %}
-{% block scripts %}<script src="{{ url_for('static', filename='js/scan.js') }}" defer></script>{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/scan.js') }}" defer></script>
+<script src="{{ url_for('static', filename='js/scan_list.js') }}" defer></script>{% endblock %}

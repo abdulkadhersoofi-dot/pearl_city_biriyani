@@ -1,4 +1,5 @@
-from datetime import timedelta
+import re
+from datetime import date, datetime, time as dtime, timedelta
 
 from flask import Response, abort, flash, jsonify, redirect, render_template, request, url_for
 from flask_login import current_user
@@ -67,8 +68,11 @@ def index():
         tab = "check" if counts["check"] or not counts["reading"] else "reading"
     # Bills to check run in the order they were uploaded, to be taken one by one.
     order = ScanDocument.id.asc() if tab == "check" else ScanDocument.id.desc()
-    docs = (tenant_query(ScanDocument).filter(ScanDocument.status.in_(TABS[tab][1]))
-            .order_by(order).limit(200).all())
+    in_tab = tenant_query(ScanDocument).filter(ScanDocument.status.in_(TABS[tab][1]))
+    filters = _list_filters(request.args)
+    found = _apply_filters(in_tab, filters)
+    total = found.count()
+    docs = found.order_by(order).limit(LIST_LIMIT).all()
     # Waiting to be read - and any read cut off part-way (a restarted server)
     # for more than three minutes, which is read again.
     stale = utcnow() - timedelta(minutes=3)
@@ -78,7 +82,89 @@ def index():
         .order_by(ScanDocument.id).limit(100)]
     return render_template("scan/index.html", scan_tabs=TABS, tab=tab, counts=counts, docs=docs, pending=pending,
                            set_up=services.is_set_up(), used=services.reads_today(tenant.id),
-                           limit=services.daily_limit(), labels=CATEGORY_LABELS)
+                           limit=services.daily_limit(), labels=CATEGORY_LABELS, filters=filters, total=total,
+                           shown_limit=LIST_LIMIT, suppliers=_supplier_options(in_tab), checks=CHECKS, spans=UPLOAD_SPANS,
+                           kinds=_kind_options(in_tab), posted_urls={d.id: _posted_url(d) for d in docs})
+
+
+# --- the list's search and filters (also done in the page itself, as you type) --------------------
+
+LIST_LIMIT = 1000
+CHECKS = {"passed": "All checks passed", "look": "Something to look at", "dup": "Looks already entered"}
+UPLOAD_SPANS = {"today": "Today", "7": "Last 7 days", "30": "Last 30 days", "range": "Between dates"}
+
+
+def _list_filters(args) -> dict:
+    def day(key):
+        try:
+            return date.fromisoformat((args.get(key) or "").strip())
+        except ValueError:
+            return None
+    return {"q": (args.get("q") or "").strip()[:100], "supplier": (args.get("supplier") or "").strip()[:255],
+            "check": args.get("check") if args.get("check") in CHECKS else "",
+            "kind": (args.get("kind") or "").strip()[:40],
+            "uploaded": args.get("uploaded") if args.get("uploaded") in UPLOAD_SPANS else "",
+            "from": day("from"), "to": day("to")}
+
+
+def _ist_start(d: date) -> datetime:
+    from app.einvoice.providers.common import IST
+
+    return datetime.combine(d, dtime.min).replace(tzinfo=IST)
+
+
+def _apply_filters(query, f: dict):
+    ex = ScanDocument.extracted
+    text = lambda key: ex[key].as_string()  # noqa: E731
+    for word in f["q"].split():
+        like = f"%{word}%"
+        digits = re.sub(r"[,\s₹]|rs\.?", "", word, flags=re.I)
+        options = [ScanDocument.filename.ilike(like), text("supplier_name").ilike(like),
+                   text("supplier_gstin").ilike(like), text("invoice_number").ilike(like),
+                   text("invoice_date").ilike(like)]
+        if re.fullmatch(r"\d+(\.\d+)?", digits or ""):
+            options += [text("invoice_value").like(f"%{digits}%"), text("taxable_value").like(f"%{digits}%")]
+        query = query.filter(db.or_(*options))
+    if f["supplier"]:
+        query = query.filter(db.or_(text("supplier_gstin") == f["supplier"], text("supplier_name") == f["supplier"]))
+    if f["check"] == "passed":
+        query = query.filter(ScanDocument.validation["status"].as_string() == "verified",
+                             ScanDocument.duplicate_of.is_(None))
+    elif f["check"] == "look":
+        query = query.filter(db.or_(ScanDocument.validation["status"].as_string() != "verified",
+                                    ScanDocument.validation.is_(None)))
+    elif f["check"] == "dup":
+        query = query.filter(ScanDocument.duplicate_of.isnot(None))
+    if f["kind"]:
+        query = query.filter(ScanDocument.category == f["kind"])
+    today = date.today()
+    start = {"today": today, "7": today - timedelta(days=6), "30": today - timedelta(days=29)}.get(f["uploaded"])
+    end = None
+    if f["uploaded"] == "range":
+        start, end = f["from"], f["to"]
+    if start:
+        query = query.filter(ScanDocument.created_at >= _ist_start(start))
+    if end:
+        query = query.filter(ScanDocument.created_at < _ist_start(end + timedelta(days=1)))
+    return query
+
+
+def _supplier_options(in_tab) -> list[tuple[str, str]]:
+    """(value, label) of every supplier among the tab's bills."""
+    ex = ScanDocument.extracted
+    rows = in_tab.with_entities(ex["supplier_name"].as_string(), ex["supplier_gstin"].as_string()).distinct().all()
+    seen, out = set(), []
+    for name, gstin in rows:
+        value = (gstin or name or "").strip()
+        if value and value not in seen:
+            seen.add(value)
+            out.append((value, f"{(name or '').strip() or gstin}{' · ' + gstin if gstin and name else ''}"))
+    return sorted(out, key=lambda o: o[1].lower())
+
+
+def _kind_options(in_tab) -> list[tuple[str, str]]:
+    cats = sorted({c for (c,) in in_tab.with_entities(ScanDocument.category).distinct() if c})
+    return [(c, CATEGORY_LABELS.get(c, c)) for c in cats]
 
 
 # --- JSON: upload, read, list (the page's script, and a phone app) --------------------------------
