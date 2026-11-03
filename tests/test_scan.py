@@ -978,3 +978,27 @@ def test_the_turn_buttons_turn_the_bill_and_its_boxes(client, db, scanning, clie
     assert Image.open(io.BytesIO(doc.preview)).width > Image.open(io.BytesIO(doc.preview)).height
     assert doc.extracted["boxes"]["invoice_number"] == [0, 50.0, 800.0, 150.0, 900.0]
     assert doc.extracted["turned"] == {"0": 90}
+
+
+def test_each_value_on_a_line_points_at_its_own_cell():
+    from app.scan.services import line_cells, line_rows
+
+    columns = {"hsn_sac": [0, 300, 400, 700, 480], "cgst": [0, 300, 700, 700, 760], "sgst": [0, 300, 780, 700, 840],
+               "amount": [0, 300, 880, 700, 990]}
+    cells = line_cells([0, 410, 10, 430, 990], columns)
+    assert cells["hsn_sac"] == [0, 410, 400, 430, 480]
+    assert cells["tax"] == [0, 410, 700, 430, 840]        # CGST and SGST together
+    assert line_cells(None, columns) == {} and line_cells([0, 1, 2, 3, 4], {}) == {}
+    doc = ScanDocument(extracted={**_bill(), "columns": columns,
+                                  "line_items": [dict(_bill()["line_items"][0], box=[0, 410, 10, 430, 990])]})
+    assert line_rows(doc)[0]["cells"]["amount"] == [0, 410, 880, 430, 990]
+
+
+def test_the_reader_places_the_tables_columns_and_every_detail():
+    assert "columns" in reader.PROMPT and "challan_number" in reader.PROMPT.split("WHERE IT IS PRINTED")[1]
+    shaped = reader._shape(_bill(columns={"hsn_sac": [0, 300, 400, 700, 480], "nonsense": [0, 1, 2, 30, 40]},
+                                 boxes={"challan_number": [0, 80, 600, 95, 700]}))
+    assert shaped["columns"] == {"hsn_sac": [0, 300.0, 400.0, 700.0, 480.0]}
+    assert shaped["boxes"]["challan_number"] == [0, 80.0, 600.0, 95.0, 700.0]
+    reader.turn_boxes(shaped, {0: 180})
+    assert shaped["columns"]["hsn_sac"] == [0, 300.0, 520.0, 700.0, 600.0]

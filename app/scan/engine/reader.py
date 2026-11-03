@@ -246,7 +246,7 @@ taxable_value=TAXABLE column (not unit price); invoice_value=grand total.
 One line_item per SKU. Serial / IMEI numbers printed for an item go in THAT line's serial_numbers list (every one, exactly as printed) - never as extra line_items. Also copy per line, when printed: item_code (the supplier's item / part / model / SKU code), batch, mfg_date, expiry (YYYY-MM-DD; a month-year expiry like 03/27 is the month's last day), mrp, discount_percent and discount_amount. For EACH line item ALWAYS fill gst_rate (the % rate for that item, e.g. 18) AND taxable_value (that line's taxable amount before tax). If the invoice prints tax per line, fill the line's cgst/sgst/igst too; if tax is shown only as one consolidated total at the bottom, still fill each line's gst_rate and taxable_value and leave the per-line tax 0 — the rate and taxable are enough.
 Pages may be STACKED vertically in one image, separated by dark 'PAGE x of y' bars. Totals (CGST/SGST/IGST, grand total, HSN summary) usually sit at the BOTTOM of the LAST page — read the ENTIRE image to the bottom before answering.
 category: "Expenses" for a bill for a service or a consumable the business uses itself (restaurant / hotel / fuel / travel / telephone / internet / electricity / rent / repairs / courier / stationery / professional fees); "Purchase" for goods or services bought from a supplier on a tax invoice addressed to the business; "Sales" only when the business itself issued the invoice; a credit or debit note is "... - Credit Note" / "... - Debit Note"; a payment receipt is "Receipts".
-{"supplier_name":"","supplier_gstin":"","supplier_address":"","supplier_phone":"","supplier_email":"","supplier_pan":"","supplier_state":"","receiver_name":"","receiver_gstin":"","receiver_address":"","receiver_state":"","invoice_number":"","invoice_date":"YYYY-MM-DD","due_date":"","place_of_supply":"","reverse_charge":"","irn":"","ack_number":"","ack_date":"","ewb_number":"","bank_name":"","bank_account":"","bank_ifsc":"","bank_branch":"","bank_upi":"","po_number":"","po_date":"","order_number":"","challan_number":"","dispatch_doc_number":"","dispatched_through":"","vehicle_number":"","lr_number":"","payment_terms":"","supplier_reference":"","other_references":"","warranty":"","tds_section":"","hsn_sac":"","notes":"","category":"Purchase or Sales or Purchase - Credit Note or Purchase - Debit Note or Sales - Credit Note or Sales - Debit Note or Expenses or Receipts","line_items":[{"description":"","item_code":"","hsn_sac":"","quantity":0,"unit":"","rate_per_unit":0,"discount_percent":0,"discount_amount":0,"gst_rate":0,"taxable_value":0,"igst":0,"cgst":0,"sgst":0,"cess":0,"amount":0,"serial_numbers":[],"batch":"","mfg_date":"","expiry":"","mrp":0,"box":[0,0,0,0,0]}],"taxable_value":0,"igst":0,"cgst":0,"sgst":0,"cess":0,"tds":0,"discount":0,"round_off":0,"invoice_value":0,"confidence":0.9,"flags":[],"boxes":{},"rotation":[0]}
+{"supplier_name":"","supplier_gstin":"","supplier_address":"","supplier_phone":"","supplier_email":"","supplier_pan":"","supplier_state":"","receiver_name":"","receiver_gstin":"","receiver_address":"","receiver_state":"","invoice_number":"","invoice_date":"YYYY-MM-DD","due_date":"","place_of_supply":"","reverse_charge":"","irn":"","ack_number":"","ack_date":"","ewb_number":"","bank_name":"","bank_account":"","bank_ifsc":"","bank_branch":"","bank_upi":"","po_number":"","po_date":"","order_number":"","challan_number":"","dispatch_doc_number":"","dispatched_through":"","vehicle_number":"","lr_number":"","payment_terms":"","supplier_reference":"","other_references":"","warranty":"","tds_section":"","hsn_sac":"","notes":"","category":"Purchase or Sales or Purchase - Credit Note or Purchase - Debit Note or Sales - Credit Note or Sales - Debit Note or Expenses or Receipts","line_items":[{"description":"","item_code":"","hsn_sac":"","quantity":0,"unit":"","rate_per_unit":0,"discount_percent":0,"discount_amount":0,"gst_rate":0,"taxable_value":0,"igst":0,"cgst":0,"sgst":0,"cess":0,"amount":0,"serial_numbers":[],"batch":"","mfg_date":"","expiry":"","mrp":0,"box":[0,0,0,0,0]}],"taxable_value":0,"igst":0,"cgst":0,"sgst":0,"cess":0,"tds":0,"discount":0,"round_off":0,"invoice_value":0,"confidence":0.9,"flags":[],"boxes":{},"columns":{},"rotation":[0]}
 Amounts=numbers; dates=YYYY-MM-DD; root totals=Σ line_items.
 References, when printed: po_number/po_date = the buyer's order no. and date; order_number = the supplier's own order / sales order no.; challan_number = delivery note / challan no.; dispatch_doc_number, dispatched_through, vehicle_number, lr_number (LR / RR / docket / AWB no.); payment_terms (e.g. "30 days"); supplier_reference = the supplier's internal reference no.; other_references = any other reference numbers, as "label: value; ...". warranty = warranty terms printed. tds = TDS deducted on the bill (a "Less: TDS" line), tds_section its section (194Q, 194C, 194J...).
 SELF-CHECK (re-read any digit that fails):
@@ -255,7 +255,7 @@ SELF-CHECK (re-read any digit that fails):
 3. Per line: taxes == taxable×gst_rate/100.
 4. Printed totals are authoritative — if your sum disagrees, re-read digits.
 5. For ANY field where a character is ambiguous, touching, watermark-obscured, or you are not fully certain of even ONE character (numbers, GSTIN, invoice number, dates — anything), add that field's name to "flags" and lower "confidence". It is better to flag a correct read than to silently pass a wrong one — flags route the field to human review.
-WHERE IT IS PRINTED (so a person can check your reading against the bill): add "boxes":{"<field>":[i,ymin,xmin,ymax,xmax],...} for EVERY top-level field you filled (supplier_name, supplier_gstin, supplier_address, supplier_phone, receiver_gstin, invoice_number, invoice_date, taxable_value, cgst, sgst, igst, tds, round_off, invoice_value, the references and bank details...), and give EACH line_item a "box":[i,ymin,xmin,ymax,xmax] around its whole row. i = which image the value is on (0 = the first; always 0 when there is one image); ymin,xmin,ymax,xmax = the box around the printed value, as 0-1000 of that image's height and width. Boxes never change any value.
+WHERE IT IS PRINTED (so a person can check your reading against the bill): add "boxes":{"<field>":[i,ymin,xmin,ymax,xmax],...} with a box for EVERY top-level field you filled - supplier_name, supplier_gstin, supplier_address, supplier_phone, supplier_email, receiver_name, receiver_gstin, invoice_number, invoice_date, due_date, place_of_supply, taxable_value, cgst, sgst, igst, cess, tds, discount, round_off, invoice_value, irn, ack_number, ack_date, ewb_number, po_number, po_date, order_number, challan_number, dispatch_doc_number, dispatched_through, vehicle_number, lr_number, payment_terms, supplier_reference, other_references, warranty, bank_name, bank_account, bank_ifsc, bank_branch, bank_upi - each around the printed VALUE (not its label). Give EACH line_item a "box":[i,ymin,xmin,ymax,xmax] around its whole row. And add "columns":{"<column>":[i,ymin,xmin,ymax,xmax],...} - for each column of the items table the bill has (description, item_code, hsn_sac, quantity, unit, rate_per_unit, discount, taxable_value, gst_rate, cgst, sgst, igst, amount), the box from its heading down to the last item row, its full width. i = which image the value is on (0 = the first; always 0 when there is one image); ymin,xmin,ymax,xmax = the box around the printed value, as 0-1000 of that image's height and width. Boxes never change any value.
 "rotation":[...] - one number per page, in order (each image, or each PAGE panel of a stacked image): the clockwise turn in degrees, 0, 90, 180 or 270, that would make that page's printed text read upright, left to right. Usually 0; a landscape bill photographed or scanned sideways is 90 or 270; upside down is 180."""
 
 TEXT_FIELDS = ("supplier_name", "supplier_gstin", "supplier_address", "supplier_phone", "supplier_email",
@@ -447,6 +447,8 @@ def _shape(parsed: dict) -> dict:
     known = set(TEXT_FIELDS) | set(MONEY_FIELDS) | {"invoice_value", "taxable_value"}
     boxes = parsed.get("boxes") if isinstance(parsed.get("boxes"), dict) else {}
     out["boxes"] = {k: b for k, b in ((k, _box(v)) for k, v in boxes.items() if k in known) if b}
+    columns = parsed.get("columns") if isinstance(parsed.get("columns"), dict) else {}
+    out["columns"] = {k: b for k, b in ((k, _box(v)) for k, v in columns.items() if k in TABLE_COLUMNS) if b}
     turns = parsed.get("rotation")
     turns = turns if isinstance(turns, list) else [turns]
     out["rotation"] = [int(_f(t) or 0) % 360 if int(_f(t) or 0) % 360 in ROTATIONS else 0 for t in turns[:50]]
@@ -454,6 +456,10 @@ def _shape(parsed: dict) -> dict:
 
 
 ROTATIONS = (0, 90, 180, 270)
+# The items table's columns the reader places (each line's cell = its row
+# across the column).
+TABLE_COLUMNS = ("description", "item_code", "hsn_sac", "quantity", "unit", "rate_per_unit", "discount",
+                 "taxable_value", "gst_rate", "cgst", "sgst", "igst", "amount")
 
 
 def turn_point(x: float, y: float, deg: int) -> tuple[float, float]:
@@ -483,7 +489,8 @@ def turn_boxes(extracted: dict, turns: dict) -> None:
     if not turns:
         return
     turns = {int(k): int(v) for k, v in turns.items()}
-    extracted["boxes"] = {k: turn_box(b, turns.get(b[0], 0)) for k, b in (extracted.get("boxes") or {}).items()}
+    for key in ("boxes", "columns"):
+        extracted[key] = {k: turn_box(b, turns.get(b[0], 0)) for k, b in (extracted.get(key) or {}).items()}
     for item in extracted.get("line_items") or []:
         if item.get("box"):
             item["box"] = turn_box(item["box"], turns.get(item["box"][0], 0))
@@ -586,7 +593,8 @@ def place_boxes(extracted: dict, page_map: list[int], layout: dict | None = None
             return None
         return [page_map[i], y0, x0, y1, x1]
 
-    extracted["boxes"] = {k: b for k, b in ((k, on_page(v)) for k, v in (extracted.get("boxes") or {}).items()) if b}
+    for key in ("boxes", "columns"):
+        extracted[key] = {k: b for k, b in ((k, on_page(v)) for k, v in (extracted.get(key) or {}).items()) if b}
     for item in extracted.get("line_items") or []:
         item["box"] = on_page(item.get("box"))
 

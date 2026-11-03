@@ -70,7 +70,7 @@
       return;
     }
     shownPage = n;
-    stageImg.onload = function () { layout(); if (done) done(); };
+    stageImg.onload = function () { layout(); drawAll(); if (done) done(); };
     stageImg.src = pageUrl(n);
   }
 
@@ -79,6 +79,7 @@
     zoomed = false;
     viewer.classList.remove("is-zoomed");
     stage.style.transform = "";
+    stage.style.removeProperty("--mark-w");
     stageMark.hidden = true;
   }
 
@@ -97,6 +98,7 @@
       tx = bw > vw ? Math.min(-fit.left, Math.max(vw - fit.left - bw, tx)) : (vw - bw) / 2 - fit.left;
       ty = bh > vh ? Math.min(-fit.top, Math.max(vh - fit.top - bh, ty)) : (vh - bh) / 2 - fit.top;
       stage.style.transform = "translate(" + tx + "px, " + ty + "px) scale(" + k + ")";
+      stage.style.setProperty("--mark-w", (1.5 / k) + "px");
       stageMark.style.left = (r.x0 * 100) + "%";
       stageMark.style.top = (r.y0 * 100) + "%";
       stageMark.style.width = ((r.x1 - r.x0) * 100) + "%";
@@ -125,6 +127,63 @@
         unzoom();
         showPage(shownPage + parseInt(btn.getAttribute("data-page-step"), 10));
       });
+    });
+  }
+
+  // --- "Show all": every value read, marked on the bill; a mark takes you to its field -------------
+  var allBtn = document.querySelector("[data-show-all]");
+  var allOn = false, allMarks = [];
+
+  function fieldOf(host) {
+    return host.matches("input, select, textarea") ? host : host.querySelector("input:not([type=hidden]), select, textarea");
+  }
+  function labelOf(host) {
+    var f = fieldOf(host), lab = host.closest("label");
+    var text = (lab && lab.querySelector(".inv-label") && lab.querySelector(".inv-label").textContent) ||
+               (f && (f.getAttribute("aria-label") || f.getAttribute("placeholder"))) || "";
+    var v = f ? f.value : (host.textContent || "");
+    return (text.trim() + (v ? ": " + String(v).trim() : "")).slice(0, 120);
+  }
+  function drawAll() {
+    allMarks.forEach(function (m) { m.remove(); });
+    allMarks = [];
+    if (!allOn || !stage || !form) return;
+    var seen = {};
+    form.querySelectorAll("[data-zoom]").forEach(function (host) {
+      var raw = host.getAttribute("data-zoom"), line = host.closest("tbody[data-zoom]");
+      if (seen[raw]) return;   // one mark a spot
+      // a cell with no column of its own falls back to its whole row: the row's cells are marked instead
+      if (line && line !== host && line.getAttribute("data-zoom") === raw) return;
+      if (host.tagName === "TBODY" && host.querySelector("td[data-zoom]:not([data-zoom='" + raw + "'])")) return;
+      seen[raw] = true;
+      var b;
+      try { b = JSON.parse(raw); } catch (e) { return; }
+      if (!Array.isArray(b) || b.length !== 5 || b[0] !== shownPage) return;
+      var m = el("button", "scan-all-mark", stage);
+      m.type = "button";
+      m.title = labelOf(host);
+      m.setAttribute("aria-label", "Go to " + m.title);
+      m.style.left = (b[2] / 10) + "%";
+      m.style.top = (b[1] / 10) + "%";
+      m.style.width = ((b[4] - b[2]) / 10) + "%";
+      m.style.height = ((b[3] - b[1]) / 10) + "%";
+      m.addEventListener("click", function (e) {
+        e.preventDefault();
+        var f = fieldOf(host);
+        host.scrollIntoView({ block: "center", behavior: "smooth" });
+        if (f) setTimeout(function () { f.focus({ preventScroll: true }); }, 250);
+        host.classList.add("is-pointed");
+        setTimeout(function () { host.classList.remove("is-pointed"); }, 1400);
+      });
+      allMarks.push(m);
+    });
+  }
+  if (allBtn) {
+    allBtn.addEventListener("click", function () {
+      allOn = !allOn;
+      allBtn.setAttribute("aria-pressed", allOn ? "true" : "false");
+      if (viewer) viewer.classList.toggle("is-showing-all", allOn);
+      drawAll();
     });
   }
 

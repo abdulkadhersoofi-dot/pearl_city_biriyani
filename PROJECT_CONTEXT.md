@@ -762,7 +762,11 @@ this list is just the index.
   with it - reader.turn_boxes); ↺ / ↻ on the review turn it by hand
   (services.turn). The review page is full width (body.is-wide); from a
   1240px content width the bill sits in a tall sticky viewer that zooms
-  into the spot pointed at, below that a large pop-up does.
+  into the spot pointed at, below that a large pop-up does. The reader also
+  places the items table's columns (extracted["columns"]); each line's cell
+  is its row across the column (services.line_cells), so pointing at an HSN
+  or an amount zooms to that one cell. "Show all" marks every value read on
+  the bill; a mark takes you to its field.
 
 ## 5. Chronological development history (this session)
 

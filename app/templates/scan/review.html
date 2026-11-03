@@ -42,6 +42,7 @@
         <span data-page-label>Page 1 of {{ pages }}</span>
         <button type="button" class="btn btn-quiet btn-sm" data-page-step="1" aria-label="Next page">›</button></span>
       {% endif %}
+      {% if ex.get('boxes') %}<button type="button" class="btn btn-quiet btn-sm" data-show-all aria-pressed="false" title="Mark every value ARFA read on the bill - click a mark to go to its field">Show all</button>{% endif %}
       {% if doc.status in ('to_check', 'rejected', 'failed') %}
       <form method="post" action="{{ url_for('scan.turn', doc_id=doc.id) }}" class="row gap-4" title="Turn the bill if it's on its side">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -174,7 +175,7 @@
               <tbody class="inv-line" :data-zoom="l.box ? JSON.stringify(l.box) : null">
                 <tr>
                   <td class="num inv-sno" x-text="i + 1"></td>
-                  <td class="inv-desc">
+                  <td class="inv-desc" :data-zoom="cell(l, 'description')">
                     <input class="inv-input" name="line_description[]" x-model="l.description" aria-label="Description">
                     <button type="button" class="inv-more-btn" @click="l.open = !l.open" :aria-expanded="l.open ? 'true' : 'false'" x-text="moreLabel(l)"></button>
                     <select class="inv-select inv-item" name="line_product_id[]" x-model="l.product_id" x-show="kind === 'purchase'" :disabled="kind !== 'purchase'" aria-label="Item in your catalogue">
@@ -183,22 +184,22 @@
                       <template x-for="o in l.options" :key="o.id"><option :value="o.id" x-text="'Item: ' + o.name" :selected="o.id === l.product_id"></option></template>
                     </select>
                   </td>
-                  <td><input class="inv-input inv-mono inv-w-hsn" name="line_hsn[]" x-model="l.hsn" inputmode="numeric" aria-label="HSN"
+                  <td :data-zoom="cell(l, 'hsn_sac')"><input class="inv-input inv-mono inv-w-hsn" name="line_hsn[]" x-model="l.hsn" inputmode="numeric" aria-label="HSN"
                              :class="{ 'is-flagged': l.hsn && [4, 6, 8].indexOf(String(l.hsn).replace(/\D/g, '').length) < 0 }"></td>
-                  <td><input class="inv-input num inv-w-qty" name="line_qty[]" x-model="l.qty" inputmode="decimal" aria-label="Quantity"></td>
-                  <td><input class="inv-input inv-w-unit" name="line_unit[]" x-model="l.unit" aria-label="Unit"></td>
-                  <td><input class="inv-input num inv-w-rate" name="line_rate[]" x-model="l.rate" inputmode="decimal" aria-label="Rate"></td>
-                  <td class="inv-disc"><input class="inv-input num inv-w-disc" x-model="l.discount" inputmode="decimal" :aria-label="l.disc_type === 'amt' ? 'Discount in rupees' : 'Discount percent'">
+                  <td :data-zoom="cell(l, 'quantity')"><input class="inv-input num inv-w-qty" name="line_qty[]" x-model="l.qty" inputmode="decimal" aria-label="Quantity"></td>
+                  <td :data-zoom="cell(l, 'unit')"><input class="inv-input inv-w-unit" name="line_unit[]" x-model="l.unit" aria-label="Unit"></td>
+                  <td :data-zoom="cell(l, 'rate_per_unit')"><input class="inv-input num inv-w-rate" name="line_rate[]" x-model="l.rate" inputmode="decimal" aria-label="Rate"></td>
+                  <td class="inv-disc" :data-zoom="cell(l, 'discount')"><input class="inv-input num inv-w-disc" x-model="l.discount" inputmode="decimal" :aria-label="l.disc_type === 'amt' ? 'Discount in rupees' : 'Discount percent'">
                     <select class="inv-select inv-disc-type" x-model="l.disc_type" aria-label="Discount as a percentage or rupees" title="% of the line, or rupees off it - as the bill prints it">
                       <option value="pct">%</option><option value="amt">Rs.</option></select>
                     <input type="hidden" name="line_discount[]" :value="l.disc_type === 'amt' ? '0' : l.discount">
                     <input type="hidden" name="line_discount_flat[]" :value="l.disc_type === 'amt' ? l.discount : '0'"></td>
-                  <td class="num" x-text="money(taxable(l))"></td>
-                  <td><select class="inv-select inv-w-gst" name="line_gst_rate[]" x-model="l.gst_rate" aria-label="GST rate">
+                  <td class="num" x-text="money(taxable(l))" :data-zoom="cell(l, 'taxable_value')"></td>
+                  <td :data-zoom="cell(l, 'gst_rate')"><select class="inv-select inv-w-gst" name="line_gst_rate[]" x-model="l.gst_rate" aria-label="GST rate">
                     {% for r in ['0','0.1','0.25','1','1.5','3','5','6','7.5','12','18','28','40'] %}<option value="{{ r }}" :selected="l.gst_rate === '{{ r }}'">{{ r }}%</option>{% endfor %}</select>
                     <input type="hidden" name="line_itc[]" value="eligible"></td>
-                  <td class="num" x-text="money(tax(l))"></td>
-                  <td class="num"><strong x-text="money(taxable(l) + tax(l))"></strong></td>
+                  <td class="num" x-text="money(tax(l))" :data-zoom="cell(l, 'tax')"></td>
+                  <td class="num" :data-zoom="cell(l, 'amount')"><strong x-text="money(taxable(l) + tax(l))"></strong></td>
                   <td><button type="button" class="inv-remove" @click="lines.splice(i, 1)" :disabled="lines.length < 2" aria-label="Remove this line">{{ icon('x') }}</button></td>
                 </tr>
                 <tr class="inv-more" x-show="l.open">
@@ -207,7 +208,7 @@
                     <div class="inv-more-grid">
                       <label class="inv-more-serials"><span class="inv-label">Serial / IMEI nos. <small x-show="serialCount(l)" x-text="'(' + serialCount(l) + ')'"></small></span>
                         <textarea class="inv-input inv-mono" name="line_serials[]" x-model="l.serials" rows="2" placeholder="One per line, or separated by commas" spellcheck="false"></textarea></label>
-                      <label><span class="inv-label">Item / part code</span>
+                      <label :data-zoom="cell(l, 'item_code')"><span class="inv-label">Item / part code</span>
                         <input class="inv-input inv-mono" name="line_item_code[]" x-model="l.item_code" maxlength="64"></label>
                       <label><span class="inv-label">Batch</span>
                         <input class="inv-input inv-mono" name="line_batch[]" x-model="l.batch" maxlength="64"></label>
@@ -402,6 +403,11 @@
         // prints "Less TDS", the net after it: whichever is nearer.
         var gross = this.total() - this.num(this.billTotal), net = gross - this.num(this.tds);
         return this.num(this.tds) > 0 && Math.abs(net) < Math.abs(gross) ? net : gross;
+      },
+      // where one of a line's values is printed (its own cell), else the whole row
+      cell: function (l, key) {
+        var b = (l.cells || {})[key] || l.box;
+        return b ? JSON.stringify(b) : null;
       },
       serialCount: function (l) { return String(l.serials || "").split(/[,\n]+/).filter(function (x) { return x.trim(); }).length; },
       moreLabel: function (l) {

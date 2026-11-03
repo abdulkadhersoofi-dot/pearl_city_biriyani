@@ -2125,6 +2125,12 @@ html.arfa-dialog-open { overflow: hidden; }
 .scan-stage-mark { position: absolute; border: 2px solid var(--color-primary); border-radius: 3px;
   background: rgba(31, 122, 77, 0.10); box-shadow: 0 0 0 4000px rgba(20, 24, 22, 0.18); pointer-events: none; }
 .scan-viewer.is-zoomed .scan-viewer-hint { opacity: 0; }
+.scan-all-mark { position: absolute; padding: 0; margin: 0; cursor: pointer; border-radius: 2px;
+  border: var(--mark-w, 1.5px) solid rgba(31, 122, 77, 0.85); background: rgba(31, 122, 77, 0.12); }
+.scan-all-mark:hover, .scan-all-mark:focus-visible { background: rgba(31, 122, 77, 0.32); outline: none; }
+.scan-viewer.is-showing-all .scan-lens { display: none; }
+[data-show-all][aria-pressed="true"] { background: var(--color-primary-soft); color: var(--color-primary); }
+.scan-invoice .is-pointed, .scan-invoice .is-pointed .inv-input { background: var(--color-primary-soft); transition: background 0.3s ease; }
 .scan-viewer-hint { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); padding: 4px 10px;
   border-radius: 999px; background: rgba(20, 24, 22, 0.72); color: #fff; font-size: 0.78rem; white-space: nowrap;
   pointer-events: none; transition: opacity 0.2s ease; }

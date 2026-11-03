@@ -400,6 +400,9 @@ def line_rows(doc: ScanDocument) -> list[dict]:
                      "mrp": f"{mrp:.2f}" if mrp > 0 else "", "box": item.get("box")})
     if rows:
         _spread_bill_discount(rows, doc.extracted or {})
+        columns = (doc.extracted or {}).get("columns") or {}
+        for row in rows:
+            row["cells"] = line_cells(row.get("box"), columns)
     return rows or [{"description": "Item", "hsn": "", "qty": "1", "unit": "NOS",
                      "rate": f"{_money((doc.extracted or {}).get('taxable_value')):.2f}", "discount": "0.00",
                      "disc_type": "pct", "gst_rate": "18", "serials": "", "item_code": "", "batch": "", "mfg": "", "expiry": "",
@@ -497,6 +500,22 @@ def _tds_from_form(form) -> tuple[Decimal, str | None]:
     if tds < 0:
         raise ScanError("TDS can't be negative.")
     return tds, ((form.get("tds_section") or "").strip()[:10] or None) if tds else None
+
+
+def line_cells(row_box, columns: dict) -> dict:
+    """Where each of a line's values is printed: the line's row across each
+    column of the items table ({column: [page, ymin, xmin, ymax, xmax]}),
+    so the review can point at one cell, not the whole row. "tax" is the
+    CGST and SGST columns together (or IGST)."""
+    if not row_box or not columns:
+        return {}
+    page, y0, _, y1, _ = row_box
+    # a column read on another page is the same table carried over: its width still holds
+    out = {key: [page, y0, col[2], y1, col[4]] for key, col in columns.items() if col}
+    taxes = [out[k] for k in ("cgst", "sgst") if k in out] or ([out["igst"]] if "igst" in out else [])
+    if taxes:
+        out["tax"] = [page, y0, min(t[2] for t in taxes), y1, max(t[4] for t in taxes)]
+    return out
 
 
 def _row_taxable(row: dict) -> tuple[Decimal, Decimal]:
