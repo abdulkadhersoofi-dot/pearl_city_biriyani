@@ -83,8 +83,13 @@ def test_a_restaurant_phone_can_change_what_it_opens_on(client, db, tenant, staf
 def test_the_android_app_is_arfa_counter():
     strings = (ANDROID / "app/src/main/res/values/strings.xml").read_text()
     assert '<string name="app_name">ARFA Counter</string>' in strings
-    for res in ("values/strings.xml", "drawable/ic_launcher_foreground.xml", "values/themes.xml"):
+    for res in ("values/strings.xml", "drawable/ic_launcher_background.xml", "mipmap-anydpi-v26/ic_launcher.xml",
+                "values/themes.xml"):
         xml.dom.minidom.parse(str(ANDROID / "app/src/main/res" / res))
+    # The ARFA logo is the launcher icon, at every screen density.
+    assert "@drawable/ic_arfa_logo" in (ANDROID / "app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml").read_text()
+    for density in ("mdpi", "hdpi", "xhdpi", "xxhdpi", "xxxhdpi"):
+        assert (ANDROID / f"app/src/main/res/drawable-{density}/ic_arfa_logo.png").exists()
     activity = (ANDROID / "app/src/main/java/com/arfa/pos/MainActivity.kt").read_text()
     assert '"$baseUrl/app/?start=1"' in activity and '" ARFACounter/"' in activity
     assert '"/app/"' in activity and "FLAG_KEEP_SCREEN_ON" in activity

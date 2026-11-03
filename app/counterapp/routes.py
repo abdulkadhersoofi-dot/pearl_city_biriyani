@@ -300,7 +300,8 @@ def manifest():
         "name": "ARFA Counter", "short_name": "Counter", "start_url": url_for("counterapp.index"),
         "scope": url_for("counterapp.index"), "display": "standalone", "background_color": "#f4f7f2",
         "theme_color": "#1f7a4d",
-        "icons": [{"src": url_for("static", filename="img/counter-icon.svg"), "sizes": "any", "type": "image/svg+xml"}],
+        "icons": [{"src": url_for("static", filename="img/arfa-logo-512.png"), "sizes": "512x512", "type": "image/png"},
+                  {"src": url_for("static", filename="img/arfa-logo-192.png"), "sizes": "192x192", "type": "image/png"}],
     })
     response.mimetype = "application/manifest+json"
     return response
