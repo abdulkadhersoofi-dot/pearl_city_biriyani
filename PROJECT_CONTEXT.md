@@ -756,6 +756,13 @@ this list is just the index.
   xmax] 0-1000, mapped back from a stitched image by reader.place_boxes);
   pointing at a field on the review zooms into that spot
   (static/js/scan_zoom.js, pages from /scan/<id>/page/<n>.jpg).
+  Every bill is kept upright: a PDF with real text is turned by its text
+  direction before it is read (reader.pdf_text_turns); a photo or scan by
+  the model's "rotation" answer, after it (the stored file is turned, boxes
+  with it - reader.turn_boxes); ↺ / ↻ on the review turn it by hand
+  (services.turn). The review page is full width (body.is-wide); from a
+  1240px content width the bill sits in a tall sticky viewer that zooms
+  into the spot pointed at, below that a large pop-up does.
 
 ## 5. Chronological development history (this session)
 

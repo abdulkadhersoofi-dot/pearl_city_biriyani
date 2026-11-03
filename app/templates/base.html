@@ -49,7 +49,7 @@
 </head>
 {% set new_actions = new_menu(current_user) %}
 {% set tabs = bottom_tabs(current_user) %}
-<body class="{{ 'has-menu' if menu else 'no-menu' }}{{ ' has-tabs' if tabs }}{{ ' is-counter' if request.endpoint == 'pos.terminal' }}{{ ' is-read-only' if g.read_only_module }}" x-data="shell" data-rail-key="{{ rail_key }}"
+<body class="{{ 'has-menu' if menu else 'no-menu' }}{{ ' has-tabs' if tabs }}{{ ' is-counter' if request.endpoint == 'pos.terminal' }}{{ ' is-wide' if request.endpoint in ('scan.review', 'scan.post') }}{{ ' is-read-only' if g.read_only_module }}" x-data="shell" data-rail-key="{{ rail_key }}"
       @keydown.window="onKey($event)">
   <a class="skip-link" href="#main">Skip to content</a>
   <div class="shell">

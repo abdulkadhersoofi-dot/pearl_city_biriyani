@@ -313,6 +313,20 @@ def discard(doc_id):
     return redirect(_next_url(doc) if doc.status == DISCARDED else url_for("scan.review", doc_id=doc.id))
 
 
+@scan_bp.route("/<int:doc_id>/turn", methods=["POST"])
+@roles_required(ADMIN)
+@feature_required("doc_scan")
+def turn(doc_id):
+    doc = _doc(doc_id)
+    try:
+        services.turn(current_user, doc, request.form.get("deg", type=int) or 90)
+        db.session.commit()
+    except ScanError as exc:
+        db.session.rollback()
+        flash(exc.message, "error")
+    return redirect(url_for("scan.review", doc_id=doc.id))
+
+
 @scan_bp.route("/<int:doc_id>/reread", methods=["POST"])
 @roles_required(ADMIN)
 @feature_required("doc_scan")

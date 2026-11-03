@@ -246,7 +246,7 @@ taxable_value=TAXABLE column (not unit price); invoice_value=grand total.
 One line_item per SKU. Serial / IMEI numbers printed for an item go in THAT line's serial_numbers list (every one, exactly as printed) - never as extra line_items. Also copy per line, when printed: item_code (the supplier's item / part / model / SKU code), batch, mfg_date, expiry (YYYY-MM-DD; a month-year expiry like 03/27 is the month's last day), mrp, discount_percent and discount_amount. For EACH line item ALWAYS fill gst_rate (the % rate for that item, e.g. 18) AND taxable_value (that line's taxable amount before tax). If the invoice prints tax per line, fill the line's cgst/sgst/igst too; if tax is shown only as one consolidated total at the bottom, still fill each line's gst_rate and taxable_value and leave the per-line tax 0 — the rate and taxable are enough.
 Pages may be STACKED vertically in one image, separated by dark 'PAGE x of y' bars. Totals (CGST/SGST/IGST, grand total, HSN summary) usually sit at the BOTTOM of the LAST page — read the ENTIRE image to the bottom before answering.
 category: "Expenses" for a bill for a service or a consumable the business uses itself (restaurant / hotel / fuel / travel / telephone / internet / electricity / rent / repairs / courier / stationery / professional fees); "Purchase" for goods or services bought from a supplier on a tax invoice addressed to the business; "Sales" only when the business itself issued the invoice; a credit or debit note is "... - Credit Note" / "... - Debit Note"; a payment receipt is "Receipts".
-{"supplier_name":"","supplier_gstin":"","supplier_address":"","supplier_phone":"","supplier_email":"","supplier_pan":"","supplier_state":"","receiver_name":"","receiver_gstin":"","receiver_address":"","receiver_state":"","invoice_number":"","invoice_date":"YYYY-MM-DD","due_date":"","place_of_supply":"","reverse_charge":"","irn":"","ack_number":"","ack_date":"","ewb_number":"","bank_name":"","bank_account":"","bank_ifsc":"","bank_branch":"","bank_upi":"","po_number":"","po_date":"","order_number":"","challan_number":"","dispatch_doc_number":"","dispatched_through":"","vehicle_number":"","lr_number":"","payment_terms":"","supplier_reference":"","other_references":"","warranty":"","tds_section":"","hsn_sac":"","notes":"","category":"Purchase or Sales or Purchase - Credit Note or Purchase - Debit Note or Sales - Credit Note or Sales - Debit Note or Expenses or Receipts","line_items":[{"description":"","item_code":"","hsn_sac":"","quantity":0,"unit":"","rate_per_unit":0,"discount_percent":0,"discount_amount":0,"gst_rate":0,"taxable_value":0,"igst":0,"cgst":0,"sgst":0,"cess":0,"amount":0,"serial_numbers":[],"batch":"","mfg_date":"","expiry":"","mrp":0,"box":[0,0,0,0,0]}],"taxable_value":0,"igst":0,"cgst":0,"sgst":0,"cess":0,"tds":0,"discount":0,"round_off":0,"invoice_value":0,"confidence":0.9,"flags":[],"boxes":{}}
+{"supplier_name":"","supplier_gstin":"","supplier_address":"","supplier_phone":"","supplier_email":"","supplier_pan":"","supplier_state":"","receiver_name":"","receiver_gstin":"","receiver_address":"","receiver_state":"","invoice_number":"","invoice_date":"YYYY-MM-DD","due_date":"","place_of_supply":"","reverse_charge":"","irn":"","ack_number":"","ack_date":"","ewb_number":"","bank_name":"","bank_account":"","bank_ifsc":"","bank_branch":"","bank_upi":"","po_number":"","po_date":"","order_number":"","challan_number":"","dispatch_doc_number":"","dispatched_through":"","vehicle_number":"","lr_number":"","payment_terms":"","supplier_reference":"","other_references":"","warranty":"","tds_section":"","hsn_sac":"","notes":"","category":"Purchase or Sales or Purchase - Credit Note or Purchase - Debit Note or Sales - Credit Note or Sales - Debit Note or Expenses or Receipts","line_items":[{"description":"","item_code":"","hsn_sac":"","quantity":0,"unit":"","rate_per_unit":0,"discount_percent":0,"discount_amount":0,"gst_rate":0,"taxable_value":0,"igst":0,"cgst":0,"sgst":0,"cess":0,"amount":0,"serial_numbers":[],"batch":"","mfg_date":"","expiry":"","mrp":0,"box":[0,0,0,0,0]}],"taxable_value":0,"igst":0,"cgst":0,"sgst":0,"cess":0,"tds":0,"discount":0,"round_off":0,"invoice_value":0,"confidence":0.9,"flags":[],"boxes":{},"rotation":[0]}
 Amounts=numbers; dates=YYYY-MM-DD; root totals=Σ line_items.
 References, when printed: po_number/po_date = the buyer's order no. and date; order_number = the supplier's own order / sales order no.; challan_number = delivery note / challan no.; dispatch_doc_number, dispatched_through, vehicle_number, lr_number (LR / RR / docket / AWB no.); payment_terms (e.g. "30 days"); supplier_reference = the supplier's internal reference no.; other_references = any other reference numbers, as "label: value; ...". warranty = warranty terms printed. tds = TDS deducted on the bill (a "Less: TDS" line), tds_section its section (194Q, 194C, 194J...).
 SELF-CHECK (re-read any digit that fails):
@@ -255,7 +255,8 @@ SELF-CHECK (re-read any digit that fails):
 3. Per line: taxes == taxable×gst_rate/100.
 4. Printed totals are authoritative — if your sum disagrees, re-read digits.
 5. For ANY field where a character is ambiguous, touching, watermark-obscured, or you are not fully certain of even ONE character (numbers, GSTIN, invoice number, dates — anything), add that field's name to "flags" and lower "confidence". It is better to flag a correct read than to silently pass a wrong one — flags route the field to human review.
-WHERE IT IS PRINTED (so a person can check your reading against the bill): add "boxes":{"<field>":[i,ymin,xmin,ymax,xmax],...} for EVERY top-level field you filled (supplier_name, supplier_gstin, supplier_address, supplier_phone, receiver_gstin, invoice_number, invoice_date, taxable_value, cgst, sgst, igst, tds, round_off, invoice_value, the references and bank details...), and give EACH line_item a "box":[i,ymin,xmin,ymax,xmax] around its whole row. i = which image the value is on (0 = the first; always 0 when there is one image); ymin,xmin,ymax,xmax = the box around the printed value, as 0-1000 of that image's height and width. Boxes never change any value."""
+WHERE IT IS PRINTED (so a person can check your reading against the bill): add "boxes":{"<field>":[i,ymin,xmin,ymax,xmax],...} for EVERY top-level field you filled (supplier_name, supplier_gstin, supplier_address, supplier_phone, receiver_gstin, invoice_number, invoice_date, taxable_value, cgst, sgst, igst, tds, round_off, invoice_value, the references and bank details...), and give EACH line_item a "box":[i,ymin,xmin,ymax,xmax] around its whole row. i = which image the value is on (0 = the first; always 0 when there is one image); ymin,xmin,ymax,xmax = the box around the printed value, as 0-1000 of that image's height and width. Boxes never change any value.
+"rotation":[...] - one number per page, in order (each image, or each PAGE panel of a stacked image): the clockwise turn in degrees, 0, 90, 180 or 270, that would make that page's printed text read upright, left to right. Usually 0; a landscape bill photographed or scanned sideways is 90 or 270; upside down is 180."""
 
 TEXT_FIELDS = ("supplier_name", "supplier_gstin", "supplier_address", "supplier_phone", "supplier_email",
                "supplier_pan", "supplier_state", "receiver_name", "receiver_gstin", "receiver_address",
@@ -446,7 +447,103 @@ def _shape(parsed: dict) -> dict:
     known = set(TEXT_FIELDS) | set(MONEY_FIELDS) | {"invoice_value", "taxable_value"}
     boxes = parsed.get("boxes") if isinstance(parsed.get("boxes"), dict) else {}
     out["boxes"] = {k: b for k, b in ((k, _box(v)) for k, v in boxes.items() if k in known) if b}
+    turns = parsed.get("rotation")
+    turns = turns if isinstance(turns, list) else [turns]
+    out["rotation"] = [int(_f(t) or 0) % 360 if int(_f(t) or 0) % 360 in ROTATIONS else 0 for t in turns[:50]]
     return out
+
+
+ROTATIONS = (0, 90, 180, 270)
+
+
+def turn_point(x: float, y: float, deg: int) -> tuple[float, float]:
+    """A point (0-1 of the page) after turning the page `deg` clockwise."""
+    if deg == 90:
+        return 1 - y, x
+    if deg == 180:
+        return 1 - x, 1 - y
+    if deg == 270:
+        return y, 1 - x
+    return x, y
+
+
+def turn_box(box, deg: int):
+    """[page, ymin, xmin, ymax, xmax] (0-1000) on a page turned `deg` clockwise."""
+    if not box or not deg:
+        return box
+    p, y0, x0, y1, x1 = box
+    a = turn_point(x0 / 1000, y0 / 1000, deg)
+    b = turn_point(x1 / 1000, y1 / 1000, deg)
+    xs, ys = sorted((a[0], b[0])), sorted((a[1], b[1]))
+    return [p, round(ys[0] * 1000, 1), round(xs[0] * 1000, 1), round(ys[1] * 1000, 1), round(xs[1] * 1000, 1)]
+
+
+def turn_boxes(extracted: dict, turns: dict) -> None:
+    """Every box on a page that is turned, turned with it."""
+    if not turns:
+        return
+    turns = {int(k): int(v) for k, v in turns.items()}
+    extracted["boxes"] = {k: turn_box(b, turns.get(b[0], 0)) for k, b in (extracted.get("boxes") or {}).items()}
+    for item in extracted.get("line_items") or []:
+        if item.get("box"):
+            item["box"] = turn_box(item["box"], turns.get(item["box"][0], 0))
+
+
+def pdf_text_turns(pdf_bytes: bytes) -> dict[int, int]:
+    """For a PDF with real text, how far each page must turn clockwise for
+    that text to read upright - worked out from the text's own direction,
+    no guessing. Pages without enough text are left out."""
+    import fitz
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    out = {}
+    try:
+        for i, pg in enumerate(doc):
+            weight = dict.fromkeys(ROTATIONS, 0)
+            for block in pg.get_text("dict").get("blocks", []):
+                for line in block.get("lines", []):
+                    dx, dy = line.get("dir", (1, 0))
+                    chars = sum(len((s.get("text") or "").strip()) for s in line.get("spans", []))
+                    if abs(dx) > 0.9:
+                        weight[0 if dx > 0 else 180] += chars
+                    elif abs(dy) > 0.9:
+                        weight[90 if dy < 0 else 270] += chars
+            total = sum(weight.values())
+            best = max(weight, key=weight.get)
+            if total < 40 or weight[best] < total * 0.6:
+                continue
+            extra = (best - pg.rotation) % 360
+            if extra:
+                out[i] = extra
+    finally:
+        doc.close()
+    return out
+
+
+def turn_pdf(pdf_bytes: bytes, turns: dict) -> bytes:
+    """The PDF with pages turned clockwise (only the page's rotation is
+    changed - nothing is re-drawn or lost)."""
+    import fitz
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    try:
+        for i, deg in turns.items():
+            i = int(i)
+            if 0 <= i < len(doc) and int(deg) % 360:
+                doc[i].set_rotation((doc[i].rotation + int(deg)) % 360)
+        return doc.tobytes()
+    finally:
+        doc.close()
+
+
+def turn_image(img_bytes: bytes, deg: int, quality: int = 92) -> bytes:
+    """A photo turned `deg` clockwise (and upright from its EXIF first)."""
+    from PIL import Image, ImageOps
+    img = ImageOps.exif_transpose(Image.open(io.BytesIO(img_bytes))).convert("RGB")
+    flip = {90: Image.Transpose.ROTATE_270, 180: Image.Transpose.ROTATE_180, 270: Image.Transpose.ROTATE_90}
+    if int(deg) % 360 in flip:
+        img = img.transpose(flip[int(deg) % 360])
+    out = io.BytesIO()
+    img.save(out, format="JPEG", quality=quality, optimize=True)
+    return out.getvalue()
 
 
 def _box(value):
@@ -528,6 +625,10 @@ def extract_fields(pages: list[bytes], settings: Settings, deadline: float, hint
         shaped = _shape(json.loads(_clean_json(text)))
     except (ValueError, TypeError, AttributeError):
         return _empty_read(), model
+    turns = shaped.pop("rotation", None) or []
+    if len(turns) == 1 and len(page_map) > 1:
+        turns = turns * len(page_map)   # one answer for the whole bill
+    shaped["turns"] = {page_map[i]: t for i, t in enumerate(turns[:len(page_map)]) if t}
     try:
         place_boxes(shaped, page_map, layout)
     except Exception:  # noqa: BLE001 - the boxes are a nicety, never a failed read
@@ -932,8 +1033,19 @@ def read(file_bytes: bytes, is_pdf: bool, ctx: Context, settings: Settings, http
     start = time.time()
     deadline = start + settings.budget
     engine = {"models": [], "tier2": False, "retry": False, "qr": "none"}
+    original = file_bytes
+    turned: dict[int, int] = {}
 
     if is_pdf:
+        # A PDF with real text says itself which way up it is: turned upright
+        # before anything is read, so the model and the boxes see it straight.
+        try:
+            turned = pdf_text_turns(file_bytes)
+            if turned:
+                file_bytes = turn_pdf(file_bytes, turned)
+        except Exception:  # noqa: BLE001 - read it as it is
+            log.info("couldn't check the PDF's text direction", exc_info=True)
+            turned = {}
         with _RASTER:
             kept: list[int] = []
             pages_full, model_pages = pdf_to_pages(file_bytes, settings, kept=kept)
@@ -1058,9 +1170,31 @@ def read(file_bytes: bytes, is_pdf: bool, ctx: Context, settings: Settings, http
         reason = (f"This bill isn't addressed to your business: neither the seller ({sup_g}) nor the buyer "
                   f"({rec_g}) is one of your GSTINs.")
 
+    # A photo or scan the model says is sideways or upside down: the bill is
+    # turned upright, and the boxes read on it with it.
+    turns = {int(p): int(t) for p, t in (extracted.pop("turns", None) or {}).items() if int(t) % 360}
+    if turns:
+        try:
+            with _RASTER:
+                if is_pdf:
+                    file_bytes = turn_pdf(file_bytes, turns)
+                    if 0 in turns:
+                        preview_src = turn_image(preview_src, turns[0])
+                else:
+                    file_bytes = turn_image(file_bytes, turns.get(0, 0))
+                    preview_src = file_bytes
+            turn_boxes(extracted, turns)
+            for p, t in turns.items():
+                turned[p] = (turned.get(p, 0) + t) % 360
+        except Exception:  # noqa: BLE001 - keep it as it came
+            log.info("couldn't turn the bill upright", exc_info=True)
+    if turned:
+        extracted["turned"] = {str(p): t for p, t in turned.items() if t}
+        engine["turned"] = extracted["turned"]
+
     with _RASTER:
         preview = preview_jpeg(preview_src)
     engine["seconds"] = round(time.time() - start, 1)
     return {"extracted": extracted, "validation": validation, "rejection_code": rejection,
             "rejection_reason": reason, "preview": preview, "own_gstin": own, "pages_total": pages_total,
-            "engine": engine}
+            "engine": engine, "file_data": file_bytes if file_bytes is not original else None}

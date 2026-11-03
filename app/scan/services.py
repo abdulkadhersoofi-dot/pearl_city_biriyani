@@ -256,6 +256,9 @@ def read_document(tenant, user, doc: ScanDocument, http=None) -> list[ScanDocume
     doc.validation = result["validation"]
     doc.engine = result["engine"]
     doc.preview = result["preview"]
+    if result.get("file_data"):
+        # turned upright - the bill is kept the right way up from now on
+        doc.file_data = result["file_data"]
     doc.page_count = result["pages_total"]
     doc.category = display_category(result["extracted"] or {})
     doc.read_at = utcnow()
@@ -998,6 +1001,34 @@ def discard(user, doc: ScanDocument) -> None:
         raise ScanError("This document can't be discarded.")
     doc.status = DISCARDED
     record_audit(user, "scan_discarded", tenant_id=doc.tenant_id, entity_type="scan_document", entity_id=doc.id)
+
+
+def turn(user, doc: ScanDocument, deg: int) -> None:
+    """Turns the bill (every page) clockwise - for a picture read the wrong
+    way up, or one read before bills were turned by themselves. The
+    places the values were read from turn with it."""
+    if doc.status not in (TO_CHECK, REJECTED, FAILED, UPLOADED):
+        raise ScanError("A bill already posted or filed isn't turned.")
+    deg = int(deg) % 360
+    if deg not in (90, 180, 270):
+        raise ScanError("Turn it by a quarter, a half or three quarters.")
+    with reader._RASTER:
+        if doc.is_pdf:
+            turns = {i: deg for i in range(doc.page_count or reader.pdf_page_count(doc.file_data))}
+            doc.file_data = reader.turn_pdf(doc.file_data, turns)
+        else:
+            turns = {0: deg}
+            doc.file_data = reader.turn_image(doc.file_data, deg)
+    if doc.extracted:
+        ex = dict(doc.extracted)
+        ex["line_items"] = [dict(i) for i in ex.get("line_items") or []]
+        reader.turn_boxes(ex, turns)
+        ex["turned"] = {str(p): (int((ex.get("turned") or {}).get(str(p), 0)) + t) % 360 for p, t in turns.items()}
+        doc.extracted = ex
+    if doc.preview or not doc.is_pdf:
+        doc.preview = reader.preview_jpeg(page_image(doc, 0))
+    record_audit(user, "scan_turned", tenant_id=doc.tenant_id, entity_type="scan_document", entity_id=doc.id,
+                 details={"degrees": deg})
 
 
 def reread(user, doc: ScanDocument) -> None:

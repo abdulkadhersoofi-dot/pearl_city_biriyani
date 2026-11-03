@@ -24,14 +24,34 @@
   {% endif %}
 </div>
 
-<div class="scan-review">
+<div class="scan-review-wrap"><div class="scan-review">
+  {% set pages = doc.page_count or 1 %}
+  {# a version in the address, so a bill turned since is never shown from the browser's cache #}
+  {% set ver = (doc.updated_at.timestamp()|int) if doc.updated_at else 0 %}
   <aside class="scan-picture card">
-    {% if doc.preview or not doc.is_pdf %}
-    <a href="{{ url_for('scan.file', doc_id=doc.id) }}" target="_blank" rel="noopener" title="Open full size" class="scan-picture-frame" data-scan-picture>
-      <img src="{{ url_for('scan.preview', doc_id=doc.id) }}" alt="The scanned bill"></a>
-    {% if ex.get('boxes') %}<p class="m-0 text-center text-muted scan-zoom-tip">Point at any value on the right to see where it was read.</p>{% endif %}
+    {% if true %}
+    <div class="scan-viewer" data-scan-viewer data-pages="{{ pages }}"
+         data-page-url="{{ url_for('scan.page', doc_id=doc.id, n=0, v=ver)|replace('/page/0.jpg', '/page/{n}.jpg') }}">
+      <div class="scan-stage"><img class="scan-stage-img" src="{{ url_for('scan.page', doc_id=doc.id, n=0, v=ver) }}" alt="The scanned bill" draggable="false"><span class="scan-stage-mark" hidden></span></div>
+      {% if ex.get('boxes') %}<span class="scan-viewer-hint">Point at any value to zoom in here</span>{% endif %}
+    </div>
     {% endif %}
-    <p class="m-0 text-center"><a href="{{ url_for('scan.file', doc_id=doc.id) }}" target="_blank" rel="noopener">Open the {{ 'PDF' if doc.is_pdf else 'photo' }} full size</a></p>
+    <div class="scan-viewer-bar">
+      {% if pages > 1 %}
+      <span class="row gap-6 items-center"><button type="button" class="btn btn-quiet btn-sm" data-page-step="-1" aria-label="Previous page">‹</button>
+        <span data-page-label>Page 1 of {{ pages }}</span>
+        <button type="button" class="btn btn-quiet btn-sm" data-page-step="1" aria-label="Next page">›</button></span>
+      {% endif %}
+      {% if doc.status in ('to_check', 'rejected', 'failed') %}
+      <form method="post" action="{{ url_for('scan.turn', doc_id=doc.id) }}" class="row gap-4" title="Turn the bill if it's on its side">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-quiet btn-sm" name="deg" value="270" aria-label="Turn left">↺</button>
+        <button class="btn btn-quiet btn-sm" name="deg" value="90" aria-label="Turn right">↻</button>
+      </form>
+      {% endif %}
+      <a href="{{ url_for('scan.file', doc_id=doc.id, v=ver) }}" target="_blank" rel="noopener">Open the {{ 'PDF' if doc.is_pdf else 'photo' }} full size</a>
+    </div>
+    {% if (ex.get('turned') or {}).values()|select|list %}<p class="m-0 text-center text-muted scan-zoom-tip">Turned upright by ARFA.</p>{% endif %}
   </aside>
 
   <div class="stack">
@@ -91,7 +111,7 @@
       'rcm': (val('is_rcm', '1' if (ex.get('reverse_charge') or '')|lower in ('y', 'yes', 'true') else '')) == '1'
     }|tojson }}</script>
     <form method="post" action="{{ url_for('scan.post', doc_id=doc.id) }}" class="stack" novalidate x-data="scanReview()"
-          data-page-url="{{ url_for('scan.page', doc_id=doc.id, n=0)|replace('/page/0.jpg', '/page/{n}.jpg') }}"{{ ' data-pages' if (doc.page_count or 1) > 1 }}>
+          data-page-url="{{ url_for('scan.page', doc_id=doc.id, n=0, v=ver)|replace('/page/0.jpg', '/page/{n}.jpg') }}"{{ ' data-pages' if (doc.page_count or 1) > 1 }}>
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
       <section class="card scan-invoice">
@@ -317,7 +337,7 @@
     </div>
     {% endif %}
   </div>
-</div>
+</div></div>
 {% endblock %}
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/scan_zoom.js') }}" defer></script>

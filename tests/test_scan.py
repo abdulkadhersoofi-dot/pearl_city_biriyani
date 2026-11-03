@@ -904,7 +904,7 @@ def test_the_review_marks_where_each_value_is_and_serves_the_pages(client, db, s
                                                        taxable_value=4000, igst=200, invoice_value=4200))
     html = client.get(f"/scan/{doc_id}").get_data(as_text=True)
     assert "data-zoom='[0, 50.0, 600.0, 70.0, 900.0]'" in html and "scan_zoom.js" in html
-    assert f'data-page-url="/scan/{doc_id}/page/{{n}}.jpg"' in html
+    assert f'data-page-url="/scan/{doc_id}/page/{{n}}.jpg?v=' in html
     data = json.loads(html.split('id="scan-data">', 1)[1].split("</script>", 1)[0])
     assert data["lines"][0]["box"] == [0, 300.0, 20.0, 320.0, 980.0]
     page = client.get(f"/scan/{doc_id}/page/0.jpg")
@@ -921,3 +921,60 @@ def test_a_pdf_page_is_served_for_the_zoom(client, db, scanning, client_admin, m
     doc_id = _upload(client, pdf.tobytes(), "bill.pdf").get_json()["id"]
     res = client.get(f"/scan/{doc_id}/page/0.jpg")
     assert res.status_code == 200 and res.data[:3] == b"\xff\xd8\xff"
+
+
+# --- every bill upright, however it was photographed or scanned --------------------------------
+
+def test_boxes_turn_with_the_page():
+    # a box near the top-left of a sideways page ends near the top-right once turned a quarter clockwise
+    assert reader.turn_box([0, 100, 50, 200, 150], 90) == [0, 50.0, 800.0, 150.0, 900.0]
+    assert reader.turn_box([0, 100, 50, 200, 150], 180) == [0, 800.0, 850.0, 900.0, 950.0]
+    assert reader.turn_box([0, 100, 50, 200, 150], 270) == [0, 850.0, 100.0, 950.0, 200.0]
+    assert reader.turn_box([2, 1, 2, 3, 4], 0) == [2, 1, 2, 3, 4]
+
+
+def test_a_sideways_photo_is_turned_upright_with_its_boxes(monkeypatch):
+    photo = _jpeg()   # 1200 x 1600
+    monkeypatch.setattr(reader, "call_model", FakeModel(_bill(rotation=[90],
+                                                              boxes={"invoice_number": [0, 100, 50, 200, 150]})))
+    result = reader.read(photo, False, reader.Context(own_gstins=[OWN]), _settings())
+    assert result["file_data"] is not None
+    assert Image.open(io.BytesIO(result["file_data"])).size == (1600, 1200)
+    assert result["extracted"]["boxes"]["invoice_number"] == [0, 50.0, 800.0, 150.0, 900.0]
+    assert result["extracted"]["turned"] == {"0": 90}
+    assert "turns" not in result["extracted"] and "rotation" not in result["extracted"]
+
+
+def test_an_upright_photo_is_left_alone(monkeypatch):
+    monkeypatch.setattr(reader, "call_model", FakeModel(_bill()))
+    result = reader.read(_jpeg(), False, reader.Context(own_gstins=[OWN]), _settings())
+    assert result["file_data"] is None and "turned" not in result["extracted"]
+
+
+def test_a_pdf_whose_text_runs_sideways_is_turned_before_it_is_read(monkeypatch):
+    fitz = pytest.importorskip("fitz")
+    pdf = fitz.open()
+    page = pdf.new_page(width=595, height=842)
+    for i in range(10):
+        page.insert_text((80 + i * 40, 700), f"TAX INVOICE line {i} Cumin seeds 4,000.00", fontsize=11, rotate=90)
+    data = pdf.tobytes()
+    assert reader.pdf_text_turns(data) == {0: 90}
+    monkeypatch.setattr(reader, "call_model", FakeModel(_bill()))
+    result = reader.read(data, True, reader.Context(own_gstins=[OWN]), _settings())
+    turned = fitz.open(stream=result["file_data"], filetype="pdf")
+    assert turned[0].rotation == 90 and reader.pdf_text_turns(result["file_data"]) == {}
+    assert result["extracted"]["turned"] == {"0": 90}
+
+
+def test_the_turn_buttons_turn_the_bill_and_its_boxes(client, db, scanning, client_admin, monkeypatch):
+    _login(client)
+    doc_id = _ready_doc(client, monkeypatch, bill=_bill(boxes={"invoice_number": [0, 100, 50, 200, 150]}))
+    html = client.get(f"/scan/{doc_id}").get_data(as_text=True)
+    assert "is-wide" in html and "data-scan-viewer" in html and 'name="deg" value="90"' in html
+    res = client.post(f"/scan/{doc_id}/turn", data={"deg": "90"})
+    assert res.status_code == 302
+    doc = db.session.get(ScanDocument, doc_id)
+    assert Image.open(io.BytesIO(doc.file_data)).size == (1600, 1200)
+    assert Image.open(io.BytesIO(doc.preview)).width > Image.open(io.BytesIO(doc.preview)).height
+    assert doc.extracted["boxes"]["invoice_number"] == [0, 50.0, 800.0, 150.0, 900.0]
+    assert doc.extracted["turned"] == {"0": 90}

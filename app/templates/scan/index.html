@@ -80,7 +80,7 @@
   {% for d in docs %}
   {% set ex = d.extracted or {} %}
   <a class="card scan-item" href="{{ url_for('scan.review', doc_id=d.id) }}">
-    <span class="scan-thumb">{% if d.read_at or not d.is_pdf %}<img src="{{ url_for('scan.preview', doc_id=d.id) }}" alt="" loading="lazy">{% else %}{{ icon('file-text') }}{% endif %}</span>
+    <span class="scan-thumb">{% if d.read_at or not d.is_pdf %}<img src="{{ url_for('scan.preview', doc_id=d.id, v=(d.updated_at.timestamp()|int) if d.updated_at else 0) }}" alt="" loading="lazy">{% else %}{{ icon('file-text') }}{% endif %}</span>
     <span class="scan-item-body">
       <strong>{{ ex.supplier_name or d.filename }}</strong>
       <small class="text-muted block">
