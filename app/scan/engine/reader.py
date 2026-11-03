@@ -246,7 +246,7 @@ taxable_value=TAXABLE column (not unit price); invoice_value=grand total.
 One line_item per SKU. Serial / IMEI numbers printed for an item go in THAT line's serial_numbers list (every one, exactly as printed) - never as extra line_items. Also copy per line, when printed: item_code (the supplier's item / part / model / SKU code), batch, mfg_date, expiry (YYYY-MM-DD; a month-year expiry like 03/27 is the month's last day), mrp, discount_percent and discount_amount. For EACH line item ALWAYS fill gst_rate (the % rate for that item, e.g. 18) AND taxable_value (that line's taxable amount before tax). If the invoice prints tax per line, fill the line's cgst/sgst/igst too; if tax is shown only as one consolidated total at the bottom, still fill each line's gst_rate and taxable_value and leave the per-line tax 0 — the rate and taxable are enough.
 Pages may be STACKED vertically in one image, separated by dark 'PAGE x of y' bars. Totals (CGST/SGST/IGST, grand total, HSN summary) usually sit at the BOTTOM of the LAST page — read the ENTIRE image to the bottom before answering.
 category: "Expenses" for a bill for a service or a consumable the business uses itself (restaurant / hotel / fuel / travel / telephone / internet / electricity / rent / repairs / courier / stationery / professional fees); "Purchase" for goods or services bought from a supplier on a tax invoice addressed to the business; "Sales" only when the business itself issued the invoice; a credit or debit note is "... - Credit Note" / "... - Debit Note"; a payment receipt is "Receipts".
-{"supplier_name":"","supplier_gstin":"","supplier_address":"","supplier_phone":"","supplier_email":"","supplier_pan":"","supplier_state":"","receiver_name":"","receiver_gstin":"","receiver_address":"","receiver_state":"","invoice_number":"","invoice_date":"YYYY-MM-DD","due_date":"","place_of_supply":"","reverse_charge":"","irn":"","ack_number":"","ack_date":"","ewb_number":"","bank_name":"","bank_account":"","bank_ifsc":"","bank_branch":"","bank_upi":"","po_number":"","po_date":"","order_number":"","challan_number":"","dispatch_doc_number":"","dispatched_through":"","vehicle_number":"","lr_number":"","payment_terms":"","supplier_reference":"","other_references":"","warranty":"","tds_section":"","hsn_sac":"","notes":"","category":"Purchase or Sales or Purchase - Credit Note or Purchase - Debit Note or Sales - Credit Note or Sales - Debit Note or Expenses or Receipts","line_items":[{"description":"","item_code":"","hsn_sac":"","quantity":0,"unit":"","rate_per_unit":0,"discount_percent":0,"discount_amount":0,"gst_rate":0,"taxable_value":0,"igst":0,"cgst":0,"sgst":0,"cess":0,"amount":0,"serial_numbers":[],"batch":"","mfg_date":"","expiry":"","mrp":0}],"taxable_value":0,"igst":0,"cgst":0,"sgst":0,"cess":0,"tds":0,"discount":0,"round_off":0,"invoice_value":0,"confidence":0.9,"flags":[]}
+{"supplier_name":"","supplier_gstin":"","supplier_address":"","supplier_phone":"","supplier_email":"","supplier_pan":"","supplier_state":"","receiver_name":"","receiver_gstin":"","receiver_address":"","receiver_state":"","invoice_number":"","invoice_date":"YYYY-MM-DD","due_date":"","place_of_supply":"","reverse_charge":"","irn":"","ack_number":"","ack_date":"","ewb_number":"","bank_name":"","bank_account":"","bank_ifsc":"","bank_branch":"","bank_upi":"","po_number":"","po_date":"","order_number":"","challan_number":"","dispatch_doc_number":"","dispatched_through":"","vehicle_number":"","lr_number":"","payment_terms":"","supplier_reference":"","other_references":"","warranty":"","tds_section":"","hsn_sac":"","notes":"","category":"Purchase or Sales or Purchase - Credit Note or Purchase - Debit Note or Sales - Credit Note or Sales - Debit Note or Expenses or Receipts","line_items":[{"description":"","item_code":"","hsn_sac":"","quantity":0,"unit":"","rate_per_unit":0,"discount_percent":0,"discount_amount":0,"gst_rate":0,"taxable_value":0,"igst":0,"cgst":0,"sgst":0,"cess":0,"amount":0,"serial_numbers":[],"batch":"","mfg_date":"","expiry":"","mrp":0,"box":[0,0,0,0,0]}],"taxable_value":0,"igst":0,"cgst":0,"sgst":0,"cess":0,"tds":0,"discount":0,"round_off":0,"invoice_value":0,"confidence":0.9,"flags":[],"boxes":{}}
 Amounts=numbers; dates=YYYY-MM-DD; root totals=Σ line_items.
 References, when printed: po_number/po_date = the buyer's order no. and date; order_number = the supplier's own order / sales order no.; challan_number = delivery note / challan no.; dispatch_doc_number, dispatched_through, vehicle_number, lr_number (LR / RR / docket / AWB no.); payment_terms (e.g. "30 days"); supplier_reference = the supplier's internal reference no.; other_references = any other reference numbers, as "label: value; ...". warranty = warranty terms printed. tds = TDS deducted on the bill (a "Less: TDS" line), tds_section its section (194Q, 194C, 194J...).
 SELF-CHECK (re-read any digit that fails):
@@ -254,7 +254,8 @@ SELF-CHECK (re-read any digit that fails):
 2. CGST==SGST. Same state code→CGST+SGST only; different→IGST only; never both.
 3. Per line: taxes == taxable×gst_rate/100.
 4. Printed totals are authoritative — if your sum disagrees, re-read digits.
-5. For ANY field where a character is ambiguous, touching, watermark-obscured, or you are not fully certain of even ONE character (numbers, GSTIN, invoice number, dates — anything), add that field's name to "flags" and lower "confidence". It is better to flag a correct read than to silently pass a wrong one — flags route the field to human review."""
+5. For ANY field where a character is ambiguous, touching, watermark-obscured, or you are not fully certain of even ONE character (numbers, GSTIN, invoice number, dates — anything), add that field's name to "flags" and lower "confidence". It is better to flag a correct read than to silently pass a wrong one — flags route the field to human review.
+WHERE IT IS PRINTED (so a person can check your reading against the bill): add "boxes":{"<field>":[i,ymin,xmin,ymax,xmax],...} for EVERY top-level field you filled (supplier_name, supplier_gstin, supplier_address, supplier_phone, receiver_gstin, invoice_number, invoice_date, taxable_value, cgst, sgst, igst, tds, round_off, invoice_value, the references and bank details...), and give EACH line_item a "box":[i,ymin,xmin,ymax,xmax] around its whole row. i = which image the value is on (0 = the first; always 0 when there is one image); ymin,xmin,ymax,xmax = the box around the printed value, as 0-1000 of that image's height and width. Boxes never change any value."""
 
 TEXT_FIELDS = ("supplier_name", "supplier_gstin", "supplier_address", "supplier_phone", "supplier_email",
                "supplier_pan", "supplier_state", "receiver_name", "receiver_gstin", "receiver_address",
@@ -373,22 +374,27 @@ def _image_part(jpeg: bytes) -> dict:
     return {"inlineData": {"mimeType": "image/jpeg", "data": base64.b64encode(jpeg).decode()}}
 
 
-def _stitch_pages(jpeg_list):
+def _stitch_pages(jpeg_list, layout: dict | None = None):
     """2-4 pages stacked into one tall image with separator bars: the model
-    keeps the totals (last page) in view with the line items."""
+    keeps the totals (last page) in view with the line items. `layout`,
+    when given, is filled with where each page sits ({"size", "pages":
+    [(left, top, width, height)]})."""
     from PIL import Image, ImageDraw
     imgs = [Image.open(io.BytesIO(b)).convert("RGB") for b in jpeg_list]
     w = max(im.width for im in imgs)
     gap, bar = 14, 26
     canvas = Image.new("RGB", (w, sum(im.height for im in imgs) + (gap + bar) * len(imgs)), (255, 255, 255))
     d = ImageDraw.Draw(canvas)
-    y = 0
+    y, placed = 0, []
     for i, im in enumerate(imgs):
         d.rectangle([0, y, w, y + bar], fill=(16, 64, 78))
         d.text((8, y + 6), f"--- PAGE {i + 1} of {len(imgs)} ---", fill=(255, 255, 255))
         y += bar
         canvas.paste(im, ((w - im.width) // 2, y))
+        placed.append(((w - im.width) // 2, y, im.width, im.height))
         y += im.height + gap
+    if layout is not None:
+        layout.update({"size": canvas.size, "pages": placed})
     out = io.BytesIO()
     canvas.save(out, "JPEG", quality=85, optimize=True)
     return out.getvalue()
@@ -418,7 +424,7 @@ def _shape(parsed: dict) -> dict:
             "discount_percent": fi("discount_percent"), "discount_amount": fi("discount_amount"),
             "serial_numbers": [str(x).strip()[:64] for x in serials if str(x).strip()][:500] if isinstance(serials, list) else [],
             "item_code": ft("item_code"), "batch": ft("batch"), "mfg_date": ft("mfg_date", 20),
-            "expiry": ft("expiry", 20), "mrp": fi("mrp"),
+            "expiry": ft("expiry", 20), "mrp": fi("mrp"), "box": _box(item.get("box")),
         })
     if not items and out["taxable_value"]:
         items.append({"description": "Total", "hsn_sac": out["hsn_sac"] or "", "quantity": 0, "unit": "",
@@ -437,7 +443,55 @@ def _shape(parsed: dict) -> dict:
         out["confidence"] = 0.5
     flags = parsed.get("flags") or []
     out["flags"] = [str(f) for f in flags] if isinstance(flags, list) else []
+    known = set(TEXT_FIELDS) | set(MONEY_FIELDS) | {"invoice_value", "taxable_value"}
+    boxes = parsed.get("boxes") if isinstance(parsed.get("boxes"), dict) else {}
+    out["boxes"] = {k: b for k, b in ((k, _box(v)) for k, v in boxes.items() if k in known) if b}
     return out
+
+
+def _box(value):
+    """[image, ymin, xmin, ymax, xmax] (0-1000) from the model, or None
+    when it isn't a sensible box."""
+    if not isinstance(value, (list, tuple)) or len(value) not in (4, 5):
+        return None
+    try:
+        nums = [float(v) for v in value]
+    except (TypeError, ValueError):
+        return None
+    if len(nums) == 4:
+        nums = [0.0] + nums
+    i, y0, x0, y1, x1 = int(nums[0]), *(min(1000.0, max(0.0, v)) for v in nums[1:])
+    if i < 0 or y1 - y0 < 2 or x1 - x0 < 2:
+        return None
+    return [i, round(y0, 1), round(x0, 1), round(y1, 1), round(x1, 1)]
+
+
+def place_boxes(extracted: dict, page_map: list[int], layout: dict | None = None) -> None:
+    """The model's boxes are on the images it was sent; turn them into
+    boxes on the document's own pages ([page, ymin, xmin, ymax, xmax],
+    0-1000 of that page): through the stitch layout when the pages went
+    as one tall image, and the page map when some pages were left out."""
+    def on_page(box):
+        if not box:
+            return None
+        i, y0, x0, y1, x1 = box
+        if layout:
+            W, H = layout["size"]
+            cy = (y0 + y1) / 2 / 1000 * H
+            p = next((n for n, (_, top, _, h) in enumerate(layout["pages"]) if top <= cy < top + h),
+                     len(layout["pages"]) - 1)
+            left, top, w, h = layout["pages"][p]
+            conv = lambda v, size, off, span: round(min(1000.0, max(0.0, (v / 1000 * size - off) / span * 1000)), 1)  # noqa: E731
+            y0, y1 = conv(y0, H, top, h), conv(y1, H, top, h)
+            x0, x1 = conv(x0, W, left, w), conv(x1, W, left, w)
+            i = p
+        if i >= len(page_map) or y1 - y0 < 1 or x1 - x0 < 1:
+            return None
+        return [page_map[i], y0, x0, y1, x1]
+
+    extracted["boxes"] = {k: b for k, b in ((k, on_page(v)) for k, v in (extracted.get("boxes") or {}).items()) if b}
+    for item in extracted.get("line_items") or []:
+        item["box"] = on_page(item.get("box"))
 
 
 def _empty_read() -> dict:
@@ -449,13 +503,18 @@ def _empty_read() -> dict:
 
 
 def extract_fields(pages: list[bytes], settings: Settings, deadline: float, hint: str = "",
-                   models: list[str] | None = None, http=requests) -> tuple[dict, str | None]:
-    parts = []
+                   models: list[str] | None = None, http=requests,
+                   page_map: list[int] | None = None) -> tuple[dict, str | None]:
+    """`page_map`: the document page each image is (pages left out of the
+    read shift the rest); the boxes read come back on those pages."""
+    parts, layout = [], None
+    page_map = page_map if page_map and len(page_map) == len(pages) else list(range(len(pages)))
     if 2 <= len(pages) <= 4:
         try:
-            parts.append(_image_part(_stitch_pages(pages)))
+            layout = {}
+            parts.append(_image_part(_stitch_pages(pages, layout)))
         except Exception:  # noqa: BLE001 - separate pages instead
-            parts = []
+            parts, layout = [], None
     if not parts:
         for i, page in enumerate(pages):
             if len(pages) > 1:
@@ -466,9 +525,15 @@ def extract_fields(pages: list[bytes], settings: Settings, deadline: float, hint
     if not text:
         return _empty_read(), None
     try:
-        return _shape(json.loads(_clean_json(text))), model
+        shaped = _shape(json.loads(_clean_json(text)))
     except (ValueError, TypeError, AttributeError):
         return _empty_read(), model
+    try:
+        place_boxes(shaped, page_map, layout)
+    except Exception:  # noqa: BLE001 - the boxes are a nicety, never a failed read
+        log.info("couldn't place the boxes", exc_info=True)
+        shaped["boxes"] = {}
+    return shaped, model
 
 
 # ╔═══════════════════════════════════════════════════════════════════╗
@@ -523,7 +588,8 @@ def pdf_page_count(pdf_bytes: bytes) -> int:
         return len(doc)
 
 
-def pdf_to_pages(pdf_bytes: bytes, settings: Settings, max_px: int = 2000) -> tuple[list[bytes], list[bytes]]:
+def pdf_to_pages(pdf_bytes: bytes, settings: Settings, max_px: int = 2000,
+                 kept: list | None = None) -> tuple[list[bytes], list[bytes]]:
     """Every page as a display JPEG, plus the pages worth sending to the
     model (first, last, any with invoice content - never a page that only
     might be blank) at the cheap resolution."""
@@ -566,6 +632,8 @@ def pdf_to_pages(pdf_bytes: bytes, settings: Settings, max_px: int = 2000) -> tu
                     small.save(out, format="JPEG", quality=q, optimize=True)
                     data = out.getvalue()
                 model_pages.append(data)
+                if kept is not None:
+                    kept.append(i)
                 small.close()
             img.close()
         return full, model_pages
@@ -867,7 +935,8 @@ def read(file_bytes: bytes, is_pdf: bool, ctx: Context, settings: Settings, http
 
     if is_pdf:
         with _RASTER:
-            pages_full, model_pages = pdf_to_pages(file_bytes, settings)
+            kept: list[int] = []
+            pages_full, model_pages = pdf_to_pages(file_bytes, settings, kept=kept)
         if len(model_pages) > settings.max_invoice_pages:
             raise ReadError(f"This {len(model_pages)}-page PDF looks like several invoices together - use "
                             "\"Split into invoices\", or upload the invoices one by one.", "bundle")
@@ -877,6 +946,7 @@ def read(file_bytes: bytes, is_pdf: bool, ctx: Context, settings: Settings, http
     else:
         with _RASTER:
             model_pages = [compress(file_bytes, settings.cheap_px, 85, 1200)]
+        kept = [0]
         qr_candidates = [file_bytes]
         hires_source = [file_bytes]
         preview_src = file_bytes
@@ -885,7 +955,7 @@ def read(file_bytes: bytes, is_pdf: bool, ctx: Context, settings: Settings, http
     # The QR is read alongside the model, not after it.
     qr_future = _QR_POOL.submit(decode_einvoice_qr, list(qr_candidates), settings.qr_budget)
 
-    extracted, model = extract_fields(model_pages, settings, deadline, http=http)
+    extracted, model = extract_fields(model_pages, settings, deadline, http=http, page_map=kept)
     engine["models"].append(model)
     if model is None:
         qr_future.cancel()
@@ -939,7 +1009,7 @@ def read(file_bytes: bytes, is_pdf: bool, ctx: Context, settings: Settings, http
         fails = "; ".join(f"{c['label']} - {c['detail']}" for c in validation.get("checks", [])
                           if not c.get("ok") and c.get("level") == "hard")
         engine["retry"] = True
-        second, model3 = extract_fields(model_pages, settings, deadline, http=http,
+        second, model3 = extract_fields(model_pages, settings, deadline, http=http, page_map=kept,
                                         hint=f"Your previous reading failed these checks: {fails}. Re-read every "
                                              "amount and GSTIN character-by-character.")
         engine["models"].append(model3)

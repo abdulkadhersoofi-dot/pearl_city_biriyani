@@ -33,7 +33,7 @@ from app.models.purchase import (
 from app.models.tenant import Gstin, RegistrationType
 from app.utils import itc
 from app.utils.financial_year import financial_year_for
-from app.utils.gst import compute_invoice_totals, return_line_amounts
+from app.utils.gst import compute_invoice_totals, line_gross, return_line_amounts
 from app.utils.gst_config import GST_RATE_SLABS
 from app.utils.numbering import allocate_number, get_or_create_series
 
@@ -57,6 +57,7 @@ class PurchaseLineInput:
     rate: Decimal
     gst_rate: Decimal
     discount_percent: Decimal = Decimal("0")
+    discount_flat: Decimal = Decimal("0")   # rupees off the line, after the percentage
     itc_eligibility: ItcEligibility = ItcEligibility.ELIGIBLE
     batch_no: str | None = None
     mfg_date: date | None = None
@@ -142,6 +143,7 @@ def parse_purchase_lines(form) -> list[PurchaseLineInput]:
             rate=_num(at("line_rate[]"), f"Rate of {description}"),
             gst_rate=_num(at("line_gst_rate[]"), f"GST rate of {description}", Decimal("0")),
             discount_percent=_num(at("line_discount[]"), "Discount", Decimal("0")),
+            discount_flat=_num(at("line_discount_flat[]").replace(",", ""), f"Discount on {description}", Decimal("0")),
             itc_eligibility=eligibility,
             batch_no=at("line_batch[]").strip() or None,
             expiry_date=_date(at("line_expiry[]"), "Expiry date"),
@@ -196,6 +198,10 @@ def _validate_lines(tenant, lines, products) -> None:
             raise PurchaseError(f"Rate of {line.description} can't be negative.")
         if line.discount_percent < 0 or line.discount_percent > 100:
             raise PurchaseError("A discount must be between 0% and 100%.")
+        if line.discount_flat < 0:
+            raise PurchaseError(f"The discount on {line.description} can't be negative.")
+        if line.discount_flat and line.discount_flat > line_gross(line.qty, line.rate) * (1 - line.discount_percent / 100):
+            raise PurchaseError(f"The discount on {line.description} is more than the line is worth.")
         if line.gst_rate not in slabs:
             raise PurchaseError(f"{line.gst_rate}% isn't a GST rate.")
         product = products.get(line.product_id)
@@ -269,7 +275,8 @@ def create_purchase_bill(tenant, user, data: PurchaseInput) -> PurchaseBill:
             line.itc_eligibility = ItcEligibility.INELIGIBLE
 
     is_intra = (supplier.state_code or gstin.state_code) == gstin.state_code
-    computed = [itc.compute_purchase_line(l.qty, l.rate, l.discount_percent, l.gst_rate, is_intra) for l in data.lines]
+    computed = [itc.compute_purchase_line(l.qty, l.rate, l.discount_percent, l.gst_rate, is_intra, l.discount_flat)
+                for l in data.lines]
     eligibilities = [l.itc_eligibility for l in data.lines]
     totals = itc.purchase_totals(computed, eligibilities, other_charges, data.is_rcm)
     costs = itc.landed_costs(computed, [l.qty for l in data.lines], eligibilities, other_charges)
@@ -307,7 +314,8 @@ def create_purchase_bill(tenant, user, data: PurchaseInput) -> PurchaseBill:
         bill_line = PurchaseBillLine(
             bill_id=bill.id, product_id=line.product_id, description=line.description,
             hsn_or_sac_code=line.hsn_or_sac_code, qty=line.qty, unit=line.unit, rate=line.rate,
-            discount_percent=line.discount_percent, gst_rate=line.gst_rate, itc_eligibility=line.itc_eligibility,
+            discount_percent=line.discount_percent, discount_flat=line.discount_flat or 0, gst_rate=line.gst_rate,
+            itc_eligibility=line.itc_eligibility,
             charges_share=share, unit_cost=unit_cost, batch_id=batch.id if batch else None, sort_order=order,
             is_margin_scheme=line.product_id in margin_ids, details=_line_details(line),
             **{f: amounts[f] for f in _AMOUNT_FIELDS},
@@ -433,7 +441,8 @@ def create_purchase_return(bill: PurchaseBill, user, quantities: dict[int, Decim
                 raise PurchaseError(f"Only {unsold.normalize():f} of {line.description} from this bill are unsold "
                                     "- the rest were sold under the margin scheme.")
         amounts = return_line_amounts(
-            original={"rate": line.rate, "discount_percent": line.discount_percent, "discount_flat": 0,
+            original={"rate": line.rate, "discount_percent": line.discount_percent,
+                      "discount_flat": line.discount_flat or 0,
                       "gst_rate": line.gst_rate, "price_includes_tax": False, "is_intra_state": not line.igst_amount,
                       **{f: getattr(line, f) for f in _AMOUNT_FIELDS}},
             original_qty=line.qty, already_returned=done_amounts, already_returned_qty=done_qty, return_qty=qty,

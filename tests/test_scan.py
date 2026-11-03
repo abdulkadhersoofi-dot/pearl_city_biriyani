@@ -807,3 +807,117 @@ def test_printed_dates_become_iso():
     assert iso_date("05/10/2026") == "2026-10-05"
     assert iso_date("2026-10-05") == "2026-10-05"
     assert iso_date("soon") == ""
+
+
+# --- discounts as printed (a percentage or rupees), exactly ------------------------------------
+
+def test_a_discount_is_taken_as_the_bill_gives_it():
+    from app.scan.services import line_discount
+
+    assert line_discount(Decimal("1000"), Decimal("900")) == ("pct", Decimal("10.00"))
+    assert line_discount(Decimal("1000"), Decimal("925")) == ("pct", Decimal("7.50"))
+    # Rs. 100 off 1,299 is 7.698...% - as a rounded percentage it would be paise out: rupees it is
+    assert line_discount(Decimal("1299"), Decimal("1199")) == ("amt", Decimal("100.00"))
+    assert line_discount(Decimal("1299"), Decimal("1169.10"), 10) == ("pct", Decimal("10.00"))
+
+
+def test_a_discount_at_the_foot_of_the_bill_goes_onto_the_lines():
+    doc = ScanDocument(extracted={"taxable_value": 4500, "discount": 500, "line_items": [
+        {"description": "A", "quantity": 2, "rate_per_unit": 1000, "taxable_value": 2000, "gst_rate": 18},
+        {"description": "B", "quantity": 3, "rate_per_unit": 1000, "taxable_value": 3000, "gst_rate": 18}]})
+    from app.scan.services import line_rows
+
+    rows = line_rows(doc)
+    assert [(r["disc_type"], r["discount"]) for r in rows] == [("amt", "200.00"), ("amt", "300.00")]
+
+
+def test_a_rupee_discount_posts_to_the_paisa_and_comes_back_pro_rata(client, db, scanning, client_admin,
+                                                                       monkeypatch):
+    from app.purchases.services import create_purchase_return
+
+    _login(client)
+    bill_read = _bill(line_items=[{"description": "Mixer grinder", "hsn_sac": "85094010", "quantity": 2,
+                                   "unit": "NOS", "rate_per_unit": 1299, "gst_rate": 18, "taxable_value": 2498,
+                                   "igst": 449.64, "discount_amount": 100}],
+                      taxable_value=2498, igst=449.64, invoice_value=2948)
+    doc_id = _ready_doc(client, monkeypatch, bill=bill_read)
+    data = json.loads(client.get(f"/scan/{doc_id}").get_data(as_text=True)
+                      .split('id="scan-data">', 1)[1].split("</script>", 1)[0])
+    assert (data["lines"][0]["disc_type"], data["lines"][0]["discount"]) == ("amt", "100.00")
+    res = client.post(f"/scan/{doc_id}/post", data=_purchase_form(**{
+        "bill_total": "2948", "line_description[]": ["Mixer grinder"], "line_hsn[]": ["85094010"],
+        "line_qty[]": ["2"], "line_unit[]": ["NOS"], "line_rate[]": ["1299"], "line_discount[]": ["0"],
+        "line_discount_flat[]": ["100"], "line_gst_rate[]": ["18"], "line_itc[]": ["eligible"]}))
+    assert res.status_code == 302, res.data[:500]
+    bill = PurchaseBill.query.one()
+    line = bill.lines[0]
+    assert line.discount_flat == Decimal("100.00") and line.taxable_value == Decimal("2498.00")
+    assert bill.grand_total == Decimal("2948.00")
+    ret = create_purchase_return(bill, client_admin, {line.id: Decimal("1")}, "One faulty")
+    assert ret.total_taxable_value == Decimal("1249.00")   # half the rupee discount goes back with half the goods
+
+
+def test_the_manual_bill_form_takes_a_rupee_discount(client, db, scanning, client_admin):
+    from app.inventory.ledger import default_location
+
+    supplier = _supplier(db, scanning, name="Tumkur Spices", gstin=SELLER, state_code="29")
+    _login(client)
+    gstin = scanning.gstins.first()
+    res = client.post("/purchases/new", data={
+        "supplier_id": supplier.id, "gstin_id": gstin.id, "supplier_invoice_no": "M-1",
+        "supplier_invoice_date": "2026-10-20", "bill_date": "2026-10-21", "location_id": default_location(scanning.id).id,
+        "line_product_id[]": [""], "line_description[]": ["Cumin"], "line_hsn[]": ["0909"], "line_qty[]": ["3"],
+        "line_unit[]": ["KGS"], "line_rate[]": ["333.33"], "line_discount[]": ["0"], "line_discount_flat[]": ["49.99"],
+        "line_gst_rate[]": ["5"], "line_itc[]": ["eligible"]})
+    assert res.status_code == 302, res.data[:500]
+    assert PurchaseBill.query.one().total_taxable_value == Decimal("950.00")
+
+
+# --- pointing at a value shows where it was read ----------------------------------------------
+
+def test_boxes_from_one_tall_image_land_on_their_own_pages():
+    # two pages stacked: page 1 at y 26..1026, page 2 at y 1066..2066 of a 2080-high image
+    layout = {"size": (800, 2080), "pages": [(0, 26, 800, 1000), (0, 1066, 800, 1000)]}
+    ex = {"boxes": {"invoice_number": [0, 100, 500, 110, 700],      # near the top: page 1
+                    "invoice_value": [0, 900, 600, 910, 800]},      # near the bottom: page 2
+          "line_items": [{"box": [0, 300, 10, 310, 990]}]}
+    reader.place_boxes(ex, [0, 3], layout)    # the second image was the document's 4th page
+    page, y0, x0, y1, x1 = ex["boxes"]["invoice_number"]
+    assert page == 0 and abs(y0 - (100 / 1000 * 2080 - 26) / 1000 * 1000) < 0.2 and x0 == 500
+    assert ex["boxes"]["invoice_value"][0] == 3
+    assert ex["line_items"][0]["box"][0] == 0
+
+
+def test_the_reader_keeps_only_sensible_boxes():
+    shaped = reader._shape(_bill(boxes={"invoice_number": [0, 50, 600, 70, 900], "supplier_gstin": [80, 100, 300, 120],
+                                        "junk": [0, 1, 2, 3, 4], "invoice_date": "top right",
+                                        "invoice_value": [0, 500, 500, 500, 600]}))
+    assert shaped["boxes"] == {"invoice_number": [0, 50.0, 600.0, 70.0, 900.0],
+                               "supplier_gstin": [0, 80.0, 100.0, 300.0, 120.0]}
+
+
+def test_the_review_marks_where_each_value_is_and_serves_the_pages(client, db, scanning, client_admin, monkeypatch):
+    _login(client)
+    doc_id = _ready_doc(client, monkeypatch, bill=_bill(boxes={"invoice_number": [0, 50, 600, 70, 900]},
+                                                       line_items=[dict(_bill()["line_items"][0],
+                                                                        box=[0, 300, 20, 320, 980])],
+                                                       taxable_value=4000, igst=200, invoice_value=4200))
+    html = client.get(f"/scan/{doc_id}").get_data(as_text=True)
+    assert "data-zoom='[0, 50.0, 600.0, 70.0, 900.0]'" in html and "scan_zoom.js" in html
+    assert f'data-page-url="/scan/{doc_id}/page/{{n}}.jpg"' in html
+    data = json.loads(html.split('id="scan-data">', 1)[1].split("</script>", 1)[0])
+    assert data["lines"][0]["box"] == [0, 300.0, 20.0, 320.0, 980.0]
+    page = client.get(f"/scan/{doc_id}/page/0.jpg")
+    assert page.status_code == 200 and page.data[:3] == b"\xff\xd8\xff"
+    assert client.get(f"/scan/{doc_id}/page/1.jpg").status_code == 404
+
+
+def test_a_pdf_page_is_served_for_the_zoom(client, db, scanning, client_admin, monkeypatch):
+    fitz = pytest.importorskip("fitz")
+    pdf = fitz.open()
+    pdf.new_page().insert_text((72, 72), "TAX INVOICE   Invoice No: TS/26-27/0042", fontsize=12)
+    _login(client)
+    monkeypatch.setattr(reader, "call_model", FakeModel(_bill()))
+    doc_id = _upload(client, pdf.tobytes(), "bill.pdf").get_json()["id"]
+    res = client.get(f"/scan/{doc_id}/page/0.jpg")
+    assert res.status_code == 200 and res.data[:3] == b"\xff\xd8\xff"

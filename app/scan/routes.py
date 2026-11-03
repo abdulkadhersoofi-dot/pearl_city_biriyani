@@ -164,6 +164,20 @@ def preview(doc_id):
     return Response(data, mimetype="image/jpeg", headers={"Cache-Control": "private, max-age=3600"})
 
 
+@scan_bp.route("/<int:doc_id>/page/<int:n>.jpg")
+@roles_required(ADMIN)
+@feature_required("doc_scan")
+def page(doc_id, n):
+    """One page, upright, as the reader saw it - what the review screen
+    zooms into when a value is pointed at."""
+    doc = _doc(doc_id)
+    try:
+        data = services.page_image(doc, n)
+    except ScanError:
+        abort(404)
+    return Response(data, mimetype="image/jpeg", headers={"Cache-Control": "private, max-age=86400"})
+
+
 # --- checking and posting ----------------------------------------------------------------------
 
 def _review_context(doc, form=None):
@@ -221,8 +235,14 @@ def _form_lines(form):
             "product_id": "line_product_id[]", "serials": "line_serials[]", "item_code": "line_item_code[]",
             "batch": "line_batch[]", "mfg": "line_mfg[]", "expiry": "line_expiry[]", "mrp": "line_mrp[]"}
     columns = {k: form.getlist(v) for k, v in keys.items()}
+    flats = form.getlist("line_discount_flat[]")
     count = len(columns["description"])
     rows = [{k: (columns[k][i] if i < len(columns[k]) else "") for k in keys} for i in range(count)]
+    for i, row in enumerate(rows):
+        flat = (flats[i] if i < len(flats) else "").strip()
+        row["disc_type"] = "amt" if flat and flat not in ("0", "0.00") else "pct"
+        if row["disc_type"] == "amt":
+            row["discount"] = flat
     return rows or None
 
 

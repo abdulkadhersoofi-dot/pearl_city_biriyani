@@ -7,7 +7,7 @@
     <thead><tr>
       <th class="minw-230">Item</th><th class="w-100">HSN</th><th class="w-90">Qty</th>
       <th class="w-90">Unit</th><th class="w-110">Rate</th>
-      {% if itc_labels %}<th style="width:75px;">Disc %</th>{% endif %}
+      {% if itc_labels %}<th style="width:75px;">Disc %</th><th style="width:90px;">Disc Rs.</th>{% endif %}
       <th class="w-100">GST %</th>
       {% if itc_labels %}<th class="w-150">ITC</th>{% endif %}
       <th class="num w-110">Amount</th><th class="w-36"></th>
@@ -27,7 +27,8 @@
           <td><input type="number" name="line_qty[]" step="0.001" min="0" class="field-input" x-model="row.qty"></td>
           <td><input type="text" name="line_unit[]" maxlength="20" class="field-input" x-model="row.unit"></td>
           <td><input type="number" name="line_rate[]" step="0.01" min="0" class="field-input" x-model="row.rate"></td>
-          {% if itc_labels %}<td><input type="number" name="line_discount[]" step="0.01" min="0" max="100" class="field-input" x-model="row.discount"></td>{% endif %}
+          {% if itc_labels %}<td><input type="number" name="line_discount[]" step="0.01" min="0" max="100" class="field-input" x-model="row.discount"></td>
+          <td><input type="number" name="line_discount_flat[]" step="0.01" min="0" class="field-input" x-model="row.discount_flat" title="Rupees off this line, as printed"></td>{% endif %}
           <td><select name="line_gst_rate[]" class="field-input" x-model="row.gst_rate">
             {% for s in slabs %}<option value="{{ '%g'|format(s) }}">{{ '%g'|format(s) }}</option>{% endfor %}
           </select></td>
@@ -39,7 +40,7 @@
         </tr>
         {% if with_stock %}
         <tr x-show="needsBatch(row) || needsSerial(row)">
-          <td colspan="10" style="background:var(--color-bg, #fafaf7);">
+          <td colspan="11" style="background:var(--color-bg, #fafaf7);">
             <div class="row gap-8 flex-wrap items-end">
               <label class="field m-0" x-show="needsBatch(row)"><span class="field-label">Batch no.</span>
                 <input type="text" name="line_batch[]" maxlength="50" class="field-input" x-model="row.batch"></label>
@@ -72,7 +73,7 @@
     const BATCHES = {{ batches_on|tojson }}, SERIALS = {{ serials_on|tojson }};
     let next = 0;
     const blank = () => ({key: next++, product_id: "", description: "", hsn: "", qty: "", unit: "PCS", rate: "",
-                          discount: "", gst_rate: "18", itc: "eligible", batch: "", expiry: "", mfg: "", mrp: "", serials: ""});
+                          discount: "", discount_flat: "", gst_rate: "18", itc: "eligible", batch: "", expiry: "", mfg: "", mrp: "", serials: ""});
     const r2 = (x) => Math.round((x + Number.EPSILON) * 100) / 100;
     return Object.assign({
       catalog: CATALOG,
@@ -87,7 +88,8 @@
       needsBatch(row) { const p = this.find(row); return BATCHES && !!(p && p.batch); },
       needsSerial(row) { const p = this.find(row); return SERIALS && !!(p && p.serial); },
       taxable(row) { const q = parseFloat(row.qty) || 0, r = parseFloat(row.rate) || 0, d = parseFloat(row.discount) || 0;
-                     return r2(q * r * (1 - d / 100)); },
+                     const gross = q * r;
+                     return r2(gross - r2(gross * d / 100) - (parseFloat(row.discount_flat) || 0)); },
       tax(row) { return r2(this.taxable(row) * (parseFloat(row.gst_rate) || 0) / 100); },
       lineTotal(row) { return this.taxable(row) + this.tax(row); },
       sum(fn) { return r2(this.rows.reduce((t, row) => t + fn.call(this, row), 0)); },

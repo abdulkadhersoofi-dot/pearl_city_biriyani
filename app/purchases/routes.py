@@ -193,7 +193,7 @@ def _itc_choices():
 
 
 def _rows_from_form(form):
-    keys = ("product_id", "description", "hsn", "qty", "unit", "rate", "discount", "gst_rate", "itc",
+    keys = ("product_id", "description", "hsn", "qty", "unit", "rate", "discount", "discount_flat", "gst_rate", "itc",
             "batch", "expiry", "mfg", "mrp", "serials")
     cols = {k: form.getlist(f"line_{k}[]") for k in keys}
     rows = []

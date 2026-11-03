@@ -747,6 +747,15 @@ this list is just the index.
   purchase bill (PurchaseBill.tds_amount / tds_section - also on the manual
   bill form) leaves the supplier owed the net, and the Tally journal credits
   "TDS Payable".
+  Since 3 Nov 2026: a purchase line takes a discount in rupees as well as a
+  percentage (PurchaseBillLine.discount_flat, pro-rated on a return; the
+  manual bill form has a "Disc Rs." column); a scan takes the one that lands
+  on the printed taxable value to the paisa, and spreads a discount printed
+  once at the foot over the lines. The reader also returns where each value
+  is printed (extracted["boxes"], line_items[].box: [page, ymin, xmin, ymax,
+  xmax] 0-1000, mapped back from a stitched image by reader.place_boxes);
+  pointing at a field on the review zooms into that spot
+  (static/js/scan_zoom.js, pages from /scan/<id>/page/<n>.jpg).
 
 ## 5. Chronological development history (this session)
 

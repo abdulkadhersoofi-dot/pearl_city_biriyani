@@ -2,6 +2,8 @@
 {% block title %}Check a scanned bill - {{ firm_name }}{% endblock %}
 {% macro val(name, default='') -%}{{ form.get(name, default) if form else default }}{%- endmacro %}
 {% macro flag(f) -%}{{ 'is-flagged' if varargs|select('in', f)|list }}{%- endmacro %}
+{# Where a value is printed on the bill, for the zoom (app/static/js/scan_zoom.js). #}
+{% macro zoom(key) -%}{% set b = (ex.get('boxes') or {}).get(key) %}{% if b %} data-zoom='{{ b|tojson }}'{% endif %}{%- endmacro %}
 {% block content %}
 {% set check = v.get('status') %}
 {% set einv = ex.get('einvoice') or {} %}
@@ -25,8 +27,9 @@
 <div class="scan-review">
   <aside class="scan-picture card">
     {% if doc.preview or not doc.is_pdf %}
-    <a href="{{ url_for('scan.file', doc_id=doc.id) }}" target="_blank" rel="noopener" title="Open full size">
+    <a href="{{ url_for('scan.file', doc_id=doc.id) }}" target="_blank" rel="noopener" title="Open full size" class="scan-picture-frame" data-scan-picture>
       <img src="{{ url_for('scan.preview', doc_id=doc.id) }}" alt="The scanned bill"></a>
+    {% if ex.get('boxes') %}<p class="m-0 text-center text-muted scan-zoom-tip">Point at any value on the right to see where it was read.</p>{% endif %}
     {% endif %}
     <p class="m-0 text-center"><a href="{{ url_for('scan.file', doc_id=doc.id) }}" target="_blank" rel="noopener">Open the {{ 'PDF' if doc.is_pdf else 'photo' }} full size</a></p>
   </aside>
@@ -87,7 +90,8 @@
               'readIgst': ex.get('igst') or 0, 'tds': tds[0], 'tdsSection': tds[1],
       'rcm': (val('is_rcm', '1' if (ex.get('reverse_charge') or '')|lower in ('y', 'yes', 'true') else '')) == '1'
     }|tojson }}</script>
-    <form method="post" action="{{ url_for('scan.post', doc_id=doc.id) }}" class="stack" novalidate x-data="scanReview()">
+    <form method="post" action="{{ url_for('scan.post', doc_id=doc.id) }}" class="stack" novalidate x-data="scanReview()"
+          data-page-url="{{ url_for('scan.page', doc_id=doc.id, n=0)|replace('/page/0.jpg', '/page/{n}.jpg') }}"{{ ' data-pages' if (doc.page_count or 1) > 1 }}>
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
       <section class="card scan-invoice">
@@ -101,13 +105,13 @@
                 <option value="new">+ New supplier (from this bill)</option>
               </select>
             </div>
-            <input type="text" name="supplier_name" class="inv-input inv-name {{ flag(flagged, 'supplier_name') }}" value="{{ val('supplier_name', ex.get('supplier_name') or '') }}" placeholder="Supplier name" maxlength="255" aria-label="Supplier name">
-            <input type="text" name="supplier_address" class="inv-input {{ flag(flagged, 'supplier_address') }}" value="{{ val('supplier_address', ex.get('supplier_address') or '') }}" placeholder="Address" maxlength="255" aria-label="Supplier address">
+            <input type="text" name="supplier_name"{{ zoom('supplier_name') }} class="inv-input inv-name {{ flag(flagged, 'supplier_name') }}" value="{{ val('supplier_name', ex.get('supplier_name') or '') }}" placeholder="Supplier name" maxlength="255" aria-label="Supplier name">
+            <input type="text" name="supplier_address"{{ zoom('supplier_address') }} class="inv-input {{ flag(flagged, 'supplier_address') }}" value="{{ val('supplier_address', ex.get('supplier_address') or '') }}" placeholder="Address" maxlength="255" aria-label="Supplier address">
             <div class="inv-pair">
               <label><span class="inv-label">GSTIN</span>
-                <input type="text" name="supplier_gstin" class="inv-input inv-mono {{ 'is-flagged' if 'supplier_gstin' in flagged or (sup_gstin and not gstin_ok(sup_gstin)) }}" x-model="supplierGstin" maxlength="15" placeholder="Unregistered" autocapitalize="characters" spellcheck="false"></label>
+                <input type="text" name="supplier_gstin"{{ zoom('supplier_gstin') }} class="inv-input inv-mono {{ 'is-flagged' if 'supplier_gstin' in flagged or (sup_gstin and not gstin_ok(sup_gstin)) }}" x-model="supplierGstin" maxlength="15" placeholder="Unregistered" autocapitalize="characters" spellcheck="false"></label>
               <label><span class="inv-label">Phone</span>
-                <input type="text" name="supplier_phone" class="inv-input" value="{{ val('supplier_phone', ex.get('supplier_phone') or '') }}" maxlength="20"></label>
+                <input type="text" name="supplier_phone"{{ zoom('supplier_phone') }} class="inv-input" value="{{ val('supplier_phone', ex.get('supplier_phone') or '') }}" maxlength="20"></label>
             </div>
             {% if sup_gstin and not gstin_ok(sup_gstin) %}<p class="inv-note scan-warn">This GSTIN fails its check digit - compare it with the bill.</p>{% endif %}
             <p class="inv-note" x-show="supplier !== 'new'">Posts to the supplier chosen above; these details are as read.</p>
@@ -117,15 +121,15 @@
             <p class="inv-title">TAX INVOICE <small>(as read)</small></p>
             {% set qr = einv.get('qr') or {} %}
             <label><span class="inv-label">Invoice no.{% if qr.get('invoice_number') %} <span class="inv-qr" title="From the e-invoice QR">QR</span>{% endif %}</span>
-              <input type="text" name="invoice_number" class="inv-input inv-mono {{ flag(flagged, 'invoice_number', 'inv_number') if not qr.get('invoice_number') }}" value="{{ val('invoice_number', ex.get('invoice_number') or '') }}" maxlength="50"></label>
+              <input type="text" name="invoice_number"{{ zoom('invoice_number') }} class="inv-input inv-mono {{ flag(flagged, 'invoice_number', 'inv_number') if not qr.get('invoice_number') }}" value="{{ val('invoice_number', ex.get('invoice_number') or '') }}" maxlength="50"></label>
             <label><span class="inv-label">Date{% if qr.get('invoice_date') %} <span class="inv-qr" title="From the e-invoice QR">QR</span>{% endif %}</span>
-              <input type="date" name="invoice_date" class="inv-input {{ flag(flagged, 'invoice_date', 'date_sane') if not qr.get('invoice_date') }}" value="{{ val('invoice_date', ex.get('invoice_date') or '') }}"></label>
+              <input type="date" name="invoice_date"{{ zoom('invoice_date') }} class="inv-input {{ flag(flagged, 'invoice_date', 'date_sane') if not qr.get('invoice_date') }}" value="{{ val('invoice_date', ex.get('invoice_date') or '') }}"></label>
             <label><span class="inv-label">Billed to</span>
               {% if gstins|length > 1 %}
               <select name="gstin_id" class="inv-select" x-model="gstin">
                 {% for g in gstins %}<option value="{{ g.id }}">{{ tenant.legal_name }} · {{ g.gstin or 'Unregistered' }}</option>{% endfor %}
               </select>
-              {% else %}<span class="inv-static">{{ tenant.legal_name }}{% if own and own.gstin %}<br><span class="inv-mono">{{ own.gstin }}</span>{% endif %}</span>
+              {% else %}<span class="inv-static"{{ zoom('receiver_gstin') }}>{{ tenant.legal_name }}{% if own and own.gstin %}<br><span class="inv-mono">{{ own.gstin }}</span>{% endif %}</span>
               <input type="hidden" name="gstin_id" value="{{ own.id if own else '' }}">{% endif %}
             </label>
             <p class="inv-note">
@@ -142,12 +146,12 @@
           <table class="inv-table">
             <thead>
               <tr><th class="num">#</th><th>Description</th><th>HSN/SAC</th><th class="num">Qty</th><th>Unit</th>
-                <th class="num">Rate</th><th class="num">Disc %</th><th class="num">Taxable</th><th class="num">GST %</th>
+                <th class="num">Rate</th><th class="num">Disc</th><th class="num">Taxable</th><th class="num">GST %</th>
                 <th class="num" x-text="intra() ? 'CGST+SGST' : 'IGST'">GST</th>
                 <th class="num">Amount</th><th><span class="sr-only">Remove</span></th></tr>
             </thead>
             <template x-for="(l, i) in lines" :key="i">
-              <tbody class="inv-line">
+              <tbody class="inv-line" :data-zoom="l.box ? JSON.stringify(l.box) : null">
                 <tr>
                   <td class="num inv-sno" x-text="i + 1"></td>
                   <td class="inv-desc">
@@ -164,7 +168,11 @@
                   <td><input class="inv-input num inv-w-qty" name="line_qty[]" x-model="l.qty" inputmode="decimal" aria-label="Quantity"></td>
                   <td><input class="inv-input inv-w-unit" name="line_unit[]" x-model="l.unit" aria-label="Unit"></td>
                   <td><input class="inv-input num inv-w-rate" name="line_rate[]" x-model="l.rate" inputmode="decimal" aria-label="Rate"></td>
-                  <td><input class="inv-input num inv-w-disc" name="line_discount[]" x-model="l.discount" inputmode="decimal" aria-label="Discount percent"></td>
+                  <td class="inv-disc"><input class="inv-input num inv-w-disc" x-model="l.discount" inputmode="decimal" :aria-label="l.disc_type === 'amt' ? 'Discount in rupees' : 'Discount percent'">
+                    <select class="inv-select inv-disc-type" x-model="l.disc_type" aria-label="Discount as a percentage or rupees" title="% of the line, or rupees off it - as the bill prints it">
+                      <option value="pct">%</option><option value="amt">Rs.</option></select>
+                    <input type="hidden" name="line_discount[]" :value="l.disc_type === 'amt' ? '0' : l.discount">
+                    <input type="hidden" name="line_discount_flat[]" :value="l.disc_type === 'amt' ? l.discount : '0'"></td>
                   <td class="num" x-text="money(taxable(l))"></td>
                   <td><select class="inv-select inv-w-gst" name="line_gst_rate[]" x-model="l.gst_rate" aria-label="GST rate">
                     {% for r in ['0','0.1','0.25','1','1.5','3','5','6','7.5','12','18','28','40'] %}<option value="{{ r }}" :selected="l.gst_rate === '{{ r }}'">{{ r }}%</option>{% endfor %}</select>
@@ -196,7 +204,7 @@
             </template>
           </table>
         </div>
-        <button type="button" class="btn btn-quiet btn-sm" @click="lines.push({product_id: '', options: [], description: '', hsn: '', qty: '1', unit: 'NOS', rate: '0', discount: '0', gst_rate: '18', serials: '', item_code: '', batch: '', mfg: '', expiry: '', mrp: '', open: false})">{{ icon('plus') }}Add a line</button>
+        <button type="button" class="btn btn-quiet btn-sm" @click="lines.push({product_id: '', options: [], description: '', hsn: '', qty: '1', unit: 'NOS', rate: '0', discount: '0', disc_type: 'pct', gst_rate: '18', serials: '', item_code: '', batch: '', mfg: '', expiry: '', mrp: '', open: false})">{{ icon('plus') }}Add a line</button>
 
         {# tax summary and totals #}
         <div class="inv-foot">
@@ -211,20 +219,20 @@
             </tbody>
           </table>
           <dl class="inv-totals">
-            <div><dt>Taxable value</dt><dd x-text="money(sum('taxable'))"></dd></div>
-            <div x-show="intra()"><dt>CGST</dt><dd x-text="money(sum('tax') / 2)"></dd></div>
-            <div x-show="intra()"><dt>SGST</dt><dd x-text="money(sum('tax') / 2)"></dd></div>
-            <div x-show="!intra()"><dt>IGST</dt><dd x-text="money(sum('tax'))"></dd></div>
-            <div><dt>Round off</dt><dd x-text="money(total() - exact())"></dd></div>
+            <div{{ zoom('taxable_value') }}><dt>Taxable value</dt><dd x-text="money(sum('taxable'))"></dd></div>
+            <div x-show="intra()"{{ zoom('cgst') }}><dt>CGST</dt><dd x-text="money(sum('tax') / 2)"></dd></div>
+            <div x-show="intra()"{{ zoom('sgst') }}><dt>SGST</dt><dd x-text="money(sum('tax') / 2)"></dd></div>
+            <div x-show="!intra()"{{ zoom('igst') }}><dt>IGST</dt><dd x-text="money(sum('tax'))"></dd></div>
+            <div{{ zoom('round_off') }}><dt>Round off</dt><dd x-text="money(total() - exact())"></dd></div>
             <div class="inv-grand"><dt>Total</dt><dd x-text="'Rs. ' + money(total())"></dd></div>
-            <div class="inv-tds"><dt>Less TDS
+            <div class="inv-tds"{{ zoom('tds') }}><dt>Less TDS
                 <select name="tds_section" class="inv-select" x-model="tdsSection" aria-label="TDS section">
                   {% for code, label in tds_sections %}<option value="{{ code }}">{{ code if code and code != 'OTHER' else ('section' if not code else 'other') }}</option>{% endfor %}
                 </select></dt>
               <dd><input type="text" name="tds_amount" class="inv-input num" inputmode="decimal" x-model="tds" placeholder="0.00" aria-label="TDS deducted"></dd></div>
             <div class="inv-grand" x-show="num(tds) > 0" x-cloak><dt>Net payable</dt><dd x-text="'Rs. ' + money(total() - num(tds))"></dd></div>
-            <div class="inv-printed {{ flag(flagged, 'invoice_value', 'totals_match') if not (einv.get('qr') or {}).get('invoice_value') }}"><dt>Total printed on the bill</dt>
-              <dd><input type="text" name="bill_total" class="inv-input num" inputmode="decimal" x-model="billTotal" aria-label="Total printed on the bill"></dd></div>
+            <div class="inv-printed {{ flag(flagged, 'invoice_value', 'totals_match') if not (einv.get('qr') or {}).get('invoice_value') }}"><dt{{ zoom('invoice_value') }}>Total printed on the bill</dt>
+              <dd{{ zoom('invoice_value') }}><input type="text" name="bill_total" class="inv-input num" inputmode="decimal" x-model="billTotal" aria-label="Total printed on the bill"></dd></div>
             <div class="inv-diff" x-show="billTotal > 0 && Math.abs(diff()) > 1"><dt>Difference</dt><dd x-text="'Rs. ' + money(Math.abs(diff()))"></dd></div>
           </dl>
         </div>
@@ -239,7 +247,7 @@
           <div class="inv-details-grid">
             {% for key, label in detail_fields %}
             <label><span class="inv-label">{{ label }}</span>
-              <input type="text" name="detail_{{ key }}" class="inv-input {{ 'inv-mono' if key in ('irn', 'bank_account', 'bank_ifsc', 'ewb_number', 'ack_number') }}" value="{{ details.get(key, '') }}" maxlength="500"></label>
+              <input type="text" name="detail_{{ key }}"{{ zoom(key) }} class="inv-input {{ 'inv-mono' if key in ('irn', 'bank_account', 'bank_ifsc', 'ewb_number', 'ack_number') }}" value="{{ details.get(key, '') }}" maxlength="500"></label>
             {% endfor %}
             <label><span class="inv-label">Discount on the bill (Rs.)</span>
               <input type="text" name="detail_discount" class="inv-input num" inputmode="decimal" value="{{ details.get('discount', '') }}"></label>
@@ -312,6 +320,7 @@
 </div>
 {% endblock %}
 {% block scripts %}
+<script src="{{ url_for('static', filename='js/scan_zoom.js') }}" defer></script>
 <script>
   /* The scanned bill as a tax invoice (app/scan). Its data comes from the
      JSON block above, so nothing in the bill can break the page's markup. */
@@ -347,7 +356,11 @@
         if (seller && own) return seller === own;
         return !(this.num(d.readIgst) > 0);   // no GSTIN to go by: as the bill charged it
       },
-      taxable: function (l) { return r2(this.num(l.qty) * this.num(l.rate) * (1 - this.num(l.discount) / 100)); },
+      taxable: function (l) {
+        // As the server works it out: a percentage, or rupees off, then to the paisa.
+        var gross = this.num(l.qty) * this.num(l.rate), d = this.num(l.discount);
+        return r2(gross - (l.disc_type === "amt" ? r2(d) : r2(gross * d / 100)));
+      },
       tax: function (l) { return r2(this.taxable(l) * this.num(l.gst_rate) / 100); },
       sum: function (what) {
         var self = this;

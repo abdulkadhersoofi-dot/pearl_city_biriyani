@@ -42,7 +42,7 @@
           {% if d.serials %}<br><small class="text-muted">Serial no{{ 's' if d.serials|length > 1 }}: <span class="mono">{{ d.serials|join(', ') }}</span></small>{% endif %}</td>
         <td>{{ l.hsn_or_sac_code or '' }}</td>
         <td class="num">{{ l.qty|qty }} {{ l.unit }}</td>
-        <td class="num">{{ '%.2f'|format(l.rate) }}{% if l.discount_percent %}<br><small class="text-muted">-{{ l.discount_percent|qty }}%</small>{% endif %}</td>
+        <td class="num">{{ '%.2f'|format(l.rate) }}{% if l.discount_percent %}<br><small class="text-muted">-{{ l.discount_percent|qty }}%</small>{% endif %}{% if l.discount_flat %}<br><small class="text-muted">- Rs. {{ '%.2f'|format(l.discount_flat) }}</small>{% endif %}</td>
         <td class="num">{{ '%.2f'|format(l.taxable_value) }}</td>
         <td class="num">{{ '%.2f'|format(l.cgst_amount + l.sgst_amount + l.igst_amount) }}<br><small class="text-muted">{{ l.gst_rate|qty }}%</small></td>
         <td><span class="tag {{ 'tag-fast' if l.itc_eligibility.value == 'eligible' else 'tag-low' }}">{{ itc_labels[l.itc_eligibility] }}</span></td>

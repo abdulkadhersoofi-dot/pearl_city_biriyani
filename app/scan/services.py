@@ -293,6 +293,29 @@ def _split(tenant, user, doc, groups, method) -> list[ScanDocument]:
     return children
 
 
+def page_image(doc: ScanDocument, n: int, px: int = 2200) -> bytes:
+    """Page n of the document as a JPEG, upright, the same shape the
+    reader was sent - so the boxes it read land on the right spot."""
+    if not doc.is_pdf:
+        if n != 0:
+            raise ScanError("A photo has one page.")
+        with reader._RASTER:
+            return reader.compress(doc.file_data, px, 85, 1600)
+    import fitz
+
+    with reader._RASTER:
+        pdf = fitz.open(stream=doc.file_data, filetype="pdf")
+        try:
+            if not 0 <= n < len(pdf):
+                raise ScanError("No such page.")
+            pg = pdf[n]
+            scale = px / max(pg.rect.width, pg.rect.height)
+            pix = pg.get_pixmap(matrix=fitz.Matrix(scale, scale), alpha=False)
+            return pix.tobytes("jpeg", jpg_quality=85)
+        finally:
+            pdf.close()
+
+
 # --- what the review screen starts from --------------------------------------------------------
 
 def _money(v) -> Decimal:
@@ -317,26 +340,45 @@ def suggested_kind(tenant, doc: ScanDocument) -> str:
     return KIND_FILE
 
 
+def line_discount(gross: Decimal, taxable: Decimal, printed_percent=None) -> tuple[str, Decimal]:
+    """How a line's discount is taken so that it lands on the printed
+    taxable value to the paisa: ("pct", the percentage) when a percentage
+    does that - the one printed, or a round one - else ("amt", the rupees
+    off). A percentage rounded to two places would otherwise leave the
+    bill a few rupees out."""
+    off = (gross - taxable).quantize(Decimal("0.01"), ROUND_HALF_UP)
+    if off <= 0:
+        return "pct", Decimal("0")
+    tries = [_money(printed_percent)] if _money(printed_percent) > 0 else []
+    tries.append(((off / gross) * 100).quantize(Decimal("0.01"), ROUND_HALF_UP))
+    for pct in tries:
+        if Decimal("0") < pct < Decimal("100") and \
+                (gross - (gross * pct / 100).quantize(Decimal("0.01"), ROUND_HALF_UP)).quantize(
+                    Decimal("0.01"), ROUND_HALF_UP) == taxable:
+            return "pct", pct
+    return "amt", off
+
+
 def line_rows(doc: ScanDocument) -> list[dict]:
     """The bill's lines as ARFA purchase lines: quantity x rate less a
-    discount gives the taxable value printed on the bill."""
+    discount (a percentage or rupees, whichever the bill gives exactly)
+    makes the taxable value printed on the bill."""
     rows = []
     for item in (doc.extracted or {}).get("line_items") or []:
         taxable = _money(item.get("taxable_value"))
         qty = Decimal(str(item.get("quantity") or 0)).quantize(Decimal("0.001"))
         rate = _money(item.get("rate_per_unit"))
-        discount = Decimal("0")
+        disc_type, discount = "pct", Decimal("0")
         if qty <= 0:
             qty = Decimal("1")
             rate = taxable if taxable > 0 else rate
         elif taxable > 0:
-            gross = (qty * rate).quantize(Decimal("0.01"))
+            gross = (qty * rate).quantize(Decimal("0.01"), ROUND_HALF_UP)
             if rate <= 0 or gross < taxable - Decimal("0.5"):
                 rate = (taxable / qty).quantize(Decimal("0.01"), ROUND_HALF_UP)
-            elif gross > taxable + Decimal("0.5"):
-                discount = ((1 - taxable / gross) * 100).quantize(Decimal("0.01"), ROUND_HALF_UP)
-                if not (Decimal("0") < discount < Decimal("100")):
-                    discount, rate = Decimal("0"), (taxable / qty).quantize(Decimal("0.01"), ROUND_HALF_UP)
+            elif gross > taxable:
+                # worked on qty x rate unrounded, exactly as the bill is computed when posted
+                disc_type, discount = line_discount(qty * rate, taxable, item.get("discount_percent"))
         gst = _slab(item.get("gst_rate"))
         if gst == 0 and taxable > 0:
             tax = _money(item.get("igst")) + _money(item.get("cgst")) + _money(item.get("sgst"))
@@ -346,16 +388,18 @@ def line_rows(doc: ScanDocument) -> list[dict]:
         rows.append({"description": (item.get("description") or "Item").strip()[:255] or "Item",
                      "hsn": re.sub(r"\D", "", str(item.get("hsn_sac") or "")),
                      "qty": f"{qty.normalize():f}", "unit": unit_code(item.get("unit") or ""),
-                     "rate": f"{rate:.2f}", "discount": f"{discount:.2f}", "gst_rate": f"{gst.normalize():f}",
-                     "serials": "\n".join(item.get("serial_numbers") or []),
+                     "rate": f"{rate:.2f}", "discount": f"{discount:.2f}", "disc_type": disc_type,
+                     "gst_rate": f"{gst.normalize():f}", "serials": "\n".join(item.get("serial_numbers") or []),
                      "item_code": (item.get("item_code") or "").strip()[:64],
                      "batch": (item.get("batch") or "").strip()[:64],
                      "mfg": iso_date(item.get("mfg_date"), month_end=False),
                      "expiry": iso_date(item.get("expiry"), month_end=True),
-                     "mrp": f"{mrp:.2f}" if mrp > 0 else ""})
+                     "mrp": f"{mrp:.2f}" if mrp > 0 else "", "box": item.get("box")})
+    if rows:
+        _spread_bill_discount(rows, doc.extracted or {})
     return rows or [{"description": "Item", "hsn": "", "qty": "1", "unit": "NOS",
                      "rate": f"{_money((doc.extracted or {}).get('taxable_value')):.2f}", "discount": "0.00",
-                     "gst_rate": "18", "serials": "", "item_code": "", "batch": "", "mfg": "", "expiry": "",
+                     "disc_type": "pct", "gst_rate": "18", "serials": "", "item_code": "", "batch": "", "mfg": "", "expiry": "",
                      "mrp": ""}]
 
 
@@ -450,6 +494,35 @@ def _tds_from_form(form) -> tuple[Decimal, str | None]:
     if tds < 0:
         raise ScanError("TDS can't be negative.")
     return tds, ((form.get("tds_section") or "").strip()[:10] or None) if tds else None
+
+
+def _row_taxable(row: dict) -> tuple[Decimal, Decimal]:
+    """(qty x rate, the taxable value) of a line row, as it will post."""
+    gross = Decimal(row["qty"]) * Decimal(row["rate"])
+    d = Decimal(row["discount"] or "0")
+    off = d if row.get("disc_type") == "amt" else (gross * d / 100).quantize(Decimal("0.01"), ROUND_HALF_UP)
+    return gross, (gross - off).quantize(Decimal("0.01"), ROUND_HALF_UP)
+
+
+def _spread_bill_discount(rows: list[dict], ex: dict) -> None:
+    """A discount printed once at the bottom of the bill, before the tax
+    ("Less: discount Rs. 500"), goes onto the lines in proportion to their
+    value, in rupees - so each line's GST is on what was really charged and
+    the bill comes out exactly as printed."""
+    discount, printed = _money(ex.get("discount")), _money(ex.get("taxable_value"))
+    if discount <= 0 or printed <= 0:
+        return
+    values = [_row_taxable(r) for r in rows]
+    total = sum((t for _, t in values), Decimal("0"))
+    if total <= 0 or abs((total - printed) - discount) > Decimal("1.00"):
+        return   # the lines already carry it, or it isn't a discount on them
+    off, given = total - printed, Decimal("0")
+    for i, (row, (gross, taxable)) in enumerate(zip(rows, values)):
+        last = i == len(rows) - 1
+        share = off - given if last else (off * taxable / total).quantize(Decimal("0.01"), ROUND_HALF_UP)
+        given += share
+        row["disc_type"] = "amt"
+        row["discount"] = f"{(gross - taxable + share).quantize(Decimal('0.01'), ROUND_HALF_UP):.2f}"
 
 
 def main_gst_rate(doc: ScanDocument) -> Decimal:

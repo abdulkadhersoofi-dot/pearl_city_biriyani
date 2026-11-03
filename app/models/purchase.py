@@ -167,6 +167,9 @@ class PurchaseBillLine(db.Model, TimestampMixin):
     unit = db.Column(db.String(20), nullable=False, default="PCS")
     rate = db.Column(db.Numeric(12, 2), nullable=False)
     discount_percent = db.Column(db.Numeric(5, 2), nullable=False, default=0)
+    # Rupees off the line as printed (after any percentage) - bills give
+    # discounts either way, and each is taken exactly.
+    discount_flat = db.Column(db.Numeric(12, 2), nullable=False, default=0, server_default="0")
     discount_amount = db.Column(db.Numeric(12, 2), nullable=False, default=0)
     gst_rate = db.Column(db.Numeric(5, 2), nullable=False, default=0)
     taxable_value = db.Column(db.Numeric(12, 2), nullable=False, default=0)
