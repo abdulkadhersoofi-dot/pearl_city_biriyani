@@ -270,6 +270,8 @@ def _admin_groups(user) -> list[Group]:
                      keywords="vvip custom domain login page"),
                 Link("Billing", "subscriptions.index", "banknote", blueprints=("subscriptions",),
                      keywords="subscriptions invoices fees"),
+                Link("Teach the bill reader", "scan.teach_all", "scan-line", endpoints=("scan.teach_all",),
+                     keywords="scan bills lessons notes reader ai"),
                 Link("Audit log", "tenants.audit_log", "list", endpoints=("tenants.audit_log",)),
             )),
         ]

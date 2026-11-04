@@ -167,9 +167,15 @@ def _context(tenant, doc: ScanDocument | None = None) -> reader.Context:
     known |= {c for (c,) in db.session.query(Customer.gstin).filter(Customer.tenant_id == tenant.id,
                                                                      Customer.gstin.isnot(None))}
     phone = (doc.phone_read or {}) if doc is not None else {}
-    return reader.Context(own_gstins=own, company_name=tenant.legal_name or "", known_gstins=sorted(known),
-                          phone_text=str(phone.get("text") or ""),
-                          phone_qr=phone.get("qr") if isinstance(phone.get("qr"), dict) else None)
+    from app.scan import lessons
+
+    taught, taught_ids = lessons.for_reading(tenant)
+    ctx = reader.Context(own_gstins=own, company_name=tenant.legal_name or "", known_gstins=sorted(known),
+                         phone_text=str(phone.get("text") or ""),
+                         phone_qr=phone.get("qr") if isinstance(phone.get("qr"), dict) else None,
+                         lessons=taught)
+    ctx.lesson_ids = taught_ids   # which lessons each key's text came from (marked used after the read)
+    return ctx
 
 
 def _own_gstin_row(tenant, gstin: str):
@@ -247,8 +253,9 @@ def read_document(tenant, user, doc: ScanDocument, http=None) -> list[ScanDocume
 
     doc.status = READING
     db.session.commit()
+    ctx = _context(tenant, doc)
     try:
-        result = reader.read(doc.file_data, doc.is_pdf, _context(tenant, doc), settings, **kwargs)
+        result = reader.read(doc.file_data, doc.is_pdf, ctx, settings, **kwargs)
     except reader.ReadError as exc:
         doc.status, doc.message, doc.rejection_code = FAILED, exc.message, exc.code
         doc.read_at = utcnow()
@@ -265,6 +272,9 @@ def read_document(tenant, user, doc: ScanDocument, http=None) -> list[ScanDocume
     doc.extracted = result["extracted"]
     doc.validation = result["validation"]
     doc.engine = result["engine"]
+    from app.scan import lessons
+
+    lessons.mark_used(getattr(ctx, "lesson_ids", {}), (doc.engine or {}).get("lessons"))
     doc.preview = result["preview"]
     if result.get("file_data"):
         # turned upright - the bill is kept the right way up from now on
@@ -1505,7 +1515,28 @@ def post(tenant, user, doc: ScanDocument, form):
         return file_document(user, doc, form.get("notes", ""))
     if kind not in handlers:
         raise ScanError("Choose what this document is.")
-    return handlers[kind](tenant, user, doc, form)
+    from app.scan import lessons
+
+    name, gstin = party(doc)          # before posting: the reading as it was
+    read = lessons.read_rows(doc)
+    result = handlers[kind](tenant, user, doc, form)
+    _learn(tenant, user, doc, form, gstin, name, read)
+    return result
+
+
+def _learn(tenant, user, doc, form, gstin, name, read) -> None:
+    """Rows the reader missed and the user added: a lesson for the
+    supplier's next bills (app/scan/lessons.py). Never stops a posting."""
+    from app.scan import lessons
+
+    try:
+        with db.session.begin_nested():
+            lesson = lessons.record_correction(tenant, user, doc, form, gstin, name, read)
+        if lesson is not None:
+            record_audit(user, "scan_lesson_learnt", tenant_id=tenant.id, entity_type="scan_document",
+                         entity_id=doc.id, details={"supplier_gstin": gstin, "rows": len(lesson.example["rows"])})
+    except Exception:  # noqa: BLE001
+        log.warning("couldn't learn from scan %s", doc.id, exc_info=True)
 
 
 def party(doc: ScanDocument) -> tuple[str, str]:

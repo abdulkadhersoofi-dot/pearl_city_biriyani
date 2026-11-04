@@ -97,3 +97,39 @@ class ScanAppToken(db.Model, TenantScopedMixin, TimestampMixin):
     revoked_at = db.Column(db.DateTime(timezone=True))
 
     user = db.relationship("User")
+
+
+LESSON_CORRECTION = "correction"   # rows the reader missed on a bill, learnt when it was posted
+LESSON_NOTE = "note"               # a note someone wrote ("Teach ARFA")
+
+
+class ScanLesson(db.Model, TimestampMixin):
+    """Something ARFA's bill reader has been taught (app/scan/lessons.py).
+
+    A correction: rows the reader missed on a supplier's bill, saved when the
+    bill was posted with them added - shown to the reader with that
+    supplier's next bills. A note: what the owner (or, for every business,
+    the Ultra Admin: tenant_id empty) wrote about a supplier's bills, or
+    about bills in general (supplier_gstin empty). Switched off rather than
+    lost; deleting is the owner's choice."""
+
+    __tablename__ = "scan_lessons"
+
+    id = db.Column(db.Integer, primary_key=True)
+    # Empty: the Ultra Admin's, for every business.
+    tenant_id = db.Column(db.Integer, db.ForeignKey("tenants.id", name="fk_scan_lessons_tenant"), index=True)
+    kind = db.Column(db.String(20), nullable=False, default=LESSON_NOTE)
+    # Empty: about every supplier's bills.
+    supplier_gstin = db.Column(db.String(15), index=True)
+    supplier_name = db.Column(db.String(255))
+    text = db.Column(db.Text)
+    # A correction: {"invoice_number", "rows": [{"description", "hsn", "qty", "rate", "value"}],
+    #                "read_rows", "posted_rows", "read_total", "posted_total"}
+    example = db.Column(db.JSON)
+    source_doc_id = db.Column(db.Integer, db.ForeignKey("scan_documents.id", name="fk_scan_lessons_doc"))
+    created_by_id = db.Column(db.Integer, db.ForeignKey("users.id", name="fk_scan_lessons_created_by"))
+    active = db.Column(db.Boolean, nullable=False, default=True, server_default=db.true())
+    uses = db.Column(db.Integer, nullable=False, default=0, server_default="0")
+    last_used_at = db.Column(db.DateTime(timezone=True))
+
+    created_by = db.relationship("User")

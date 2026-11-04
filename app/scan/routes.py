@@ -2,7 +2,7 @@ import re
 from datetime import date, datetime, time as dtime, timedelta
 
 from flask import Response, abort, flash, jsonify, redirect, render_template, request, url_for
-from flask_login import current_user
+from flask_login import current_user, login_required
 
 from app.auth.decorators import roles_required
 from app.extensions import db
@@ -450,3 +450,112 @@ def reread(doc_id):
         db.session.rollback()
         flash(exc.message, "error")
     return redirect(url_for("scan.index", tab="reading"))
+
+
+# --- Teach ARFA (app/scan/lessons.py) -----------------------------------------------------------
+
+def _teach_scope():
+    """Whose lessons this user looks after: their business's (the owner),
+    or every business's general ones (the Ultra Admin: None)."""
+    if current_user.is_super_admin:
+        return None
+    if current_user.role != ADMIN or not current_user.tenant or not current_user.tenant.has_feature("doc_scan"):
+        abort(403)
+    return current_user.tenant_id
+
+
+def _teach_back():
+    return redirect(url_for("scan.teach_all") if current_user.is_super_admin else
+                    url_for("scan.teach", supplier=request.form.get("back") or None))
+
+
+@scan_bp.route("/teach")
+@roles_required(ADMIN)
+@feature_required("doc_scan")
+def teach():
+    from app.models.scan import ScanLesson
+    from app.scan import lessons
+
+    tenant = _tenant()
+    supplier = (request.args.get("supplier") or "").strip().upper()
+    stats = lessons.supplier_stats(tenant)
+    chosen = next((s for s in stats if s["gstin"] == supplier), None) if supplier else None
+    query = ScanLesson.query.filter(ScanLesson.tenant_id == tenant.id)
+    query = query.filter(ScanLesson.supplier_gstin == supplier) if supplier else \
+        query.filter(ScanLesson.supplier_gstin.is_(None))
+    shown = query.order_by(ScanLesson.created_at.desc(), ScanLesson.id.desc()).limit(200).all()
+    platform = ScanLesson.query.filter(ScanLesson.tenant_id.is_(None), ScanLesson.active.is_(True)) \
+        .order_by(ScanLesson.id.desc()).limit(50).all()
+    return render_template("scan/teach.html", stats=stats, supplier=supplier, chosen=chosen, shown=shown,
+                           platform=platform, all_view=False)
+
+
+@scan_bp.route("/teach/all")
+@roles_required(UserRole.SUPER_ADMIN)
+def teach_all():
+    from app.models.scan import ScanLesson
+
+    shown = ScanLesson.query.filter(ScanLesson.tenant_id.is_(None)) \
+        .order_by(ScanLesson.created_at.desc(), ScanLesson.id.desc()).limit(300).all()
+    return render_template("scan/teach.html", stats=[], supplier="", chosen=None, shown=shown, platform=[],
+                           all_view=True)
+
+
+@scan_bp.route("/teach/note", methods=["POST"])
+@login_required
+def teach_note():
+    from app.scan import lessons
+    from app.utils.audit import record_audit
+
+    scope = _teach_scope()
+    try:
+        lesson = lessons.add_note(scope, current_user, request.form.get("text", ""),
+                                  request.form.get("gstin", ""), request.form.get("name", ""))
+        db.session.flush()
+        record_audit(current_user, "scan_lesson_noted", tenant_id=scope, entity_type="scan_lesson",
+                     entity_id=lesson.id, details={"supplier_gstin": lesson.supplier_gstin, "text": lesson.text})
+        db.session.commit()
+        flash("Noted - ARFA reads the next bills with it.", "success")
+    except lessons.LessonError as exc:
+        db.session.rollback()
+        flash(exc.message, "error")
+    return _teach_back()
+
+
+def _lesson(lesson_id):
+    from app.models.scan import ScanLesson
+
+    scope = _teach_scope()
+    lesson = db.session.get(ScanLesson, lesson_id)
+    if lesson is None or lesson.tenant_id != scope:
+        abort(404)
+    return lesson, scope
+
+
+@scan_bp.route("/teach/<int:lesson_id>/switch", methods=["POST"])
+@login_required
+def teach_switch(lesson_id):
+    from app.utils.audit import record_audit
+
+    lesson, scope = _lesson(lesson_id)
+    lesson.active = not lesson.active
+    record_audit(current_user, "scan_lesson_switched", tenant_id=scope, entity_type="scan_lesson",
+                 entity_id=lesson.id, details={"active": lesson.active})
+    db.session.commit()
+    flash("Switched on - ARFA uses it again." if lesson.active else "Switched off - ARFA won't use it.", "success")
+    return _teach_back()
+
+
+@scan_bp.route("/teach/<int:lesson_id>/delete", methods=["POST"])
+@login_required
+def teach_delete(lesson_id):
+    from app.utils.audit import record_audit
+
+    lesson, scope = _lesson(lesson_id)
+    record_audit(current_user, "scan_lesson_deleted", tenant_id=scope, entity_type="scan_lesson",
+                 entity_id=lesson.id, details={"supplier_gstin": lesson.supplier_gstin, "kind": lesson.kind,
+                                               "text": lesson.text, "example": lesson.example})
+    db.session.delete(lesson)
+    db.session.commit()
+    flash("Deleted.", "success")
+    return _teach_back()

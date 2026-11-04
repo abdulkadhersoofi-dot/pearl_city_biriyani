@@ -91,6 +91,9 @@ class Context:
     # pair of eyes, never taken over what the picture shows.
     phone_text: str = ""
     phone_qr: dict | None = None
+    # What this business taught the reader (app/scan/lessons.py): the
+    # prompt text for bills from each supplier GSTIN, and "" for every bill.
+    lessons: dict[str, str] = field(default_factory=dict)
 
 
 class ReadError(Exception):
@@ -615,7 +618,8 @@ def _empty_read() -> dict:
 
 def extract_fields(pages: list[bytes], settings: Settings, deadline: float, hint: str = "",
                    models: list[str] | None = None, http=requests,
-                   page_map: list[int] | None = None, phone_text: str = "") -> tuple[dict, str | None]:
+                   page_map: list[int] | None = None, phone_text: str = "",
+                   teach: str = "") -> tuple[dict, str | None]:
     """`page_map`: the document page each image is (pages left out of the
     read shift the rest); the boxes read come back on those pages."""
     parts, layout = [], None
@@ -636,6 +640,9 @@ def extract_fields(pages: list[bytes], settings: Settings, deadline: float, hint
         prompt += ("\nTEXT THE PHONE'S OWN OCR READ FROM THIS BILL (it can contain mistakes - use it only to "
                    "settle characters you are unsure of, never over what the image clearly shows):\n<<<\n"
                    + phone_text.strip()[:6000] + "\n>>>")
+    if teach.strip():
+        prompt += ("\nWHAT THIS BUSINESS HAS TAUGHT YOU FROM ITS EARLIER BILLS (follow it where it fits this "
+                   "bill; never invent a row or a value this bill doesn't show):\n" + teach.strip()[:4000])
     parts.append({"text": prompt + ("\nIMPORTANT CORRECTION PASS: " + hint if hint else "")})
     text, model = call_model(parts, settings, models or settings.models, deadline, http=http)
     if not text:
@@ -1046,6 +1053,36 @@ def _hold_qr(extracted: dict) -> None:
         extracted["invoice_date"] = qr["invoice_date"].strip()
 
 
+def rows_gap(extracted: dict) -> tuple[float, float, float]:
+    """(the rows' taxable added up, the bill's own taxable value, how much
+    of it no row accounts for). 0 short when the bill has no taxable figure."""
+    rows = round(sum(_f(li.get("taxable_value")) or 0 for li in extracted.get("line_items") or []), 2)
+    bill = _f(extracted.get("taxable_value")) or 0
+    return rows, bill, round(bill - rows, 2) if bill else 0.0
+
+
+def rows_short(extracted: dict) -> bool:
+    """The rows come to less than the bill's taxable value - rows were missed
+    (a page break, a sub-heading, freight or a discount row)."""
+    _, bill, missing = rows_gap(extracted)
+    return bill > 0 and missing > max(1.0, bill * 0.005)
+
+
+def lessons_for(ctx: Context, gstins) -> tuple[str, list[str]]:
+    """The taught text for these supplier GSTINs (and for every bill), and
+    which of them were used."""
+    used, texts = [], []
+    for key in [""] + [g for g in dict.fromkeys(gstins) if g]:
+        if ctx.lessons.get(key):
+            used.append(key)
+            texts.append(ctx.lessons[key])
+    return "\n".join(texts), used
+
+
+def _gstins_in(text: str) -> list[str]:
+    return [m.group(0) for m in re.finditer(r"\b[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]Z[0-9A-Z]\b", (text or "").upper())]
+
+
 def read(file_bytes: bytes, is_pdf: bool, ctx: Context, settings: Settings, http=requests) -> dict:
     """One document -> {extracted, validation, rejection_code,
     rejection_reason, preview, own_gstin, pages_total, engine}."""
@@ -1086,8 +1123,13 @@ def read(file_bytes: bytes, is_pdf: bool, ctx: Context, settings: Settings, http
     # The QR is read alongside the model, not after it.
     qr_future = _QR_POOL.submit(decode_einvoice_qr, list(qr_candidates), settings.qr_budget)
 
+    # Lessons already known for this bill: every bill's, and the supplier's
+    # when the phone saw its GSTIN (its QR or its own OCR).
+    early = ([(ctx.phone_qr or {}).get("supplier_gstin") or ""] + _gstins_in(ctx.phone_text)) if ctx.lessons else []
+    teach, used = lessons_for(ctx, early)
+    engine["lessons"] = used
     extracted, model = extract_fields(model_pages, settings, deadline, http=http, page_map=kept,
-                                      phone_text=ctx.phone_text)
+                                      phone_text=ctx.phone_text, teach=teach)
     engine["models"].append(model)
     if model is None:
         qr_future.cancel()
@@ -1134,12 +1176,52 @@ def read(file_bytes: bytes, is_pdf: bool, ctx: Context, settings: Settings, http
             extracted[side] = own
             side_note = f"{side.replace('_', ' ')} set to your GSTIN {own} (read '{raw or 'blank'}')"
 
+    # Rows missed: the rows come to less than the bill's own taxable value.
+    # One more read, told exactly how much is missing and where rows hide,
+    # with the strong model on a sharper picture - and with what this
+    # business taught about the supplier's bills. Its rows are taken only
+    # when they come closer to the bill's taxable value. Checked before the
+    # validator, which could otherwise "repair" the total down to the rows.
+    rows_note = None
+    if rows_short(extracted) and time.time() - start < settings.budget * 0.6:
+        rows, bill, missing = rows_gap(extracted)
+        engine["rows_pass"] = True
+        teach2, used2 = lessons_for(ctx, [clean_gstin(extracted.get("supplier_gstin") or "")] + early)
+        engine["lessons"] = sorted(set(engine.get("lessons") or []) | set(used2))
+        with _RASTER:
+            sharp = [compress(hires_source[i], settings.hires_px, 92, 3500) for i in kept if i < len(hires_source)] \
+                if len(kept) <= 2 else list(model_pages)
+        if len(sharp) != len(kept):
+            sharp = list(model_pages)
+        hint = (f"Your item rows add up to Rs {rows:,.2f} but the bill's taxable value is Rs {bill:,.2f} - rows worth "
+                f"Rs {missing:,.2f} are missing. Read the item table again from its first row to its last, on every "
+                "page: rows after a page break or a 'continued' line, rows under a sub-heading or group title, a "
+                "second table, and small rows such as freight, packing, forwarding, loading, insurance or "
+                "installation, and a discount or scheme row (a discount is a row with a negative value). Return "
+                "EVERY row, each with its own taxable value, so that the rows add up to the taxable value.")
+        second, model4 = extract_fields(sharp, settings, deadline, http=http, page_map=kept,
+                                        models=[settings.strong_model] + [m for m in settings.models
+                                                                          if m != settings.strong_model],
+                                        phone_text=ctx.phone_text, teach=teach2, hint=hint)
+        engine["models"].append(model4)
+        if model4 and second.get("line_items"):
+            rows2 = round(sum(_f(li.get("taxable_value")) or 0 for li in second["line_items"]), 2)
+            if abs(bill - rows2) < abs(missing) - 0.5:
+                extracted["line_items"] = second["line_items"]
+                if second.get("columns"):
+                    extracted["columns"] = second["columns"]
+                engine["rows_pass"] = "fixed" if abs(bill - rows2) <= max(1.0, bill * 0.005) else "closer"
+                rows_note = (f"Rows re-read: the first reading's rows came to Rs {rows:,.2f} of the Rs {bill:,.2f} "
+                             f"taxable; now Rs {rows2:,.2f} ({len(second['line_items'])} rows).")
+
     extracted["category"] = classify_category(extracted, own, company_name)
     validation = validate_and_repair(extracted, company_gstin=own)
     if side_note:
         validation.setdefault("repairs", []).append(side_note)
+    if rows_note:
+        validation.setdefault("repairs", []).append(rows_note)
 
-    if (validation.get("status") == "failed" and len(model_pages) <= 2
+    if (validation.get("status") == "failed" and len(model_pages) <= 2 and not engine.get("rows_pass")
             and time.time() - start < settings.budget * 0.55):
         fails = "; ".join(f"{c['label']} - {c['detail']}" for c in validation.get("checks", [])
                           if not c.get("ok") and c.get("level") == "hard")
