@@ -155,6 +155,7 @@
                 {% include "_theme_pick.html" %}
                 <a href="{{ url_for('auth.account_security') }}" class="pop-item" role="menuitem">{{ icon('shield-check') }}<span>Security</span></a>
                 <a href="{{ url_for('auth.change_password') }}" class="pop-item" role="menuitem">{{ icon('key-round') }}<span>Change password</span></a>
+                <a href="{{ url_for('apps.index') }}" class="pop-item" role="menuitem">{{ icon('smartphone') }}<span>Phone apps</span></a>
                 <a href="{{ url_for('auth.logout') }}" class="pop-item" role="menuitem">{{ icon('log-out') }}<span>Sign out</span></a>
               </div>
             </div>
@@ -166,6 +167,7 @@
                 {% include "_theme_pick.html" %}
               </div>
             </div>
+            <a href="{{ url_for('apps.index') }}" class="icon-btn" aria-label="Phone apps" title="Phone apps">{{ icon('smartphone') }}</a>
             <span class="user-name">{{ current_user.name }}</span>
             <a href="{{ url_for('auth.logout') }}" class="btn btn-quiet btn-sm">Sign out</a>
             {% endif %}

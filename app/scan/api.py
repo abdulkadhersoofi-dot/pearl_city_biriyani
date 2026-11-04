@@ -190,6 +190,19 @@ def me():
     return jsonify(_me(g.scan_user))
 
 
+@scan_api_bp.route("/app-update")
+@signed_in
+def app_update():
+    """The app's update check: the newest ARFA Scan on this site and a
+    day-long link to it (app/apps). versionCode 0 = none published here."""
+    from app.apps.routes import update_info
+    from app.apps.store import APPS
+
+    response = jsonify(update_info(APPS["scan"], g.scan_user))
+    response.headers["Cache-Control"] = "private, no-store"
+    return response
+
+
 # --- the bills ----------------------------------------------------------------------------------
 
 def _doc(doc_id) -> ScanDocument:

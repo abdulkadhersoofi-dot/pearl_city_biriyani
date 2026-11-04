@@ -127,9 +127,11 @@ class Config:
     SMTP_USE_TLS = os.environ.get("SMTP_USE_TLS", "1") != "0"
     SMTP_FROM = os.environ.get("SMTP_FROM")
 
-    # In-app update check (Android) - the GitHub repository whose
-    # "android-latest" release carries the APK and version.json.
-    ANDROID_RELEASE_REPO = os.environ.get("ANDROID_RELEASE_REPO", "abdulkadhersoofi-dot/pearl_city_biriyani")
+    # The Android apps on this site (app/apps): the private Cloud Storage
+    # bucket the GitHub build puts them in (scripts/gcp/apps_setup.sh), or,
+    # in development, a folder laid out the same way (latest/...).
+    APPS_BUCKET = os.environ.get("APPS_BUCKET", "")
+    APPS_DIR = os.environ.get("APPS_DIR", "")
 
     # Scan bills (app/scan): the Gemini API key reads the photos. Without
     # it the module says it isn't set up yet. The model names and the daily

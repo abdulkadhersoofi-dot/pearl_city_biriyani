@@ -145,12 +145,23 @@ address whose `/health` (or, on an older server, `/healthz`) answers.
 ### Update check
 
 `.github/workflows/android-apk.yml` builds with `ANDROID_VERSION_CODE`
-= the workflow run number and publishes `version.json` next to the APK
-on the `android-latest` release. `UpdateChecker.kt` reads it at start
-(at most twice a day) or from settings, and offers the download when its
-versionCode is higher than the installed one. The repository is set by
-`RELEASE_REPO` in `app/build.gradle`; a private repository's releases
-can't be read without signing in, so the check then just finds nothing.
+= the workflow run number and writes `version.json` (Counter) and
+`scan-version.json` (Scan). It uploads the APKs and those files to the
+private bucket `APPS_BUCKET` (`latest/`), signing in to Google Cloud
+without a key (Workload Identity Federation, `scripts/gcp/apps_setup.sh`),
+and still publishes them on the `android-latest` release too.
+
+The apps ask the ARFA server first: ARFA Counter
+`/apps/counter/latest.json` with its WebView's signed-in session, ARFA
+Scan `/api/scan/v1/app-update` with its token (`app/apps` on the server).
+The answer carries a download link that works for a day and leads to a
+signed Cloud Storage link that works for 15 minutes - so an APK is only
+handed to a signed-in person or app. Only when the server can't answer, or
+has nothing published yet, do the apps read the GitHub release, as builds
+before this did (that is also how a Counter phone hears the server moved).
+`UpdateChecker.kt` checks at start (at most twice a day) or from the menu,
+and offers the download when the versionCode is higher than the installed
+one. People install from **Phone apps** on the website (`/apps`).
 
 ## Why this isn't built locally
 

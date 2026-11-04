@@ -5,6 +5,7 @@
 <div class="page-header">
   <h1>Branches</h1>
   <div class="row">
+    <a href="{{ url_for('apps.index') }}" class="btn btn-secondary">{{ icon('smartphone') }}Phone apps</a>
     {% if has_feature('cashier_pin') %}<a href="{{ url_for('branches.cashiers') }}" class="btn btn-secondary">Cashiers &amp; PINs</a>{% endif %}
     <a href="{{ url_for('branches.new_branch') }}" class="btn btn-primary">+ Add branch</a>
   </div>

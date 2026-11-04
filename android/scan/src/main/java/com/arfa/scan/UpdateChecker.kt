@@ -10,24 +10,33 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 
-/** The build publishes ARFA-Scan.apk and scan-version.json on the
- * "android-latest" release (.github/workflows/android-apk.yml); a newer
- * build is offered at most twice a day, or on demand from the menu. */
+/** Updates come from the ARFA server: /api/scan/v1/app-update names the
+ * newest ARFA Scan there and hands a day-long download link (app/apps on
+ * the server). Only while the server has none published yet does the app
+ * look at the GitHub "android-latest" release, as older builds did. A
+ * newer build is offered at most twice a day, or on demand from the menu. */
 object UpdateChecker {
     private const val INTERVAL_MS = 12 * 60 * 60 * 1000L
 
     private fun latest(file: String) =
         "https://github.com/${BuildConfig.RELEASE_REPO}/releases/download/android-latest/$file"
 
+    /** The server's answer when it has a build, else GitHub's. */
+    private fun newest(): JSONObject {
+        val site = try { Api.get("/app-update") } catch (e: Exception) { null }
+        if (site != null && site.optBoolean("available") && site.optInt("versionCode", 0) > 0) return site
+        val connection = URL(latest("scan-version.json")).openConnection() as HttpURLConnection
+        connection.connectTimeout = 10000
+        connection.readTimeout = 10000
+        return JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
+    }
+
     fun check(activity: AppCompatActivity, manual: Boolean) {
         val now = System.currentTimeMillis()
         if (!manual && now - Api.session.lastUpdateCheck < INTERVAL_MS) return
         Thread {
             try {
-                val connection = URL(latest("scan-version.json")).openConnection() as HttpURLConnection
-                connection.connectTimeout = 10000
-                connection.readTimeout = 10000
-                val json = JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
+                val json = newest()
                 Api.session.lastUpdateCheck = now
                 val code = json.optInt("versionCode", 0)
                 val name = json.optString("versionName", code.toString())

@@ -216,7 +216,7 @@ Optional environment variables (nothing breaks without them):
 | `SMTP_HOST`, `SMTP_PORT` (587), `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM`, `SMTP_USE_TLS` (1) | the owner's day summary by email; WhatsApp sharing works without |
 | `PROXY_FIX_X_FOR` | set to `1` behind Render / nginx so lockout and limits see the real client IP |
 | `ADMIN_2FA_REQUIRED` (1), `ADMIN_IDLE_MINUTES` (30), `LOGIN_IP_LIMIT` (40) | sign-in security for the firm's own logins |
-| `ANDROID_RELEASE_REPO` | where the app's update check looks (the APK's `RELEASE_REPO` must match) |
+| `APPS_BUCKET` (or `APPS_DIR` in development) | where the Android apps' builds are, for the Phone apps page (/apps) and the apps' update check (scripts/gcp/apps_setup.sh) |
 
 The first time the Ultra Admin signs in after this phase, the app asks
 them to set up two-step sign-in (an authenticator app) - have the phone

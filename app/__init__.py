@@ -151,6 +151,9 @@ def _register_blueprints(app: Flask) -> None:
     from app.scan.api import scan_api_bp
 
     app.register_blueprint(scan_api_bp)
+    from app.apps import apps_bp
+
+    app.register_blueprint(apps_bp)
 
 
 def _register_error_handlers(app: Flask) -> None:

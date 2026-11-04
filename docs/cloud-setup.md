@@ -280,6 +280,31 @@ Then, per client: **Settings -> Modules -> Scan bills** (or the Ultra Admin
 under the client's package). Each client can read up to 300 bills a day
 (`SCAN_DAILY_LIMIT`), which caps the cost.
 
+## The phone apps from arfa.live instead of GitHub (once)
+
+The Android build still runs on GitHub, but the apps are handed out from
+arfa.live: the **Phone apps** page (account menu, or Branches -> Phone apps),
+for people signed in only, and both apps' update checks. The builds sit in a
+private Google Cloud Storage bucket; GitHub signs in to Google without a key
+and may only write to that bucket.
+
+1. Open https://console.cloud.google.com signed in as the project's owner,
+   pick the **ARFA** project, and click **Activate Cloud Shell** (`>_`).
+2. Run, one at a time:
+   ```
+   git clone https://github.com/abdulkadhersoofi-dot/pearl_city_biriyani.git
+   cd pearl_city_biriyani && git checkout claude/exciting-franklin-cb4jaj
+   bash scripts/gcp/apps_setup.sh
+   ```
+   It takes a minute or two and ends with "Done.".
+3. Tell Claude "apps setup done". Claude starts a fresh Android build, which
+   lands in the bucket, and checks arfa.live/apps hands it out.
+
+Until then the page says the apps aren't published here yet, and the apps
+keep updating from GitHub as before. Phones on ARFA Scan 1.14 / ARFA Counter
+1.14 or older update once more from GitHub; from the next version on they
+ask arfa.live.
+
 ---
 
 ## THINGS ONLY ABDUL CAN DO
@@ -296,6 +321,8 @@ under the client's package). Each client can read up to 300 bills a day
 9. Add DNS records at your domain registrar (step 8).
 10. Install the new APK on each phone and pair it again, once (step 9).
 11. Say **"go"** for switching Render off once Google Cloud is live.
+12. Run `scripts/gcp/apps_setup.sh` in Cloud Shell, once, so the phone apps
+    come from arfa.live ("The phone apps from arfa.live", above).
 
 Everything else is Claude's to run.
 
