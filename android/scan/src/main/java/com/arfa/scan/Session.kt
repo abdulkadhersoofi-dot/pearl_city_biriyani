@@ -43,6 +43,11 @@ class Session(context: Context) {
         get() = prefs.getLong("last_update_check", 0L)
         set(value) = prefs.edit().putLong("last_update_check", value).apply()
 
+    /** Appearance: "system" (follow the phone), "light" or "dark". */
+    var theme: String
+        get() = prefs.getString("theme", "system") ?: "system"
+        set(value) = prefs.edit().putString("theme", value).apply()
+
     val signedIn: Boolean get() = !token.isNullOrEmpty()
 
     fun signOut() {

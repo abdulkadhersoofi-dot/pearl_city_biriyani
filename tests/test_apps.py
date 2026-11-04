@@ -199,3 +199,21 @@ def test_both_apps_ask_arfa_first():
     assert 'Api.get("/app-update")' in scan
     counter = (ROOT / "android/app/src/main/java/com/arfa/pos/UpdateChecker.kt").read_text()
     assert re.search(r'"\$base/apps/counter/latest\.json"', counter) and "CookieManager" in counter
+
+
+def test_arfa_scan_has_day_and_night_and_stays_small():
+    res = ROOT / "android/scan/src/main/res"
+    day = set(re.findall(r'<color name="([a-z_]+)"', (res / "values/colors.xml").read_text()))
+    night = set(re.findall(r'<color name="([a-z_]+)"', (res / "values-night/colors.xml").read_text()))
+    assert day - night == {"white"}                       # every colour has a night twin
+    assert "DayNight" in (res / "values/themes.xml").read_text()
+    # The filter chips: an opaque idle colour and no white surface under it
+    # (a see-through one let the surface hide the white labels).
+    assert "#2E" not in (res / "color/chip_bg.xml").read_text()
+    assert "chipSurfaceColor" in (res / "values/themes.xml").read_text()
+    gradle = (ROOT / "android/scan/build.gradle").read_text()
+    assert "minifyEnabled true" in gradle and "shrinkResources true" in gradle
+    assert "play-services-mlkit-text-recognition" in gradle and "'com.google.mlkit:text-recognition" not in gradle
+    assert "ocr,barcode" in (ROOT / "android/scan/src/main/AndroidManifest.xml").read_text()
+    workflow = (ROOT / ".github/workflows/android-apk.yml").read_text()
+    assert ":scan:assembleRelease" in workflow and "apk/release/scan-release.apk" in workflow

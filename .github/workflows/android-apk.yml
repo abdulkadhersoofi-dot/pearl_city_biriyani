@@ -65,7 +65,7 @@ jobs:
             echo "ANDROID_KEYSTORE_FILE=$RUNNER_TEMP/arfa.keystore" >> "$GITHUB_ENV"
           fi
 
-      - name: Build debug APKs (ARFA Counter and ARFA Scan)
+      - name: Build the APKs (ARFA Counter debug, ARFA Scan release - shrunk by R8)
         working-directory: android
         # Every published build gets a higher versionCode (the run number),
         # which the app's update check compares against.
@@ -76,7 +76,7 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           chmod +x gradlew
-          ./gradlew :app:assembleDebug :scan:assembleDebug --no-daemon --stacktrace
+          ./gradlew :app:assembleDebug :scan:assembleRelease --no-daemon --stacktrace
 
       - name: Rename APK for a clear download name
         working-directory: android
@@ -94,7 +94,7 @@ jobs:
           printf '{"versionCode": %s, "versionName": "1.%s", "commit": "%s", "built_at": "%s", "size": %s, "apk": "https://github.com/%s/releases/download/android-latest/ARFA-Counter.apk", "server_url": "%s"}\n' \
             "${{ github.run_number }}" "${{ github.run_number }}" "${{ github.sha }}" "$BUILT_AT" "$(stat -c %s dist/ARFA-Counter.apk)" "${{ github.repository }}" "$SERVER_URL" > dist/version.json
           # ARFA Scan - the bill-scanning app (android/scan) - and what its update check reads.
-          cp scan/build/outputs/apk/debug/scan-debug.apk dist/ARFA-Scan.apk
+          cp scan/build/outputs/apk/release/scan-release.apk dist/ARFA-Scan.apk
           printf '{"versionCode": %s, "versionName": "1.%s", "commit": "%s", "built_at": "%s", "size": %s, "apk": "https://github.com/%s/releases/download/android-latest/ARFA-Scan.apk"}\n' \
             "${{ github.run_number }}" "${{ github.run_number }}" "${{ github.sha }}" "$BUILT_AT" "$(stat -c %s dist/ARFA-Scan.apk)" "${{ github.repository }}" > dist/scan-version.json
 

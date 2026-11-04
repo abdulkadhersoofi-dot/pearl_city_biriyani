@@ -287,7 +287,7 @@ class BillActivity : AppCompatActivity() {
         }
         b.lines.addView(view)
         if (!last) b.lines.addView(View(this).apply {
-            setBackgroundColor(0xFFECEBE6.toInt())
+            setBackgroundColor(color(R.color.field_line))
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1)
         })
     }

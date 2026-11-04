@@ -41,6 +41,10 @@
     <string name="post_anyway">Post anyway</string>
     <string name="discard_confirm">Discard this bill?</string>
     <string name="waiting_owner">Waiting for the owner to approve.</string>
+    <string name="appearance">Appearance: day or night</string>
+    <string name="theme_system">Same as the phone</string>
+    <string name="theme_light">Day (light)</string>
+    <string name="theme_dark">Night (dark)</string>
     <string name="update_title">A new ARFA Scan is ready</string>
     <string name="update_body">Version %1$s is out (you have %2$s).</string>
     <string name="update_download">Download</string>

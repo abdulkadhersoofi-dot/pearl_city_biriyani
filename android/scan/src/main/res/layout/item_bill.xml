@@ -80,7 +80,7 @@
                 android:layout_marginTop="6dp"
                 android:text="@string/retake"
                 android:visibility="gone"
-                app:backgroundTint="@color/white"
+                app:backgroundTint="@color/surface"
                 app:cornerRadius="8dp" />
 
             <LinearLayout

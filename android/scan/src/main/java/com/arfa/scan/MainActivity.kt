@@ -399,17 +399,34 @@ class MainActivity : AppCompatActivity() {
     private fun menu(anchor: View) {
         PopupMenu(this, anchor).apply {
             menu.add(0, 1, 0, R.string.scan_pile)
-            menu.add(0, 2, 1, R.string.check_update)
-            menu.add(0, 3, 2, R.string.sign_out)
+            menu.add(0, 4, 1, R.string.appearance)
+            menu.add(0, 2, 2, R.string.check_update)
+            menu.add(0, 3, 3, R.string.sign_out)
             setOnMenuItemClickListener {
                 when (it.itemId) {
                     1 -> { pile = true; scan(null) }
                     2 -> UpdateChecker.check(this@MainActivity, manual = true)
                     3 -> signOut()
+                    4 -> appearance()
                 }
                 true
             }
         }.show()
+    }
+
+    /** Day, night or the phone's own setting - remembered on this phone. */
+    private fun appearance() {
+        val keys = arrayOf("system", "light", "dark")
+        val labels = arrayOf(getString(R.string.theme_system), getString(R.string.theme_light), getString(R.string.theme_dark))
+        AlertDialog.Builder(this)
+            .setTitle(R.string.appearance)
+            .setSingleChoiceItems(labels, keys.indexOf(Api.session.theme).coerceAtLeast(0)) { dialog, which ->
+                Api.session.theme = keys[which]
+                dialog.dismiss()
+                ScanApp.applyTheme(keys[which])
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
     }
 
     private fun signOut() {
