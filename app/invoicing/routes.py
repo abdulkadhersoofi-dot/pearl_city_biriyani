@@ -1,4 +1,6 @@
-from flask import abort, flash, redirect, render_template, request, send_file, url_for
+from datetime import date
+
+from flask import abort, flash, jsonify, redirect, render_template, request, send_file, url_for
 from flask_login import current_user
 from io import BytesIO
 
@@ -20,7 +22,10 @@ from app.models.invoice_series import DOCUMENT_TYPE_LABELS, DocumentType
 from app.models.product import Product
 from app.models.tenant import Gstin
 from app.models.user import BranchType, User, UserRole
+from app.utils import numbering
 from app.utils.audit import record_audit
+from app.utils.financial_year import financial_year_for
+from app.utils.numbering import NumberingError, check_typed_number
 from app.utils.gst import allowed_document_types
 from app.utils.indian_states import STATE_NAME_BY_CODE
 from app.utils.tenant_scope import assert_owns, tenant_query
@@ -171,6 +176,7 @@ def new_invoice():
             branch_id = form.branch_user_id.data or None
             customer_id = None if branch_id else resolve_customer_id(form, tenant)
             lines = posted_lines()
+            number = typed_number()
 
             invoice = create_invoice(
                 tenant,
@@ -184,6 +190,7 @@ def new_invoice():
                     invoice_date=form.invoice_date.data,
                     notes=form.notes.data,
                     lines=lines,
+                    number=number,
                 ),
             )
             if tenant.has_feature("wholesale") and request.form.get("salesman_id"):
@@ -194,6 +201,9 @@ def new_invoice():
                 if salesman is None:
                     raise InvoiceValidationError("Pick a valid salesman.")
                 invoice.salesman_id = salesman.id
+            if number:
+                record_audit(current_user, "invoice_number_typed", tenant_id=tenant.id, entity_type="invoice",
+                             entity_id=invoice.id, details={"invoice_number": number})
             record_audit(
                 current_user,
                 "invoice_created",
@@ -239,7 +249,84 @@ def new_invoice():
         prefill_lines=prefill_lines,
         source_doc=source_doc,
         source_run=source_run,
+        numbering=True,
+        typed=request.form.get("invoice_number", "") if request.method == "POST" else "",
     )
+
+
+def typed_number() -> str | None:
+    """The number typed over the suggested one, or None to take the
+    series' next (left as suggested, or emptied)."""
+    typed = (request.form.get("invoice_number") or "").strip()
+    if not typed or typed == (request.form.get("auto_number") or "").strip():
+        return None
+    try:
+        return check_typed_number(typed)
+    except NumberingError as exc:
+        raise InvoiceValidationError(exc.message)
+
+
+NUMBERED_TYPES = set(INVOICING_DOCUMENT_TYPES) | {DocumentType.DELIVERY_CHALLAN}
+
+
+def _series_args():
+    """The series a request names: (gstin, document type, financial year)."""
+    tenant = current_user.tenant
+    values = request.get_json(silent=True) or request.values
+    gstin = tenant.gstins.filter_by(id=int(values.get("gstin_id") or 0), is_active=True).first() \
+        if str(values.get("gstin_id") or "").isdigit() else None
+    try:
+        document_type = DocumentType(values.get("document_type") or "")
+    except ValueError:
+        document_type = None
+    try:
+        on = date.fromisoformat(values.get("date") or "") if values.get("date") else date.today()
+    except ValueError:
+        on = date.today()
+    if gstin is None or document_type not in NUMBERED_TYPES:
+        abort(404)
+    return gstin, document_type, financial_year_for(on)
+
+
+@invoicing_bp.route("/next-number")
+@roles_required(UserRole.CLIENT_ADMIN)
+def next_number():
+    """The number the invoice being made will get (shown on the form; not
+    taken until it is saved)."""
+    gstin, document_type, fy = _series_args()
+    info = numbering.peek(current_user.tenant_id, gstin.id, document_type, fy)
+    return jsonify({**info, "label": DOCUMENT_TYPE_LABELS[document_type], "gstin": gstin.gstin or gstin.display_label})
+
+
+@invoicing_bp.route("/numbering", methods=["POST"])
+@roles_required(UserRole.CLIENT_ADMIN)
+def save_numbering():
+    """The owner sets a series' prefix and where it carries on from
+    (Zoho's "auto-generate with this prefix and next number")."""
+    tenant = current_user.tenant
+    gstin, document_type, fy = _series_args()
+    body = request.get_json(silent=True) or request.form
+    series = numbering.get_or_create_series(tenant.id, gstin.id, document_type, fy)
+    before = {"prefix": series.prefix, "next": series.next_number}
+    prefix = str(body.get("prefix") or "").strip()
+    if prefix != series.prefix and numbering.peek(tenant.id, gstin.id, document_type, fy)["prefix_locked"]:
+        return jsonify({"error": "This series' prefix is fixed while e-invoicing is on (the IRP's 16 characters)."}), 400
+    try:
+        wanted = int(str(body.get("next") or "").strip())
+    except ValueError:
+        return jsonify({"error": "The next number is a whole number from 1."}), 400
+    try:
+        used = numbering.used_serials(Invoice, tenant.id, Invoice.invoice_number, prefix, fy)
+        numbering.set_series(series, prefix, wanted, used)
+    except numbering.NumberingError as exc:
+        db.session.rollback()
+        return jsonify({"error": exc.message}), 400
+    record_audit(current_user, "invoice_numbering_changed", tenant_id=tenant.id, entity_type="invoice_series",
+                 entity_id=series.id, details={"document_type": document_type.value, "financial_year": fy,
+                                               "gstin_id": gstin.id, "before": before,
+                                               "after": {"prefix": prefix, "next": wanted}})
+    db.session.commit()
+    return jsonify(numbering.peek(tenant.id, gstin.id, document_type, fy))
 
 
 @invoicing_bp.route("/<int:invoice_id>")

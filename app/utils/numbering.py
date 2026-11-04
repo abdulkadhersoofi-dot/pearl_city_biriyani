@@ -128,3 +128,86 @@ def claim_number(series: InvoiceSeries, number: int) -> str:
     locked.next_number = max(locked.next_number, number + 1)
     db.session.add(locked)
     return format_number(locked.prefix, locked.financial_year, number)
+
+
+# --- seeing and setting a series (the invoice form's number field) ------------------------------
+
+import re  # noqa: E402
+
+# Rule 46(b) CGST Rules: a consecutive serial number of at most 16
+# characters - letters, digits, hyphen "-" and slash "/" - unique for the
+# financial year.
+GST_NUMBER = re.compile(r"^[A-Za-z0-9/-]{1,16}$")
+PREFIX = re.compile(r"^[A-Za-z0-9-]{1,10}$")
+MAX_LENGTH = 16
+
+
+class NumberingError(Exception):
+    def __init__(self, message: str):
+        super().__init__(message)
+        self.message = message
+
+
+def _find_series(tenant_id: int, gstin_id: int, document_type: DocumentType, financial_year: str):
+    special = _einvoice_prefix(tenant_id, document_type)
+    query = InvoiceSeries.query.filter_by(tenant_id=tenant_id, gstin_id=gstin_id, document_type=document_type,
+                                          financial_year=financial_year, device_id=None)
+    return (query.filter_by(prefix=special) if special else query).first(), special
+
+
+def peek(tenant_id: int, gstin_id: int, document_type: DocumentType, financial_year: str) -> dict:
+    """The number the next document of this series will get - without
+    taking it or making the series (a page showing it changes nothing)."""
+    series, special = _find_series(tenant_id, gstin_id, document_type, financial_year)
+    prefix = series.prefix if series else (special or DEFAULT_PREFIXES.get(document_type, "DOC"))
+    next_number = series.next_number if series else 1
+    return {"number": format_number(prefix, financial_year, next_number), "prefix": prefix,
+            "next": next_number, "fy": financial_year, "prefix_locked": bool(special)}
+
+
+def number_in(series, number: str) -> int | None:
+    """The serial when `number` is written in this series' own format
+    (INV/2026-27/0042 -> 42), else None."""
+    head = f"{series.prefix}/{series.financial_year}/"
+    tail = number[len(head):] if number.startswith(head) else ""
+    return int(tail) if tail.isdigit() and len(tail) >= 4 and int(tail) > 0 else None
+
+
+def check_typed_number(number: str) -> str:
+    number = (number or "").strip()
+    if not GST_NUMBER.match(number):
+        raise NumberingError("An invoice number is at most 16 characters: letters, digits, \"-\" and \"/\" "
+                             "(GST rule 46).")
+    return number
+
+
+def used_serials(model, tenant_id: int, column, prefix: str, financial_year: str) -> list[int]:
+    head = f"{prefix}/{financial_year}/"
+    rows = (db.session.query(column).filter(model.tenant_id == tenant_id, column.like(head.replace("%", r"\%") + "%"))
+            .all())
+    serials = []
+    for (value,) in rows:
+        tail = value[len(head):]
+        if tail.isdigit():
+            serials.append(int(tail))
+    return serials
+
+
+def set_series(series, prefix: str, next_number: int, used: list[int]) -> None:
+    """The owner's numbering: a new prefix and/or where the series carries
+    on from. Never so low that a number already given out comes round
+    again, and never longer than GST's 16 characters."""
+    prefix = (prefix or "").strip()
+    if not PREFIX.match(prefix):
+        raise NumberingError("The prefix is letters, digits and \"-\", up to 10 characters (no \"/\").")
+    if not isinstance(next_number, int) or next_number < 1 or next_number > 99999999:
+        raise NumberingError("The next number is a whole number from 1.")
+    if len(format_number(prefix, series.financial_year, next_number)) > MAX_LENGTH:
+        raise NumberingError(f"{format_number(prefix, series.financial_year, next_number)} is longer than GST's "
+                             f"16 characters - use a shorter prefix.")
+    if used and next_number <= max(used):
+        raise NumberingError(f"{format_number(prefix, series.financial_year, max(used))} is already given out - "
+                             f"the next number has to be at least {max(used) + 1}.")
+    locked = _lock(series)
+    locked.prefix, locked.next_number = prefix, next_number
+    db.session.add(locked)

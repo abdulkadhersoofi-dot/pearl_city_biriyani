@@ -16,7 +16,7 @@ from app.utils import gst_config
 from app.utils.financial_year import financial_year_for
 from app.utils.form_arrays import posted_flag
 from app.utils.gst import allowed_document_types, compute_invoice_totals, compute_line
-from app.utils.numbering import allocate_number, get_or_create_series
+from app.utils.numbering import allocate_number, claim_number, get_or_create_series, number_in
 
 
 class InvoiceValidationError(Exception):
@@ -278,6 +278,12 @@ def create_invoice(tenant: Tenant, created_by, data: InvoiceInput) -> Invoice:
         invoice_number = data.number.strip()[:64]
         if Invoice.query.filter_by(tenant_id=tenant.id, invoice_number=invoice_number).first() is not None:
             raise InvoiceValidationError(f"Invoice {invoice_number} is already in your books.")
+        # Typed in the series' own format ahead of it (INV/2026-27/0050 while
+        # the series is at 42): the series carries on after it, so ARFA never
+        # gives that number out a second time.
+        serial = number_in(series, invoice_number)
+        if serial is not None and serial >= series.next_number:
+            claim_number(series, serial)
     else:
         invoice_number = allocate_number(series)
 
