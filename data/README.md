@@ -12,6 +12,12 @@ Communications, Government of India - data.gov.in".
 average - its own coordinates were missing or outside India), `area` (the
 average of the pincodes sharing its first three digits).
 
+`level` may also be `none` (no point at all - its district and state only).
+
 The deploy loads it into the `pincode_geo` table (`flask pincodes-load`, run by
-deploy/migrate.sh). Source file and date: recorded in the README's "Nearest
-warehouse" note when the file is added.
+deploy/migrate.sh).
+
+Current file: built from **Pincode_30052019.csv**, India Post directory dated
+30 May 2019 (19,252 pincodes), supplied by the owner on 9 Nov 2026. It carries
+district and state but no coordinates, so all rows are level `none`; rebuild
+from the directory with latitude/longitude to get distances.

@@ -3204,9 +3204,17 @@ manual service areas; splitting allowed).
   browser, so `flask pincodes-build <csv>` compacts it into
   `data/pincode_geo.csv.gz` (one row per pincode; offices' average, else the
   district's, else the 3-digit area's - the level is kept) and
-  `flask pincodes-load` (in deploy/migrate.sh) loads it. **Source file and
-  date: not added yet** - until it is, distance can't be measured and orders
-  use service areas or the branch's fallback warehouse.
+  `flask pincodes-load` (in deploy/migrate.sh) loads it.
+  **Bundled now: `Pincode_30052019.csv`** - India Post's All India Pincode
+  Directory of **30 May 2019** (155,599 offices, 19,252 pincodes), supplied by
+  the owner on 9 Nov 2026; licence GODL (source: Department of Posts, Ministry
+  of Communications, Government of India - data.gov.in). It has **no
+  coordinates**, so every pincode is level "none" and warehouses are ranked by
+  the delivery pincode's **district, then its sorting area (first three
+  digits), then its state** - still stock-aware, service areas still win, an
+  unmatched pincode uses the fallback. Run `flask pincodes-build` on the
+  directory *with latitude and longitude* and commit the result to switch to
+  distance in km (the same file format, no code change).
 
 ### Warehouse dispatch - how to run it (hand-over)
 

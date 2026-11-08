@@ -216,9 +216,47 @@ def test_the_pincode_table_is_built_with_fallback_levels(app, db, tmp_path):
     assert built["628001"]["level"] == "own" and built["628001"]["lat"] == 8.77
     assert built["628002"]["level"] == "district" and built["628002"]["lat"] == 8.77    # its district's average
     assert built["628999"]["level"] == "area"                                          # 0,0 is wrong: its 628 area's
-    assert "999001" not in built and "12" not in built
+    assert built["999001"]["level"] == "none" and built["999001"]["lat"] == ""      # kept: district and state help
+    assert "12" not in built
     path = tmp_path / "geo.csv.gz"
     pincodes.write(list(built.values()), path)
-    assert pincodes.load(path) == 3 and PincodeGeo.query.count() == 3
+    assert pincodes.load(path) == 4 and PincodeGeo.query.count() == 4
+    assert PincodeGeo.query.get("999001").lat is None
     assert pincodes.load(path) == 0                                                    # already up to date
     assert pincodes.load(tmp_path / "missing.csv.gz") == 0
+
+
+# --- without coordinates: by district, area and state (India Post's 2019 directory) -----------------
+
+@pytest.fixture()
+def no_points(three, db):
+    """The same three warehouses, but the pincode table has only districts."""
+    PincodeGeo.query.delete()
+    for pin, district, state in (("628001", "Tuticorin", "Tamil Nadu"), ("628002", "Tuticorin", "Tamil Nadu"),
+                                 ("628215", "Tuticorin", "Tamil Nadu"), ("627001", "Tirunelveli", "Tamil Nadu"),
+                                 ("627011", "Tirunelveli", "Tamil Nadu"), ("625001", "Madurai", "Tamil Nadu"),
+                                 ("627999", "Tenkasi", "Tamil Nadu"), ("560001", "Bangalore", "Karnataka")):
+        db.session.add(PincodeGeo(pincode=pin, district=district, state=state, level="none"))
+    db.session.commit()
+    return three
+
+
+@pytest.mark.parametrize("pincode,qty,expect,reason,why", [
+    ("628215", "1", "A", "nearest", "same district"),
+    ("627011", "1", "B", "nearest", "same district"),
+    ("627999", "1", "B", "nearest", "same area"),          # Tenkasi: no warehouse there, B shares 627
+    ("628215", "3", "B", "nearest_in_stock", "short"),     # A has 2
+    ("560001", "1", "C", "fallback", "Bangalore"),         # nothing in Karnataka: the branch's fallback
+])
+def test_without_points_warehouses_rank_by_district_area_state(no_points, pincode, qty, expect, reason, why):
+    s = nearest.suggest_warehouse(no_points.tenant, pincode, fans(no_points, qty), fallback=no_points.c)
+    assert (s.location.name[0], s.reason) == (expect, reason) and why in s.message, s.message
+    assert all(o.km is None for o in s.ranked)
+
+
+def test_the_bundled_2019_directory_loads(app, db):
+    path = pincodes.DATA_FILE
+    assert path.exists()
+    n = pincodes.load(path)
+    assert n > 19000 and PincodeGeo.query.get("628001").district == "Tuticorin"
+    assert PincodeGeo.query.get("628001").lat is None and PincodeGeo.query.get("628001").level == "none"

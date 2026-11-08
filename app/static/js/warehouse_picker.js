@@ -66,6 +66,7 @@
       if (!opt) return;
       const bits = [w.name];
       if (w.km !== null && w.km !== undefined) bits.push(`${Number(w.km).toFixed(w.km < 10 ? 1 : 0)} km`);
+      else if (w.near) bits.push(w.near);
       Object.keys(w.free).forEach((pid) => bits.push(`${names[pid] || "item"}: ${fmt(w.free[pid])} free`));
       opt.textContent = bits.join(" · ");
     });

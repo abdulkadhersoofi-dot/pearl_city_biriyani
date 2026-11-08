@@ -818,8 +818,9 @@ this list is just the index.
   with stock > nearest > branch fallback), straight-line km from the shared
   `pincode_geo` table (`flask pincodes-build` / `pincodes-load`, data/); orders
   may be split across warehouses (owner's choice), never an EMI sale. The
-  India Post pincode file still has to be downloaded by the owner (data.gov.in
-  needs a browser form) and built into data/pincode_geo.csv.gz.
+  bundled pincode file is India Post's 30 May 2019 directory (no coordinates):
+  warehouses rank by district > area > state until a lat/long directory is
+  built in (`flask pincodes-build`).
 
 ## 5. Chronological development history (this session)
 

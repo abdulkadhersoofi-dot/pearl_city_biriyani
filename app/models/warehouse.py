@@ -399,8 +399,8 @@ class PincodeGeo(db.Model):
     __tablename__ = "pincode_geo"
 
     pincode = db.Column(db.String(6), primary_key=True)
-    lat = db.Column(db.Float, nullable=False)
-    lng = db.Column(db.Float, nullable=False)
+    lat = db.Column(db.Float)          # empty when the directory had no point for it (level "none")
+    lng = db.Column(db.Float)
     district = db.Column(db.String(80))
     state = db.Column(db.String(60))
     level = db.Column(db.String(10), nullable=False, default="own")

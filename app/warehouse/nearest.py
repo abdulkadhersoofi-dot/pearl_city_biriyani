@@ -36,10 +36,33 @@ def clean_pincode(value) -> str:
     return digits if len(digits) == 6 and digits[0] != "0" else ""
 
 
-def point_of_pincode(pincode: str) -> tuple[float, float] | None:
+def geo_of(pincode: str) -> PincodeGeo | None:
     pincode = clean_pincode(pincode)
-    row = PincodeGeo.query.get(pincode) if pincode else None
-    return (row.lat, row.lng) if row is not None else None
+    return PincodeGeo.query.get(pincode) if pincode else None
+
+
+def point_of_pincode(pincode: str) -> tuple[float, float] | None:
+    row = geo_of(pincode)
+    return (row.lat, row.lng) if row is not None and row.lat is not None and row.lng is not None else None
+
+
+NEAR_LABELS = ("same district", "same area", "same state", "")
+
+
+def nearness(customer: PincodeGeo | None, location: StockLocation) -> int:
+    """Without distances: 0 same district, 1 same sorting area (first three
+    digits), 2 same state, 3 none of these (or not known)."""
+    if customer is None or not location.pincode:
+        return 3
+    there = geo_of(location.pincode)
+    if there is not None and customer.district and there.district and \
+            customer.district.lower() == there.district.lower():
+        return 0
+    if location.pincode[:3] == customer.pincode[:3]:
+        return 1
+    if there is not None and customer.state and there.state and customer.state.lower() == there.state.lower():
+        return 2
+    return 3
 
 
 def point_of(location: StockLocation) -> tuple[float, float] | None:
@@ -106,6 +129,7 @@ class Option:
     location: StockLocation
     km: float | None
     free: dict[int, Decimal] = field(default_factory=dict)
+    tier: int = 3                     # without distances: 0 same district, 1 same area, 2 same state
     short: list[tuple[str, Decimal, Decimal]] = field(default_factory=list)   # (item, free, wanted)
 
     @property
@@ -145,17 +169,18 @@ def suggest_warehouse(tenant, pincode, lines, fallback: StockLocation | None = N
     strict, products = _strict(tenant, wanted)
     rows = {r["location"].id: r["items"] for r in dispatch.free_by_warehouse(tenant.id, list(strict), exclude_doc_id)}
     here = point_of_pincode(pincode)
+    known = geo_of(pincode)
     ranked = []
     for loc in warehouses:
         there = point_of(loc)
-        option = Option(loc, round(km(here, there), 1) if here and there else None)
+        option = Option(loc, round(km(here, there), 1) if here and there else None, tier=nearness(known, loc))
         for pid, qty in strict.items():
             free = max(rows.get(loc.id, {}).get(pid, {}).get("free", ZERO), ZERO)
             option.free[pid] = free
             if free < qty:
                 option.short.append((products[pid].name, free, qty))
         ranked.append(option)
-    ranked.sort(key=lambda o: (o.km is None, o.km if o.km is not None else 0, o.location.name.lower()))
+    ranked.sort(key=lambda o: (o.km is None, o.km if o.km is not None else 0, o.tier, o.location.name.lower()))
     if not warehouses:
         return Suggestion(None, "fallback", ranked, "No warehouse yet - add a godown under Stock locations.")
 
@@ -163,7 +188,9 @@ def suggest_warehouse(tenant, pincode, lines, fallback: StockLocation | None = N
         return ", ".join(f"{name} ({_fmt(free)} free of {_fmt(want)})" for name, free, want in o.short)
 
     def where(o: Option) -> str:
-        return f"{o.location.name}" + (f" ({o.km:g} km)" if o.km is not None else "")
+        if o.km is not None:
+            return f"{o.location.name} ({o.km:g} km)"
+        return f"{o.location.name}" + (f" ({NEAR_LABELS[o.tier]})" if NEAR_LABELS[o.tier] else "")
 
     area = service_area(tenant.id, pincode)
     if area is not None:
@@ -172,9 +199,27 @@ def suggest_warehouse(tenant, pincode, lines, fallback: StockLocation | None = N
         if not chosen.enough:
             message += f" It is short of {shortage(chosen)}."
         return Suggestion(area, "service_area", ranked, message, _split_if_needed(tenant, ranked, lines, chosen))
+    if here is None and known is not None and ranked and ranked[0].tier < 3:
+        # The pincode is known but has no point: rank by district, area, state.
+        first = ranked[0]
+        if first.enough:
+            return Suggestion(first.location, "nearest", ranked, f"Nearest by district: {where(first)}.")
+        stocked = next((o for o in ranked if o.enough), None)
+        if stocked is not None:
+            return Suggestion(stocked.location, "nearest_in_stock", ranked,
+                              f"{where(first)} is short of {shortage(first)} - defaulted to {where(stocked)}.")
+        return Suggestion(first.location, "nearest", ranked,
+                          f"No warehouse has the whole order. {where(first)} is short of {shortage(first)}.",
+                          plan_split(tenant, ranked, lines))
     if here is None:
         loc = fallback if fallback is not None and fallback.is_active else (warehouses[0] if len(warehouses) == 1 else None)
-        what = "Pincode not found - check the warehouse." if clean_pincode(pincode) else "No delivery pincode - check the warehouse."
+        if known is not None:
+            what = (f"No warehouse in {known.district or 'this pincode'}'s district, area or state - "
+                    "check the warehouse.")
+        elif clean_pincode(pincode):
+            what = "Pincode not found - check the warehouse."
+        else:
+            what = "No delivery pincode - check the warehouse."
         return Suggestion(loc, "fallback", ranked, what if loc else what.replace("check", "pick"))
     with_point = [o for o in ranked if o.km is not None] or ranked
     nearest = with_point[0]
@@ -228,7 +273,7 @@ def plan_split(tenant, ranked: list[Option], lines) -> list[tuple[StockLocation,
 def to_json(s: Suggestion, products: dict[int, str] | None = None) -> dict:
     return {
         "default": s.location.id if s.location else None, "reason": s.reason, "message": s.message,
-        "warehouses": [{"id": o.location.id, "name": o.location.name, "km": o.km,
+        "warehouses": [{"id": o.location.id, "name": o.location.name, "km": o.km, "near": NEAR_LABELS[o.tier],
                         "free": {str(pid): float(q) for pid, q in o.free.items()}, "enough": o.enough}
                        for o in s.ranked],
         "split": ([{"id": loc.id, "name": loc.name, "lines": {str(i): float(q) for i, q in parts.items()}}

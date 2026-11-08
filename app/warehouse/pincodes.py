@@ -14,7 +14,12 @@ can only be downloaded in a browser (a form and captcha), so:
 A pincode's point is the average of its offices' coordinates that fall inside
 India; with none, the average of its district's pincodes ("district"), then of
 the pincodes sharing its first three digits - its sorting district ("area").
-Each row records which level was used.
+Each row records which level was used; a pincode with no point at all
+(the 2019 directory has none) is kept with its district and state ("none").
+
+Bundled now: Pincode_30052019.csv (India Post directory of 30 May 2019, 19,252
+pincodes, no coordinates) - warehouses are ranked by district, area and state
+until a directory with latitude/longitude replaces it (same command).
 """
 
 from __future__ import annotations
@@ -82,9 +87,9 @@ def build(rows) -> list[dict]:
         elif mean(by_area.get(pin[:3], [])):
             point, level = mean(by_area[pin[:3]]), "area"
         else:
-            continue
-        out.append({"pincode": pin, "lat": round(point[0], 5), "lng": round(point[1], 5), "district": district,
-                    "state": state, "level": level})
+            point, level = None, "none"          # no point anywhere near: its district and state still help
+        out.append({"pincode": pin, "lat": round(point[0], 5) if point else "", "lng": round(point[1], 5) if point else "",
+                    "district": district, "state": state, "level": level})
     return out
 
 
@@ -108,18 +113,22 @@ def checksum(path: Path = DATA_FILE) -> str:
 
 
 def load(path: Path = DATA_FILE, force: bool = False) -> int:
-    """Replace pincode_geo with the bundled file (skipped when the row count
-    already matches, unless force). Returns rows loaded (0 = nothing to do)."""
+    """Replace pincode_geo with the bundled file (skipped when the table already
+    has as many pincodes, and as many with a point, unless force). Returns rows
+    loaded (0 = nothing to do)."""
     if not path.exists():
         log.warning("pincodes: %s isn't there - the nearest-warehouse default falls back to each branch's "
                     "fallback warehouse until it is", path)
         return 0
     rows = read(path)
-    if not force and PincodeGeo.query.count() == len(rows):
+    with_points = sum(1 for r in rows if r.get("lat"))
+    if not force and PincodeGeo.query.count() == len(rows) and \
+            PincodeGeo.query.filter(PincodeGeo.lat.isnot(None)).count() == with_points:
         return 0
     PincodeGeo.query.delete()
     db.session.bulk_insert_mappings(PincodeGeo, [
-        {"pincode": r["pincode"], "lat": float(r["lat"]), "lng": float(r["lng"]), "district": r.get("district") or None,
+        {"pincode": r["pincode"], "lat": float(r["lat"]) if r.get("lat") else None,
+         "lng": float(r["lng"]) if r.get("lng") else None, "district": r.get("district") or None,
          "state": r.get("state") or None, "level": r.get("level") or "own"} for r in rows])
     db.session.commit()
     levels = defaultdict(int)
@@ -136,7 +145,8 @@ def register(app) -> None:
     @click.argument("source", type=click.Path(exists=True, dir_okay=False))
     def pincodes_build(source):
         """Compact India Post's directory CSV into data/pincode_geo.csv.gz."""
-        with open(source, encoding="utf-8-sig", errors="replace", newline="") as fh:
+        # India Post's files are not always UTF-8 (a stray Latin-1 byte in an office name).
+        with open(source, encoding="latin-1", newline="") as fh:
             rows = build(csv.DictReader(fh))
         write(rows)
         levels = defaultdict(int)
