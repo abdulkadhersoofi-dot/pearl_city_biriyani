@@ -220,6 +220,15 @@ def new_bill():
     if order_id:
         order = tenant_query(PurchaseOrder).filter_by(id=order_id).first_or_404()
         assert_owns(order)
+    # Received at a warehouse with the ARFA Warehouse app: the scanned serials
+    # and that warehouse fill the bill in (app/warehouse/receiving.py).
+    receipt = None
+    receipt_id = _int(request.values.get("receipt"))
+    if receipt_id and _tenant().has_feature("warehouse_dispatch"):
+        from app.models.warehouse import ReceiptStatus, WarehouseReceipt
+
+        receipt = tenant_query(WarehouseReceipt).filter_by(id=receipt_id, status=ReceiptStatus.OPEN).first_or_404()
+        order = receipt.purchase_order
     if request.method == "POST":
         form = request.form
         try:
@@ -249,12 +258,21 @@ def new_bill():
                      entity_id=bill.id, details={"number": bill.number, "supplier": bill.supplier_snapshot.get("name"),
                                                 "supplier_invoice_no": bill.supplier_invoice_no,
                                                 "grand_total": str(bill.grand_total)})
+        if receipt is not None:
+            from app.warehouse.receiving import mark_billed
+
+            mark_billed(receipt, bill)
         db.session.commit()
         flash(f"Purchase bill {bill.number} posted - stock received.", "success")
         return redirect(url_for("purchases.view_bill", bill_id=bill.id))
     form = {}
     if order is not None:
         form = {"supplier_id": str(order.supplier_id), "gstin_id": str(order.gstin_id)}
+    if receipt is not None:
+        from app.warehouse.receiving import bill_rows
+
+        form["location_id"] = str(receipt.location_id)
+        return _bill_form(form, bill_rows(receipt), order)
     return _bill_form(form, _rows_from_order(order) if order else [], order)
 
 

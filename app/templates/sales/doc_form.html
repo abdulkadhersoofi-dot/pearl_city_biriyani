@@ -11,9 +11,22 @@
   <label class="field"><span class="field-label">Valid until (optional)</span>
     <input type="date" name="valid_until" value="{{ request.form.get('valid_until', '') }}" class="field-input"></label>
   {% endif %}
+  {% if warehouses is defined %}
+  <label class="field wh-picker"><span class="field-label">Warehouse (ships from)</span>
+    <select name="dispatch_location_id" class="field-input" required data-free-url="{{ url_for('warehouse.free_json') }}">
+      <option value="">Pick the warehouse</option>
+      {% for w in warehouses %}<option value="{{ w.id }}" data-name="{{ w.name }}" {{ 'selected' if chosen_warehouse == w.id|string }}>{{ w.name }}</option>{% endfor %}
+    </select>
+    {% if not warehouses %}<span class="field-error-msg">No warehouse yet - add a godown under Stock locations first.</span>{% endif %}
+    <span class="field-help" data-free-hint>Free quantity at each warehouse shows here as you add items.</span>
+  </label>
+  {% endif %}
 {% endblock %}
 {% block footer_extras %}
   <label class="field"><span class="field-label">Terms (optional)</span>
     <textarea name="terms" class="field-input" rows="2" placeholder="Prices valid for 15 days. 50% advance with order.">{{ request.form.get('terms', '') }}</textarea></label>
 {% endblock %}
 {% block submit_label %}Save {{ label|lower }}{% endblock %}
+{% block scripts %}{{ super() }}
+{% if warehouses is defined %}<script src="{{ url_for('static', filename='js/warehouse_picker.js') }}" defer></script>{% endif %}
+{% endblock %}

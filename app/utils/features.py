@@ -87,6 +87,15 @@ FEATURES = {
             available=True,
         ),
         Feature(
+            "warehouse_dispatch",
+            "Warehouse dispatch by serial scan",
+            "The showroom sells the item and quantity only and picks the warehouse it ships from; every picker "
+            "there gets the order on the ARFA Warehouse phone app, scans each unit's label (barcode or text), and "
+            "the warehouse computer invoices it with the scanned serials. Also receives purchases and counts stock "
+            "by scanning. Needs Serial / IMEI and Inventory.",
+            available=True,
+        ),
+        Feature(
             "margin_scheme",
             "Margin scheme (second-hand goods)",
             "Used phones, vehicles and other second-hand goods: buy on your own voucher (with the seller's ID), "

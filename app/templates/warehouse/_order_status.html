@@ -1,0 +1,30 @@
+{# A warehouse-dispatched sales order: where it is on its way (sales/document_view.html). #}
+{% set st = doc.dispatch_status.value %}
+{% set done = namespace(n=0, total=0) %}
+{% for l in doc.lines %}{% set done.n = done.n + progress[l.id].picked %}{% set done.total = done.total + progress[l.id].qty %}{% endfor %}
+<div class="card mb-16 dispatch-card dispatch-{{ st }}">
+  <div class="row gap-10 items-center flex-wrap">
+    <i data-lucide="truck" class="icon"></i>
+    <strong>
+      {% if doc.status.value == 'cancelled' %}Cancelled - nothing is held at {{ doc.dispatch_location.name if doc.dispatch_location else 'the warehouse' }}
+      {% elif st == 'to_pick' %}Waiting at {{ doc.dispatch_location.name }}
+      {% elif st == 'picking' %}Picking: {{ doc.claimed_by.name if doc.claimed_by else 'a picker' }} ({{ done.n }}/{{ done.total }}) at {{ doc.dispatch_location.name }}
+      {% elif st == 'picked' %}Picked - at {{ doc.dispatch_location.name }} for invoice{% if doc.picked_confirmed_by %} (by {{ doc.picked_confirmed_by.name }}, {{ doc.picked_confirmed_at|ist('%d %b %I:%M %p') }}){% endif %}
+      {% elif st == 'invoiced' %}Invoiced {{ doc.converted_invoice.invoice_number if doc.converted_invoice else '' }} at {{ doc.dispatch_location.name }}
+      {% endif %}
+    </strong>
+  </div>
+  {% if doc.status.value == 'open' and st == 'to_pick' and warehouses %}
+  <form method="post" action="{{ url_for('sales.change_warehouse', doc_id=doc.id) }}" class="row gap-10 items-end mt-12 flex-wrap">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="field m-0"><span class="field-label">Ship from another warehouse</span>
+      <select name="dispatch_location_id" class="field-input">
+        {% for w in warehouses %}<option value="{{ w.id }}" {{ 'selected' if w.id == doc.dispatch_location_id }}>{{ w.name }}</option>{% endfor %}
+      </select></label>
+    <button class="btn btn-secondary">Move order</button>
+  </form>
+  <p class="text-muted small-note mb-0">Every picker at the warehouse has it on the ARFA Warehouse app. Once one starts picking it, the warehouse can't change.</p>
+  {% elif st == 'picked' and doc.status.value == 'open' %}
+  <p class="text-muted small-note mb-0">Every unit is scanned. The warehouse computer makes the invoice{% if current_user.is_client_admin %} - or convert it here{% endif %}.</p>
+  {% endif %}
+</div>

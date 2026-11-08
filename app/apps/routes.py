@@ -38,13 +38,15 @@ def _serializer() -> URLSafeTimedSerializer:
     return URLSafeTimedSerializer(current_app.config["SECRET_KEY"], salt="android-app-download")
 
 
-def phone_link(app: AndroidApp, user) -> str:
-    """The link a phone app's update dialog opens (works for a day)."""
-    token = _serializer().dumps({"a": app.key, "u": user.id})
+def phone_link(app: AndroidApp, user, owner=None) -> str:
+    """The link a phone app's update dialog opens (works for a day). For
+    ARFA Warehouse the one asking is a warehouse login (owner), not a user."""
+    payload = {"a": app.key, "w": owner.id} if owner is not None else {"a": app.key, "u": user.id}
+    token = _serializer().dumps(payload)
     return url_for("apps.get", key=app.key, t=token, _external=True)
 
 
-def update_info(app: AndroidApp, user) -> dict:
+def update_info(app: AndroidApp, user, owner=None) -> dict:
     """What an app's update check gets: the newest build here, and a link
     to it. versionCode 0 = nothing published here (the app then looks on
     GitHub, as builds before this did)."""
@@ -56,7 +58,7 @@ def update_info(app: AndroidApp, user) -> dict:
     if not info:
         return {"versionCode": 0, "available": False}
     out = {k: info[k] for k in ("versionCode", "versionName", "commit", "built_at", "size", "server_url") if k in info}
-    out.update(available=True, apk=phone_link(app, user))
+    out.update(available=True, apk=phone_link(app, user, owner))
     return out
 
 
@@ -82,10 +84,12 @@ def _send(app: AndroidApp):
 
 
 def _visible(user) -> list[AndroidApp]:
-    """ARFA Scan only for a business with Scan bills switched on."""
+    """ARFA Scan only for a business with Scan bills switched on, ARFA
+    Warehouse with warehouse dispatch."""
     tenant = getattr(user, "tenant", None)
     scan = user.is_super_admin or (tenant is not None and tenant.has_feature("doc_scan"))
-    return [a for a in APPS.values() if a.key != "scan" or scan]
+    warehouse = user.is_super_admin or (tenant is not None and tenant.has_feature("warehouse_dispatch"))
+    return [a for a in APPS.values() if (a.key != "scan" or scan) and (a.key != "warehouse" or warehouse)]
 
 
 @apps_bp.route("")
@@ -133,7 +137,16 @@ def get(key):
         return _no_cache((render_template("apps/link_expired.html", app=app), 410))
     except BadSignature:
         abort(404)
-    user = db.session.get(User, data.get("u")) if data.get("a") == app.key else None
+    if data.get("a") != app.key:
+        abort(404)
+    if data.get("w"):
+        from app.models.warehouse import WarehouseLogin
+
+        person = db.session.get(WarehouseLogin, data["w"])
+        if person is None or not person.is_active:
+            abort(404)
+        return _send(app)
+    user = db.session.get(User, data.get("u"))
     if user is None or not user.is_active:
         abort(404)
     return _send(app)

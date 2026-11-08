@@ -7,6 +7,8 @@
     <p class="text-muted mt-0">Purchase order · <span class="status-badge {{ 'status-void' if order.status.value == 'cancelled' else ('status-issued' if order.status.value == 'converted' else 'status-draft') }}">{{ order.status.value|title }}</span></p>
   </div>
   {% if order.status.value == 'open' %}<a href="{{ url_for('purchases.new_bill', order=order.id) }}" class="btn btn-primary">Goods arrived - enter bill</a>{% endif %}
+  {% if order.status.value == 'open' and has_feature('warehouse_dispatch') and order.lines|selectattr('product')|map(attribute='product')|selectattr('track_serial')|list %}
+  <a href="{{ url_for('warehouse.receipts', order=order.id) }}#receive" class="btn btn-secondary">Receive at warehouse</a>{% endif %}
 </div>
 {% include "purchases/_nav.html" %}
 <div class="card mb-16">

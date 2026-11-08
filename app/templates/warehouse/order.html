@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}{{ doc.number }} - {{ firm_name }}{% endblock %}
+{% block content %}
+{% set st = doc.dispatch_status.value %}
+<div class="page-header">
+  <div>
+    <h1>{{ doc.number }}</h1>
+    <p class="text-muted mt-0">{{ doc.customer_snapshot.name }} · {{ doc.dispatch_location.name }} · {{ labels[doc.dispatch_status] }}{% if doc.status.value == 'cancelled' %} · <span class="status-badge status-void">Cancelled</span>{% endif %}</p>
+  </div>
+  <div class="row gap-10">
+    {% if doc.converted_invoice_id %}
+    <a href="{{ url_for('warehouse.invoice_pdf', doc_id=doc.id) }}" target="_blank" class="btn btn-primary">Print invoice</a>
+    {% endif %}
+    <a href="{{ url_for('warehouse.slip', doc_id=doc.id) }}" target="_blank" class="btn btn-secondary">Delivery slip</a>
+  </div>
+</div>
+{% include "warehouse/_nav.html" %}
+
+{% if st == 'picked' and doc.status.value == 'open' %}
+<form method="post" action="{{ url_for('warehouse.make_invoice', doc_id=doc.id) }}" class="card row gap-10 items-end mb-16 flex-wrap">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="grow">
+    <strong>Picked by {{ doc.picked_confirmed_by.name if doc.picked_confirmed_by else 'the warehouse' }}</strong> at {{ doc.picked_confirmed_at|ist('%I:%M %p, %d %b') }}.
+    <p class="text-muted small-note m-0">The invoice carries the serials scanned below, and the stock leaves {{ doc.dispatch_location.name }}. To change a serial, undo it in the ARFA Warehouse app.</p>
+  </div>
+  <label class="field m-0"><span class="field-label">Invoice date</span><input type="date" name="invoice_date" value="{{ today.isoformat() }}" class="field-input"></label>
+  <button class="btn btn-primary">Make invoice</button>
+</form>
+{% elif st == 'invoiced' and doc.converted_invoice %}
+<div class="card mb-16">
+  <strong>Invoiced {{ doc.converted_invoice.invoice_number }}</strong> - print the invoice and the delivery slip (customer and driver sign the slip).
+  {% if eway %}<p class="m-0 mt-12"><span class="tag tag-warn">E-way bill</span> This invoice needs an e-way bill before the goods move{% if current_user.is_client_admin %} - <a href="{{ url_for('invoicing.view_invoice', invoice_id=doc.converted_invoice_id) }}">make it from the invoice</a>; it is filled in with {{ doc.dispatch_location.name }} as the place of dispatch{% else %} - ask the office to make it from the invoice{% endif %}.</p>{% endif %}
+</div>
+{% elif st in ('to_pick', 'picking') %}
+<div class="card mb-16 row gap-10 items-end flex-wrap">
+  <div class="grow">
+    {% if st == 'picking' %}<strong>Picking: {{ doc.claimed_by.name if doc.claimed_by }}</strong> - last scan {{ idle }} min ago.{% if idle >= 15 %} <span class="tag tag-warn">Idle - it goes back to the pipeline after 30 minutes without a scan</span>{% endif %}
+    {% else %}<strong>Waiting for a picker</strong> - every login of {{ doc.dispatch_location.name }} has it on the app.{% endif %}
+  </div>
+  {% if st == 'picking' %}
+  <form method="post" action="{{ url_for('warehouse.reassign', doc_id=doc.id) }}" class="row gap-10 items-end">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="field m-0"><span class="field-label">Hand it to</span>
+      <select name="login_id" class="field-input">{% for l in logins if l.id != doc.claimed_by_id %}<option value="{{ l.id }}">{{ l.name }}</option>{% endfor %}</select></label>
+    <button class="btn btn-secondary btn-sm">Reassign</button>
+  </form>
+  <form method="post" action="{{ url_for('warehouse.release', doc_id=doc.id) }}" data-confirm="Put {{ doc.number }} back in the pipeline? Its scans are undone." data-danger>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-quiet btn-sm">Release</button>
+  </form>
+  {% endif %}
+</div>
+{% endif %}
+
+<div class="card table-wrap mb-16">
+  <table>
+    <thead><tr><th>#</th><th>Item</th><th>Model no.</th><th class="num">Qty</th><th>Serials scanned</th></tr></thead>
+    <tbody>
+    {% for l in doc.lines %}{% set p = progress[l.id] %}
+      <tr>
+        <td>{{ loop.index }}</td><td>{{ l.description }}</td><td class="mono">{{ l.product.model_no if l.product and l.product.model_no else '' }}</td>
+        <td class="num">{{ l.qty|qty }}</td>
+        <td>{% if p.qty %}{{ p.picked }} of {{ p.qty }}{% endif %}
+          {% for pk in p.picks %}<br><span class="mono">{{ pk.serial_no or 'unit' }}</span>{% if pk.result.value == 'added' %} <span class="tag tag-warn">added at pick</span>{% endif %}{% if pk.photo_id %} · <a href="{{ url_for('warehouse.pick_photo', pick_id=pk.id) }}" target="_blank">photo</a>{% endif %} <small class="text-muted">{{ pk.login.name if pk.login }}</small>{% endfor %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% if doc.notes %}<div class="card mb-16 pre-line"><strong>Notes:</strong> {{ doc.notes }}</div>{% endif %}
+
+<details class="card">
+  <summary>Every scan ({{ attempts|length }})</summary>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>When</th><th>Who</th><th>Read</th><th>How</th><th>Result</th></tr></thead>
+    <tbody>
+    {% for a in attempts %}
+      <tr class="{{ 'row-muted' if a.undone_at }}"><td>{{ a.created_at|ist('%d %b %I:%M:%S %p') }}</td><td>{{ a.login.name if a.login }}</td><td class="mono">{{ a.serial_no or a.raw_text or '' }}</td><td>{{ a.method.value }}</td>
+        <td>{{ result_labels[a.result] }}{% if a.undone_at %} · undone ({{ a.undone_reason }}){% endif %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</details>
+{% endblock %}

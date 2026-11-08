@@ -96,6 +96,11 @@ def branch_landing(user, in_app: bool = False) -> str:
     """Where a branch login starts: its counter - or, with counter billing
     (the "pos" module) off for the business, its first other screen."""
     tenant = user.tenant
+    if tenant is not None and tenant.has_feature("warehouse_dispatch") and not in_app:
+        from app.warehouse.routes import computer_location
+
+        if computer_location(user) is not None:      # a warehouse computer starts at its queue
+            return url_for("warehouse.queue")
     if tenant is not None and tenant.has_feature("pos"):
         return url_for("counterapp.index") if in_app else url_for("pos.terminal")
     if tenant is not None and tenant.has_feature("job_cards"):

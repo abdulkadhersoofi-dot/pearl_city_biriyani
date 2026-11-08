@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Receiving - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Receiving and counts</h1>
+    <p class="text-muted mt-0">Purchases scanned in at the warehouse unit by unit - no serials typed - and stock counts scanned on the floor.</p>
+  </div>
+</div>
+{% include "warehouse/_nav.html" %}
+
+{% if current_user.is_client_admin %}
+<form method="post" action="{{ url_for('warehouse.new_receipt') }}" class="card row gap-10 items-end flex-wrap mb-16" id="receive">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label class="field m-0 grow"><span class="field-label">Purchase order to receive</span>
+    <select name="purchase_order_id" class="field-input" required>
+      <option value="">Pick an open order with serial-tracked items</option>
+      {% for o in open_orders %}<option value="{{ o.id }}" {{ 'selected' if request.args.get('order') == o.id|string }}>{{ o.number }} - {{ o.supplier.name }} ({{ serial_lines(o)|length }} serial item{{ 's' if serial_lines(o)|length != 1 }})</option>{% endfor %}
+    </select></label>
+  <label class="field m-0"><span class="field-label">At</span>
+    <select name="location_id" class="field-input" required>{% for w in warehouses %}<option value="{{ w.id }}">{{ w.name }}</option>{% endfor %}</select></label>
+  <button class="btn btn-primary">Receive at warehouse</button>
+</form>
+{% endif %}
+
+<div class="card table-wrap mb-16">
+  <table>
+    <thead><tr><th>Purchase order</th><th>Supplier</th><th>Warehouse</th><th>Scanned</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+    {% for r in rows %}{% set lines = serial_lines(r.purchase_order) %}
+      <tr><td><a href="{{ url_for('warehouse.receipt', receipt_id=r.id) }}">{{ r.purchase_order.number }}</a></td><td>{{ r.purchase_order.supplier.name }}</td><td>{{ r.location.name }}</td>
+        <td>{{ counted[r.id].values()|sum }} / {{ lines|sum(attribute='qty')|int }}</td>
+        <td>{{ {'open': 'Receiving', 'done': 'Billed', 'cancelled': 'Stopped'}[r.status.value] }}</td>
+        <td><a href="{{ url_for('warehouse.receipt', receipt_id=r.id) }}" class="btn btn-quiet btn-sm">Open</a></td></tr>
+    {% else %}
+      <tr><td colspan="6" class="text-muted">Nothing being received. Send a purchase order to a warehouse when its goods arrive.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<h2 class="section-title">Stock counts</h2>
+<p class="text-muted">Started on the ARFA Warehouse app (Receive &rarr; Count). Run one before going live to find serials ARFA has wrong.</p>
+<div class="card table-wrap">
+  <table>
+    <thead><tr><th>Started</th><th>Warehouse</th><th>By</th><th>Scanned</th><th></th></tr></thead>
+    <tbody>
+    {% for c in counts %}
+      <tr><td>{{ c.created_at|ist('%d %b %Y %I:%M %p') }}</td><td>{{ c.location.name }}</td><td>{{ c.started_by.name if c.started_by }}</td><td>{{ c.scans|length }}{% if not c.finished_at %} <span class="tag">counting</span>{% endif %}</td>
+        <td><a href="{{ url_for('warehouse.count', count_id=c.id) }}" class="btn btn-quiet btn-sm">Result</a></td></tr>
+    {% else %}
+      <tr><td colspan="5" class="text-muted">No counts yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

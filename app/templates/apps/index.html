@@ -51,7 +51,8 @@
       <li>Open the downloaded file and tap <strong>Install</strong>.</li>
       {% set keys = cards|map(attribute='app.key')|list %}
       <li><strong>ARFA Counter:</strong> pair it with a code from <strong>Branches &rarr; Pair a phone</strong>.
-        {%- if 'scan' in keys %} <strong>ARFA Scan:</strong> sign in with your ARFA email and password.{% endif %}</li>
+        {%- if 'scan' in keys %} <strong>ARFA Scan:</strong> sign in with your ARFA email and password.{% endif %}
+        {%- if 'warehouse' in keys %} <strong>ARFA Warehouse:</strong> sign in with the business code, login id and password from <strong>Warehouse &rarr; App logins</strong>.{% endif %}</li>
     </ol>
     <p class="text-muted mb-0">After that the apps tell you when a new version is ready (and from the menu:
       <strong>Check for an update</strong>) - updates come from here too, and install over the old version

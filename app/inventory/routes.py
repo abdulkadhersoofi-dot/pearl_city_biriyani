@@ -124,8 +124,15 @@ def locations():
     for (pid, lid), qty in on_hand.items():
         if qty != 0:
             counts[lid] = counts.get(lid, 0) + 1
+    extra = {}
+    if current_user.tenant.has_feature("warehouse_dispatch"):
+        from app.models.user import User, UserRole
+
+        extra = {"branch_logins": tenant_query(User).filter_by(role=UserRole.STAFF, is_active=True)
+                 .order_by(User.name).all(),
+                 "godowns": [l for l in all_locations if l.kind == LocationKind.GODOWN and l.is_active]}
     return render_template("inventory/locations.html", locations=all_locations, counts=counts,
-                           kind_labels=LOCATION_KIND_LABELS)
+                           kind_labels=LOCATION_KIND_LABELS, **extra)
 
 
 @inventory_bp.route("/locations/<int:location_id>/deactivate", methods=["POST"])

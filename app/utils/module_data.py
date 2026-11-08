@@ -36,6 +36,7 @@ MODULE_RECORDS = {
     "doc_scan": (("ScanDocument",), "scan.index"),
     "batch_expiry": (("ProductBatch",), "inventory.expiry"),
     "serial_imei": (("ProductSerial",), "inventory.serials"),
+    "warehouse_dispatch": (("WarehouseLogin", "SerialPick"), "warehouse.queue"),
     "wholesale": (("Salesman", "CustomerGroup"), "wholesale.index"),
     "multi_price_list": (("PriceList",), "products.price_lists"),
 }

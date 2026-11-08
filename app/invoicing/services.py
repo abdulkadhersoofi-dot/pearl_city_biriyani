@@ -58,6 +58,9 @@ class InvoiceInput:
     lines: list[LineInput] = field(default_factory=list)
     # The number of an invoice issued outside ARFA (scanned); None = ARFA's next.
     number: str | None = None
+    # Made from a sales order a warehouse picked (app/warehouse): stock and
+    # the scanned serials leave from that warehouse, not the main store.
+    dispatch_location_id: int | None = None
 
 
 def _to_decimal(value: str, field_name: str) -> Decimal:
@@ -203,7 +206,8 @@ def create_invoice(tenant: Tenant, created_by, data: InvoiceInput) -> Invoice:
                         f"{product.name}: pick the serial/IMEI being sold - sell it from Second-hand goods -> Sell, "
                         "or at the counter.")
                 try:
-                    inventory_hooks._check_serials(tenant.id, product, line)
+                    inventory_hooks._check_serials(tenant.id, product, line,
+                                                   inventory_ledger.default_location(tenant.id).id)
                 except inventory_ledger.StockError as exc:
                     raise InvoiceValidationError(exc.message)
         document_type = DocumentType.MARGIN_SCHEME_INVOICE
@@ -263,7 +267,7 @@ def create_invoice(tenant: Tenant, created_by, data: InvoiceInput) -> Invoice:
     # before a number is taken - a refused invoice leaves no gap.
     try:
         inventory_hooks.check_sale(
-            tenant, inventory_ledger.default_location(tenant.id).id,
+            tenant, data.dispatch_location_id or inventory_ledger.default_location(tenant.id).id,
             [inventory_hooks.SaleLine(l.product_id, l.qty) for l in data.lines if l.product_id],
             require_serials=False,
         )
@@ -358,7 +362,8 @@ def create_invoice(tenant: Tenant, created_by, data: InvoiceInput) -> Invoice:
             margin_services.record(tenant.id, "invoice", invoice.id, saved.id, invoice.invoice_number,
                                    data.invoice_date, saved.product_id, item)
     serials = {saved.id: list(line.serials) for saved, line in zip(invoice.lines, data.lines) if line.serials}
-    inventory_hooks.post_invoice(tenant, invoice, created_by.id, serials_by_line=serials)
+    inventory_hooks.post_invoice(tenant, invoice, created_by.id, serials_by_line=serials,
+                                 location_id=data.dispatch_location_id)
     return invoice
 
 

@@ -24,7 +24,7 @@
 
 <div class="card table-wrap mt-16">
   <table>
-    <thead><tr><th>Name</th><th>Type</th><th>Address</th><th class="num">Items in stock</th><th>Status</th><th></th></tr></thead>
+    <thead><tr><th>Name</th><th>Type</th><th>Address</th><th class="num">Items in stock</th><th>Status</th>{% if godowns is defined %}<th>Warehouse dispatch</th>{% endif %}<th></th></tr></thead>
     <tbody>
     {% for loc in locations %}
       <tr>
@@ -33,6 +33,31 @@
         <td>{{ loc.address or '-' }}</td>
         <td class="num">{{ counts.get(loc.id, 0) }}</td>
         <td>{{ 'Active' if loc.is_active else 'Off' }}</td>
+        {% if godowns is defined %}
+        <td>
+          {% if loc.is_active %}
+          <form method="post" action="{{ url_for('warehouse.location_settings', location_id=loc.id) }}" class="wh-loc-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            {% if loc.kind.value == 'godown' %}
+            <label class="field m-0"><span class="field-label">Warehouse computer</span>
+              <select name="computer_user_id" class="field-input">
+                <option value="">None</option>
+                {% for u in branch_logins %}<option value="{{ u.id }}" {{ 'selected' if loc.branch_user_id == u.id }}>{{ u.name }}</option>{% endfor %}
+              </select></label>
+            <label class="checkbox-row"><input type="checkbox" name="address_registered" value="1" {{ 'checked' if loc.address_registered }}> Address is on the GSTIN (additional place of business)</label>
+            {% if not loc.address_registered %}<p class="field-error-msg m-0">GST: goods may only be kept and dispatched from a place on your registration - add it as an additional place of business.</p>{% endif %}
+            {% else %}
+            <label class="field m-0"><span class="field-label">Usual warehouse for its sales orders</span>
+              <select name="default_dispatch_location_id" class="field-input">
+                <option value="">None</option>
+                {% for g in godowns %}<option value="{{ g.id }}" {{ 'selected' if loc.default_dispatch_location_id == g.id }}>{{ g.name }}</option>{% endfor %}
+              </select></label>
+            {% endif %}
+            <button class="btn btn-quiet btn-sm">Save</button>
+          </form>
+          {% endif %}
+        </td>
+        {% endif %}
         <td>
           {% if loc.is_active and not loc.is_default and loc.kind.value != 'branch' %}
           <form method="post" action="{{ url_for('inventory.deactivate_location', location_id=loc.id) }}" data-confirm="Switch off {{ loc.name }}?" data-danger>

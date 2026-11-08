@@ -151,6 +151,11 @@ def _register_blueprints(app: Flask) -> None:
     from app.scan.api import scan_api_bp
 
     app.register_blueprint(scan_api_bp)
+    from app.warehouse import warehouse_bp
+    from app.warehouse_api import warehouse_api_bp
+
+    app.register_blueprint(warehouse_bp)
+    app.register_blueprint(warehouse_api_bp)
     from app.apps import apps_bp
 
     app.register_blueprint(apps_bp)

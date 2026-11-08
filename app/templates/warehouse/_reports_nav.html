@@ -1,0 +1,6 @@
+<nav class="subnav subnav-small">
+  <a href="{{ url_for('warehouse.reports') }}" class="{{ 'active' if request.endpoint == 'warehouse.reports' }}">Serial history</a>
+  <a href="{{ url_for('warehouse.report_picking') }}" class="{{ 'active' if request.endpoint == 'warehouse.report_picking' }}">Picking</a>
+  <a href="{{ url_for('warehouse.report_devices') }}" class="{{ 'active' if request.endpoint == 'warehouse.report_devices' }}">Phones</a>
+  <a href="{{ url_for('warehouse.receipts') }}">Count results</a>
+</nav>

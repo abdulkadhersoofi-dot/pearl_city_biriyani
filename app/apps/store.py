@@ -55,6 +55,9 @@ APPS = {
     "scan": AndroidApp("scan", "ARFA Scan", "ARFA-Scan.apk", "scan-version.json",
                        "Photograph purchase bills, expenses, notes and sales invoices; ARFA reads them, "
                        "and you check and post each one from the phone or the website."),
+    "warehouse": AndroidApp("warehouse", "ARFA Warehouse", "ARFA-Warehouse.apk", "warehouse-version.json",
+                            "For pickers in a warehouse: new orders ring like a message, scan each unit's label "
+                            "to pick it, receive purchases and count stock by scanning."),
 }
 
 

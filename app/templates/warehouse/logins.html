@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Warehouse app logins - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>ARFA Warehouse app logins</h1>
+    <p class="text-muted mt-0">One login per person who picks or receives in a warehouse. They sign in once on their phone with the business code, their login id and password, then open the app with a PIN they choose.</p>
+  </div>
+  <a href="{{ url_for('apps.index') }}" class="btn btn-secondary">Get the app</a>
+</div>
+{% include "warehouse/_nav.html" %}
+
+<div class="card mb-16 row gap-16 flex-wrap items-center">
+  <div><span class="field-label">Business code</span><div class="wh-code mono">{{ code }}</div></div>
+  <div class="grow text-muted small-note">Give this code to your pickers with their login id and password. {% if meter.limit is not none %}<strong>{{ meter.used }} of {{ meter.limit }}</strong> logins used on your package.{% endif %}</div>
+</div>
+
+{% if not warehouses %}
+<div class="card mb-16"><strong>No warehouse yet.</strong> Add a godown under <a href="{{ url_for('inventory.locations') }}">Stock locations</a> first - each login works in one or more warehouses.</div>
+{% else %}
+<form method="post" class="card mb-16">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <h2 class="section-title mt-0">Add a login</h2>
+  <div class="form-grid">
+    <label class="field"><span class="field-label">Name</span><input type="text" name="name" class="field-input" maxlength="100" required placeholder="Ravi"></label>
+    <label class="field"><span class="field-label">Login id</span><input type="text" name="login_id" class="field-input" maxlength="40" required placeholder="ravi or 9876543210" autocomplete="off"></label>
+    <label class="field"><span class="field-label">Mobile (optional)</span><input type="tel" name="mobile" class="field-input" maxlength="15"></label>
+    <label class="field"><span class="field-label">Password</span><input type="password" name="password" class="field-input" minlength="{{ min_password }}" required autocomplete="new-password"></label>
+  </div>
+  <fieldset class="wh-fieldset"><legend class="field-label">Works in</legend>
+    {% for w in warehouses %}<label class="checkbox-row"><input type="checkbox" name="location_ids" value="{{ w.id }}" {{ 'checked' if warehouses|length == 1 }}> {{ w.name }}</label>{% endfor %}
+  </fieldset>
+  <label class="checkbox-row"><input type="checkbox" name="manual_serial" value="1"> May type a serial by hand when a label won't scan (always kept with a photo)</label>
+  <button class="btn btn-primary mt-12">Add login</button>
+</form>
+{% endif %}
+
+<div class="card table-wrap">
+  <table>
+    <thead><tr><th>Name</th><th>Login id</th><th>Warehouses</th><th>Phones</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+    {% for l in rows %}
+      <tr class="{{ 'row-muted' if not l.is_active }}">
+        <td><strong>{{ l.name }}</strong>{% if l.mobile %}<br><small class="text-muted">{{ l.mobile }}</small>{% endif %}{% if l.manual_serial %}<br><span class="tag">may type serials</span>{% endif %}</td>
+        <td class="mono">{{ l.login_id }}</td>
+        <td>{{ l.locations|map(attribute='name')|join(', ') or '-' }}</td>
+        <td>
+          {% for s in sessions[l.id] %}
+            <div class="row gap-6 items-center">{{ s.device_name or 'Phone' }} <small class="text-muted">{{ s.app_version or '' }}{% if s.last_seen_at %} · {{ s.last_seen_at|ist('%d %b %I:%M %p') }}{% endif %}{% if not s.fcm_token %} · no push{% endif %}</small>
+              <form method="post" action="{{ url_for('warehouse.revoke_session', session_id=s.id) }}" class="inline" data-confirm="Sign out {{ s.device_name or 'this phone' }}?"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-quiet btn-sm">Sign out</button></form></div>
+          {% else %}<span class="text-muted">Not signed in</span>{% endfor %}
+        </td>
+        <td>{{ 'Active' if l.is_active else 'Off' }}{% if l.locked_until %}<br><small class="text-muted">locked after wrong passwords</small>{% endif %}</td>
+        <td>
+          <details class="wh-edit">
+            <summary class="btn btn-quiet btn-sm">Change</summary>
+            <form method="post" action="{{ url_for('warehouse.edit_login', login_id=l.id) }}" class="mt-12">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <label class="field"><span class="field-label">Name</span><input type="text" name="name" value="{{ l.name }}" class="field-input"></label>
+              <label class="field"><span class="field-label">Mobile</span><input type="tel" name="mobile" value="{{ l.mobile or '' }}" class="field-input"></label>
+              {% for w in warehouses %}<label class="checkbox-row"><input type="checkbox" name="location_ids" value="{{ w.id }}" {{ 'checked' if w.id in l.location_ids }}> {{ w.name }}</label>{% endfor %}
+              <label class="checkbox-row"><input type="checkbox" name="manual_serial" value="1" {{ 'checked' if l.manual_serial }}> May type serials by hand</label>
+              <button class="btn btn-secondary btn-sm">Save</button>
+            </form>
+            <form method="post" action="{{ url_for('warehouse.reset_password', login_id=l.id) }}" class="mt-12 row gap-6 items-end">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <label class="field m-0"><span class="field-label">New password</span><input type="password" name="password" minlength="{{ min_password }}" class="field-input" autocomplete="new-password" required></label>
+              <button class="btn btn-secondary btn-sm">Reset</button>
+            </form>
+            <form method="post" action="{{ url_for('warehouse.toggle_login', login_id=l.id) }}" class="mt-12" {% if l.is_active %}data-confirm="Switch off {{ l.name }}? Their phones are signed out and an order they're picking goes back to the pipeline." data-danger{% endif %}>
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="btn {{ 'btn-danger' if l.is_active else 'btn-secondary' }} btn-sm">{{ 'Switch off' if l.is_active else 'Switch on' }}</button>
+            </form>
+          </details>
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6" class="text-muted">No logins yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

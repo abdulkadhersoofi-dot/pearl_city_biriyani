@@ -132,6 +132,13 @@ class Config:
     # in development, a folder laid out the same way (latest/...).
     APPS_BUCKET = os.environ.get("APPS_BUCKET", "")
     APPS_DIR = os.environ.get("APPS_DIR", "")
+    # ARFA Warehouse pushes (app/warehouse/notify.py): the Firebase project
+    # the server sends through, and the Firebase app settings the phone app
+    # is handed at sign-in (JSON: app_id, api_key, project_id, sender_id -
+    # not secrets; set by scripts/gcp/warehouse_push_setup.sh). Without them
+    # the app keeps to polling.
+    FCM_PROJECT_ID = os.environ.get("FCM_PROJECT_ID", "")
+    WAREHOUSE_FCM_CONFIG = os.environ.get("WAREHOUSE_FCM_CONFIG", "")
 
     # Scan bills (app/scan): the Gemini API key reads the photos. Without
     # it the module says it isn't set up yet. The model names and the daily
@@ -155,6 +162,7 @@ class DevelopmentConfig(Config):
 
 class TestingConfig(Config):
     TESTING = True
+    FCM_PROJECT_ID = ""
     WTF_CSRF_ENABLED = False
     # A real Postgres test database, not sqlite: row locking (SELECT ... FOR
     # UPDATE) in the invoice-numbering allocator and our use of native JSON

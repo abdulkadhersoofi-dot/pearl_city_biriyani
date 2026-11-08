@@ -30,6 +30,7 @@ from app.models.tenant import Gstin
 from app.utils.financial_year import financial_year_for
 from app.utils.gst import allowed_document_types, compute_invoice_totals, compute_line
 from app.utils.numbering import allocate_number, get_or_create_series
+from app.warehouse import dispatch
 
 ZERO = Decimal("0.00")
 MAX_RUNS_PER_PASS = 36
@@ -57,6 +58,9 @@ class SalesDocInput:
     challan_purpose: ChallanPurpose | None = None
     notes: str | None = None
     terms: str | None = None
+    # Warehouse dispatch: the godown a sales order ships from (required for
+    # a sales order when the module is on).
+    dispatch_location_id: int | None = None
 
 
 def _customer_snapshot(customer: Customer) -> dict:
@@ -84,6 +88,13 @@ def create_sales_document(tenant, user, data: SalesDocInput) -> SalesDocument:
         raise SalesError("Say why the goods are going out (job work, sale on approval...).")
     if data.valid_until and data.valid_until < data.doc_date:
         raise SalesError("'Valid until' can't be before the date.")
+    warehouse = None
+    if data.kind == SalesDocumentKind.SALES_ORDER and dispatch.is_on(tenant):
+        try:
+            warehouse = dispatch.resolve_warehouse(tenant, data.dispatch_location_id)
+            dispatch.check_free(tenant, warehouse, data.lines)
+        except dispatch.DispatchError as exc:
+            raise SalesError(exc.message)
     charge_gst = data.invoice_document_type not in (DocumentType.BILL_OF_SUPPLY, DocumentType.EXPORT_INVOICE_LUT)
     is_intra = data.place_of_supply_state_code == gstin.state_code
     computed = []
@@ -115,6 +126,11 @@ def create_sales_document(tenant, user, data: SalesDocInput) -> SalesDocument:
         ))
     db.session.add(doc)
     db.session.flush()
+    if warehouse is not None:
+        try:
+            dispatch.start(tenant, doc, warehouse)
+        except dispatch.DispatchError as exc:
+            raise SalesError(exc.message)
     return doc
 
 
@@ -151,6 +167,8 @@ def convert_to_invoice(tenant, user, doc: SalesDocument, invoice_date: date | No
     _require_open(doc)
     if doc.customer_id is None:
         raise SalesError("This document has no customer.")
+    if doc.dispatch_status is not None:
+        return convert_picked_order(tenant, user, doc, invoice_date)
     try:
         invoice = create_invoice(tenant, user, InvoiceInput(
             gstin_id=doc.gstin_id, document_type=doc.invoice_document_type, customer_id=doc.customer_id,
@@ -163,10 +181,50 @@ def convert_to_invoice(tenant, user, doc: SalesDocument, invoice_date: date | No
     return invoice
 
 
+def convert_picked_order(tenant, user, doc: SalesDocument, invoice_date: date | None = None):
+    """A warehouse-dispatched order: invoiced once its warehouse has picked
+    it, with each line's scanned serials, from that warehouse's stock."""
+    from app.models.inventory import SerialStatus
+    from app.models.warehouse import DispatchStatus
+
+    if doc.dispatch_status != DispatchStatus.PICKED:
+        raise SalesError("This order is still at the warehouse - it is invoiced there once every unit is "
+                         "scanned and the picker has confirmed it.")
+    progress = dispatch.line_progress(doc)
+    lines = lines_of(doc.lines)
+    for line_in, line in zip(lines, doc.lines):
+        if not dispatch.needs_scan(line):
+            continue
+        info = progress[line.id]
+        if info["picked"] < info["qty"]:
+            raise SalesError(f"{line.description}: only {info['picked']} of {info['qty']} picked.")
+        for pick in info["picks"]:
+            unit = pick.serial
+            if unit is None:
+                continue
+            if unit.status != SerialStatus.PICKED or unit.picked_sales_line_id != line.id \
+                    or unit.location_id != doc.dispatch_location_id:
+                raise SalesError(f"{line.description}: serial {unit.serial_no} is no longer held at "
+                                 f"{doc.dispatch_location.name} for this order - undo and scan it again.")
+        line_in.serials = list(info["serials"])
+    try:
+        invoice = create_invoice(tenant, user, InvoiceInput(
+            gstin_id=doc.gstin_id, document_type=doc.invoice_document_type, customer_id=doc.customer_id,
+            place_of_supply_state_code=doc.place_of_supply_state_code, invoice_date=invoice_date or date.today(),
+            notes=doc.notes, lines=lines, dispatch_location_id=doc.dispatch_location_id,
+        ))
+    except InvoiceValidationError as exc:
+        raise SalesError(exc.message)
+    mark_converted(doc, invoice, user)
+    dispatch.mark_invoiced(doc, invoice)
+    return invoice
+
+
 def cancel_document(doc: SalesDocument, user, reason: str) -> None:
     _require_open(doc)
     if not (reason or "").strip():
         raise SalesError("A reason is required.")
+    dispatch.cancelled(doc)
     doc.status = SalesDocumentStatus.CANCELLED
     doc.cancel_reason = reason.strip()
     doc.closed_at = utcnow()

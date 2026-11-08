@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Serial history - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header"><div><h1>Warehouse reports</h1><p class="text-muted mt-0">Where a unit came from, who picked it and where it went - for warranty claims.</p></div></div>
+{% include "warehouse/_nav.html" %}
+{% include "warehouse/_reports_nav.html" %}
+<form method="get" class="card row gap-10 items-end mb-16">
+  <label class="field m-0 grow"><span class="field-label">Serial / IMEI</span><input type="search" name="serial" value="{{ serial }}" class="field-input mono" autofocus></label>
+  <button class="btn btn-primary">Find</button>
+</form>
+{% if serial and not story %}<p class="flash flash-warning">No unit with serial {{ serial }}.</p>{% endif %}
+{% if story %}{% set u = story.unit %}
+<div class="card mb-16">
+  <h2 class="section-title mt-0 mono">{{ u.serial_no }}</h2>
+  <p class="m-0">{{ u.product.name if u.product }}{% if u.product and u.product.model_no %} · model <span class="mono">{{ u.product.model_no }}</span>{% endif %} · now <strong>{{ u.status.value.replace('_', ' ') }}</strong>{% if u.location %} at {{ u.location.name }}{% endif %}{% if u.warranty_end %} · warranty till {{ u.warranty_end.strftime('%d %b %Y') }}{% endif %}</p>
+  <ol class="timeline">
+    {% if story.bill %}<li><strong>Bought</strong> on {{ story.bill.number }} from {{ story.bill.supplier_snapshot.name }}, {{ story.bill.bill_date.strftime('%d %b %Y') }}</li>{% elif u.added_at_pick %}<li><strong>Not in ARFA</strong> until it was scanned at the warehouse (added at pick)</li>{% endif %}
+    {% if story.received %}<li><strong>Received</strong> at {{ story.received.receipt.location.name }} by {{ story.received.login.name if story.received.login }}, {{ story.received.created_at|ist('%d %b %Y %I:%M %p') }}</li>{% endif %}
+    {% for p in story.picks %}<li><strong>{{ result_labels[p.result] }}</strong> for {{ p.line.document.number if p.line }} by {{ p.login.name if p.login }}, {{ p.created_at|ist('%d %b %Y %I:%M %p') }}{% if p.photo_id %} · <a href="{{ url_for('warehouse.pick_photo', pick_id=p.id) }}" target="_blank">label photo</a>{% endif %}{% if p.undone_at %} · undone ({{ p.undone_reason }}){% endif %}</li>{% endfor %}
+    {% if story.invoice %}<li><strong>Sold</strong> on {{ story.invoice.invoice_number }}, {{ story.invoice.invoice_date.strftime('%d %b %Y') }} to {{ story.invoice.customer_snapshot.name }}</li>{% elif u.sold_pos_bill_id %}<li><strong>Sold</strong> at the counter{% if u.sold_at %}, {{ u.sold_at|ist('%d %b %Y') }}{% endif %}</li>{% endif %}
+  </ol>
+</div>
+{% endif %}
+<h2 class="section-title">Added at the warehouse - check these</h2>
+<p class="text-muted">Serials ARFA didn't have, scanned on a box of the right item and picked. Check each against its purchase bill.</p>
+<div class="card table-wrap"><table>
+  <thead><tr><th>Serial</th><th>Item</th><th>Picked by</th><th>When</th><th>Now</th></tr></thead>
+  <tbody>{% for u in added %}<tr><td class="mono"><a href="?serial={{ u.serial_no|urlencode }}">{{ u.serial_no }}</a></td><td>{{ u.product.name if u.product }}</td><td>{{ u.picked_by.name if u.picked_by else '' }}</td><td>{{ u.picked_at|ist('%d %b %Y') }}</td><td>{{ u.status.value.replace('_', ' ') }}</td></tr>{% else %}<tr><td colspan="5" class="text-muted">None.</td></tr>{% endfor %}</tbody>
+</table></div>
+{% endblock %}

@@ -97,6 +97,8 @@ ENTRIES = [
           setup_label="Expiry"),
     Entry("serial_imei", MODULE, "scan-line", "stock", needs=("inventory",), setup="inventory.serials",
           setup_label="Serial numbers"),
+    Entry("warehouse_dispatch", MODULE, "truck", "stock", needs=("inventory", "serial_imei"),
+          setup="warehouse.logins", setup_label="Warehouse app logins"),
     Entry("variants", MODULE, "package", "stock"),
     Entry("categories", MODULE, "list", "stock", setup="products.categories", setup_label="Categories"),
     # --- accounts ---

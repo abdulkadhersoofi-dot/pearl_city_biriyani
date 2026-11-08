@@ -143,6 +143,8 @@ def _client_groups() -> list[Group]:
                  keywords="products catalogue price list categories"),
             Link("Stock", "inventory.index", "warehouse", feature="inventory", blueprints=("inventory",),
                  keywords="inventory transfer adjustment godown location"),
+            Link("Warehouse", "warehouse.queue", "truck", feature="warehouse_dispatch", blueprints=("warehouse",),
+                 keywords="dispatch picking pickers serial scan ready to invoice receive count app logins"),
             Link("Purchases", "purchases.bills", "truck", feature="purchases", blueprints=("purchases",),
                  keywords="supplier purchase bill order gstr-2b"),
             Link("Expenses", "expenses.index", "wallet", feature="expenses", blueprints=("expenses",),
@@ -189,6 +191,14 @@ def _offline_review() -> bool:
     return bool(current_user.is_client_admin and offline_review_on(current_user.tenant))
 
 
+def _warehouse_computer() -> bool:
+    from flask_login import current_user
+
+    from app.warehouse.routes import computer_location
+
+    return computer_location(current_user) is not None
+
+
 def _branch_groups() -> list[Group]:
     """A branch login's menu: its counter and the screens around it. Every
     entry follows the business's modules, what is hidden at this counter
@@ -207,6 +217,12 @@ def _branch_groups() -> list[Group]:
                  endpoints=("jobs.index", "jobs.new", "jobs.view"), keywords="repair service"),
             Link("Warranty check", "jobs.warranty", "shield-check", feature="electronics",
                  endpoints=("jobs.warranty",), keywords="imei serial"),
+            Link("Ready to invoice", "warehouse.queue", "truck", feature="warehouse_dispatch",
+                 check=_warehouse_computer, blueprints=("warehouse",), keywords="warehouse dispatch picked"),
+            Link("Sales orders", "sales.documents", "file-text", feature="warehouse_dispatch",
+                 also=("sales_documents",), kwargs={"kind": "sales_order"},
+                 endpoints=("sales.documents", "sales.new_document", "sales.view_document"),
+                 keywords="order warehouse dispatch"),
         )),
         Group("today", "Today", (
             Link("Day-book", "pos.day_book", "list", feature="pos", permission="view_reports",

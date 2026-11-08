@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Receiving {{ r.purchase_order.number }} - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Receiving {{ r.purchase_order.number }}</h1>
+    <p class="text-muted mt-0">{{ r.purchase_order.supplier.name }} · at {{ r.location.name }} · {{ {'open': 'Receiving', 'done': 'Billed', 'cancelled': 'Stopped'}[r.status.value] }}</p>
+  </div>
+  {% if r.status.value == 'open' and current_user.is_client_admin %}
+  <div class="row gap-10">
+    <a href="{{ url_for('purchases.new_bill', receipt=r.id) }}" class="btn btn-primary">Make the purchase bill</a>
+    <form method="post" action="{{ url_for('warehouse.cancel_receipt', receipt_id=r.id) }}" data-confirm="Stop receiving {{ r.purchase_order.number }}?" data-danger>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-quiet">Stop</button></form>
+  </div>
+  {% elif r.purchase_bill_id and current_user.is_client_admin %}
+  <a href="{{ url_for('purchases.view_bill', bill_id=r.purchase_bill_id) }}" class="btn btn-secondary">Open the purchase bill</a>
+  {% endif %}
+</div>
+{% include "warehouse/_nav.html" %}
+{% if r.status.value == 'open' %}<p class="text-muted">The pickers at {{ r.location.name }} scan each unit on the ARFA Warehouse app (Receive). The bill is filled in with these serials and posts the stock into {{ r.location.name }}.</p>{% endif %}
+{% for l in serial_lines %}
+<div class="card mb-16">
+  <div class="row gap-10 items-center"><strong class="grow">{{ l.description }}</strong><span>{{ counted.get(l.id, 0) }} / {{ l.qty|int }}</span></div>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Serial</th><th>Scanned by</th><th>When</th><th></th></tr></thead>
+    <tbody>
+    {% for u in r.units if u.order_line_id == l.id %}
+      <tr><td class="mono">{{ u.serial_no }}</td><td>{{ u.login.name if u.login }}</td><td>{{ u.created_at|ist('%d %b %I:%M %p') }}</td>
+        <td>{% if r.status.value == 'open' %}<form method="post" action="{{ url_for('warehouse.delete_unit', receipt_id=r.id, unit_id=u.id) }}" class="inline" data-confirm="Take {{ u.serial_no }} off?"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-quiet btn-sm">Remove</button></form>{% endif %}</td></tr>
+    {% else %}
+      <tr><td colspan="4" class="text-muted">Nothing scanned yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endfor %}
+{% endblock %}

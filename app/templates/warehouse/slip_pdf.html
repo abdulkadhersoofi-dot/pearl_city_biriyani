@@ -1,0 +1,61 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @page { size: A4; margin: 16mm 14mm; }
+  body { font-family: "Helvetica Neue", Arial, sans-serif; color: #1f2a24; font-size: 10.5pt; }
+  h1 { font-size: 16pt; margin: 0 0 2px; }
+  .muted { color: #5c6b62; }
+  .header { display: flex; justify-content: space-between; border-bottom: 2px solid #1f7a4d; padding-bottom: 10px; margin-bottom: 14px; }
+  .firm { text-align: right; }
+  .firm-logo { max-height: 44px; max-width: 150px; object-fit: contain; margin-bottom: 4px; }
+  .grid { display: flex; justify-content: space-between; margin-bottom: 14px; }
+  .grid > div { width: 48%; }
+  .label { font-size: 8pt; text-transform: uppercase; color: #5c6b62; letter-spacing: .04em; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 18px; }
+  th, td { border: 1px solid #d8ddd6; padding: 6px 8px; text-align: left; vertical-align: top; }
+  th { background: #f0f2ee; font-size: 9.5pt; }
+  .serial { font-family: "DejaVu Sans Mono", monospace; font-size: 10pt; }
+  .num { text-align: right; }
+  .signs { display: flex; justify-content: space-between; margin-top: 40px; }
+  .signs div { width: 30%; border-top: 1px solid #1f2a24; padding-top: 4px; font-size: 9pt; }
+</style>
+</head>
+<body>
+  <div class="header">
+    <div>
+      <h1>Delivery slip</h1>
+      <div class="muted">Order {{ doc.number }}{% if doc.converted_invoice %} · Invoice {{ doc.converted_invoice.invoice_number }} of {{ doc.converted_invoice.invoice_date.strftime('%d %b %Y') }}{% endif %}</div>
+    </div>
+    <div class="firm">
+      {% if logo_data_uri %}<img class="firm-logo" src="{{ logo_data_uri }}"><br>{% endif %}
+      <strong>{{ firm_name }}</strong><br>
+      {% if doc.gstin.gstin %}GSTIN {{ doc.gstin.gstin }}<br>{% endif %}
+    </div>
+  </div>
+  <div class="grid">
+    <div><div class="label">Deliver to</div>
+      <strong>{{ doc.customer_snapshot.name }}</strong><br>
+      {{ doc.customer_snapshot.address_line1 or '' }} {{ doc.customer_snapshot.address_line2 or '' }}<br>
+      {{ doc.customer_snapshot.city or '' }} {{ doc.customer_snapshot.pincode or '' }}
+    </div>
+    <div><div class="label">Dispatched from</div>
+      <strong>{{ doc.dispatch_location.name }}</strong><br>{{ doc.dispatch_location.address or '' }}<br>
+      {% if doc.picked_confirmed_by %}Picked by {{ doc.picked_confirmed_by.name }}, {{ doc.picked_confirmed_at|ist('%d %b %Y %I:%M %p') }}{% endif %}
+    </div>
+  </div>
+  <table>
+    <thead><tr><th>#</th><th>Item</th><th class="num">Qty</th><th>Serial numbers</th></tr></thead>
+    <tbody>
+    {% for l in doc.lines %}{% set p = progress[l.id] %}
+      <tr><td>{{ loop.index }}</td><td>{{ l.description }}{% if l.product and l.product.model_no %}<br><span class="muted">Model {{ l.product.model_no }}</span>{% endif %}</td>
+        <td class="num">{{ l.qty|qty }} {{ l.unit }}</td>
+        <td>{% for s in p.serials %}<span class="serial">{{ s }}</span>{% if not loop.last %}<br>{% endif %}{% endfor %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="muted">Received the goods above in good condition, with the serial numbers listed.</p>
+  <div class="signs"><div>Customer's signature</div><div>Driver's name and signature</div><div>For {{ firm_name }}</div></div>
+</body>
+</html>

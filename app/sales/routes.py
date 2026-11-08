@@ -33,8 +33,10 @@ from app.utils.features import feature_required
 from app.utils.tenant_scope import assert_owns, tenant_query
 from app.utils.entitlements import brand_logo_id
 from app.utils.uploads import image_data_uri
+from app.warehouse import dispatch, notify
 
 ADMIN = UserRole.CLIENT_ADMIN
+STAFF = UserRole.STAFF
 KINDS = {k.value: k for k in SalesDocumentKind}
 
 
@@ -62,10 +64,38 @@ def _products():
             .order_by(Product.name).all())
 
 
+def _branch_orders_on() -> bool:
+    """Branch logins make sales orders when warehouse dispatch is on - the
+    salesperson picks the warehouse, the warehouse picks the units."""
+    return dispatch.is_on(current_user.tenant)
+
+
+def _allow(kind: SalesDocumentKind) -> None:
+    if current_user.is_staff and not (kind == SalesDocumentKind.SALES_ORDER and _branch_orders_on()):
+        abort(403)
+
+
 def _doc(doc_id) -> SalesDocument:
     doc = tenant_query(SalesDocument).filter_by(id=doc_id).first_or_404()
     assert_owns(doc)
+    if current_user.is_staff:
+        _allow(doc.kind)
+        if doc.created_by_id != current_user.id:
+            abort(404)
     return doc
+
+
+def _warehouse_context(doc=None):
+    """The Warehouse picker: the warehouses, with free quantities for the
+    items on the form (filled in by /warehouse/free.json as lines change)."""
+    if not dispatch.is_on(current_user.tenant):
+        return {}
+    chosen = request.form.get("dispatch_location_id") if request.method == "POST" else None
+    if not chosen:
+        default = doc.dispatch_location if doc is not None else dispatch.default_warehouse(current_user.tenant_id,
+                                                                                            current_user)
+        chosen = str(default.id) if default is not None else ""
+    return {"warehouses": dispatch.warehouses(current_user.tenant_id), "chosen_warehouse": chosen}
 
 
 def _convertible_choices(form):
@@ -77,12 +107,15 @@ def _convertible_choices(form):
 # --- quotations, proforma invoices, sales orders, delivery challans ---------------------
 
 @sales_bp.route("/documents")
-@roles_required(ADMIN)
+@roles_required(ADMIN, STAFF)
 @feature_required("sales_documents")
 def documents():
-    kind = _kind(request.args.get("kind"))
+    kind = _kind(request.args.get("kind") or ("sales_order" if current_user.is_staff else None))
+    _allow(kind)
     status = request.args.get("status", "open")
     query = tenant_query(SalesDocument).filter_by(kind=kind)
+    if current_user.is_staff:
+        query = query.filter_by(created_by_id=current_user.id)
     if status in {s.value for s in SalesDocumentStatus}:
         query = query.filter_by(status=SalesDocumentStatus(status))
     rows = query.order_by(SalesDocument.doc_date.desc(), SalesDocument.id.desc()).limit(300).all()
@@ -91,11 +124,12 @@ def documents():
 
 
 @sales_bp.route("/documents/new", methods=["GET", "POST"])
-@roles_required(ADMIN)
+@roles_required(ADMIN, STAFF)
 @feature_required("sales_documents")
 def new_document():
     tenant = current_user.tenant
     kind = _kind(request.values.get("kind"))
+    _allow(kind)
     form = InvoiceHeaderForm()
     customers, branches = header_form_choices(form, tenant)
     _convertible_choices(form)
@@ -121,31 +155,63 @@ def new_document():
                 valid_until=_date(request.form.get("valid_until")),
                 challan_purpose=ChallanPurpose(purpose) if purpose in {p.value for p in ChallanPurpose} else None,
                 notes=form.notes.data, terms=request.form.get("terms"),
+                dispatch_location_id=request.form.get("dispatch_location_id") or None,
             ))
             _audit("sales_document_created", "sales_document", doc, number=doc.number, kind=kind.value,
                    total=str(doc.grand_total))
             db.session.commit()
-            flash(f"{doc.label} {doc.number} saved.", "success")
+            notify.send_pending_quietly()
+            if doc.dispatch_location is not None:
+                flash(f"{doc.label} {doc.number} saved and sent to {doc.dispatch_location.name}.", "success")
+            else:
+                flash(f"{doc.label} {doc.number} saved.", "success")
             return redirect(url_for("sales.view_document", doc_id=doc.id))
         except (SalesError, InvoiceValidationError) as exc:
             db.session.rollback()
             flash(exc.message, "error")
     return render_template("sales/doc_form.html", form=form, kind=kind, label=SALES_DOCUMENT_LABELS[kind],
                            products=_products(), customers=customers, branches=[], duplicate_from=None,
-                           prefill_lines=prefill, purposes=CHALLAN_PURPOSE_LABELS, source_doc=None, source_run=None)
+                           prefill_lines=prefill, purposes=CHALLAN_PURPOSE_LABELS, source_doc=None, source_run=None,
+                           **(_warehouse_context() if kind == SalesDocumentKind.SALES_ORDER else {}))
 
 
 @sales_bp.route("/documents/<int:doc_id>")
-@roles_required(ADMIN)
+@roles_required(ADMIN, STAFF)
 @feature_required("sales_documents")
 def view_document(doc_id):
     doc = _doc(doc_id)
+    extra = {}
+    if doc.dispatch_status is not None:
+        from app.models.warehouse import DISPATCH_STATUS_LABELS
+
+        extra = {"progress": dispatch.line_progress(doc), "dispatch_labels": DISPATCH_STATUS_LABELS,
+                 "complete": dispatch.is_complete(doc), **_warehouse_context(doc)}
     return render_template("sales/document_view.html", doc=doc, purposes=CHALLAN_PURPOSE_LABELS,
-                           doc_type_labels=DOCUMENT_TYPE_LABELS, today=date.today())
+                           doc_type_labels=DOCUMENT_TYPE_LABELS, today=date.today(), **extra)
+
+
+@sales_bp.route("/documents/<int:doc_id>/warehouse", methods=["POST"])
+@roles_required(ADMIN, STAFF)
+@feature_required("sales_documents")
+def change_warehouse(doc_id):
+    """Ship an open, unclaimed order from another warehouse."""
+    doc = _doc(doc_id)
+    try:
+        location = dispatch.resolve_warehouse(current_user.tenant, request.form.get("dispatch_location_id"))
+        old = dispatch.change_warehouse(current_user.tenant, doc, location)
+        if old is not None:
+            _audit("sales_order_warehouse_changed", "sales_document", doc, number=doc.number, before=old.name,
+                   after=location.name)
+        notify.commit_and_push()
+        flash(f"{doc.number} now ships from {location.name}.", "success")
+    except dispatch.DispatchError as exc:
+        db.session.rollback()
+        flash(exc.message, "error")
+    return redirect(url_for("sales.view_document", doc_id=doc.id))
 
 
 @sales_bp.route("/documents/<int:doc_id>/pdf")
-@roles_required(ADMIN)
+@roles_required(ADMIN, STAFF)
 @feature_required("sales_documents")
 def document_pdf(doc_id):
     doc = _doc(doc_id)
@@ -184,14 +250,14 @@ def convert_document(doc_id):
 
 
 @sales_bp.route("/documents/<int:doc_id>/cancel", methods=["POST"])
-@roles_required(ADMIN)
+@roles_required(ADMIN, STAFF)
 @feature_required("sales_documents")
 def cancel_document(doc_id):
     doc = _doc(doc_id)
     try:
         services.cancel_document(doc, current_user, request.form.get("reason", ""))
         _audit("sales_document_cancelled", "sales_document", doc, number=doc.number, reason=doc.cancel_reason)
-        db.session.commit()
+        notify.commit_and_push()
         flash(f"{doc.number} cancelled.", "success")
     except SalesError as exc:
         db.session.rollback()

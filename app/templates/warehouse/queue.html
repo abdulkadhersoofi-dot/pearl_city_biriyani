@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}Ready to invoice - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Ready to invoice</h1>
+    <p class="text-muted mt-0">{% if location %}{{ location.name }} - orders its pickers have scanned and confirmed.{% else %}Orders every warehouse has scanned and confirmed, waiting for their invoice.{% endif %}</p>
+  </div>
+  {% if not location %}
+  <div class="row gap-10">
+    <a href="{{ url_for('warehouse.logins') }}" class="btn btn-secondary">App logins</a>
+    <a href="{{ url_for('warehouse.reports') }}" class="btn btn-quiet">Reports</a>
+  </div>
+  {% endif %}
+</div>
+{% include "warehouse/_nav.html" %}
+
+{% if not location and warehouses|length > 1 %}
+<form method="get" class="row gap-10 items-end mb-16">
+  <label class="field m-0"><span class="field-label">Warehouse</span>
+    <select name="w" class="field-input" onchange="this.form.submit()">
+      <option value="">Every warehouse</option>
+      {% for w in warehouses %}<option value="{{ w.id }}" {{ 'selected' if warehouse_id == w.id }}>{{ w.name }}</option>{% endfor %}
+    </select></label>
+</form>
+{% endif %}
+
+<div class="card table-wrap mb-16" data-wh-queue data-url="{{ url_for('warehouse.queue_json', w=warehouse_id) }}" data-known="{{ ready|map(attribute='id')|join(',') }}">
+  <table>
+    <thead><tr><th>Order</th><th>Customer</th>{% if not location %}<th>Warehouse</th>{% endif %}<th>Picked by</th><th class="num">Amount</th><th></th></tr></thead>
+    <tbody>
+    {% for d in ready %}
+      <tr>
+        <td><a href="{{ url_for('warehouse.order', doc_id=d.id) }}"><strong>{{ d.number }}</strong></a><br><small class="text-muted">{{ d.created_by.name if d.created_by }}</small></td>
+        <td>{{ d.customer_snapshot.name }}</td>
+        {% if not location %}<td>{{ d.dispatch_location.name }}</td>{% endif %}
+        <td>{{ d.picked_confirmed_by.name if d.picked_confirmed_by else '-' }}<br><small class="text-muted">{{ d.picked_confirmed_at|ist('%d %b %I:%M %p') }}</small></td>
+        <td class="num">{{ d.grand_total|inr }}</td>
+        <td><a href="{{ url_for('warehouse.order', doc_id=d.id) }}" class="btn btn-primary btn-sm">Make invoice</a></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6" class="text-muted">Nothing to invoice right now. A new order picked on the ARFA Warehouse app pops up here with a sound.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<h2 class="section-title">At the warehouse</h2>
+<div class="card table-wrap mb-16">
+  <table>
+    <thead><tr><th>Order</th><th>Customer</th>{% if not location %}<th>Warehouse</th>{% endif %}<th>Status</th><th>Scanned</th><th></th></tr></thead>
+    <tbody>
+    {% for d in waiting %}
+      {% set mins = idle(d) %}
+      {% set p = progress[d.id] %}
+      <tr class="{{ 'row-warn' if d.dispatch_status.value == 'picking' and mins >= 15 }}">
+        <td><a href="{{ url_for('warehouse.order', doc_id=d.id) }}">{{ d.number }}</a><br><small class="text-muted">{{ d.created_at|ist('%d %b %I:%M %p') }}</small></td>
+        <td>{{ d.customer_snapshot.name }}</td>
+        {% if not location %}<td>{{ d.dispatch_location.name }}</td>{% endif %}
+        <td>{% if d.dispatch_status.value == 'picking' %}Picking: {{ d.claimed_by.name if d.claimed_by }}{% if mins >= 15 %} <span class="tag tag-warn">idle {{ mins }} min - goes back to the pipeline at {{ release_after }}</span>{% endif %}{% else %}Waiting for a picker{% endif %}</td>
+        <td>{{ p.values()|sum(attribute='picked') }} / {{ p.values()|sum(attribute='qty') }}</td>
+        <td class="nowrap">
+          {% if d.dispatch_status.value == 'picking' %}
+          <form method="post" action="{{ url_for('warehouse.release', doc_id=d.id) }}" class="inline" data-confirm="Put {{ d.number }} back in the pipeline? Its scans are undone." data-danger>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-quiet btn-sm">Release</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6" class="text-muted">No orders waiting at the warehouse.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if recent %}
+<h2 class="section-title">Invoiced lately</h2>
+<div class="card table-wrap">
+  <table>
+    <thead><tr><th>Order</th><th>Invoice</th><th>Customer</th><th></th></tr></thead>
+    <tbody>
+    {% for d in recent %}
+      <tr><td><a href="{{ url_for('warehouse.order', doc_id=d.id) }}">{{ d.number }}</a></td><td>{{ d.converted_invoice.invoice_number if d.converted_invoice }}</td><td>{{ d.customer_snapshot.name }}</td>
+        <td class="nowrap"><a href="{{ url_for('warehouse.invoice_pdf', doc_id=d.id) }}" target="_blank" class="btn btn-quiet btn-sm">Invoice</a> <a href="{{ url_for('warehouse.slip', doc_id=d.id) }}" target="_blank" class="btn btn-quiet btn-sm">Delivery slip</a></td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endblock %}
+{% block scripts %}{{ super() }}<script src="{{ url_for('static', filename='js/warehouse_queue.js') }}" defer></script>{% endblock %}

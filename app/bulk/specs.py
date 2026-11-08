@@ -106,6 +106,7 @@ PRODUCT_COLUMNS = [
     Column("cost_price", "Cost price", "Optional. Average cost of stock.", ""),
     Column("sku", "SKU", "Optional. Your own item code - must be unique.", "", as_text=True),
     Column("barcode", "Barcode", "Optional. Must be unique.", "", as_text=True),
+    Column("model_no", "Model no.", "Optional. The maker's model number on the box label.", "", as_text=True),
     Column("alt_unit", "Pack unit", "Optional bigger unit, e.g. BOX.", "", as_text=True),
     Column("alt_unit_factor", "Units per pack", "Needed with Pack unit, e.g. 12.", ""),
     Column("min_stock_level", "Low-stock alert below", "Optional.", ""),
@@ -171,6 +172,9 @@ def _parse_product(raw: dict, ctx: ImportContext, row: RowResult) -> None:
         errors.append("With GST, the sale price is more than the MRP.")
     v["sku"] = cells.text(raw.get("sku"))
     v["barcode"] = cells.text(raw.get("barcode"))
+    v["model_no"] = cells.text(raw.get("model_no"))
+    if v["model_no"] and len(v["model_no"]) > 64:
+        errors.append("Model no. can be at most 64 characters.")
     v["category"] = cells.text(raw.get("category"))
     v["sub_category"] = cells.text(raw.get("sub_category"))
     if v["sub_category"] and not v["category"]:
@@ -246,7 +250,7 @@ def _save_product(row: RowResult, ctx: ImportContext) -> None:
     for key in (
         "name", "description", "is_service", "hsn_or_sac_code", "gst_rate", "sale_price", "price_includes_tax",
         "unit", "mrp", "wholesale_price", "purchase_rate", "cost_price", "min_stock_level", "alt_unit",
-        "alt_unit_factor", "sku", "barcode",
+        "alt_unit_factor", "sku", "barcode", "model_no",
     ):
         setattr(product, key, v[key])
     product.is_active = True
@@ -276,6 +280,7 @@ def _export_products(tenant) -> list[dict]:
                 "cost_price": p.cost_price,
                 "sku": p.sku,
                 "barcode": p.barcode,
+                "model_no": p.model_no,
                 "alt_unit": p.alt_unit,
                 "alt_unit_factor": p.alt_unit_factor,
                 "min_stock_level": p.min_stock_level,

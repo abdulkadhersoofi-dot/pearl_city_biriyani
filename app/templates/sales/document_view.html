@@ -6,7 +6,7 @@
     <h1>{{ doc.number }}</h1>
     <p class="text-muted mt-0">{{ doc.label }} · {{ doc.customer_snapshot.name }} ·
       <span class="status-badge {{ {'open': 'status-draft', 'converted': 'status-issued', 'returned': 'status-issued', 'cancelled': 'status-void'}[doc.status.value] }}">{{ {'open': 'Open', 'converted': 'Invoiced', 'returned': 'Returned', 'cancelled': 'Cancelled'}[doc.status.value] }}</span>
-      {% if doc.converted_invoice %} · <a href="{{ url_for('invoicing.view_invoice', invoice_id=doc.converted_invoice_id) }}">{{ doc.converted_invoice.invoice_number }}</a>{% endif %}</p>
+      {% if doc.converted_invoice %} · {% if current_user.is_client_admin %}<a href="{{ url_for('invoicing.view_invoice', invoice_id=doc.converted_invoice_id) }}">{{ doc.converted_invoice.invoice_number }}</a>{% else %}{{ doc.converted_invoice.invoice_number }}{% endif %}{% endif %}</p>
   </div>
   <div class="row">
     <a href="{{ url_for('sales.document_pdf', doc_id=doc.id) }}" target="_blank" class="btn btn-secondary">Print / PDF</a>
@@ -15,14 +15,16 @@
 </div>
 {% with active_kind=doc.kind.value %}{% include "sales/_nav.html" %}{% endwith %}
 
-{% if doc.status.value == 'open' %}
+{% if doc.dispatch_status %}{% include "warehouse/_order_status.html" %}{% endif %}
+
+{% if doc.status.value == 'open' and current_user.is_client_admin and (not doc.dispatch_status or doc.dispatch_status.value == 'picked') %}
 <div class="card row gap-10 items-end mb-16">
   <form method="post" action="{{ url_for('sales.convert_document', doc_id=doc.id) }}" class="row gap-10 items-end">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label class="field m-0"><span class="field-label">Invoice date</span><input type="date" name="invoice_date" value="{{ today.isoformat() }}" class="field-input"></label>
     <button class="btn btn-primary">Convert to {{ doc_type_labels[doc.invoice_document_type] }}</button>
   </form>
-  <a href="{{ url_for('invoicing.new_invoice', from_document=doc.id) }}" class="btn btn-secondary">Edit &amp; invoice</a>
+  {% if not doc.dispatch_status %}<a href="{{ url_for('invoicing.new_invoice', from_document=doc.id) }}" class="btn btn-secondary">Edit &amp; invoice</a>{% endif %}
 </div>
 {% endif %}
 
@@ -34,22 +36,23 @@
     <div><strong>Place of supply</strong><p>{{ doc.place_of_supply_state_code|state_name }}</p></div>
     <div><strong>{{ 'Invoiced as' if doc.kind.value == 'delivery_challan' else 'Will be invoiced as' }}</strong><p>{{ doc_type_labels[doc.invoice_document_type] }}</p></div>
   </div>
-  {% if doc.notes %}<p><strong>Notes:</strong> {{ doc.notes }}</p>{% endif %}
+  {% if doc.notes %}<p class="pre-line"><strong>Notes:</strong> {{ doc.notes }}</p>{% endif %}
   {% if doc.terms %}<p><strong>Terms:</strong> {{ doc.terms }}</p>{% endif %}
   {% if doc.cancel_reason %}<p><strong>{{ 'Returned' if doc.status.value == 'returned' else 'Cancelled' }}:</strong> {{ doc.cancel_reason }}</p>{% endif %}
 </div>
 
 <div class="table-wrap card mb-16">
   <table>
-    <thead><tr><th>#</th><th>Item</th><th>HSN/SAC</th><th class="num">Qty</th><th class="num">Rate</th><th class="num">Taxable</th><th class="num">GST</th><th class="num">Amount</th></tr></thead>
+    <thead><tr><th>#</th><th>Item</th><th>HSN/SAC</th><th class="num">Qty</th><th class="num">Rate</th><th class="num">Taxable</th><th class="num">GST</th><th class="num">Amount</th>{% if progress %}<th>Picked</th>{% endif %}</tr></thead>
     <tbody>
     {% for l in doc.lines %}
       <tr><td>{{ loop.index }}</td><td>{{ l.description }}</td><td>{{ l.hsn_or_sac_code or '' }}</td><td class="num">{{ l.qty|qty }} {{ l.unit }}</td>
         <td class="num">{{ '%.2f'|format(l.rate) }}{% if l.price_includes_tax %}*{% endif %}</td><td class="num">{{ '%.2f'|format(l.taxable_value) }}</td>
-        <td class="num">{{ '%.2f'|format(l.cgst_amount + l.sgst_amount + l.igst_amount) }}{% if l.gst_rate %} <small>({{ l.gst_rate|qty }}%)</small>{% endif %}</td><td class="num">{{ '%.2f'|format(l.line_total) }}</td></tr>
+        <td class="num">{{ '%.2f'|format(l.cgst_amount + l.sgst_amount + l.igst_amount) }}{% if l.gst_rate %} <small>({{ l.gst_rate|qty }}%)</small>{% endif %}</td><td class="num">{{ '%.2f'|format(l.line_total) }}</td>
+        {% if progress %}{% set p = progress[l.id] %}<td>{% if p.qty %}{{ p.picked }} of {{ p.qty }}{% if p.serials %}<br><small class="mono">{{ p.serials|join(', ') }}</small>{% endif %}{% endif %}</td>{% endif %}</tr>
     {% endfor %}
     </tbody>
-    <tfoot><tr><th colspan="5">Total{% if doc.round_off %} (round off {{ '%.2f'|format(doc.round_off) }}){% endif %}</th><th class="num">{{ '%.2f'|format(doc.total_taxable_value) }}</th><th class="num">{{ '%.2f'|format(doc.total_tax) }}</th><th class="num">{{ '%.2f'|format(doc.grand_total) }}</th></tr></tfoot>
+    <tfoot><tr><th colspan="5">Total{% if doc.round_off %} (round off {{ '%.2f'|format(doc.round_off) }}){% endif %}</th><th class="num">{{ '%.2f'|format(doc.total_taxable_value) }}</th><th class="num">{{ '%.2f'|format(doc.total_tax) }}</th><th class="num">{{ '%.2f'|format(doc.grand_total) }}</th>{% if progress %}<th></th>{% endif %}</tr></tfoot>
   </table>
 </div>
 

@@ -62,6 +62,7 @@ LIMITS = {
     "branches": "Branches",
     "logins": "Logins (owner, branches and cashier PINs)",
     "gstins": "GSTINs",
+    "warehouse_logins": "Warehouse app logins",
 }
 
 # --- sign-in minimums (stage 5) ---------------------------------------------------------------------
@@ -651,7 +652,7 @@ STARTING_PACKAGES = [
      "own_branding": True, "description": "Retail plus batch and expiry, and the scheduled-drug register."},
     {"key": "electronics", "business_type": "mobile_electronics", "name": "Mobiles & Electronics", "sort_order": 50,
      "modules": _modules(_RETAIL_INC + ["serial_imei", "margin_scheme", "job_cards", "electronics"],
-                         _COUNTER_CHOICE + ["receivables", "loyalty"]),
+                         _COUNTER_CHOICE + ["receivables", "loyalty", "sales_documents", "warehouse_dispatch"]),
      "settings": dict(_ARFA_SETS_BUSINESS), "limits": {"branches": 3, "logins": 6, "gstins": 1},
      "own_branding": True, "description": "Retail plus serial / IMEI numbers, the margin scheme and repairs."},
     {"key": "wholesale", "business_type": "wholesale", "name": "Wholesale", "sort_order": 60,
@@ -822,6 +823,10 @@ def limit_usage(tenant, key: str) -> int:
     if key == "logins":
         return (User.query.filter_by(tenant_id=tenant.id, is_active=True).count()
                 + Cashier.query.filter_by(tenant_id=tenant.id, is_active=True).count())
+    if key == "warehouse_logins":
+        from app.models.warehouse import WarehouseLogin
+
+        return WarehouseLogin.query.filter_by(tenant_id=tenant.id, is_active=True).count()
     return tenant.gstins.filter_by(is_active=True).count()
 
 

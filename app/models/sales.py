@@ -22,6 +22,7 @@ from app.extensions import db
 from app.models.expense import Frequency
 from app.models.invoice_series import DocumentType
 from app.models.mixins import TenantScopedMixin, TimestampMixin
+from app.models.warehouse import DispatchStatus
 
 
 class SalesDocumentKind(str, enum.Enum):
@@ -105,12 +106,27 @@ class SalesDocument(db.Model, TenantScopedMixin, TimestampMixin):
     closed_by_id = db.Column(db.Integer, db.ForeignKey("users.id", name="fk_sales_documents_closed_by"))
     created_by_id = db.Column(db.Integer, db.ForeignKey("users.id", name="fk_sales_documents_created_by"), nullable=False)
 
+    # Warehouse dispatch (module "warehouse_dispatch", app/warehouse): the
+    # godown a sales order ships from, and where it is on its way there.
+    # Kept apart from `status` so the existing flows aren't touched.
+    dispatch_location_id = db.Column(db.Integer, db.ForeignKey("stock_locations.id", name="fk_sales_documents_dispatch_location"),
+                                     index=True)
+    dispatch_status = db.Column(db.Enum(DispatchStatus, name="dispatch_status"), index=True)
+    claimed_by_id = db.Column(db.Integer, db.ForeignKey("warehouse_logins.id", name="fk_sales_documents_claimed_by"))
+    claimed_at = db.Column(db.DateTime(timezone=True))
+    dispatch_activity_at = db.Column(db.DateTime(timezone=True))   # last claim or scan - idle claims are released
+    picked_confirmed_at = db.Column(db.DateTime(timezone=True))
+    picked_confirmed_by_id = db.Column(db.Integer, db.ForeignKey("warehouse_logins.id", name="fk_sales_documents_picked_by"))
+
     gstin = db.relationship("Gstin")
     customer = db.relationship("Customer")
     converted_invoice = db.relationship("Invoice")
     created_by = db.relationship("User", foreign_keys=[created_by_id])
     lines = db.relationship("SalesDocumentLine", backref="document", cascade="all, delete-orphan",
                             order_by="SalesDocumentLine.sort_order")
+    dispatch_location = db.relationship("StockLocation")
+    claimed_by = db.relationship("WarehouseLogin", foreign_keys=[claimed_by_id])
+    picked_confirmed_by = db.relationship("WarehouseLogin", foreign_keys=[picked_confirmed_by_id])
 
     @property
     def label(self) -> str:
