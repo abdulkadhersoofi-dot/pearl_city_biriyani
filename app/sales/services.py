@@ -61,6 +61,12 @@ class SalesDocInput:
     # Warehouse dispatch: the godown a sales order ships from (required for
     # a sales order when the module is on).
     dispatch_location_id: int | None = None
+    # An EMI (finance) sale (warehouse dispatch, stage 5B).
+    is_finance_sale: bool = False
+    financier_id: int | None = None
+    loan_ref: str | None = None
+    finance_amount: Decimal | None = None
+    down_payment: Decimal | None = None
 
 
 def _customer_snapshot(customer: Customer) -> dict:
@@ -105,6 +111,7 @@ def create_sales_document(tenant, user, data: SalesDocInput) -> SalesDocument:
                          is_intra_state=is_intra, charge_gst=charge_gst, price_includes_tax=line.price_includes_tax)
         computed.append({**c, "input": line})
     totals = compute_invoice_totals(computed)
+    finance = _finance(tenant, data, totals["grand_total"]) if warehouse is not None and data.is_finance_sale else {}
     series = get_or_create_series(tenant.id, gstin.id, SALES_DOCUMENT_SERIES[data.kind], financial_year_for(data.doc_date))
     doc = SalesDocument(
         tenant_id=tenant.id, kind=data.kind, gstin_id=gstin.id, invoice_series_id=series.id,
@@ -113,7 +120,7 @@ def create_sales_document(tenant, user, data: SalesDocInput) -> SalesDocument:
         valid_until=data.valid_until, invoice_document_type=data.invoice_document_type,
         challan_purpose=data.challan_purpose if data.kind == SalesDocumentKind.DELIVERY_CHALLAN else None,
         status=SalesDocumentStatus.OPEN, notes=(data.notes or "").strip() or None,
-        terms=(data.terms or "").strip() or None, created_by_id=user.id, **totals,
+        terms=(data.terms or "").strip() or None, created_by_id=user.id, **totals, **finance,
     )
     for order, item in enumerate(computed):
         li = item["input"]
@@ -132,6 +139,28 @@ def create_sales_document(tenant, user, data: SalesDocInput) -> SalesDocument:
         except dispatch.DispatchError as exc:
             raise SalesError(exc.message)
     return doc
+
+
+def _finance(tenant, data: SalesDocInput, total) -> dict:
+    """An EMI sale's split: what the financier pays (finance amount) and what
+    the customer pays (down payment) - together the order's total."""
+    from app.models.warehouse import Financier
+
+    financier = (Financier.query.filter_by(id=data.financier_id, tenant_id=tenant.id, is_active=True).first()
+                 if data.financier_id else None)
+    if financier is None:
+        raise SalesError("Pick the financier (Bajaj Finserv, HDB...) for this EMI sale.")
+    total = Decimal(total)
+    finance = Decimal(data.finance_amount or 0)
+    if finance <= 0 or finance > total:
+        raise SalesError(f"The finance amount must be more than 0 and at most the order total (Rs. {total:.2f}).")
+    down = Decimal(data.down_payment) if data.down_payment not in (None, "") else total - finance
+    if abs(down + finance - total) > Decimal("1.00"):
+        raise SalesError(f"Down payment Rs. {down:.2f} + finance Rs. {finance:.2f} should make the order total "
+                         f"Rs. {total:.2f}.")
+    return {"is_finance_sale": True, "financier_id": financier.id,
+            "loan_ref": (data.loan_ref or "").strip()[:60] or None, "finance_amount": finance,
+            "down_payment": total - finance}
 
 
 def lines_of(doc_lines) -> list[LineInput]:
@@ -212,6 +241,8 @@ def convert_picked_order(tenant, user, doc: SalesDocument, invoice_date: date | 
             gstin_id=doc.gstin_id, document_type=doc.invoice_document_type, customer_id=doc.customer_id,
             place_of_supply_state_code=doc.place_of_supply_state_code, invoice_date=invoice_date or date.today(),
             notes=doc.notes, lines=lines, dispatch_location_id=doc.dispatch_location_id,
+            financier_id=doc.financier_id if doc.is_finance_sale else None,
+            finance_amount=doc.finance_amount if doc.is_finance_sale else None, loan_ref=doc.loan_ref,
         ))
     except InvoiceValidationError as exc:
         raise SalesError(exc.message)

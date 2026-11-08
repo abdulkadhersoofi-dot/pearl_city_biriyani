@@ -806,6 +806,13 @@ this list is just the index.
   then billed) and count mode in `app/warehouse/receiving.py`; reports in
   `app/warehouse/reports.py`. Pushes need `scripts/gcp/warehouse_push_setup.sh`
   once and `warehouse-push` in OPTIONAL_SECRETS.
+  Stage 5B (EMI sales, `app/warehouse/emi.py`): finance orders ring first and
+  are *locked* (EMI-HOLD bin) instead of confirmed; the showroom invoices with
+  the locked serials (finance split on the invoice; the financier's customer
+  account owes its share); every invoiced order gets a delivery check; a swap
+  needs approval and keeps the invoice (recorded on the slip - owner's choice);
+  racks (bin_code), showroom serial choice ordered EMI READY -> racked, and
+  financier settlement with payout import.
 
 ## 5. Chronological development history (this session)
 

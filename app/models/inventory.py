@@ -176,6 +176,9 @@ class ProductSerial(db.Model, TenantScopedMixin, TimestampMixin):
     # Scanned in the warehouse though it was never entered in ARFA (the product
     # matched) - listed for the owner to check.
     added_at_pick = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
+    # The rack it sits on at its location ("C3", or EMI-HOLD / EMI-READY) -
+    # set by putaway and Move in the ARFA Warehouse app.
+    bin_code = db.Column(db.String(32), index=True)
 
     product = db.relationship("Product")
     location = db.relationship("StockLocation")

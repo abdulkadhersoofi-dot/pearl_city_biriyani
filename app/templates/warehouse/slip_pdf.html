@@ -51,10 +51,12 @@
     {% for l in doc.lines %}{% set p = progress[l.id] %}
       <tr><td>{{ loop.index }}</td><td>{{ l.description }}{% if l.product and l.product.model_no %}<br><span class="muted">Model {{ l.product.model_no }}</span>{% endif %}</td>
         <td class="num">{{ l.qty|qty }} {{ l.unit }}</td>
-        <td>{% for s in p.serials %}<span class="serial">{{ s }}</span>{% if not loop.last %}<br>{% endif %}{% endfor %}</td></tr>
+        <td>{% for s in p.serials %}{% set sw = swaps.get(s) %}{% if sw %}<span class="serial">{{ sw.new_serial.serial_no }}</span> <span class="muted">(in place of {{ s }} on the invoice - {{ sw.reason }})</span>{% else %}<span class="serial">{{ s }}</span>{% endif %}{% if not loop.last %}<br>{% endif %}{% endfor %}</td></tr>
     {% endfor %}
     </tbody>
   </table>
+  {% if swaps %}<p><strong>Unit swapped at dispatch:</strong> {% for old, sw in swaps.items() %}{{ old }} → {{ sw.new_serial.serial_no }} ({{ sw.reason }}{% if sw.decided_by %}, approved by {{ sw.decided_by.name }}{% endif %}){% if not loop.last %}; {% endif %}{% endfor %}. The invoice is unchanged.</p>{% endif %}
+  {% if doc.is_finance_sale and doc.financier %}<p>Financed by <strong>{{ doc.financier.name }}</strong>{% if doc.loan_ref %}, loan ref {{ doc.loan_ref }}{% endif %}.</p>{% endif %}
   <p class="muted">Received the goods above in good condition, with the serial numbers listed.</p>
   <div class="signs"><div>Customer's signature</div><div>Driver's name and signature</div><div>For {{ firm_name }}</div></div>
 </body>

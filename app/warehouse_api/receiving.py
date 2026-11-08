@@ -88,7 +88,7 @@ def receive_unit(receipt_id, line_id):
     if line is None or line.order_id != r.purchase_order_id:
         raise _ApiAbort("That line isn't on this order.", 404)
     unit = receiving.receive_unit(r, line, g.wh_login, str(body.get("serial_no") or ""), _method(body.get("method")),
-                                  str(body.get("client_unit_id") or ""))
+                                  str(body.get("client_unit_id") or ""), rack=str(body.get("rack") or ""))
     db.session.commit()
     counted = receiving.received_counts(r)
     return jsonify({"unit": {"id": unit.id, "serial_no": unit.serial_no, "line_id": unit.order_line_id},

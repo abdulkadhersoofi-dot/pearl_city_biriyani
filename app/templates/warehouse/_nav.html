@@ -1,8 +1,10 @@
 <nav class="subnav">
   <a href="{{ url_for('warehouse.queue') }}" class="{{ 'active' if request.endpoint in ('warehouse.queue', 'warehouse.order') }}">Ready to invoice</a>
   <a href="{{ url_for('warehouse.receipts') }}" class="{{ 'active' if request.endpoint and request.endpoint.startswith('warehouse.receipt') }}">Receiving</a>
+  <a href="{{ url_for('warehouse.racks') }}" class="{{ 'active' if request.endpoint == 'warehouse.racks' }}">Racks</a>
   {% if current_user.is_client_admin %}
   <a href="{{ url_for('warehouse.logins') }}" class="{{ 'active' if request.endpoint == 'warehouse.logins' }}">App logins</a>
+  <a href="{{ url_for('warehouse.financiers') }}" class="{{ 'active' if request.endpoint in ('warehouse.financiers', 'warehouse.settlement', 'warehouse.payouts') }}">Financiers</a>
   <a href="{{ url_for('warehouse.reports') }}" class="{{ 'active' if request.endpoint and request.endpoint.startswith('warehouse.report') }}">Reports</a>
   {% endif %}
 </nav>

@@ -2,15 +2,18 @@
 {% set st = doc.dispatch_status.value %}
 {% set done = namespace(n=0, total=0) %}
 {% for l in doc.lines %}{% set done.n = done.n + progress[l.id].picked %}{% set done.total = done.total + progress[l.id].qty %}{% endfor %}
-<div class="card mb-16 dispatch-card dispatch-{{ st }}">
+<div class="card mb-16 dispatch-card dispatch-{{ st }}{{ ' emi-card' if doc.is_finance_sale }}">
   <div class="row gap-10 items-center flex-wrap">
     <i data-lucide="truck" class="icon"></i>
     <strong>
       {% if doc.status.value == 'cancelled' %}Cancelled - nothing is held at {{ doc.dispatch_location.name if doc.dispatch_location else 'the warehouse' }}
       {% elif st == 'to_pick' %}Waiting at {{ doc.dispatch_location.name }}
       {% elif st == 'picking' %}Picking: {{ doc.claimed_by.name if doc.claimed_by else 'a picker' }} ({{ done.n }}/{{ done.total }}) at {{ doc.dispatch_location.name }}
+      {% elif st == 'picked' and doc.is_finance_sale and not doc.converted_invoice_id %}Locked for EMI at {{ doc.dispatch_location.name }}: {% for l in doc.lines %}{% for s in progress[l.id].serials %}{{ l.description }} - SN {{ s }}{% if not loop.last %}, {% endif %}{% endfor %}{% if not loop.last and progress[l.id].serials %}; {% endif %}{% endfor %}
+      {% elif st == 'picked' and doc.converted_invoice_id %}Invoiced {{ doc.converted_invoice.invoice_number }} - waiting for the delivery check at {{ doc.dispatch_location.name }}
+      {% elif st == 'delivered' %}Delivered from {{ doc.dispatch_location.name }}{% if doc.delivered_at %} - {{ doc.delivered_at|ist('%d %b %I:%M %p') }}{% endif %}
       {% elif st == 'picked' %}Picked - at {{ doc.dispatch_location.name }} for invoice{% if doc.picked_confirmed_by %} (by {{ doc.picked_confirmed_by.name }}, {{ doc.picked_confirmed_at|ist('%d %b %I:%M %p') }}){% endif %}
-      {% elif st == 'invoiced' %}Invoiced {{ doc.converted_invoice.invoice_number if doc.converted_invoice else '' }} at {{ doc.dispatch_location.name }}
+      {% elif st == 'invoiced' %}Invoiced {{ doc.converted_invoice.invoice_number if doc.converted_invoice else '' }} - waiting for the delivery check at {{ doc.dispatch_location.name }}
       {% endif %}
     </strong>
   </div>
@@ -24,6 +27,10 @@
     <button class="btn btn-secondary">Move order</button>
   </form>
   <p class="text-muted small-note mb-0">Every picker at the warehouse has it on the ARFA Warehouse app. Once one starts picking it, the warehouse can't change.</p>
+  {% elif pending_swaps %}
+  <p class="field-error-msg mb-0">The warehouse wants to swap a unit: {% for sw in pending_swaps %}{{ sw.old_serial.serial_no }} → {{ sw.new_serial.serial_no }} ({{ sw.reason }}){% endfor %}. <a href="{{ url_for('warehouse.order', doc_id=doc.id) }}">Approve or reject</a> - delivery waits.</p>
+  {% elif st == 'picked' and doc.status.value == 'open' and doc.is_finance_sale %}
+  <p class="text-muted small-note mb-0">Make the invoice below - the serials are fixed by what the warehouse locked.</p>
   {% elif st == 'picked' and doc.status.value == 'open' %}
   <p class="text-muted small-note mb-0">Every unit is scanned. The warehouse computer makes the invoice{% if current_user.is_client_admin %} - or convert it here{% endif %}.</p>
   {% endif %}

@@ -18,6 +18,11 @@ invoice from the scanned serials.
   - WarehouseReceipt / ReceivedUnit: a purchase order received at a
     warehouse, unit by unit (Receive mode).
   - StockCount / StockCountScan: count mode - every serial on the floor.
+  - Financier (EMI sales, stage 5B): Bajaj Finserv, HDB... - each with the
+    customer account its share of a financed invoice is due on.
+  - DeliveryScan / SerialSwap: at dispatch every unit is scanned again and
+    must be the invoiced serial; a replacement needs the owner's approval
+    and is then recorded on the delivery slip (the invoice stays).
 """
 
 import enum
@@ -34,8 +39,9 @@ _hasher = PasswordHasher()
 class DispatchStatus(str, enum.Enum):
     TO_PICK = "to_pick"      # waiting in the warehouse's pipeline
     PICKING = "picking"      # claimed by a picker
-    PICKED = "picked"        # every unit scanned, confirmed - at the warehouse computer
+    PICKED = "picked"        # every unit scanned, confirmed (an EMI sale: locked) - waiting for its invoice
     INVOICED = "invoiced"
+    DELIVERED = "delivered"  # every unit scanned again at dispatch
 
 
 DISPATCH_STATUS_LABELS = {
@@ -43,7 +49,12 @@ DISPATCH_STATUS_LABELS = {
     DispatchStatus.PICKING: "Picking",
     DispatchStatus.PICKED: "Picked - at the warehouse for invoice",
     DispatchStatus.INVOICED: "Invoiced",
+    DispatchStatus.DELIVERED: "Delivered",
 }
+
+EMI_HOLD = "EMI-HOLD"     # the bin a unit locked for an EMI sale waits in
+EMI_READY = "EMI-READY"   # a few units of fast sellers kept by the door for the showroom to pick
+RACK_PREFIX = "RACK:"     # what a printed rack label's barcode carries
 
 # Statuses whose quantity is held at the warehouse (reserved).
 HOLDING = (DispatchStatus.TO_PICK, DispatchStatus.PICKING, DispatchStatus.PICKED)
@@ -54,6 +65,7 @@ class PickMethod(str, enum.Enum):
     PHOTO = "photo"      # on-device text reading, or ARFA's label reader
     MANUAL = "manual"
     SCANNER = "scanner"  # a rugged scanner phone's own scanner
+    SHOWROOM = "showroom"  # chosen at the showroom (the warehouse couldn't pick)
 
 
 class PickResult(str, enum.Enum):
@@ -265,6 +277,7 @@ class ReceivedUnit(db.Model, TenantScopedMixin):
     photo_id = db.Column(db.Integer, db.ForeignKey("uploaded_images.id", name="fk_received_units_photo"))
     login_id = db.Column(db.Integer, db.ForeignKey("warehouse_logins.id", name="fk_received_units_login"))
     client_unit_id = db.Column(db.String(64))
+    bin_code = db.Column(db.String(32))      # the rack it was put on (putaway)
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow)
 
     login = db.relationship("WarehouseLogin")
@@ -302,3 +315,74 @@ class StockCountScan(db.Model, TenantScopedMixin):
     login_id = db.Column(db.Integer, db.ForeignKey("warehouse_logins.id", name="fk_stock_count_scans_login"))
     client_scan_id = db.Column(db.String(64))
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow)
+
+
+class Financier(db.Model, TenantScopedMixin, TimestampMixin):
+    """Who finances an EMI sale. Its share of each financed invoice is due on
+    its own customer account (customer_id) - the customer owes only the down
+    payment. Bajaj Finserv and HDB are offered as suggestions, never fixed."""
+
+    __tablename__ = "financiers"
+    __table_args__ = (db.UniqueConstraint("tenant_id", "name", name="uq_financiers_tenant_name"),)
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(120), nullable=False)
+    short_code = db.Column(db.String(20))
+    customer_id = db.Column(db.Integer, db.ForeignKey("customers.id", name="fk_financiers_customer"), nullable=False)
+    is_active = db.Column(db.Boolean, nullable=False, default=True, server_default=db.true())
+
+    customer = db.relationship("Customer")
+
+
+class DeliveryScan(db.Model, TenantScopedMixin):
+    """A unit scanned at dispatch: ok when it is the invoiced serial."""
+
+    __tablename__ = "delivery_scans"
+    __table_args__ = (db.UniqueConstraint("tenant_id", "client_scan_id", name="uq_delivery_scans_tenant_client"),)
+
+    id = db.Column(db.Integer, primary_key=True)
+    sales_document_id = db.Column(db.Integer, db.ForeignKey("sales_documents.id", name="fk_delivery_scans_doc"),
+                                  nullable=False, index=True)
+    sales_line_id = db.Column(db.Integer, db.ForeignKey("sales_document_lines.id", name="fk_delivery_scans_line"))
+    serial_id = db.Column(db.Integer, db.ForeignKey("product_serials.id", name="fk_delivery_scans_serial"))
+    serial_no = db.Column(db.String(64))
+    ok = db.Column(db.Boolean, nullable=False, default=False)
+    login_id = db.Column(db.Integer, db.ForeignKey("warehouse_logins.id", name="fk_delivery_scans_login"))
+    client_scan_id = db.Column(db.String(64))
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow)
+
+    login = db.relationship("WarehouseLogin")
+
+
+class SwapStatus(str, enum.Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+
+class SerialSwap(db.Model, TenantScopedMixin, TimestampMixin):
+    """A unit replaced at dispatch (box damaged, unit faulty). Approved by the
+    owner: the invoice stays as issued; the old serial goes back in stock,
+    the new one is sold, and the delivery slip records the swap."""
+
+    __tablename__ = "serial_swaps"
+
+    id = db.Column(db.Integer, primary_key=True)
+    sales_document_id = db.Column(db.Integer, db.ForeignKey("sales_documents.id", name="fk_serial_swaps_doc"),
+                                  nullable=False, index=True)
+    sales_line_id = db.Column(db.Integer, db.ForeignKey("sales_document_lines.id", name="fk_serial_swaps_line"),
+                              nullable=False)
+    old_serial_id = db.Column(db.Integer, db.ForeignKey("product_serials.id", name="fk_serial_swaps_old"), nullable=False)
+    new_serial_id = db.Column(db.Integer, db.ForeignKey("product_serials.id", name="fk_serial_swaps_new"), nullable=False)
+    reason = db.Column(db.String(255), nullable=False)
+    status = db.Column(db.Enum(SwapStatus, name="swap_status"), nullable=False, default=SwapStatus.PENDING)
+    requested_by_id = db.Column(db.Integer, db.ForeignKey("warehouse_logins.id", name="fk_serial_swaps_requested_by"))
+    decided_by_id = db.Column(db.Integer, db.ForeignKey("users.id", name="fk_serial_swaps_decided_by"))
+    decided_at = db.Column(db.DateTime(timezone=True))
+    note = db.Column(db.String(255))
+
+    old_serial = db.relationship("ProductSerial", foreign_keys=[old_serial_id])
+    new_serial = db.relationship("ProductSerial", foreign_keys=[new_serial_id])
+    requested_by = db.relationship("WarehouseLogin")
+    decided_by = db.relationship("User")
+    line = db.relationship("SalesDocumentLine")

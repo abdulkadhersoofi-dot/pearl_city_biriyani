@@ -33,7 +33,8 @@ from app.models.mixins import utcnow
 from app.models.product import Product
 from app.models.sales import SalesDocument, SalesDocumentKind, SalesDocumentLine, SalesDocumentStatus
 from app.models.warehouse import (
-    HOLDING, DispatchStatus, PickMethod, PickResult, SerialPick, WarehouseLogin,
+    EMI_HOLD, EMI_READY, HOLDING, RACK_PREFIX, DeliveryScan, DispatchStatus, PickMethod, PickResult, SerialPick,
+    SerialSwap, SwapStatus, WarehouseLogin,
 )
 from app.warehouse import notify
 
@@ -174,6 +175,8 @@ def start(tenant, doc: SalesDocument, location: StockLocation) -> None:
     doc.dispatch_location_id = location.id
     doc.dispatch_status = DispatchStatus.TO_PICK
     doc.dispatch_activity_at = utcnow()
+    if doc.is_finance_sale:
+        doc.priority = "high"
     db.session.flush()
     notify.new_order(doc, location, _branch_label(doc))
 
@@ -243,6 +246,8 @@ def _undo(pick: SerialPick, reason: str) -> None:
         unit.picked_by_id = None
         unit.picked_at = None
         unit.pick_photo_id = None
+        if unit.bin_code == EMI_HOLD:
+            unit.bin_code = None
 
 
 def good_picks(doc: SalesDocument) -> list[SerialPick]:
@@ -253,8 +258,8 @@ def good_picks(doc: SalesDocument) -> list[SerialPick]:
 
 def release(doc: SalesDocument, reason: str) -> None:
     """Back to the pipeline: the claim is dropped and every scan undone."""
-    if doc.dispatch_status not in (DispatchStatus.PICKING, DispatchStatus.PICKED):
-        raise DispatchError("This order isn't being picked.", 409)
+    if doc.dispatch_status not in (DispatchStatus.PICKING, DispatchStatus.PICKED) or doc.converted_invoice_id:
+        raise DispatchError("This order isn't being picked (it may be invoiced already).", 409)
     for pick in good_picks(doc):
         _undo(pick, reason)
     doc.claimed_by_id = None
@@ -496,7 +501,7 @@ def message_for(row: SerialPick) -> str:
 
 def undo(pick_row: SerialPick, reason: str = "undone by picker") -> None:
     doc = pick_row.line.document
-    if doc.dispatch_status == DispatchStatus.INVOICED or doc.status != SalesDocumentStatus.OPEN:
+    if doc.dispatch_status in (DispatchStatus.INVOICED, DispatchStatus.DELIVERED) or doc.status != SalesDocumentStatus.OPEN:
         raise DispatchError("This order is already invoiced - the pick can't be undone.", 409)
     if pick_row.undone_at is not None:
         return
@@ -517,12 +522,23 @@ def confirm(doc: SalesDocument, login: WarehouseLogin) -> None:
     missing = sum(max(0, progress[l.id]["qty"] - progress[l.id]["picked"]) for l in doc.lines if needs_scan(l))
     if missing:
         raise DispatchError(f"{missing} unit{'s' if missing != 1 else ''} still to scan.", 409, missing=missing)
+    _mark_picked(doc, login)
+    notify.refresh(doc, doc.dispatch_location_id, "locked" if doc.is_finance_sale else "picked")
+
+
+def _mark_picked(doc: SalesDocument, login: WarehouseLogin | None) -> None:
+    """Every unit picked: an ordinary order goes to the warehouse computer; an
+    EMI sale is *locked* - its units wait in the EMI HOLD bin and the showroom
+    invoices with their serials."""
     doc.dispatch_status = DispatchStatus.PICKED
     doc.picked_confirmed_at = utcnow()
-    doc.picked_confirmed_by_id = login.id
+    doc.picked_confirmed_by_id = login.id if login is not None else None
     doc.dispatch_activity_at = utcnow()
+    if doc.is_finance_sale:
+        for pick in good_picks(doc):
+            if pick.serial is not None:
+                pick.serial.bin_code = EMI_HOLD
     db.session.flush()
-    notify.refresh(doc, doc.dispatch_location_id, "picked")
 
 
 def short(doc: SalesDocument, line: SalesDocumentLine, login: WarehouseLogin, reason: str) -> str:
@@ -554,6 +570,254 @@ def allowed_serials(doc: SalesDocument, line: SalesDocumentLine) -> tuple[list[s
 
 
 def mark_invoiced(doc: SalesDocument, invoice) -> None:
-    doc.dispatch_status = DispatchStatus.INVOICED
+    """Invoiced: at the warehouse computer (INVOICED), or an EMI sale at the
+    showroom (stays PICKED, invoiced_at_showroom) - either way next is the
+    delivery check."""
+    if doc.is_finance_sale:
+        doc.invoiced_at_showroom = True
+    else:
+        doc.dispatch_status = DispatchStatus.INVOICED
     doc.dispatch_activity_at = utcnow()
     db.session.flush()
+    notify.refresh(doc, doc.dispatch_location_id, "invoiced")
+
+
+def to_deliver(doc: SalesDocument) -> bool:
+    from app.models.invoice import InvoiceStatus
+
+    return (doc.converted_invoice_id is not None and doc.dispatch_location_id is not None
+            and doc.dispatch_status in (DispatchStatus.PICKED, DispatchStatus.INVOICED)
+            and doc.converted_invoice is not None and doc.converted_invoice.status == InvoiceStatus.ISSUED)
+
+
+# --- racks (bins) ------------------------------------------------------------------------------------
+
+def clean_bin(text: str) -> str:
+    """A rack code from a label (RACK:C3) or typed (c3) -> "C3"."""
+    code = (text or "").strip().upper()
+    if code.startswith(RACK_PREFIX):
+        code = code[len(RACK_PREFIX):]
+    code = re.sub(r"\s+", "", code)[:32]
+    if not code or not re.fullmatch(r"[A-Z0-9][A-Z0-9._/-]*", code):
+        raise DispatchError("That isn't a rack label.")
+    return code
+
+
+def move_to_bin(tenant_id: int, location_ids, text: str, bin_code: str) -> ProductSerial:
+    """Move: a unit put on a rack (or into EMI READY). Only a unit in stock at
+    one of this login's warehouses; a unit locked for EMI stays in EMI HOLD."""
+    bin_code = clean_bin(bin_code)
+    if bin_code == EMI_HOLD:
+        raise DispatchError("Units go into EMI HOLD only by being locked for an EMI sale.")
+    unit = find_serial(tenant_id, text)
+    if unit is None:
+        raise DispatchError(f"{normalise(text)} isn't in ARFA.", 404)
+    if unit.location_id not in set(location_ids):
+        raise DispatchError(f"{unit.serial_no} isn't at your warehouse.", 409)
+    if unit.status != SerialStatus.IN_STOCK:
+        raise DispatchError(f"{unit.serial_no} is {unit.status.value.replace('_', ' ')} - it can't be moved.", 409)
+    unit.bin_code = bin_code
+    db.session.flush()
+    return unit
+
+
+def bin_rank(unit: ProductSerial) -> int:
+    """The showroom's serial list: EMI READY first, then units on a rack,
+    then units with no rack."""
+    if unit.bin_code == EMI_READY:
+        return 0
+    if unit.bin_code:
+        return 1
+    return 2
+
+
+def showroom_choices(doc: SalesDocument, line: SalesDocumentLine, show_all: bool = False) -> list[ProductSerial]:
+    """Serials the showroom may choose for a line when the warehouse can't pick:
+    in stock at the order's warehouse, EMI READY first, then racked; units
+    with no rack only with show_all (nobody could find them)."""
+    if line.product is None or not line.product.track_serial:
+        return []
+    units = (ProductSerial.query.filter(ProductSerial.tenant_id == doc.tenant_id,
+                                        ProductSerial.product_id == line.product_id,
+                                        ProductSerial.status == SerialStatus.IN_STOCK,
+                                        ProductSerial.location_id == doc.dispatch_location_id)
+             .order_by(ProductSerial.serial_no).limit(ALLOWED_SERIALS_CAP).all())
+    units.sort(key=lambda u: (bin_rank(u), u.bin_code or "", u.serial_no))
+    return [u for u in units if show_all or bin_rank(u) < 2]
+
+
+def showroom_pick(doc: SalesDocument, chosen: dict[int, list[str]], user) -> None:
+    """The showroom chooses the serials itself (warehouse closed, no signal, a
+    rush). Each is checked like a scan and held for the order; the warehouse
+    then fetches exactly those (the app shows their racks) and the delivery
+    check makes sure they are the ones that leave."""
+    if doc.status != SalesDocumentStatus.OPEN or doc.dispatch_status != DispatchStatus.TO_PICK \
+            or doc.claimed_by_id is not None:
+        raise DispatchError("The warehouse is already picking this order - choose serials there.", 409)
+    lines = {l.id: l for l in doc.lines}
+    for line_id, serials in chosen.items():
+        line = lines.get(line_id)
+        if line is None or not needs_scan(line):
+            raise DispatchError("That line isn't on this order.", 404)
+        serials = [normalise(s) for s in serials if s and s.strip()]
+        qty = int(Decimal(line.qty))
+        if line.product.track_serial and (len(serials) != qty or len(set(serials)) != qty):
+            raise DispatchError(f"{line.description}: choose {qty} different serial{'s' if qty != 1 else ''}.")
+        for no in serials:
+            unit = find_serial(doc.tenant_id, no)
+            if unit is None or unit.product_id != line.product_id:
+                raise DispatchError(f"{line.description}: {no} isn't one of its serials.")
+            if unit.status != SerialStatus.IN_STOCK or unit.location_id != doc.dispatch_location_id:
+                raise DispatchError(f"{line.description}: {no} isn't in stock at {doc.dispatch_location.name}.")
+            unit.status = SerialStatus.PICKED
+            unit.picked_sales_line_id = line.id
+            unit.picked_at = utcnow()
+            db.session.add(SerialPick(tenant_id=doc.tenant_id, sales_document_id=doc.id, sales_line_id=line.id,
+                                      serial_id=unit.id, serial_no=unit.serial_no, raw_text=no,
+                                      method=PickMethod.SHOWROOM, result=PickResult.OK))
+    db.session.flush()
+    if is_complete(doc):
+        _mark_picked(doc, None)
+        notify.refresh(doc, doc.dispatch_location_id, "locked" if doc.is_finance_sale else "picked")
+
+
+# --- the delivery check --------------------------------------------------------------------------------
+
+def invoiced_units(doc: SalesDocument) -> list[ProductSerial]:
+    """The units that must leave with this order: the invoice's serials (after
+    any approved swap)."""
+    if not doc.converted_invoice_id:
+        return []
+    return (ProductSerial.query.filter_by(tenant_id=doc.tenant_id, sold_invoice_id=doc.converted_invoice_id)
+            .order_by(ProductSerial.serial_no).all())
+
+
+def delivered_ids(doc: SalesDocument) -> set[int]:
+    return {s.serial_id for s in DeliveryScan.query.filter_by(sales_document_id=doc.id, ok=True) if s.serial_id}
+
+
+def pending_swaps(doc: SalesDocument) -> list[SerialSwap]:
+    return SerialSwap.query.filter_by(sales_document_id=doc.id, status=SwapStatus.PENDING).all()
+
+
+def delivery_scan(doc: SalesDocument, login: WarehouseLogin, text: str, client_scan_id: str | None = None
+                  ) -> tuple[DeliveryScan, str]:
+    """A unit scanned at dispatch. Only an invoiced serial passes - anything
+    else is blocked (and kept): no silent swap."""
+    client_scan_id = (client_scan_id or "").strip()[:64] or None
+    if client_scan_id:
+        seen = DeliveryScan.query.filter_by(tenant_id=doc.tenant_id, client_scan_id=client_scan_id).first()
+        if seen is not None:
+            return seen, ("ok" if seen.ok else "blocked")
+    if not to_deliver(doc):
+        raise DispatchError("This order isn't waiting to be delivered.", 409)
+    serial_no = normalise(text)
+    if not serial_no:
+        raise DispatchError("Nothing was read - scan the label again.")
+    unit = find_serial(doc.tenant_id, serial_no, lock_row=False)
+    expected = {u.id: u for u in invoiced_units(doc)}
+    row = DeliveryScan(tenant_id=doc.tenant_id, sales_document_id=doc.id, serial_no=serial_no, login_id=login.id,
+                       client_scan_id=client_scan_id, serial_id=unit.id if unit else None)
+    if unit is not None and unit.id in expected:
+        row.ok = True
+        row.sales_line_id = unit.picked_sales_line_id
+        message = ("already checked" if unit.id in delivered_ids(doc) else "ok")
+    else:
+        row.ok = False
+        message = "blocked"
+    db.session.add(row)
+    doc.dispatch_activity_at = utcnow()
+    db.session.flush()
+    return row, message
+
+
+def deliver(doc: SalesDocument, login: WarehouseLogin) -> None:
+    if not to_deliver(doc):
+        raise DispatchError("This order isn't waiting to be delivered.", 409)
+    if pending_swaps(doc):
+        raise DispatchError("A swap is waiting for the owner's approval.", 409)
+    left = [u.serial_no for u in invoiced_units(doc) if u.id not in delivered_ids(doc)]
+    if left:
+        raise DispatchError(f"Scan {len(left)} more: {', '.join(left[:5])}.", 409, missing=left)
+    doc.dispatch_status = DispatchStatus.DELIVERED
+    doc.delivered_at = utcnow()
+    doc.delivered_by_id = login.id
+    db.session.flush()
+    notify.refresh(doc, doc.dispatch_location_id, "delivered")
+
+
+def request_swap(doc: SalesDocument, login: WarehouseLogin, old_text: str, new_text: str, reason: str) -> SerialSwap:
+    """The box is damaged / the unit faulty: a replacement, held for the order
+    until the owner approves (or rejects) the swap."""
+    if not to_deliver(doc):
+        raise DispatchError("This order isn't waiting to be delivered.", 409)
+    reason = (reason or "").strip()[:255]
+    if not reason:
+        raise DispatchError("Say why the unit is being swapped.")
+    expected = {u.serial_no.upper(): u for u in invoiced_units(doc)}
+    old = expected.get(normalise(old_text))
+    if old is None:
+        raise DispatchError(f"{normalise(old_text)} isn't on this order's invoice.", 404)
+    if any(s.old_serial_id == old.id for s in pending_swaps(doc)):
+        raise DispatchError(f"A swap for {old.serial_no} is already waiting.", 409)
+    new = find_serial(doc.tenant_id, new_text)
+    if new is None:
+        raise DispatchError(f"{normalise(new_text)} isn't in ARFA.", 404)
+    if new.product_id != old.product_id:
+        raise DispatchError(f"{new.serial_no} is {new.product.name}, not {old.product.name}.")
+    if new.status != SerialStatus.IN_STOCK or new.location_id != doc.dispatch_location_id:
+        raise DispatchError(f"{new.serial_no} isn't in stock at {doc.dispatch_location.name}.", 409)
+    new.status = SerialStatus.PICKED              # held for the swap
+    new.picked_sales_line_id = old.picked_sales_line_id
+    new.picked_by_id = login.id
+    new.picked_at = utcnow()
+    swap = SerialSwap(tenant_id=doc.tenant_id, sales_document_id=doc.id, sales_line_id=old.picked_sales_line_id,
+                      old_serial_id=old.id, new_serial_id=new.id, reason=reason, requested_by_id=login.id)
+    db.session.add(swap)
+    db.session.flush()
+    return swap
+
+
+def decide_swap(swap: SerialSwap, user, approve: bool, note: str = "") -> None:
+    """The owner's decision. Approved: the invoice stays as issued; the old
+    serial goes back in stock at the warehouse, the new one is sold on the
+    same invoice line, and the delivery slip records the swap."""
+    if swap.status != SwapStatus.PENDING:
+        raise DispatchError("This swap is already decided.", 409)
+    old, new = swap.old_serial, swap.new_serial
+    swap.decided_by_id = user.id
+    swap.decided_at = utcnow()
+    swap.note = (note or "").strip()[:255] or None
+    if not approve:
+        swap.status = SwapStatus.REJECTED
+        if new.status == SerialStatus.PICKED:
+            new.status = SerialStatus.IN_STOCK
+            new.picked_sales_line_id = new.picked_by_id = new.picked_at = None
+        db.session.flush()
+        return
+    swap.status = SwapStatus.APPROVED
+    from app.models.inventory import MovementType
+
+    location_id = old.location_id or new.location_id
+    cost = ledger.issue_cost(old.product)
+    new.status = SerialStatus.SOLD
+    new.sold_at = utcnow()
+    new.sold_invoice_id, new.sold_invoice_line_id = old.sold_invoice_id, old.sold_invoice_line_id
+    new.bin_code = None
+    old.status = SerialStatus.IN_STOCK
+    old.location_id = location_id
+    old.sold_at = None
+    old.sold_invoice_id = old.sold_invoice_line_id = None
+    old.picked_sales_line_id = old.picked_by_id = old.picked_at = None
+    old.bin_code = None
+    ledger.post(swap.tenant_id, old.product_id, location_id, 1, MovementType.SALE_RETURN, "serial_swap", swap.id,
+                unit_cost=cost, serial_id=old.id, user_id=user.id, note=f"Swapped out: {swap.reason}"[:255])
+    ledger.post(swap.tenant_id, new.product_id, location_id, -1, MovementType.SALE, "serial_swap", swap.id,
+                unit_cost=cost, serial_id=new.id, user_id=user.id, note=f"Swapped in for {old.serial_no}"[:255])
+    db.session.flush()
+
+
+def swaps_for_slip(doc: SalesDocument) -> dict[str, SerialSwap]:
+    """Approved swaps by the invoiced (old) serial - printed on the slip."""
+    return {s.old_serial.serial_no: s for s in
+            SerialSwap.query.filter_by(sales_document_id=doc.id, status=SwapStatus.APPROVED).all()}

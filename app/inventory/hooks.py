@@ -146,6 +146,21 @@ def undo_sale(tenant_id: int, source_type: str, source_id: int, user_id: int | N
     ledger.reverse_source(tenant_id, source_type, source_id, user_id, note)
     # Serial/IMEI units an invoice sold (second-hand goods) go back in stock too.
     if source_type == "invoice":
+        # A unit swapped at dispatch (warehouse dispatch, stage 5B): undo the swap's
+        # own movements, and whatever unit the invoice now sells goes back too.
+        from app.models.sales import SalesDocument
+        from app.models.warehouse import SerialSwap, SwapStatus
+
+        order = SalesDocument.query.filter_by(tenant_id=tenant_id, converted_invoice_id=source_id).first()
+        if order is not None:
+            for swap in SerialSwap.query.filter_by(sales_document_id=order.id, status=SwapStatus.APPROVED).all():
+                ledger.reverse_source(tenant_id, "serial_swap", swap.id, user_id, note)
+        for unit in ProductSerial.query.filter_by(tenant_id=tenant_id, sold_invoice_id=source_id).all():
+            if unit.status == SerialStatus.SOLD:
+                unit.status = SerialStatus.IN_STOCK
+                unit.sold_at = None
+                unit.sold_invoice_id = unit.sold_invoice_line_id = None
+                unit.picked_sales_line_id = unit.picked_by_id = unit.picked_at = None
         sold_ids = {m.serial_id for m in StockMovement.query.filter_by(
             tenant_id=tenant_id, source_type=source_type, source_id=source_id, reversal_of_id=None)
             if m.serial_id and m.qty < 0}

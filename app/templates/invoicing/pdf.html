@@ -131,6 +131,7 @@
 
   {% endif %}
 
+  {% if invoice.financier_id and invoice.financier %}<p><strong>Financed by:</strong> {{ invoice.financier.name }}{% if invoice.loan_ref %}, Loan ref: {{ invoice.loan_ref }}{% endif %} - finance amount Rs. {{ '%.2f'|format(invoice.finance_amount) }}, paid by the customer Rs. {{ '%.2f'|format(invoice.grand_total - invoice.finance_amount) }}.</p>{% endif %}
   {% if invoice.notes %}<p>{{ invoice.notes }}</p>{% endif %}
 
   {% with doc=invoice %}{% include "einvoice/_irn_print.html" %}{% endwith %}

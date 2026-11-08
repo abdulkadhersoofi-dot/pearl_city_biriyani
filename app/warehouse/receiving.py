@@ -80,7 +80,7 @@ def received_counts(receipt: WarehouseReceipt) -> dict[int, int]:
 
 
 def receive_unit(receipt: WarehouseReceipt, line, login, text: str, method: PickMethod,
-                 client_unit_id: str | None = None) -> ReceivedUnit:
+                 client_unit_id: str | None = None, rack: str = "") -> ReceivedUnit:
     client_unit_id = (client_unit_id or "").strip()[:64] or None
     if client_unit_id:
         seen = ReceivedUnit.query.filter_by(tenant_id=receipt.tenant_id, client_unit_id=client_unit_id).first()
@@ -106,9 +106,15 @@ def receive_unit(receipt: WarehouseReceipt, line, login, text: str, method: Pick
         raise ReceiveError(f"{serial} is already scanned on {elsewhere.receipt.purchase_order.number}.", 409)
     if received_counts(receipt).get(line.id, 0) >= int(Decimal(line.qty)):
         raise ReceiveError(f"All {int(Decimal(line.qty))} of {line.product.name} are scanned.", 409)
+    bin_code = None
+    if rack:
+        try:
+            bin_code = dispatch.clean_bin(rack)
+        except dispatch.DispatchError as exc:
+            raise ReceiveError(exc.message)
     unit = ReceivedUnit(tenant_id=receipt.tenant_id, receipt_id=receipt.id, order_line_id=line.id,
                         product_id=line.product_id, serial_no=serial, raw_text=(text or "")[:200], method=method,
-                        login_id=login.id if login else None, client_unit_id=client_unit_id)
+                        login_id=login.id if login else None, client_unit_id=client_unit_id, bin_code=bin_code)
     try:
         with db.session.begin_nested():
             db.session.add(unit)
@@ -138,8 +144,16 @@ def bill_rows(receipt: WarehouseReceipt) -> list[dict]:
 
 
 def mark_billed(receipt: WarehouseReceipt, bill) -> None:
+    """The bill is posted: the receipt is done, and each unit put on a rack
+    while receiving (putaway) carries that rack."""
     receipt.status = ReceiptStatus.DONE
     receipt.purchase_bill_id = bill.id
+    racks = {u.serial_no: u.bin_code for u in receipt.units if u.bin_code}
+    if racks:
+        for unit in ProductSerial.query.filter(ProductSerial.tenant_id == receipt.tenant_id,
+                                               ProductSerial.purchase_bill_id == bill.id).all():
+            if unit.serial_no.upper() in racks:
+                unit.bin_code = racks[unit.serial_no.upper()]
 
 
 def count_result(count: StockCount) -> dict:

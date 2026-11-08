@@ -384,6 +384,11 @@ def _card(doc: SalesDocument, progress: dict | None = None) -> dict:
         "claimed_by": ({"id": doc.claimed_by.id, "name": doc.claimed_by.name} if doc.claimed_by else None),
         "mine": doc.claimed_by_id == me.id,
         "confirmed_at": _iso(doc.picked_confirmed_at),
+        # EMI sale: pinned at the top in red, "customer waiting 6 min"; Confirm reads "Lock for EMI".
+        "emi": bool(doc.is_finance_sale), "priority": doc.priority or "normal",
+        "financier": doc.financier.name if doc.is_finance_sale and doc.financier else None,
+        "invoice": doc.converted_invoice.invoice_number if doc.converted_invoice_id else None,
+        "to_deliver": dispatch.to_deliver(doc),
     }
 
 
@@ -404,15 +409,25 @@ def pipeline():
         order = SalesDocument.claimed_at
     elif tab == "done":
         start = utcnow() - timedelta(hours=24)
-        query = query.filter(SalesDocument.dispatch_status.in_((DispatchStatus.PICKED, DispatchStatus.INVOICED)),
+        query = query.filter(SalesDocument.dispatch_status.in_((DispatchStatus.PICKED, DispatchStatus.INVOICED,
+                                                                DispatchStatus.DELIVERED)),
                              SalesDocument.picked_confirmed_at >= start)
         order = SalesDocument.picked_confirmed_at.desc()
+    elif tab == "deliver":
+        # Invoiced, waiting for the delivery check (the units' racks shown).
+        query = query.filter(SalesDocument.converted_invoice_id.isnot(None),
+                             SalesDocument.dispatch_status.in_((DispatchStatus.PICKED, DispatchStatus.INVOICED)))
+        order = SalesDocument.dispatch_activity_at
     else:
         query = query.filter(SalesDocument.status == SalesDocumentStatus.OPEN,
                              SalesDocument.dispatch_status.in_((DispatchStatus.TO_PICK, DispatchStatus.PICKING)))
-        order = SalesDocument.created_at
+        # EMI sales first - the customer is waiting at the showroom.
+        order = db.case((SalesDocument.priority == "high", 0), else_=1), SalesDocument.created_at
     page = max(1, request.args.get("page", 1, type=int))
-    rows = query.order_by(order, SalesDocument.id).offset((page - 1) * PER_PAGE).limit(PER_PAGE + 1).all()
+    order = order if isinstance(order, tuple) else (order,)
+    rows = query.order_by(*order, SalesDocument.id).offset((page - 1) * PER_PAGE).limit(PER_PAGE + 1).all()
+    if tab == "deliver":
+        rows = [d for d in rows if dispatch.to_deliver(d)]
     return jsonify({"orders": [_card(d) for d in rows[:PER_PAGE]], "page": page, "more": len(rows) > PER_PAGE,
                     "location_id": location_id, "server_time": _iso(utcnow())})
 
@@ -442,11 +457,33 @@ def order_detail(doc_id):
                          "track_serial": bool(product.track_serial)} if product else None),
             "allowed_serials": serials, "truncated": truncated,
             "picks": [_pick_json(p) for p in info["picks"]],
+            "racks": _racks(doc, line),
         })
     out = _card(doc, progress)
     out.update(lines=lines, notes=doc.notes or "", complete=dispatch.is_complete(doc),
                idle_minutes=dispatch.idle_minutes(doc) if doc.dispatch_status == DispatchStatus.PICKING else 0)
+    if dispatch.to_deliver(doc) or doc.dispatch_status == DispatchStatus.DELIVERED:
+        checked = dispatch.delivered_ids(doc)
+        out["deliver"] = [{"serial_no": u.serial_no, "line_id": u.picked_sales_line_id, "rack": u.bin_code or "",
+                           "product": u.product.name if u.product else "", "checked": u.id in checked}
+                          for u in dispatch.invoiced_units(doc)]
+        out["pending_swaps"] = [{"id": sw.id, "old": sw.old_serial.serial_no, "new": sw.new_serial.serial_no,
+                                 "reason": sw.reason} for sw in dispatch.pending_swaps(doc)]
     return jsonify(out)
+
+
+def _racks(doc: SalesDocument, line: SalesDocumentLine) -> list[dict]:
+    """Where this item sits at the warehouse: racks with how many in stock."""
+    if line.product is None or not line.product.track_serial:
+        return []
+    from app.models.inventory import ProductSerial, SerialStatus
+
+    rows = (db.session.query(ProductSerial.bin_code, db.func.count())
+            .filter(ProductSerial.tenant_id == doc.tenant_id, ProductSerial.product_id == line.product_id,
+                    ProductSerial.location_id == doc.dispatch_location_id,
+                    ProductSerial.status == SerialStatus.IN_STOCK, ProductSerial.bin_code.isnot(None))
+            .group_by(ProductSerial.bin_code).order_by(db.func.count().desc()).limit(8).all())
+    return [{"rack": r, "units": n} for r, n in rows]
 
 
 @api.route("/orders/<int:doc_id>/claim", methods=["POST"])
@@ -481,7 +518,9 @@ def confirm(doc_id):
     record_audit(None, "warehouse_order_picked", tenant_id=doc.tenant_id, entity_type="sales_document",
                  entity_id=doc.id, details={"number": doc.number, "picker": g.wh_login.name})
     notify.commit_and_push()
-    return jsonify({**_card(doc), "message": f"Sent to {doc.dispatch_location.name} computer for invoicing."})
+    message = ("Locked for EMI - the units go in the EMI HOLD bin; the showroom makes the invoice now."
+               if doc.is_finance_sale else f"Sent to {doc.dispatch_location.name} computer for invoicing.")
+    return jsonify({**_card(doc), "message": message})
 
 
 @api.route("/orders/<int:doc_id>/short", methods=["POST"])
@@ -609,6 +648,68 @@ def label_extract():
                  entity_id=g.wh_login.id, details={"serial": result["serial_no"], "model_no": result["model_no"]})
     db.session.commit()
     return jsonify(result)
+
+
+# --- the delivery check, swaps, racks (stage 5B) --------------------------------------------------------
+
+@api.route("/orders/<int:doc_id>/deliver-scans", methods=["POST"])
+@signed_in
+def deliver_scan(doc_id):
+    """A unit scanned at dispatch: only an invoiced serial passes."""
+    body = _body()
+    doc = _order(doc_id)
+    row, result = dispatch.delivery_scan(doc, g.wh_login, str(body.get("serial_no") or ""),
+                                         str(body.get("client_scan_id") or ""))
+    if not row.ok:
+        record_audit(None, "warehouse_delivery_blocked", tenant_id=doc.tenant_id, entity_type="sales_document",
+                     entity_id=doc.id, details={"number": doc.number, "serial": row.serial_no, "by": g.wh_login.name})
+    db.session.commit()
+    left = [u.serial_no for u in dispatch.invoiced_units(doc) if u.id not in dispatch.delivered_ids(doc)]
+    message = (f"{row.serial_no} checked." if row.ok else
+               f"BLOCKED: {row.serial_no} isn't the invoiced unit. Scan {', '.join(left[:3]) or 'the invoiced unit'}"
+               " - or ask for a swap if the box is damaged.")
+    return jsonify({"ok": row.ok, "serial_no": row.serial_no, "message": message, "left": left})
+
+
+@api.route("/orders/<int:doc_id>/deliver", methods=["POST"])
+@signed_in
+def deliver(doc_id):
+    doc = _order(doc_id, lock=True)
+    dispatch.deliver(doc, g.wh_login)
+    record_audit(None, "warehouse_order_delivered", tenant_id=doc.tenant_id, entity_type="sales_document",
+                 entity_id=doc.id, details={"number": doc.number, "by": g.wh_login.name})
+    notify.commit_and_push()
+    return jsonify({**_card(doc), "message": f"{doc.number} delivered."})
+
+
+@api.route("/orders/<int:doc_id>/swaps", methods=["POST"])
+@signed_in
+def request_swap(doc_id):
+    """Box damaged / unit faulty: a replacement, waiting for the owner."""
+    body = _body()
+    doc = _order(doc_id, lock=True)
+    swap = dispatch.request_swap(doc, g.wh_login, str(body.get("old_serial") or ""), str(body.get("new_serial") or ""),
+                                 str(body.get("reason") or ""))
+    record_audit(None, "warehouse_swap_requested", tenant_id=doc.tenant_id, entity_type="sales_document",
+                 entity_id=doc.id, details={"number": doc.number, "old": swap.old_serial.serial_no,
+                                            "new": swap.new_serial.serial_no, "reason": swap.reason})
+    db.session.commit()
+    return jsonify({"id": swap.id, "status": swap.status.value,
+                    "message": f"Swap {swap.old_serial.serial_no} → {swap.new_serial.serial_no} sent for approval - "
+                               "delivery waits for the owner."}), 201
+
+
+@api.route("/bins/move", methods=["POST"])
+@signed_in
+def move_to_bin():
+    """Move: a unit put on a rack (scan the rack label, then the units)."""
+    body = _body()
+    unit = dispatch.move_to_bin(g.wh_tenant.id, g.wh_login.location_ids, str(body.get("serial_no") or ""),
+                                str(body.get("rack") or ""))
+    db.session.commit()
+    return jsonify({"serial_no": unit.serial_no, "rack": unit.bin_code,
+                    "product": unit.product.name if unit.product else "",
+                    "message": f"{unit.serial_no} is on {unit.bin_code}."})
 
 
 from app.warehouse_api import receiving  # noqa: E402,F401  (receive and count)

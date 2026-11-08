@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Financiers - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header"><div><h1>Financiers (EMI sales)</h1><p class="text-muted mt-0">Who finances your EMI sales. On a financed invoice the customer owes the down payment and the financier owes the finance amount - each on its own account.</p></div></div>
+{% include "warehouse/_nav.html" %}
+<form method="post" class="card row gap-10 items-end flex-wrap mb-16">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label class="field m-0 grow"><span class="field-label">Name</span><input type="text" name="name" class="field-input" maxlength="120" required placeholder="e.g. TVS Credit"></label>
+  <label class="field m-0"><span class="field-label">Short code</span><input type="text" name="short_code" class="field-input" maxlength="20" placeholder="TVS"></label>
+  <button class="btn btn-primary">Add financier</button>
+</form>
+{% if suggestions %}
+<div class="card mb-16 row gap-10 items-center flex-wrap">
+  <span class="text-muted">Add one of the usual ones:</span>
+  {% for name, code in suggestions %}
+  <form method="post" class="inline"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="name" value="{{ name }}"><input type="hidden" name="short_code" value="{{ code }}"><button class="btn btn-secondary btn-sm">+ {{ name }}</button></form>
+  {% endfor %}
+</div>
+{% endif %}
+<div class="card table-wrap"><table>
+  <thead><tr><th>Financier</th><th>Code</th><th class="num">Due from it</th><th>Status</th><th></th></tr></thead>
+  <tbody>{% for f in rows %}<tr class="{{ 'row-muted' if not f.is_active }}">
+    <td><strong>{{ f.name }}</strong></td><td>{{ f.short_code or '' }}</td><td class="num">{{ due[f.id]|inr }}</td><td>{{ 'Active' if f.is_active else 'Off' }}</td>
+    <td class="nowrap"><a href="{{ url_for('warehouse.settlement', financier_id=f.id) }}" class="btn btn-quiet btn-sm">Settlement</a>
+      <form method="post" action="{{ url_for('warehouse.toggle_financier', financier_id=f.id) }}" class="inline"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-quiet btn-sm">{{ 'Switch off' if f.is_active else 'Switch on' }}</button></form></td></tr>
+  {% else %}<tr><td colspan="5" class="text-muted">No financiers yet.</td></tr>{% endfor %}</tbody>
+</table></div>
+{% endblock %}

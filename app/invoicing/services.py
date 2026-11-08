@@ -61,6 +61,10 @@ class InvoiceInput:
     # Made from a sales order a warehouse picked (app/warehouse): stock and
     # the scanned serials leave from that warehouse, not the main store.
     dispatch_location_id: int | None = None
+    # An EMI sale: this much is due from the financier (app/accounts/receivables.py).
+    financier_id: int | None = None
+    finance_amount: Decimal | None = None
+    loan_ref: str | None = None
 
 
 def _to_decimal(value: str, field_name: str) -> Decimal:
@@ -305,8 +309,13 @@ def create_invoice(tenant: Tenant, created_by, data: InvoiceInput) -> Invoice:
         status=InvoiceStatus.ISSUED,
         notes=data.notes,
         created_by_id=created_by.id,
+        financier_id=data.financier_id if data.finance_amount else None,
+        finance_amount=data.finance_amount or None,
+        loan_ref=data.loan_ref if data.finance_amount else None,
         **totals,
     )
+    if invoice.finance_amount and Decimal(invoice.finance_amount) > Decimal(invoice.grand_total):
+        raise InvoiceValidationError("The finance amount can't be more than the invoice total.")
     db.session.add(invoice)
     db.session.flush()
 

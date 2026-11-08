@@ -1,0 +1,27 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @page { size: A4; margin: 10mm 0 0 0; }
+  body { margin: 0; font-family: Arial, sans-serif; }
+  .sheet { display: flex; flex-wrap: wrap; }
+  .label { width: 105mm; height: 48mm; padding: 4mm 6mm; box-sizing: border-box; text-align: center; border: 0.2mm dashed #bbb; }
+  .code { font-size: 28pt; font-weight: 700; letter-spacing: .04em; }
+  .emi { color: #b3261e; }
+  .bars { height: 18mm; width: 86mm; margin-top: 2mm; }
+  .hint { font-size: 7pt; color: #666; }
+</style>
+</head>
+<body>
+<div class="sheet">
+{% for l in labels %}
+  <div class="label">
+    <div class="code {{ 'emi' if l.code == emi_ready }}">{{ 'EMI READY' if l.code == emi_ready else 'Rack ' ~ l.code }}</div>
+    <img class="bars" src="{{ l.svg }}">
+    <div class="hint">Scan this first, then the boxes you put here (ARFA Warehouse - Receive / Move)</div>
+  </div>
+{% endfor %}
+</div>
+</body>
+</html>

@@ -85,6 +85,25 @@ def _doc(doc_id) -> SalesDocument:
     return doc
 
 
+def _finance_form() -> dict:
+    """An EMI sale's fields from the order form (checked in the service)."""
+    from decimal import Decimal, InvalidOperation
+
+    if not request.form.get("is_finance_sale"):
+        return {}
+
+    def money(key):
+        raw = (request.form.get(key) or "").replace(",", "").strip()
+        try:
+            return Decimal(raw) if raw else None
+        except InvalidOperation:
+            raise SalesError("The finance amount and down payment must be numbers.")
+
+    return {"is_finance_sale": True, "financier_id": request.form.get("financier_id", type=int),
+            "loan_ref": request.form.get("loan_ref"), "finance_amount": money("finance_amount"),
+            "down_payment": money("down_payment")}
+
+
 def _warehouse_context(doc=None):
     """The Warehouse picker: the warehouses, with free quantities for the
     items on the form (filled in by /warehouse/free.json as lines change)."""
@@ -95,7 +114,10 @@ def _warehouse_context(doc=None):
         default = doc.dispatch_location if doc is not None else dispatch.default_warehouse(current_user.tenant_id,
                                                                                             current_user)
         chosen = str(default.id) if default is not None else ""
-    return {"warehouses": dispatch.warehouses(current_user.tenant_id), "chosen_warehouse": chosen}
+    from app.warehouse.emi import active_financiers
+
+    return {"warehouses": dispatch.warehouses(current_user.tenant_id), "chosen_warehouse": chosen,
+            "financiers": active_financiers(current_user.tenant_id)}
 
 
 def _convertible_choices(form):
@@ -156,6 +178,7 @@ def new_document():
                 challan_purpose=ChallanPurpose(purpose) if purpose in {p.value for p in ChallanPurpose} else None,
                 notes=form.notes.data, terms=request.form.get("terms"),
                 dispatch_location_id=request.form.get("dispatch_location_id") or None,
+                **_finance_form(),
             ))
             _audit("sales_document_created", "sales_document", doc, number=doc.number, kind=kind.value,
                    total=str(doc.grand_total))
@@ -184,10 +207,99 @@ def view_document(doc_id):
     if doc.dispatch_status is not None:
         from app.models.warehouse import DISPATCH_STATUS_LABELS
 
+        show_all = request.args.get("all") == "1"
+        choices = {}
+        if doc.status == SalesDocumentStatus.OPEN and doc.dispatch_status.value == "to_pick" and not doc.claimed_by_id:
+            choices = {l.id: dispatch.showroom_choices(doc, l, show_all) for l in doc.lines if dispatch.needs_scan(l)}
         extra = {"progress": dispatch.line_progress(doc), "dispatch_labels": DISPATCH_STATUS_LABELS,
-                 "complete": dispatch.is_complete(doc), **_warehouse_context(doc)}
+                 "complete": dispatch.is_complete(doc), "choices": choices, "show_all": show_all,
+                 "pending_swaps": dispatch.pending_swaps(doc), "may_emi_invoice": _may_emi_invoice(doc),
+                 **_warehouse_context(doc)}
     return render_template("sales/document_view.html", doc=doc, purposes=CHALLAN_PURPOSE_LABELS,
                            doc_type_labels=DOCUMENT_TYPE_LABELS, today=date.today(), **extra)
+
+
+def _may_emi_invoice(doc) -> bool:
+    return (doc.is_finance_sale and doc.status == SalesDocumentStatus.OPEN and doc.dispatch_status is not None
+            and doc.dispatch_status.value == "picked")
+
+
+@sales_bp.route("/documents/<int:doc_id>/dispatch.json")
+@roles_required(ADMIN, STAFF)
+@feature_required("sales_documents")
+def dispatch_state(doc_id):
+    """What the order page polls: a change reloads it, so the showroom sees
+    "Picking: Ravi (1/2)" and an EMI sale's locked serials as they happen."""
+    from flask import jsonify
+
+    doc = _doc(doc_id)
+    progress = dispatch.line_progress(doc) if doc.dispatch_status else {}
+    picked = sum(p["picked"] for p in progress.values())
+    stamp = f"{doc.status.value}|{doc.dispatch_status.value if doc.dispatch_status else ''}|{doc.claimed_by_id}|" \
+            f"{picked}|{doc.converted_invoice_id}|{len(dispatch.pending_swaps(doc)) if doc.dispatch_status else 0}"
+    return jsonify({"stamp": stamp})
+
+
+@sales_bp.route("/documents/<int:doc_id>/showroom-pick", methods=["POST"])
+@roles_required(ADMIN, STAFF)
+@feature_required("sales_documents")
+def showroom_pick(doc_id):
+    """The showroom chooses the serials itself (warehouse closed, no signal, a rush)."""
+    doc = _doc(doc_id)
+    chosen = {l.id: request.form.getlist(f"serial_{l.id}") for l in doc.lines if dispatch.needs_scan(l)}
+    try:
+        dispatch.showroom_pick(doc, chosen, current_user)
+    except dispatch.DispatchError as exc:
+        db.session.rollback()
+        flash(exc.message, "error")
+        return redirect(url_for("sales.view_document", doc_id=doc.id))
+    _audit("sales_order_serials_chosen_at_showroom", "sales_document", doc, number=doc.number,
+           serials={str(k): v for k, v in chosen.items()})
+    notify.commit_and_push()
+    flash("Serials held for this order - the warehouse fetches exactly these (it is shown their racks).", "success")
+    return redirect(url_for("sales.view_document", doc_id=doc.id))
+
+
+@sales_bp.route("/documents/<int:doc_id>/emi-invoice", methods=["POST"])
+@roles_required(ADMIN, STAFF)
+@feature_required("sales_documents")
+def emi_invoice(doc_id):
+    """An EMI sale, every unit locked at the warehouse: the showroom makes the
+    invoice with those serials (read-only), from the warehouse's stock."""
+    doc = _doc(doc_id)
+    if not _may_emi_invoice(doc):
+        flash("The warehouse hasn't locked every unit for this EMI sale yet.", "error")
+        return redirect(url_for("sales.view_document", doc_id=doc.id))
+    try:
+        invoice = services.convert_to_invoice(current_user.tenant, current_user, doc,
+                                              _date(request.form.get("invoice_date")) or date.today())
+    except SalesError as exc:
+        db.session.rollback()
+        flash(exc.message, "error")
+        return redirect(url_for("sales.view_document", doc_id=doc.id))
+    record_audit(current_user, "invoice_created", tenant_id=doc.tenant_id, entity_type="invoice", entity_id=invoice.id,
+                 details={"invoice_number": invoice.invoice_number, "from_document": doc.number, "emi": True,
+                          "financier": doc.financier.name if doc.financier else None})
+    _audit("sales_document_converted", "sales_document", doc, number=doc.number, invoice=invoice.invoice_number)
+    notify.commit_and_push()
+    flash(f"Invoice {invoice.invoice_number} made with the locked serials - print it for the financier.", "success")
+    return redirect(url_for("sales.view_document", doc_id=doc.id))
+
+
+@sales_bp.route("/documents/<int:doc_id>/invoice.pdf")
+@roles_required(ADMIN, STAFF)
+@feature_required("sales_documents")
+def document_invoice_pdf(doc_id):
+    """The order's invoice - for a branch login, which has no invoice pages."""
+    from app.invoicing.pdf import render_invoice_pdf
+    from app.models.invoice import Invoice
+
+    doc = _doc(doc_id)
+    invoice = db.session.get(Invoice, doc.converted_invoice_id) if doc.converted_invoice_id else None
+    if invoice is None or invoice.tenant_id != doc.tenant_id:
+        abort(404)
+    return send_file(BytesIO(render_invoice_pdf(invoice)), mimetype="application/pdf", as_attachment=False,
+                     download_name=f"{invoice.invoice_number.replace('/', '-')}.pdf")
 
 
 @sales_bp.route("/documents/<int:doc_id>/warehouse", methods=["POST"])

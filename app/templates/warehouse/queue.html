@@ -45,6 +45,26 @@
   </table>
 </div>
 
+{% if swaps %}
+<h2 class="section-title">Swaps waiting for approval</h2>
+<div class="card table-wrap mb-16"><table>
+  <thead><tr><th>Order</th><th>Invoiced serial</th><th>Replacement</th><th>Why</th><th>By</th><th></th></tr></thead>
+  <tbody>{% for s in swaps %}<tr><td><a href="{{ url_for('warehouse.order', doc_id=s.sales_document_id) }}">{{ s.line.document.number }}</a></td>
+    <td class="mono">{{ s.old_serial.serial_no }}</td><td class="mono">{{ s.new_serial.serial_no }}</td><td>{{ s.reason }}</td><td>{{ s.requested_by.name if s.requested_by }}</td>
+    <td><a href="{{ url_for('warehouse.order', doc_id=s.sales_document_id) }}" class="btn btn-secondary btn-sm">Decide</a></td></tr>{% endfor %}</tbody>
+</table></div>
+{% endif %}
+
+<h2 class="section-title">To deliver</h2>
+<p class="text-muted small-note">Invoiced - every unit is scanned again on the ARFA Warehouse app before it leaves, and must be the invoiced serial.</p>
+<div class="card table-wrap mb-16"><table>
+  <thead><tr><th>Order</th><th>Invoice</th><th>Customer</th>{% if not location %}<th>Warehouse</th>{% endif %}<th></th></tr></thead>
+  <tbody>{% for d in deliver %}<tr><td><a href="{{ url_for('warehouse.order', doc_id=d.id) }}">{{ d.number }}</a>{% if d.is_finance_sale %} <span class="tag tag-emi">EMI</span>{% endif %}</td>
+    <td>{{ d.converted_invoice.invoice_number }}</td><td>{{ d.customer_snapshot.name }}</td>{% if not location %}<td>{{ d.dispatch_location.name }}</td>{% endif %}
+    <td class="nowrap"><a href="{{ url_for('warehouse.invoice_pdf', doc_id=d.id) }}" target="_blank" class="btn btn-quiet btn-sm">Invoice</a> <a href="{{ url_for('warehouse.slip', doc_id=d.id) }}" target="_blank" class="btn btn-quiet btn-sm">Delivery slip</a></td></tr>
+  {% else %}<tr><td colspan="5" class="text-muted">Nothing waiting to go out.</td></tr>{% endfor %}</tbody>
+</table></div>
+
 <h2 class="section-title">At the warehouse</h2>
 <div class="card table-wrap mb-16">
   <table>
@@ -54,7 +74,7 @@
       {% set mins = idle(d) %}
       {% set p = progress[d.id] %}
       <tr class="{{ 'row-warn' if d.dispatch_status.value == 'picking' and mins >= 15 }}">
-        <td><a href="{{ url_for('warehouse.order', doc_id=d.id) }}">{{ d.number }}</a><br><small class="text-muted">{{ d.created_at|ist('%d %b %I:%M %p') }}</small></td>
+        <td><a href="{{ url_for('warehouse.order', doc_id=d.id) }}">{{ d.number }}</a>{% if d.is_finance_sale %} <span class="tag tag-emi">EMI</span>{% endif %}<br><small class="text-muted">{{ d.created_at|ist('%d %b %I:%M %p') }}</small></td>
         <td>{{ d.customer_snapshot.name }}</td>
         {% if not location %}<td>{{ d.dispatch_location.name }}</td>{% endif %}
         <td>{% if d.dispatch_status.value == 'picking' %}Picking: {{ d.claimed_by.name if d.claimed_by }}{% if mins >= 15 %} <span class="tag tag-warn">idle {{ mins }} min - goes back to the pipeline at {{ release_after }}</span>{% endif %}{% else %}Waiting for a picker{% endif %}</td>
@@ -75,7 +95,7 @@
 </div>
 
 {% if recent %}
-<h2 class="section-title">Invoiced lately</h2>
+<h2 class="section-title">Delivered lately</h2>
 <div class="card table-wrap">
   <table>
     <thead><tr><th>Order</th><th>Invoice</th><th>Customer</th><th></th></tr></thead>

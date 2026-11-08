@@ -20,6 +20,20 @@
     {% if not warehouses %}<span class="field-error-msg">No warehouse yet - add a godown under Stock locations first.</span>{% endif %}
     <span class="field-help" data-free-hint>Free quantity at each warehouse shows here as you add items.</span>
   </label>
+  <div class="field emi-box" x-data="{ emi: {{ 'true' if request.form.get('is_finance_sale') else 'false' }} }">
+    <label class="checkbox-row"><input type="checkbox" name="is_finance_sale" value="1" x-model="emi"> <strong>Finance (EMI) sale</strong> - the warehouse locks the real unit while the loan is processed</label>
+    <div x-show="emi" x-cloak class="form-grid mt-12">
+      <label class="field m-0"><span class="field-label">Financier</span>
+        <select name="financier_id" class="field-input">
+          <option value="">Pick the financier</option>
+          {% for f in financiers %}<option value="{{ f.id }}" {{ 'selected' if request.form.get('financier_id') == f.id|string }}>{{ f.name }}</option>{% endfor %}
+        </select>
+        {% if not financiers %}<span class="field-error-msg">No financier yet{% if current_user.is_client_admin %} - <a href="{{ url_for('warehouse.financiers') }}">add Bajaj, HDB...</a>{% else %} - ask the owner to add them{% endif %}.</span>{% endif %}</label>
+      <label class="field m-0"><span class="field-label">Loan ref / DO no. (optional)</span><input type="text" name="loan_ref" maxlength="60" value="{{ request.form.get('loan_ref', '') }}" class="field-input"></label>
+      <label class="field m-0"><span class="field-label">Finance amount</span><input type="number" step="0.01" min="0" name="finance_amount" value="{{ request.form.get('finance_amount', '') }}" class="field-input"></label>
+      <label class="field m-0"><span class="field-label">Down payment (optional)</span><input type="number" step="0.01" min="0" name="down_payment" value="{{ request.form.get('down_payment', '') }}" class="field-input" placeholder="the rest of the total"></label>
+    </div>
+  </div>
   {% endif %}
 {% endblock %}
 {% block footer_extras %}

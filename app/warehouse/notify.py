@@ -46,6 +46,11 @@ def _queue(tenant_id: int, location_id: int, kind: str, doc_id: int | None, titl
 
 def new_order(doc, location, branch: str) -> WarehouseNotice:
     items = sum(int(l.qty) for l in doc.lines)
+    if doc.is_finance_sale:
+        # EMI sale: the customer is waiting at the showroom - rings even on silent.
+        return _queue(doc.tenant_id, location.id, "new_emi_order", doc.id,
+                      title=f"EMI - customer waiting: {doc.number}",
+                      body=f"{items} item{'s' if items != 1 else ''} · {branch} · lock the unit now", silent=False)
     return _queue(doc.tenant_id, location.id, "new_order", doc.id,
                   title=f"New order {doc.number}",
                   body=f"{items} item{'s' if items != 1 else ''} · {branch} · {location.name}", silent=False)
@@ -72,7 +77,8 @@ def targets(tenant_id: int, location_id: int) -> list[WarehouseSession]:
 def _message(notice: WarehouseNotice, token: str) -> dict:
     data = {"kind": notice.kind, "location_id": str(notice.location_id),
             "order_id": str(notice.sales_document_id or ""), "silent": "1" if notice.silent else "0",
-            "title": notice.title or "", "body": notice.body or "", "notice_id": str(notice.id)}
+            "title": notice.title or "", "body": notice.body or "", "notice_id": str(notice.id),
+            "priority": "high" if notice.kind == "new_emi_order" else "normal"}
     return {"message": {"token": token, "data": data,
                         "android": {"priority": "high", "ttl": "3600s" if not notice.silent else "300s"}}}
 

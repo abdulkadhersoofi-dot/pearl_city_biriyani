@@ -3116,6 +3116,58 @@ it off, sales orders and invoices behave exactly as before.
   failed scans by reason and picker, the phones (last seen, version, push,
   scans on unconfirmed orders), count results.
 
+### Warehouse dispatch - stage 5B (EMI / finance sales)
+
+For an EMI sale the financier needs the serial on the invoice, so the showroom
+invoices at once - but the warehouse still chooses the unit, in the minutes the
+loan takes (`app/warehouse/dispatch.py`, `app/warehouse/emi.py`).
+
+- **The finance order.** A sales order ticked *Finance (EMI) sale* names its
+  `Financier` (a tenant master; Bajaj Finserv and HDB are one-click
+  suggestions, never fixed), loan ref, finance amount and down payment
+  (together the order total, checked in the service). It gets
+  `priority = high`: the push is a separate kind (`new_emi_order`) that the app
+  rings on an alarm-stream channel (sounds even on silent), and it is pinned
+  first in the pipeline in red with "customer waiting N min".
+- **Lock for EMI.** The same claim, scan and server checks; Confirm reads *Lock
+  for EMI* and puts the units in the `EMI-HOLD` bin (`ProductSerial.bin_code`,
+  the unit stays at its warehouse location). The showroom's order page polls
+  `/sales/documents/<id>/dispatch.json` and shows "LG 1.5T - SN ABC123 locked".
+- **The showroom invoices** (`/sales/documents/<id>/emi-invoice`, owner or the
+  branch that made it) through the same convert path: serials read-only, stock
+  out of the dispatch warehouse. The invoice carries `financier_id`,
+  `finance_amount`, `loan_ref` and prints "Financed by". The order stays
+  `picked` with `invoiced_at_showroom` and appears under **To deliver**, never
+  Ready to invoice.
+- **Receivable split.** `receivables.invoice_receivable` takes the finance
+  amount off the customer's side; the financier's own customer account gets an
+  open item for the same invoice (`financed_invoices`), so its payouts are
+  ordinary receipt vouchers allocated against it - no new ledger.
+- **Delivery check (both paths).** Every invoiced order is scanned again before
+  it leaves (`/api/wh/v1/orders/<id>/deliver-scans`, then `/deliver`; status
+  `delivered`). Only an invoiced serial passes; anything else is blocked and
+  kept (`DeliveryScan`).
+- **Swaps** (owner's choice: keep the invoice, note it on the slip). The picker
+  scans a replacement with a reason; it is held (`SerialSwap`, PICKED) until the
+  owner or the showroom approves. Approval: the old serial back IN_STOCK at the
+  warehouse, the new one SOLD on the same invoice line, two `serial_swap` stock
+  movements (net zero), and the delivery slip prints "XYZ in place of ABC on the
+  invoice". Voiding the invoice later reverses the swap's movements too.
+- **When the showroom must pick** (warehouse closed, no signal, a rush): on the
+  order page it chooses serials itself - EMI READY units first, then units on a
+  rack, units with no rack hidden unless "show all". They are held like scans
+  (`PickMethod.SHOWROOM`); the app's Deliver screen says "Fetch SN ABC123 from
+  rack C3", and **Locate** beeps on that box.
+- **Racks.** Warehouse > Racks prints rack labels (Code 128 `RACK:C3`, plus
+  EMI READY). In the app, scanning a rack label while receiving puts the next
+  units on it (putaway - carried to the serials when the bill posts), and
+  **Move** re-shelves units (`/api/wh/v1/bins/move`).
+- **Financier settlement** (Warehouse > Financiers): financed, received and
+  outstanding per invoice; the payout statement (.xlsx) is read by its header
+  words, matched by loan ref, then invoice number, then a unique amount, shown
+  for checking, then recorded as receipts; charges deducted are flagged to go
+  in as an expense.
+
 ### Warehouse dispatch - how to run it (hand-over)
 
 1. Ultra Admin: switch **Warehouse dispatch by serial scan** on for the client
@@ -3135,6 +3187,14 @@ it off, sales orders and invoices behave exactly as before.
    **Make invoice** -> print the invoice and the delivery slip.
 7. Optional, once: `scripts/gcp/warehouse_push_setup.sh` (docs/cloud-setup.md)
    so orders ring with the app closed.
+8. EMI sales: **Warehouse > Financiers** - add Bajaj Finserv / HDB (one
+   click) or others. **Warehouse > Racks** - print rack labels and the EMI
+   READY label; pickers scan a rack label before shelving units. The
+   salesperson ticks *Finance (EMI) sale* on the order; the phones ring
+   loudly; a picker taps **Lock for EMI**; the showroom's order page shows
+   the serial and **Make invoice**. On delivery day the app's **Deliver** tab
+   checks each unit; a damaged box goes through **Ask for a swap**, approved
+   on the website. Payouts: Financiers -> Settlement -> import the statement.
 
 ### Counter app - how to run it (hand-over)
 

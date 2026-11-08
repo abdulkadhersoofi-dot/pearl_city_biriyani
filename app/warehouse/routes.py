@@ -99,9 +99,24 @@ def _queue_rows(location: StockLocation | None, warehouse_id: int | None):
     elif warehouse_id:
         query = query.filter(SalesDocument.dispatch_location_id == warehouse_id)
     rows = query.order_by(SalesDocument.picked_confirmed_at.desc().nullslast(), SalesDocument.id).all()
-    ready = [d for d in rows if d.dispatch_status == DispatchStatus.PICKED]
+    # An EMI sale, once locked, is invoiced at the showroom - not here.
+    ready = [d for d in rows if d.dispatch_status == DispatchStatus.PICKED and not d.is_finance_sale]
     waiting = [d for d in rows if d.dispatch_status in (DispatchStatus.TO_PICK, DispatchStatus.PICKING)]
+    waiting.sort(key=lambda d: (d.priority != "high", d.created_at or utcnow()))
     return ready, waiting
+
+
+def _deliver_rows(location: StockLocation | None, warehouse_id: int | None):
+    """Invoiced (here, or an EMI sale at the showroom), waiting for the delivery check."""
+    query = tenant_query(SalesDocument).filter(SalesDocument.kind == SalesDocumentKind.SALES_ORDER,
+                                               SalesDocument.converted_invoice_id.isnot(None),
+                                               SalesDocument.dispatch_status.in_((DispatchStatus.PICKED,
+                                                                                  DispatchStatus.INVOICED)))
+    if location is not None:
+        query = query.filter(SalesDocument.dispatch_location_id == location.id)
+    elif warehouse_id:
+        query = query.filter(SalesDocument.dispatch_location_id == warehouse_id)
+    return [d for d in query.order_by(SalesDocument.dispatch_activity_at).all() if dispatch.to_deliver(d)]
 
 
 @warehouse_bp.route("/")
@@ -114,11 +129,14 @@ def queue():
     warehouse_id = request.args.get("w", type=int)
     ready, waiting = _queue_rows(location, warehouse_id)
     progress = {d.id: dispatch.line_progress(d) for d in waiting}
-    recent = (tenant_query(SalesDocument).filter(SalesDocument.dispatch_status == DispatchStatus.INVOICED)
+    deliver = _deliver_rows(location, warehouse_id)
+    swaps = [s for d in deliver for s in dispatch.pending_swaps(d)]
+    recent = (tenant_query(SalesDocument).filter(SalesDocument.dispatch_status == DispatchStatus.DELIVERED)
               .filter(SalesDocument.dispatch_location_id == location.id if location else True)
               .order_by(SalesDocument.dispatch_activity_at.desc()).limit(15).all())
     logins = (tenant_query(WarehouseLogin).filter_by(is_active=True).order_by(WarehouseLogin.name).all())
     return render_template("warehouse/queue.html", ready=ready, waiting=waiting, progress=progress, recent=recent,
+                           deliver=deliver, swaps=swaps,
                            location=location, warehouses=dispatch.warehouses(current_user.tenant_id),
                            warehouse_id=warehouse_id, logins=logins, labels=DISPATCH_STATUS_LABELS,
                            idle=dispatch.idle_minutes, release_after=dispatch.IDLE_RELEASE_MINUTES,
@@ -146,10 +164,47 @@ def order(doc_id):
                 .order_by(SerialPick.id.desc()).limit(200).all())
     logins = [l for l in tenant_query(WarehouseLogin).filter_by(is_active=True).order_by(WarehouseLogin.name)
               if doc.dispatch_location_id in l.location_ids]
+    from app.models.warehouse import DeliveryScan, SerialSwap
+
+    deliveries = (DeliveryScan.query.filter_by(tenant_id=doc.tenant_id, sales_document_id=doc.id)
+                  .order_by(DeliveryScan.id.desc()).limit(100).all())
+    swaps = SerialSwap.query.filter_by(tenant_id=doc.tenant_id, sales_document_id=doc.id).order_by(SerialSwap.id).all()
     return render_template("warehouse/order.html", doc=doc, progress=dispatch.line_progress(doc),
                            attempts=attempts, result_labels=PICK_RESULT_LABELS, labels=DISPATCH_STATUS_LABELS,
                            logins=logins, idle=dispatch.idle_minutes(doc), today=date.today(),
-                           eway=_eway_hint(doc))
+                           eway=_eway_hint(doc), deliveries=deliveries, swaps=swaps,
+                           expected=dispatch.invoiced_units(doc), checked=dispatch.delivered_ids(doc),
+                           may_decide=_may_decide(doc))
+
+
+def _may_decide(doc: SalesDocument) -> bool:
+    """A swap is approved by the owner, or by the showroom login that made the order."""
+    return current_user.is_client_admin or doc.created_by_id == current_user.id
+
+
+@warehouse_bp.route("/swaps/<int:swap_id>", methods=["POST"])
+@roles_required(ADMIN, STAFF)
+@feature_required("warehouse_dispatch")
+def decide_swap(swap_id):
+    from app.models.warehouse import SerialSwap
+
+    swap = tenant_query(SerialSwap).filter_by(id=swap_id).first_or_404()
+    doc = tenant_query(SalesDocument).filter_by(id=swap.sales_document_id).first_or_404()
+    if not _may_decide(doc):
+        abort(403)
+    approve = request.form.get("decision") == "approve"
+    try:
+        dispatch.decide_swap(swap, current_user, approve, request.form.get("note", ""))
+    except dispatch.DispatchError as exc:
+        flash(exc.message, "error")
+        return redirect(request.referrer or url_for("warehouse.queue"))
+    _audit("warehouse_swap_" + ("approved" if approve else "rejected"), "sales_document", doc.id, number=doc.number,
+           old=swap.old_serial.serial_no, new=swap.new_serial.serial_no, reason=swap.reason)
+    notify.refresh(doc, doc.dispatch_location_id, "swap")
+    notify.commit_and_push()
+    flash(f"Swap {'approved - the invoice stays, the delivery slip shows' if approve else 'rejected -'} "
+          f"{swap.old_serial.serial_no} → {swap.new_serial.serial_no}.", "success")
+    return redirect(request.referrer or url_for("warehouse.queue"))
 
 
 def _eway_hint(doc: SalesDocument) -> bool:
@@ -171,6 +226,9 @@ def make_invoice(doc_id):
     from app.sales import services as sales_services
 
     doc = _order(doc_id)
+    if doc.is_finance_sale:
+        flash("An EMI sale is invoiced at the showroom, with the serials locked here.", "error")
+        return redirect(url_for("warehouse.order", doc_id=doc.id))
     try:
         when = date.fromisoformat(request.form.get("invoice_date") or date.today().isoformat())
     except ValueError:
@@ -235,6 +293,7 @@ def slip(doc_id):
     doc = _order(doc_id)
     tenant = db.session.get(Tenant, doc.tenant_id)
     html = render_template("warehouse/slip_pdf.html", doc=doc, progress=dispatch.line_progress(doc),
+                           swaps=dispatch.swaps_for_slip(doc),
                            firm_name=tenant.display_name, logo_data_uri=image_data_uri(brand_logo_id(tenant)))
     pdf = HTML(string=html, base_url=current_app.root_path).write_pdf()
     return send_file(BytesIO(pdf), mimetype="application/pdf", as_attachment=False,
@@ -497,4 +556,4 @@ def _bind_computer(location: StockLocation, user_id: int | None) -> None:
     location.branch_user_id = user.id
 
 
-from app.warehouse import receiving, reports  # noqa: E402,F401  (their routes)
+from app.warehouse import emi, receiving, reports  # noqa: E402,F401  (their routes)

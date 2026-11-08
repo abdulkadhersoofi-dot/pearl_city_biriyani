@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Rack labels - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header"><div><h1>Rack labels</h1><p class="text-muted mt-0">Stick one on each rack. In the ARFA Warehouse app, scan a rack label, then the boxes you put there (Receive, or Move) - each serial then shows where it is, so anyone can find it.</p></div></div>
+{% include "warehouse/_nav.html" %}
+<form method="post" class="card mb-16">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label class="field"><span class="field-label">Racks to print</span>
+    <textarea name="codes" rows="3" class="field-input" placeholder="A1-A10, B1-B6, C3"></textarea>
+    <span class="field-help">A range like A1-A10 prints A1, A2 ... A10. Letters, digits, dots and dashes.</span></label>
+  <label class="checkbox-row"><input type="checkbox" name="emi_ready" value="1" checked> Also the <strong>EMI READY</strong> label - a spot near the door for a few units of fast sellers, which the showroom may pick first when it has to choose a serial itself</label>
+  <button class="btn btn-primary mt-12">Print labels (PDF)</button>
+</form>
+<h2 class="section-title">Racks in use</h2>
+<div class="card table-wrap"><table>
+  <thead><tr><th>Rack</th><th class="num">Units on it</th></tr></thead>
+  <tbody>{% for code, n in used %}<tr><td class="mono">{{ code }}</td><td class="num">{{ n }}</td></tr>{% else %}<tr><td colspan="2" class="text-muted">No units on racks yet.</td></tr>{% endfor %}</tbody>
+</table></div>
+{% endblock %}

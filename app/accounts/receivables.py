@@ -19,7 +19,12 @@ receipt stays "on account". Balance = open items' outstanding - on
 account, the same number the running ledger ends on.
 
 Only documents dated on/after the tenant's books opening date count (if
-one is set) - anything older is in the opening balances."""
+one is set) - anything older is in the opening balances.
+
+An EMI sale's invoice (Invoice.financier_id, warehouse dispatch stage 5B)
+is split: the customer owes it less the finance amount (the down payment);
+the financier's own customer account owes the finance amount, as an open
+item against the same invoice that the financier's receipts settle."""
 
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -52,9 +57,29 @@ def bill_date(bill: POSBill) -> date | None:
 
 def invoice_receivable(invoice: Invoice) -> Decimal:
     """What the customer pays on an invoice: under reverse charge the tax
-    shown on it is paid by them to the government, not to the client."""
+    shown on it is paid by them to the government, not to the client; on an
+    EMI sale, the financier pays its share."""
     return Decimal(invoice.grand_total) - (Decimal(invoice.total_rcgst) + Decimal(invoice.total_rsgst)
-                                           + Decimal(invoice.total_rigst))
+                                           + Decimal(invoice.total_rigst)) - financed(invoice)
+
+
+def financed(invoice: Invoice) -> Decimal:
+    """The financier's share of an invoice (0 unless it's an EMI sale)."""
+    return Decimal(invoice.finance_amount or 0) if invoice.financier_id else ZERO
+
+
+def financed_invoices(tenant, customer_id: int):
+    """Issued EMI-sale invoices whose financier is this customer account."""
+    from app.models.warehouse import Financier
+
+    ids = [f.id for f in Financier.query.filter_by(tenant_id=tenant.id, customer_id=customer_id).all()]
+    if not ids:
+        return []
+    query = Invoice.query.filter(Invoice.tenant_id == tenant.id, Invoice.financier_id.in_(ids),
+                                 Invoice.status == InvoiceStatus.ISSUED, Invoice.finance_amount > 0)
+    if _start(tenant):
+        query = query.filter(Invoice.invoice_date >= _start(tenant))
+    return query.order_by(Invoice.invoice_date, Invoice.id).all()
 
 
 @dataclass
@@ -198,6 +223,16 @@ def customer_account(tenant, customer: Customer, with_entries: bool = True) -> C
         items_by_key[item.key] = item
 
     invoice_ids = [i.id for k, i in items_by_key.items() if i.kind == "invoice"]
+    for inv in financed_invoices(tenant, customer.id):
+        if f"invoice:{inv.id}" in items_by_key:
+            continue
+        amount = financed(inv)
+        entries.append(LedgerEntry(inv.invoice_date, "invoice", inv.invoice_number,
+                                   f"Financed: {(inv.customer_snapshot or {}).get('name', '')}"
+                                   + (f" (loan {inv.loan_ref})" if inv.loan_ref else ""), debit=amount,
+                                   link=("invoicing.view_invoice", {"invoice_id": inv.id}), order=1))
+        item = OpenItem("invoice", inv.id, inv.invoice_number, inv.invoice_date, _due(inv.invoice_date, customer), amount)
+        items_by_key[item.key] = item
     if invoice_ids:
         notes = CreditDebitNote.query.filter(
             CreditDebitNote.tenant_id == tenant.id, CreditDebitNote.original_invoice_id.in_(invoice_ids),

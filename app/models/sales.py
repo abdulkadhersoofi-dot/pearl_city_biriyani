@@ -117,6 +117,17 @@ class SalesDocument(db.Model, TenantScopedMixin, TimestampMixin):
     dispatch_activity_at = db.Column(db.DateTime(timezone=True))   # last claim or scan - idle claims are released
     picked_confirmed_at = db.Column(db.DateTime(timezone=True))
     picked_confirmed_by_id = db.Column(db.Integer, db.ForeignKey("warehouse_logins.id", name="fk_sales_documents_picked_by"))
+    delivered_at = db.Column(db.DateTime(timezone=True))
+    delivered_by_id = db.Column(db.Integer, db.ForeignKey("warehouse_logins.id", name="fk_sales_documents_delivered_by"))
+    # EMI (finance) sale, stage 5B: the warehouse locks the real unit while the
+    # loan is processed, and the showroom invoices with that serial.
+    is_finance_sale = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
+    financier_id = db.Column(db.Integer, db.ForeignKey("financiers.id", name="fk_sales_documents_financier"))
+    loan_ref = db.Column(db.String(60))
+    down_payment = db.Column(db.Numeric(12, 2))
+    finance_amount = db.Column(db.Numeric(12, 2))
+    priority = db.Column(db.String(10))          # "high" for an EMI sale (the customer is waiting)
+    invoiced_at_showroom = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
 
     gstin = db.relationship("Gstin")
     customer = db.relationship("Customer")
@@ -127,6 +138,8 @@ class SalesDocument(db.Model, TenantScopedMixin, TimestampMixin):
     dispatch_location = db.relationship("StockLocation")
     claimed_by = db.relationship("WarehouseLogin", foreign_keys=[claimed_by_id])
     picked_confirmed_by = db.relationship("WarehouseLogin", foreign_keys=[picked_confirmed_by_id])
+    delivered_by = db.relationship("WarehouseLogin", foreign_keys=[delivered_by_id])
+    financier = db.relationship("Financier")
 
     @property
     def label(self) -> str:
