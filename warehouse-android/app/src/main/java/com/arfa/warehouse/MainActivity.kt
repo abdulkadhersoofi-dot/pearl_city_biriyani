@@ -32,6 +32,7 @@ import androidx.core.content.ContextCompat
 import com.arfa.warehouse.ui.AppViewModel
 import com.arfa.warehouse.ui.ChoosePinScreen
 import com.arfa.warehouse.ui.CountScreen
+import com.arfa.warehouse.ui.DeliverScreen
 import com.arfa.warehouse.ui.HomeScreen
 import com.arfa.warehouse.ui.OrderScreen
 import com.arfa.warehouse.ui.ReceiptScreen
@@ -108,6 +109,7 @@ private fun Root(vm: AppViewModel) {
                 is Screen.Scan -> ScanScreen(vm, s.target)
                 is Screen.ReceiptView -> ReceiptScreen(vm, s.id)
                 is Screen.CountView -> CountScreen(vm, s.id)
+                is Screen.Deliver -> DeliverScreen(vm, s.id, busy)
                 Screen.Settings -> SettingsScreen(vm)
             }
             message?.let { text ->

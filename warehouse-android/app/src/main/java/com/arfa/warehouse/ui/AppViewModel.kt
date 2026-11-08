@@ -27,7 +27,9 @@ import org.json.JSONObject
 import java.io.File
 import java.io.IOException
 
-enum class HomeTab { PIPELINE, MINE, DONE, RECEIVE }
+const val RACK_PREFIX = "RACK:"
+
+enum class HomeTab { PIPELINE, MINE, DELIVER, DONE, RECEIVE }
 
 sealed class Screen {
     object Loading : Screen()
@@ -39,6 +41,7 @@ sealed class Screen {
     data class Scan(val target: ScanTarget) : Screen()
     data class ReceiptView(val id: Long) : Screen()
     data class CountView(val id: Long) : Screen()
+    data class Deliver(val id: Long) : Screen()
     object Settings : Screen()
 }
 
@@ -46,6 +49,12 @@ sealed class ScanTarget {
     data class Pick(val orderId: Long, val lineId: Long) : ScanTarget()
     data class Unit(val receiptId: Long, val lineId: Long) : ScanTarget()
     data class Count(val countId: Long) : ScanTarget()
+    /** The delivery check: each unit leaving must be an invoiced serial. */
+    data class Deliver(val orderId: Long) : ScanTarget()
+    /** Locate: scan box after box; beeps on the serial being looked for. */
+    data class Locate(val orderId: Long) : ScanTarget()
+    /** Move: scan a rack label, then the units put on it. */
+    object Move : ScanTarget()
 }
 
 /** What the scanner shows after a read: green (ok) or red, and why. When
@@ -81,10 +90,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             else -> Screen.Pin
         }
         viewModelScope.launch {
-            app.events.collect { event ->
+            app.events.collect {
                 when (_screen.value) {
                     is Screen.Home -> refresh()
-                    is Screen.Order -> if (event == WarehouseApp.Event.Refresh || event == WarehouseApp.Event.Synced) reloadOrder()
+                    is Screen.Order, is Screen.Deliver -> reloadOrder()
                     else -> Unit
                 }
             }
@@ -100,6 +109,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         when (next) {
             is Screen.Home -> refresh()
             is Screen.Order -> openOrder(next.id)
+            is Screen.Deliver -> openOrder(next.id)
             is Screen.ReceiptView -> openReceipt(next.id)
             else -> Unit
         }
@@ -114,6 +124,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         when (prev) {
             is Screen.Home -> refresh()
             is Screen.Order -> reloadOrder()
+            is Screen.Deliver -> reloadOrder()
             is Screen.ReceiptView -> openReceipt(prev.id)
             else -> Unit
         }
@@ -230,6 +241,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         when (val s = _screen.value) {
             is Screen.Home -> refresh()
             is Screen.Order -> reloadOrder()
+            is Screen.Deliver -> reloadOrder()
             is Screen.ReceiptView -> openReceipt(s.id)
             else -> Unit
         }
@@ -248,7 +260,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         (0 until a.length()).map { CountInfo.from(a.getJSONObject(it)) } } ?: emptyList()
                     return@launch
                 }
-                val name = when (tab) { HomeTab.MINE -> "mine"; HomeTab.DONE -> "done"; else -> "pipeline" }
+                val name = when (tab) {
+                    HomeTab.MINE -> "mine"; HomeTab.DONE -> "done"; HomeTab.DELIVER -> "deliver"; else -> "pipeline"
+                }
                 val r = io { api.get("/pipeline?location_id=${session.warehouseId}&tab=$name") }
                 if (r.ok) {
                     val list = r.json.optJSONArray("orders")
@@ -284,7 +298,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun reloadOrder(id: Long? = null) {
-        val orderId = id ?: (order.value?.card?.id ?: (_screen.value as? Screen.Order)?.id) ?: return
+        val orderId = id ?: (order.value?.card?.id ?: (_screen.value as? Screen.Order)?.id
+            ?: (_screen.value as? Screen.Deliver)?.id) ?: return
         viewModelScope.launch {
             try {
                 val reply = io { api.get("/orders/$orderId") }
@@ -390,8 +405,17 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         if (reply.ok) receipt.value = Receipt.from(reply.json) else say(reply.error)
     }
 
+    /** The rack being filled (putaway while receiving, or Move). */
+    val currentRack = MutableStateFlow<String?>(null)
+
+    fun setRack(code: String?) { currentRack.value = code?.removePrefix(RACK_PREFIX)?.trim()?.uppercase()?.ifEmpty { null } }
+
     fun unitScan(target: ScanTarget.Unit, serial: String, method: String, photo: File?, queue: List<Pending>): Feedback {
         touched()
+        if (serial.trim().uppercase().startsWith(RACK_PREFIX)) {
+            setRack(serial)
+            return Feedback(true, "Putting units on rack ${currentRack.value} - scan them.")
+        }
         val r = receipt.value ?: return Feedback(false, "Open the receipt again.")
         val line = r.lines.firstOrNull { it.id == target.lineId } ?: return Feedback(false, "Line not found.")
         val clean = Matcher.normalise(serial)
@@ -402,9 +426,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             return Feedback(false, "$clean is already scanned.")
         }
         if (line.received + waiting >= line.qty) return Feedback(false, "All ${line.qty} are scanned.")
+        val rack = currentRack.value
         SyncWorker.queue(app, Pending(clientId = session.nextClientId("u"), kind = "unit", parentId = r.id,
-            lineId = line.id, serial = clean, method = method, photoPath = photo?.path))
-        return Feedback(true, "$clean received.")
+            lineId = line.id, serial = clean, method = method, photoPath = photo?.path, rack = rack))
+        return Feedback(true, "$clean received" + (rack?.let { " - rack $it" } ?: "") + ".")
     }
 
     fun startCount() = call {
@@ -461,4 +486,54 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun emptyQueue(): Flow<List<Pending>> = flowOf(emptyList())
+
+    // --- the delivery check, swaps, Move (EMI stage) -------------------------------------------------------
+
+    private fun later(block: suspend () -> Unit) {
+        viewModelScope.launch {
+            try { block() } catch (e: AuthNeeded) {
+                if (e.signedOut) signedOut() else lock()
+            } catch (e: IOException) {
+                say("No connection - the delivery check needs signal. Try again.")
+            }
+        }
+    }
+
+    /** A unit scanned at dispatch - checked by the server at once. */
+    fun deliverScan(orderId: Long, serial: String, done: (Feedback) -> Unit) = later {
+        touched()
+        val reply = io { api.post("/orders/$orderId/deliver-scans", JSONObject().put("serial_no", serial)
+            .put("client_scan_id", session.nextClientId("d"))) }
+        if (!reply.ok) return@later done(Feedback(false, reply.error))
+        done(Feedback(reply.json.optBoolean("ok"), reply.json.optString("message")))
+        reloadOrder(orderId)
+    }
+
+    fun deliver(orderId: Long) = call {
+        val reply = io { api.post("/orders/$orderId/deliver") }
+        if (!reply.ok) return@call say(reply.error)
+        say(reply.json.optString("message", "Delivered."))
+        back.clear()
+        _screen.value = Screen.Home(HomeTab.DELIVER)
+        refresh()
+    }
+
+    fun requestSwap(orderId: Long, old: String, new: String, reason: String) = call {
+        val reply = io { api.post("/orders/$orderId/swaps", JSONObject().put("old_serial", old).put("new_serial", new)
+            .put("reason", reason)) }
+        say(if (reply.ok) reply.json.optString("message") else reply.error)
+        reloadOrder(orderId)
+    }
+
+    /** Move: a unit onto the rack being filled. A rack label changes the rack. */
+    fun moveScan(serial: String, done: (Feedback) -> Unit) = later {
+        touched()
+        if (serial.trim().uppercase().startsWith(RACK_PREFIX)) {
+            setRack(serial)
+            return@later done(Feedback(true, "Rack ${currentRack.value} - now scan the units you put there."))
+        }
+        val rack = currentRack.value ?: return@later done(Feedback(false, "Scan the rack label first."))
+        val reply = io { api.post("/bins/move", JSONObject().put("serial_no", serial).put("rack", rack)) }
+        done(Feedback(reply.ok, if (reply.ok) reply.json.optString("message") else reply.error))
+    }
 }

@@ -15,6 +15,9 @@ data class OrderCard(
     val id: Long, val number: String, val status: String, val cancelled: Boolean, val branch: String,
     val salesperson: String, val customer: String, val items: List<Pair<String, Int>>, val units: Int,
     val picked: Int, val ageMinutes: Int, val claimedBy: String?, val mine: Boolean,
+    // EMI sale: pinned in red with "customer waiting"; Confirm reads "Lock for EMI".
+    val emi: Boolean = false, val financier: String? = null, val invoice: String? = null,
+    val toDeliver: Boolean = false,
 ) {
     companion object {
         fun from(j: JSONObject) = OrderCard(
@@ -24,6 +27,8 @@ data class OrderCard(
             items = j.optJSONArray("items").objects().map { it.str("description") to it.optInt("qty") },
             units = j.optInt("units"), picked = j.optInt("picked"), ageMinutes = j.optInt("age_minutes"),
             claimedBy = j.optJSONObject("claimed_by")?.str("name"), mine = j.optBoolean("mine"),
+            emi = j.optBoolean("emi"), financier = j.str("financier").ifEmpty { null },
+            invoice = j.str("invoice").ifEmpty { null }, toDeliver = j.optBoolean("to_deliver"),
         )
     }
 }
@@ -48,6 +53,7 @@ data class PickRow(val id: Long, val serial: String, val ok: Boolean, val result
 data class Line(
     val id: Long, val description: String, val qty: Int, val picked: Int, val needsScan: Boolean,
     val product: Product?, val allowed: List<String>, val truncated: Boolean, val picks: List<PickRow>,
+    val racks: List<Pair<String, Int>> = emptyList(),
 ) {
     companion object {
         fun from(j: JSONObject) = Line(
@@ -56,14 +62,27 @@ data class Line(
             product = Product.from(j.optJSONObject("product")),
             allowed = j.optJSONArray("allowed_serials").strings(), truncated = j.optBoolean("truncated"),
             picks = j.optJSONArray("picks").objects().map { PickRow.from(it) },
+            racks = j.optJSONArray("racks").objects().map { it.str("rack") to it.optInt("units") },
         )
     }
 }
 
-data class OrderDetail(val card: OrderCard, val lines: List<Line>, val notes: String, val idleMinutes: Int) {
+/** A unit that must leave with an invoiced order (the delivery check). */
+data class DeliverUnit(val serial: String, val lineId: Long, val rack: String, val product: String, val checked: Boolean)
+
+data class SwapInfo(val id: Long, val old: String, val new: String, val reason: String)
+
+data class OrderDetail(val card: OrderCard, val lines: List<Line>, val notes: String, val idleMinutes: Int,
+                       val deliver: List<DeliverUnit> = emptyList(), val pendingSwaps: List<SwapInfo> = emptyList()) {
     companion object {
         fun from(j: JSONObject) = OrderDetail(OrderCard.from(j), j.optJSONArray("lines").objects().map { Line.from(it) },
-            j.str("notes"), j.optInt("idle_minutes"))
+            j.str("notes"), j.optInt("idle_minutes"),
+            deliver = j.optJSONArray("deliver").objects().map {
+                DeliverUnit(it.str("serial_no"), it.optLong("line_id"), it.str("rack"), it.str("product"), it.optBoolean("checked"))
+            },
+            pendingSwaps = j.optJSONArray("pending_swaps").objects().map {
+                SwapInfo(it.getLong("id"), it.str("old"), it.str("new"), it.str("reason"))
+            })
     }
 }
 

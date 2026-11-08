@@ -43,3 +43,14 @@ Run the instrumented scan -> sync -> confirm test on a device or emulator:
   channel even with the app closed. Without push the pipeline polls every 30 s.
 - **Receive / Count**: scan a purchase order's units in; count every serial on
   the floor (the result is on the website).
+
+## EMI sales (stage 5B)
+
+- EMI orders are pinned first in red with "customer waiting N min" and ring on
+  the **EMI sales** channel (alarm sound - audible on silent). Confirm reads
+  **Lock for EMI**.
+- **Deliver** tab: invoiced orders; each unit is scanned again and must be the
+  invoiced serial (shown with its rack). **Locate** beeps on the box being
+  looked for. A damaged box: **Ask for a swap** (approved on the website).
+- Racks: in Receive, scan a rack label (`RACK:C3`) and the units scanned next
+  are put on it; Receive > **Move units to a rack** re-shelves them.

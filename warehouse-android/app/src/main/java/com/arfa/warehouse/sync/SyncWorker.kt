@@ -73,7 +73,8 @@ object Sync {
                     .put("serial_no", item.serial).put("method", item.method)
                     .put("client_pick_id", item.clientId).put("allow_new", item.allowNew))
                 "unit" -> api.post("/receipts/${item.parentId}/lines/${item.lineId}/units", JSONObject()
-                    .put("serial_no", item.serial).put("method", item.method).put("client_unit_id", item.clientId))
+                    .put("serial_no", item.serial).put("method", item.method).put("client_unit_id", item.clientId)
+                    .put("rack", item.rack ?: ""))
                 else -> api.post("/counts/${item.parentId}/scans", JSONObject()
                     .put("serial_no", item.serial).put("client_scan_id", item.clientId))
             }

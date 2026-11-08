@@ -34,6 +34,7 @@ data class Pending(
     val message: String? = null,
     val serverId: Long? = null,
     val createdAt: Long = System.currentTimeMillis(),
+    val rack: String? = null,                 // receiving: the rack the unit was put on (putaway)
 )
 
 @Dao
@@ -75,7 +76,7 @@ interface OutboxDao {
     suspend fun prune(before: Long)
 }
 
-@Database(entities = [CachedOrder::class, Pending::class], version = 1, exportSchema = false)
+@Database(entities = [CachedOrder::class, Pending::class], version = 2, exportSchema = false)
 abstract class AppDb : RoomDatabase() {
     abstract fun orders(): OrderDao
     abstract fun outbox(): OutboxDao

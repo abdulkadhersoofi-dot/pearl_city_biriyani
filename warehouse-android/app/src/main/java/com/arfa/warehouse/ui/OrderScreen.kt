@@ -79,8 +79,10 @@ fun OrderScreen(vm: AppViewModel, orderId: Long, busy: Boolean) {
             if (mine && d.card.status == "picking") {
                 Column(Modifier.padding(12.dp)) {
                     Button({ vm.confirm(orderId) }, enabled = canConfirm && !busy,
+                        colors = if (d.card.emi) ButtonDefaults.buttonColors(containerColor = Bad) else ButtonDefaults.buttonColors(),
                         modifier = Modifier.fillMaxWidth().height(60.dp)) {
                         Text(when {
+                            canConfirm && d.card.emi -> "Lock for EMI"
                             canConfirm -> "Confirm - send for invoicing"
                             waiting > 0 -> "$waiting pick${if (waiting == 1) "" else "s"} still syncing"
                             else -> {
@@ -92,7 +94,8 @@ fun OrderScreen(vm: AppViewModel, orderId: Long, busy: Boolean) {
                     TextButton({ releasing = true }, Modifier.fillMaxWidth()) { Text("Release - put it back in the pipeline") }
                 }
             } else if (d.card.status == "picked") {
-                Text("Sent to the warehouse computer for invoicing.", color = Good, fontWeight = FontWeight.SemiBold,
+                Text(if (d.card.emi) "Locked for EMI - put the box in the EMI HOLD spot and write ${d.card.number} on it. The showroom makes the invoice."
+                     else "Sent to the warehouse computer for invoicing.", color = Good, fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.padding(16.dp))
             }
         }
@@ -128,6 +131,8 @@ fun LineCard(vm: AppViewModel, orderId: Long, line: Line, queue: List<Pending>, 
             Text(line.description, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
             val model = line.product?.modelNo.orEmpty()
             if (model.isNotEmpty()) Text(model, fontSize = 28.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+            if (line.racks.isNotEmpty()) Text("Racks: " + line.racks.joinToString(" · ") { (rack, n) -> "$rack ($n)" },
+                color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.SemiBold)
             if (line.needsScan) {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
                     Text("${view.shown} of ${line.qty} scanned", fontSize = 18.sp,

@@ -74,6 +74,15 @@ fun ReceiveList(vm: AppViewModel) {
             }
         }
         item { Button({ vm.startCount() }, Modifier.fillMaxWidth().height(54.dp)) { Text("Start a count", fontSize = 17.sp) } }
+        item {
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            Text("Racks", fontWeight = FontWeight.Bold, fontSize = 17.sp)
+            Text("Scan a rack label, then the boxes you put there - each serial then shows its rack, so anyone can find it. " +
+                "Keep a few units of fast sellers in EMI READY by the door.", color = MaterialTheme.colorScheme.secondary)
+            OutlinedButton({ vm.setRack(null); vm.go(Screen.Scan(ScanTarget.Move)) }, Modifier.fillMaxWidth().padding(top = 8.dp).height(52.dp)) {
+                Text("Move units to a rack")
+            }
+        }
     }
 }
 
@@ -81,11 +90,17 @@ fun ReceiveList(vm: AppViewModel) {
 fun ReceiptScreen(vm: AppViewModel, receiptId: Long) {
     val r by vm.receipt.collectAsState()
     val queue by remember(receiptId) { vm.unitsQueueFor(receiptId) }.collectAsState(initial = emptyList())
+    val rack by vm.currentRack.collectAsState()
     val receipt = r
     Scaffold(topBar = { WarehouseBar(receipt?.orderNumber ?: "Receive", receipt?.supplier, onBack = { vm.back() }) }) { pad ->
         if (receipt == null || receipt.id != receiptId) return@Scaffold
         LazyColumn(Modifier.padding(pad).fillMaxSize(), contentPadding = PaddingValues(12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            item {
+                Text(rack?.let { "Putting units on rack $it - scan another rack label to change" }
+                    ?: "Tip: scan a rack label first, and the units you scan after it are recorded on that rack.",
+                    color = MaterialTheme.colorScheme.secondary)
+            }
             items(receipt.lines, key = { it.id }) { line ->
                 val waiting = queue.count { it.lineId == line.id && it.state == QueueRules.QUEUED }
                 Card(Modifier.fillMaxWidth()) {

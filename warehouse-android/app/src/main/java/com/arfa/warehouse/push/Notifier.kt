@@ -18,6 +18,7 @@ import com.arfa.warehouse.R
  * notification sound and a vibration - even with the app closed. */
 object Notifier {
     const val ORDERS = "orders"
+    const val EMI = "emi"
     const val UPDATES = "updates"
     const val SYNC = "sync"
     private val VIBRATE = longArrayOf(0, 300, 150, 300)
@@ -35,6 +36,19 @@ object Notifier {
                 vibrationPattern = VIBRATE
                 setSound(sound, attrs)
                 enableLights(true)
+                lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
+            })
+        // EMI sale: the customer is waiting - rings on the alarm stream, so even a phone on silent sounds.
+        val alarm = AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build()
+        manager.createNotificationChannel(
+            NotificationChannel(EMI, "EMI sales - customer waiting", NotificationManager.IMPORTANCE_HIGH).apply {
+                description = "An EMI sale to lock now - rings even on silent"
+                enableVibration(true)
+                vibrationPattern = longArrayOf(0, 500, 200, 500, 200, 500)
+                setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+                    ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION), alarm)
+                setBypassDnd(true)
                 lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
             })
         manager.createNotificationChannel(
@@ -56,9 +70,9 @@ object Notifier {
     private fun allowed(context: Context): Boolean =
         Build.VERSION.SDK_INT < 33 || NotificationManagerCompat.from(context).areNotificationsEnabled()
 
-    fun newOrder(context: Context, title: String, body: String, orderId: Long?) {
+    fun newOrder(context: Context, title: String, body: String, orderId: Long?, emi: Boolean = false) {
         if (!allowed(context)) return
-        val n = NotificationCompat.Builder(context, ORDERS)
+        val n = NotificationCompat.Builder(context, if (emi) EMI else ORDERS)
             .setSmallIcon(android.R.drawable.stat_notify_chat)
             .setContentTitle(title.ifEmpty { "New order" })
             .setContentText(body)

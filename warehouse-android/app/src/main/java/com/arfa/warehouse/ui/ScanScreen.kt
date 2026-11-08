@@ -90,8 +90,16 @@ fun ScanScreen(vm: AppViewModel, target: ScanTarget) {
             is ScanTarget.Pick -> vm.queueFor(target.orderId)
             is ScanTarget.Unit -> vm.unitsQueueFor(target.receiptId)
             is ScanTarget.Count -> vm.countQueueFor(target.countId)
+            else -> vm.emptyQueue()
         }
     }.collectAsState(initial = emptyList<Pending>())
+    val rack by vm.currentRack.collectAsState()
+    // Delivery check / Locate: the invoiced serials still to go.
+    val targets = remember(detail, target) {
+        if (target is ScanTarget.Deliver || target is ScanTarget.Locate) detail?.deliver?.filter { !it.checked } ?: emptyList()
+        else emptyList()
+    }
+    val targetIndex = remember(targets) { Matcher.Index(targets.map { it.serial }) }
 
     // What this scan is for.
     val line = (target as? ScanTarget.Pick)?.let { t -> detail?.lines?.firstOrNull { it.id == t.lineId } }
@@ -107,8 +115,16 @@ fun ScanScreen(vm: AppViewModel, target: ScanTarget) {
         is ScanTarget.Pick -> line?.description ?: "Scan"
         is ScanTarget.Unit -> rLine?.description ?: "Receive"
         is ScanTarget.Count -> "Count"
+        is ScanTarget.Deliver -> "Delivery check"
+        is ScanTarget.Locate -> "Locate"
+        ScanTarget.Move -> "Move to a rack"
     }
     val modelNo = line?.product?.modelNo ?: rLine?.product?.modelNo
+    val subtitle = when (target) {
+        is ScanTarget.Unit, ScanTarget.Move -> rack?.let { "Rack $it" } ?: "Scan a rack label to put units on it"
+        is ScanTarget.Locate -> "Looking for ${targets.joinToString { it.serial }}"
+        else -> modelNo?.let { "Model $it" }
+    }
 
     var feedback by remember { mutableStateOf<Feedback?>(null) }
     var torch by remember { mutableStateOf(false) }
@@ -131,11 +147,27 @@ fun ScanScreen(vm: AppViewModel, target: ScanTarget) {
 
     /** A serial (or code) read by any means, with the frame it came from. */
     fun take(value: String, method: String, frame: Bitmap?, allowNew: Boolean = false) {
+        when (target) {
+            is ScanTarget.Deliver -> {
+                heldUntil = System.currentTimeMillis() + HOLD_MS
+                return vm.deliverScan(target.orderId, value) { show(it) }
+            }
+            ScanTarget.Move -> {
+                heldUntil = System.currentTimeMillis() + HOLD_MS
+                return vm.moveScan(value) { show(it) }
+            }
+            is ScanTarget.Locate -> {
+                val found = targets.firstOrNull { Matcher.compact(it.serial) == Matcher.compact(value) } ?: return
+                return show(Feedback(true, "Found ${found.serial}" + (if (found.rack.isNotEmpty()) " (${found.rack})" else "")))
+            }
+            else -> Unit
+        }
         val photo = if (target is ScanTarget.Count) null else Photos.save(context, frame)
         val result = when (target) {
             is ScanTarget.Pick -> vm.pickScan(target, value, method, photo, allowNew, queueNow)
             is ScanTarget.Unit -> vm.unitScan(target, value, method, photo, queueNow)
             is ScanTarget.Count -> vm.countScan(target.countId, value, queueNow)
+            else -> return
         }
         if (!result.ok) photo?.delete()
         if (!result.ok && result.offerAdd != null) {
@@ -177,7 +209,32 @@ fun ScanScreen(vm: AppViewModel, target: ScanTarget) {
                     else -> lastFrame = frame.snapshot()
                 }
             }
+            is ScanTarget.Deliver, is ScanTarget.Locate -> {
+                // Known serials: an exact match wins; for the delivery check a single other code is
+                // sent too (the server blocks it and says why); Locate stays quiet on other boxes.
+                frame.barcodes.firstNotNullOfOrNull { targetIndex.find(it) }?.let { return take(it, "barcode", null) }
+                frame.text?.let { t ->
+                    (Matcher.fromText(t, targetIndex, emptySet()) as? Matcher.Outcome.Match)?.let { return take(it.serial, "photo", null) }
+                }
+                if (target is ScanTarget.Deliver) {
+                    val others = frame.barcodes.map { Matcher.normalise(it) }.distinct().filter { v ->
+                        val c = Matcher.compact(v)
+                        c.length >= 4 && !(c.length == 13 && c.all { it.isDigit() })
+                    }
+                    if (others.size == 1) take(others[0], "barcode", null)
+                }
+            }
             else -> {
+                // A rack label first: units after it go on that rack (putaway / Move).
+                frame.barcodes.firstOrNull { it.trim().uppercase().startsWith(com.arfa.warehouse.ui.RACK_PREFIX) }?.let {
+                    if (target is ScanTarget.Unit || target == ScanTarget.Move) {
+                        if (target == ScanTarget.Move) take(it, "barcode", null) else {
+                            vm.setRack(it)
+                            show(Feedback(true, "Putting units on rack ${vm.currentRack.value} - scan them."))
+                        }
+                        return
+                    }
+                }
                 // Receiving and counting: no list to match - the serial is the code that isn't the
                 // model no. / barcode / EAN. More than one: the picker taps the right one.
                 val candidates = frame.barcodes.map { Matcher.normalise(it) }.distinct().filter { v ->
@@ -194,7 +251,8 @@ fun ScanScreen(vm: AppViewModel, target: ScanTarget) {
 
     fun wantText(): Boolean {
         val now = System.currentTimeMillis()
-        return target is ScanTarget.Pick && serialLine && now - started > TEXT_AFTER_MS && now - lastText > TEXT_EVERY_MS
+        val reads = (target is ScanTarget.Pick && serialLine) || target is ScanTarget.Deliver || target is ScanTarget.Locate
+        return reads && now - started > TEXT_AFTER_MS && now - lastText > TEXT_EVERY_MS
     }
 
     // A rugged scanner phone's own scan button (Zebra DataWedge / Honeywell, set to send
@@ -215,7 +273,7 @@ fun ScanScreen(vm: AppViewModel, target: ScanTarget) {
     }
 
     Column(Modifier.fillMaxSize().background(Color.Black)) {
-        WarehouseBar(title, modelNo?.let { "Model $it" }, onBack = { vm.back() }) {
+        WarehouseBar(title, subtitle, onBack = { vm.back() }) {
             TextButton({ torch = !torch }) { Text(if (torch) "Torch off" else "Torch", color = Color.White) }
         }
         Box(Modifier.weight(1f).fillMaxWidth()) {
@@ -248,6 +306,9 @@ fun ScanScreen(vm: AppViewModel, target: ScanTarget) {
                     "${minOf(l.qty, l.received + waiting)} of ${l.qty} received"
                 }
                 is ScanTarget.Count -> "${queue.size} counted on this phone"
+                is ScanTarget.Deliver -> "${detail?.deliver?.count { it.checked } ?: 0} of ${detail?.deliver?.size ?: 0} checked"
+                is ScanTarget.Locate -> if (targets.isEmpty()) "Nothing left to find" else "Scan box after box - it beeps on the one"
+                ScanTarget.Move -> rack?.let { "Scanning units onto $it" } ?: "Scan the rack label first"
             }
             if (progress != null) Text(progress, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
             if (session.hardwareScanner) WedgeInput { take(it, "scanner", lastFrame) }

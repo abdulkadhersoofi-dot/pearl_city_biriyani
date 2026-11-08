@@ -14,7 +14,8 @@ class PushService : FirebaseMessagingService() {
         val app = application as WarehouseApp
         if (!app.session.signedIn) return
         if (data["silent"] == "0") {
-            Notifier.newOrder(this, data["title"].orEmpty(), data["body"].orEmpty(), data["order_id"]?.toLongOrNull())
+            Notifier.newOrder(this, data["title"].orEmpty(), data["body"].orEmpty(), data["order_id"]?.toLongOrNull(),
+                emi = data["priority"] == "high")
         }
         app.events.tryEmit(WarehouseApp.Event.Refresh)
     }

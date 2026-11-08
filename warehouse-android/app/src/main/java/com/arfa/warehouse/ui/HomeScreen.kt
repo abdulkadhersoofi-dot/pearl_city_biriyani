@@ -1,6 +1,9 @@
 package com.arfa.warehouse.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -24,7 +27,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
+import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -100,8 +103,8 @@ fun HomeScreen(vm: AppViewModel, tab: HomeTab, waiting: Int) {
         }
     }) { pad ->
         Column(Modifier.padding(pad).fillMaxSize()) {
-            TabRow(selectedTabIndex = tab.ordinal) {
-                listOf("Pipeline", "My picks", "Done today", "Receive").forEachIndexed { i, label ->
+            ScrollableTabRow(selectedTabIndex = tab.ordinal, edgePadding = 8.dp) {
+                listOf("Pipeline", "My picks", "Deliver", "Done today", "Receive").forEachIndexed { i, label ->
                     Tab(selected = tab.ordinal == i, onClick = { vm.tab(HomeTab.entries[i]) }, text = { Text(label, maxLines = 1) })
                 }
             }
@@ -113,6 +116,7 @@ fun HomeScreen(vm: AppViewModel, tab: HomeTab, waiting: Int) {
                     Text(when (tab) {
                         HomeTab.PIPELINE -> "No orders waiting.\nA new one rings like a message."
                         HomeTab.MINE -> "You aren't picking anything."
+                        HomeTab.DELIVER -> "Nothing invoiced waiting to go out."
                         else -> "Nothing confirmed today yet."
                     }, color = MaterialTheme.colorScheme.secondary, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                 }
@@ -136,14 +140,32 @@ fun SyncBanner(waiting: Int) {
 fun OrderCardView(vm: AppViewModel, card: OrderCard, tab: HomeTab) {
     val lockedByOther = card.claimedBy != null && !card.mine
     val late = card.ageMinutes >= LATE_MINUTES
+    // An EMI sale's running timer: the customer is waiting at the showroom.
+    var minutes by remember(card.id, card.ageMinutes) { mutableStateOf(card.ageMinutes) }
+    if (card.emi && tab == HomeTab.PIPELINE) {
+        LaunchedEffect(card.id, card.ageMinutes) {
+            while (true) { delay(60_000); minutes += 1 }
+        }
+    }
+    val emiLive = card.emi && tab != HomeTab.DONE
     Card(
-        Modifier.fillMaxWidth().clickable(enabled = !lockedByOther) {
-            if (card.mine || tab == HomeTab.DONE) vm.go(Screen.Order(card.id))
-        },
+        Modifier.fillMaxWidth()
+            .then(if (emiLive) Modifier.border(3.dp, Bad, RoundedCornerShape(12.dp)) else Modifier)
+            .clickable(enabled = !lockedByOther) {
+                when {
+                    tab == HomeTab.DELIVER -> vm.go(Screen.Deliver(card.id))
+                    card.mine || tab == HomeTab.DONE -> vm.go(Screen.Order(card.id))
+                }
+            },
         colors = CardDefaults.cardColors(
             containerColor = if (lockedByOther) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = if (lockedByOther) 0.dp else 2.dp),
     ) {
+        if (emiLive) {
+            Text("EMI · ${card.financier ?: "finance"}" + if (tab == HomeTab.PIPELINE) " · customer waiting $minutes min" else "",
+                color = Color.White, fontWeight = FontWeight.Bold,
+                modifier = Modifier.fillMaxWidth().background(Bad).padding(horizontal = 14.dp, vertical = 6.dp))
+        }
         Column(Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(card.number, fontWeight = FontWeight.Bold, fontSize = 18.sp, modifier = Modifier.weight(1f))
@@ -156,15 +178,22 @@ fun OrderCardView(vm: AppViewModel, card: OrderCard, tab: HomeTab) {
             card.items.forEach { (desc, qty) -> Text("$qty × $desc", fontSize = 15.sp) }
             Spacer(Modifier.height(10.dp))
             when {
-                tab == HomeTab.DONE -> Text(if (card.status == "invoiced") "Invoiced" else "At the computer for invoicing",
-                    color = Good, fontWeight = FontWeight.SemiBold)
+                tab == HomeTab.DELIVER -> Button({ vm.go(Screen.Deliver(card.id)) }, Modifier.fillMaxWidth().height(54.dp)) {
+                    Text("Deliver ${card.invoice ?: ""} - scan each unit", fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                }
+                tab == HomeTab.DONE -> Text(when (card.status) {
+                    "delivered" -> "Delivered"
+                    "invoiced" -> "Invoiced - waiting for the delivery check"
+                    else -> if (card.emi) "Locked for EMI - the showroom invoices" else "At the computer for invoicing"
+                }, color = Good, fontWeight = FontWeight.SemiBold)
                 lockedByOther -> Text("Picking: ${card.claimedBy}", fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.secondary)
                 card.mine -> OutlinedButton({ vm.go(Screen.Order(card.id)) }, Modifier.fillMaxWidth().height(52.dp)) {
                     Text("Continue picking (${card.picked}/${card.units})", fontSize = 17.sp)
                 }
-                else -> Button({ vm.claim(card.id) }, Modifier.fillMaxWidth().height(56.dp)) {
-                    Text("Start picking", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                else -> Button({ vm.claim(card.id) }, Modifier.fillMaxWidth().height(56.dp),
+                    colors = if (card.emi) ButtonDefaults.buttonColors(containerColor = Bad) else ButtonDefaults.buttonColors()) {
+                    Text(if (card.emi) "Start picking - EMI" else "Start picking", fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
