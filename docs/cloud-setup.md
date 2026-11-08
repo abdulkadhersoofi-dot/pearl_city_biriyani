@@ -305,6 +305,18 @@ keep updating from GitHub as before. Phones on ARFA Scan 1.14 / ARFA Counter
 1.14 or older update once more from GitHub; from the next version on they
 ask arfa.live.
 
+## ARFA Warehouse: new orders ring on the pickers' phones (once)
+
+Warehouse dispatch works without this - the app checks for new orders every
+30 seconds while it is open. This makes a new order ring like a WhatsApp
+message even with the app closed (Firebase Cloud Messaging).
+
+1. In Cloud Shell (as above): `cd pearl_city_biriyani && git pull`
+2. `bash scripts/gcp/warehouse_push_setup.sh` - ends with "Done.".
+3. Tell Claude "push setup done". Claude adds `warehouse-push` to
+   OPTIONAL_SECRETS and deploys; phones pick the push up at their next
+   sign-in or app start.
+
 ---
 
 ## THINGS ONLY ABDUL CAN DO
@@ -323,6 +335,8 @@ ask arfa.live.
 11. Say **"go"** for switching Render off once Google Cloud is live.
 12. Run `scripts/gcp/apps_setup.sh` in Cloud Shell, once, so the phone apps
     come from arfa.live ("The phone apps from arfa.live", above).
+13. Run `scripts/gcp/warehouse_push_setup.sh` in Cloud Shell, once, so new
+    warehouse orders ring on the pickers' phones ("ARFA Warehouse", above).
 
 Everything else is Claude's to run.
 

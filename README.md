@@ -3037,6 +3037,105 @@ which one it is decides only through settings. Setup: `docs/cloud-setup.md`
   `test_cloud_deploy_files.py`, the image test in `test_branding.py`, the
   one-by-one export in `test_admin_drilldown.py`.
 
+### Warehouse dispatch by serial scan (stages 1-7)
+
+The showroom sells the item and quantity only; the warehouse scans the actual
+unit's label and the serial is fixed at that moment. Module
+`warehouse_dispatch` (needs Serial / IMEI and Inventory; offered as a choice in
+the Mobiles & Electronics package), off for everyone until switched on - with
+it off, sales orders and invoices behave exactly as before.
+
+- **Stage 1 - orders, warehouses, holds** (`app/warehouse/dispatch.py`). A
+  sales order names the godown it ships from (required, validated in the
+  service: an active godown of the same business). What it takes is *held*
+  there: a warehouse's free quantity = stock there - what open, un-invoiced
+  orders shipping from it hold, one function used by the order form, the
+  Warehouse picker (`/warehouse/free.json`) and the save. Serial-tracked items
+  can never be promised beyond what's free; other items follow their own
+  "stop at zero". Moving an unclaimed order moves its hold and re-notifies;
+  a claimed order keeps its warehouse. Branch logins make sales orders (only
+  sales orders, only their own); each branch (and the main store) has a usual
+  warehouse on Stock locations. `Product.model_no` on the item form and the
+  spreadsheet. `_check_serials` now also refuses a serial that is somewhere
+  else than where it's sold (units with no recorded place pass).
+- **Stage 2 - the ARFA Warehouse API** (`app/warehouse_api`, `/api/wh/v1`).
+  Per-person `WarehouseLogin`s (Argon2id password and PIN), managed under
+  Warehouse > App logins and counted against the new "Warehouse app logins"
+  package limit. A phone signs in once (business code = the client's login
+  slug or its number, login id, password; the website's lockout settings) for
+  a refresh token kept only as a hash (`WarehouseSession`), then each PIN
+  unlock issues a 12-hour access token and makes older ones stale; five wrong
+  PINs sign the phone out. Tenant, login and allowed warehouses come from the
+  session only; every lookup is scoped to them (anything else is a 404).
+  Claims are one conditional UPDATE (`... WHERE claimed_by_id IS NULL AND
+  dispatch_status = 'to_pick'`), so of two phones exactly one wins (tested with
+  two threads). Picks are idempotent on `client_pick_id`. A claim with no scan
+  for 30 minutes goes back to the pipeline with its scans undone (the owner's
+  choice); the website shows claims idle 15+ minutes. Pushes go through an
+  outbox (`WarehouseNotice`) written with the change and sent after the
+  commit (FCM HTTP v1, high-priority data messages, as the service account):
+  a new order rings every phone of that warehouse and no other; claims,
+  releases, moves and cancels refresh silently. The app also polls every 30 s.
+- **Stage 3 - the app** (`warehouse-android/`, its own Gradle project and
+  workflow; see its README). Compose, CameraX, ML Kit with bundled models,
+  Room + WorkManager offline queue, Firebase set up at run time from
+  `/api/wh/v1/app/config` (no google-services.json in the build).
+- **Stage 4 - scanning.** Matching, not reading: the phone gets the serials
+  in stock at that warehouse for each line (`allowed_serials`, capped at 2000)
+  and matches barcodes exactly, then (after 2 s) text read on the phone,
+  normalised (O/0, I/1, S/5, separators) and still only an exact match.
+  ARFA's label reader (`app/warehouse/labels.py`, the Scan bills Gemini set-up,
+  768 px, strict JSON, `LABEL_DAILY_LIMIT`) is the last resort and is checked
+  like any scan. The server is authoritative, with the serial row locked:
+  unknown / wrong product / not in stock / already picked / wrong location /
+  line full - every attempt kept as a `SerialPick`. A serial ARFA never had,
+  on a box of the right product, is **added to stock and picked** when the
+  picker says so (the owner's choice) - flagged `added_at_pick` and listed in
+  the reports to check. Typing a serial is a per-login permission.
+- **Stage 5 - receiving and counting** (`app/warehouse/receiving.py`). A
+  purchase order is sent to a warehouse; the pickers scan its units in
+  (checked against the batch, every serial the business has and other open
+  receipts); "Make the purchase bill" opens the bill with those serials and
+  that warehouse filled in, and it posts as always. Count mode lists serials
+  ARFA has there that weren't found and serials found that ARFA doesn't have
+  there, with an Excel download.
+- **Stage 6 - invoicing at the warehouse** (`app/warehouse/routes.py`). The
+  warehouse computer is a branch login bound to a godown (Stock locations);
+  its home is Ready to invoice (its own warehouse only; the owner sees all,
+  with a filter), which chimes and pops up when a picker confirms. Make
+  invoice goes through the existing convert-to-invoice path with each line's
+  scanned serials (re-checked: still held, still at that warehouse); stock
+  leaves that warehouse and the serials become SOLD with `sold_invoice_id`;
+  voiding puts them back IN_STOCK there. Delivery slip with serials per line;
+  the e-way bill's dispatch-from is the warehouse's address. "Edit & invoice"
+  isn't offered for these orders. The GST warning on a godown not marked as an
+  additional place of business. Invoice numbering and GST computation are
+  untouched.
+- **Stage 7 - reports** (`app/warehouse/reports.py`): serial history (bought
+  -> received -> picked by / photo -> invoiced to), orders waiting too long,
+  failed scans by reason and picker, the phones (last seen, version, push,
+  scans on unconfirmed orders), count results.
+
+### Warehouse dispatch - how to run it (hand-over)
+
+1. Ultra Admin: switch **Warehouse dispatch by serial scan** on for the client
+   (with Serial / IMEI, Inventory and Quotations, orders & challans).
+2. Owner: **Stock locations** - add each warehouse as a Godown with its
+   address, tick "Address is on the GSTIN", pick its **Warehouse computer**
+   (a branch login), and give each branch its **usual warehouse**.
+3. Owner: **Warehouse > App logins** - one login per picker, ticking their
+   warehouse(s). Give them the business code, login id and password.
+4. Pickers: install **ARFA Warehouse** from arfa.live/apps, sign in once,
+   choose a PIN.
+5. Before go-live: on the app, **Receive > Start a count** in each warehouse;
+   fix what the count report shows.
+6. Every day: the salesperson makes a sales order and picks the warehouse;
+   the phones ring; a picker taps **Start picking**, scans each unit,
+   **Confirm**; the warehouse computer's **Ready to invoice** chimes ->
+   **Make invoice** -> print the invoice and the delivery slip.
+7. Optional, once: `scripts/gcp/warehouse_push_setup.sh` (docs/cloud-setup.md)
+   so orders ring with the app closed.
+
 ### Counter app - how to run it (hand-over)
 
 **The owner, once per phone**

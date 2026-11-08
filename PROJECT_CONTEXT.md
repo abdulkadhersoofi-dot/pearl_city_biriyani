@@ -791,6 +791,22 @@ this list is just the index.
   4B(2) for credit, 4A(5) for debit) and Tally (Debit Note / Credit Note).
   Purchases > Supplier credit / debit notes lists them.
 
+  **Warehouse dispatch by serial scan (flag `warehouse_dispatch`, 8 Nov
+  2026):** a sales order names its warehouse (godown) and is held there; the
+  warehouse's pickers claim it on the ARFA Warehouse phone app
+  (`warehouse-android/`, its own Gradle project and workflow, API
+  `/api/wh/v1` in `app/warehouse_api`), scan each unit's label, confirm; the
+  warehouse computer (a branch login bound to the godown) invoices the scanned
+  serials from that warehouse (`app/warehouse`). One service for every rule:
+  `app/warehouse/dispatch.py` (holds, claims, picks, release, confirm). The
+  owner's decisions: pushes like a chat message (FCM + polling), idle claims
+  auto-release after 30 minutes, ARFA's label reader reuses the Scan bills
+  Gemini set-up, and a serial never entered in ARFA is added and picked when
+  the product is right (flagged for checking). Receive mode (PO scanned in,
+  then billed) and count mode in `app/warehouse/receiving.py`; reports in
+  `app/warehouse/reports.py`. Pushes need `scripts/gcp/warehouse_push_setup.sh`
+  once and `warehouse-push` in OPTIONAL_SECRETS.
+
 ## 5. Chronological development history (this session)
 
 This is the part README.md doesn't capture — the actual sequence of
@@ -1105,7 +1121,8 @@ source for "is this really done."
 
 ## 12. How to pick up work in a new session
 
-1. Read this file, then `README.md`, then `android/README.md` in full.
+1. Read this file, then `README.md`, then `android/README.md` and
+   `warehouse-android/README.md` in full.
 2. `git log --oneline -20` and `git status` to confirm branch/commit
    state matches what's described here (this file can go stale too).
 3. Bootstrap the dev environment per §8 if you need to run/verify

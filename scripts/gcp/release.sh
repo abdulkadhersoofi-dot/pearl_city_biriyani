@@ -48,6 +48,12 @@ SECRETS+=",EINVOICE_SECRET_KEY=arfa-einvoice-key$SUFFIX:latest"
 uses() { case " $OPTIONAL_SECRETS " in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
 uses sentry && SECRETS+=",SENTRY_DSN=arfa-sentry-dsn:latest"
 uses gemini && SECRETS+=",GEMINI_API_KEY=arfa-gemini-key:latest"   # Scan bills (app/scan) reads with it
+# ARFA Warehouse pushes (scripts/gcp/warehouse_push_setup.sh makes the secret):
+# the phone app's Firebase settings, and the project the server sends through.
+if uses warehouse-push; then
+  SECRETS+=",WAREHOUSE_FCM_CONFIG=arfa-warehouse-fcm:latest"
+  ENV_VARS+=",FCM_PROJECT_ID=$PROJECT_ID"
+fi
 if uses smtp; then
   SECRETS+=",SMTP_HOST=arfa-smtp-host:latest,SMTP_USERNAME=arfa-smtp-username:latest"
   SECRETS+=",SMTP_PASSWORD=arfa-smtp-password:latest,SMTP_FROM=arfa-smtp-from:latest"
