@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">ARFA Warehouse</string>
+    <string name="channel_orders">New orders</string>
+    <string name="channel_orders_desc">A new order to pick - rings like a message</string>
+    <string name="channel_updates">Order updates</string>
+    <string name="channel_sync">Scans not accepted</string>
+</resources>

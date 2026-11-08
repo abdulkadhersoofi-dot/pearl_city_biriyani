@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The window behind Compose (the app draws everything itself). -->
+    <style name="Theme.Warehouse" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:statusBarColor">#1F7A4D</item>
+        <item name="android:navigationBarColor">#F6F8F5</item>
+        <item name="android:windowBackground">@android:color/white</item>
+    </style>
+</resources>
