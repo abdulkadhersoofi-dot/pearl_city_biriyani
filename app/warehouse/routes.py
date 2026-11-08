@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import re
 from datetime import date
+from decimal import Decimal, InvalidOperation
 from io import BytesIO
 
 from flask import abort, current_app, flash, jsonify, redirect, render_template, request, send_file, url_for
@@ -330,6 +331,43 @@ def pick_photo(pick_id):
 
 # --- free quantity per warehouse (the order form) ------------------------------------------------
 
+@warehouse_bp.route("/suggest.json")
+@roles_required(ADMIN, STAFF)
+@feature_required("warehouse_dispatch")
+def suggest_json():
+    """The order form's Warehouse picker: every warehouse with its distance to
+    the delivery pincode and what it has free, ARFA's default and why, and a
+    split plan when none has it all."""
+    from types import SimpleNamespace
+
+    from app.models.product import Product
+    from app.warehouse import nearest
+
+    ids = request.args.getlist("p")
+    qtys = request.args.getlist("q")
+    lines = []
+    for i, pid in enumerate(ids[:60]):
+        if not pid.isdigit():
+            continue
+        try:
+            qty = Decimal(qtys[i]) if i < len(qtys) and qtys[i] else Decimal("1")
+        except (InvalidOperation, ValueError):
+            qty = Decimal("1")
+        lines.append(SimpleNamespace(product_id=int(pid), qty=max(qty, Decimal("0"))))
+    owned = {p.id for p in tenant_query(Product).filter(Product.id.in_([l.product_id for l in lines] or [0]))}
+    lines = [l for l in lines if l.product_id in owned]
+    home = ledger.location_for_user(current_user.tenant_id, current_user)
+    suggestion = nearest.suggest_warehouse(current_user.tenant, request.args.get("pincode", ""), lines,
+                                           fallback=home.default_dispatch_location,
+                                           exclude_doc_id=request.args.get("exclude", type=int))
+    db.session.rollback()          # location_for_user may have made the branch's location: nothing to keep here
+    out = nearest.to_json(suggestion)
+    names = {p.id: p.name for p in tenant_query(Product).filter(Product.id.in_(list(owned) or [0]))}
+    out["products"] = [{"id": pid, "name": names[pid]} for pid in dict.fromkeys(l.product_id for l in lines)
+                       if str(pid) in (out["warehouses"][0]["free"] if out["warehouses"] else {})]
+    return jsonify(out)
+
+
 @warehouse_bp.route("/free.json")
 @roles_required(ADMIN, STAFF)
 @feature_required("warehouse_dispatch")
@@ -505,6 +543,37 @@ def location_settings(location_id):
     location = tenant_query(StockLocation).filter_by(id=location_id).first_or_404()
     changes = {}
     if location.kind == LocationKind.GODOWN:
+        from app.warehouse import nearest
+
+        pincode = nearest.clean_pincode(request.form.get("pincode"))
+        if request.form.get("pincode") is not None and request.form.get("pincode", "").strip() and not pincode:
+            flash("A warehouse's pincode is 6 digits.", "error")
+            return redirect(url_for("inventory.locations"))
+        if request.form.get("pincode") is not None and pincode != (location.pincode or ""):
+            location.pincode = pincode or None
+            changes["pincode"] = pincode
+        if "latitude" in request.form:
+            try:
+                lat = float(request.form["latitude"]) if request.form["latitude"].strip() else None
+                lng = float(request.form["longitude"]) if request.form.get("longitude", "").strip() else None
+            except ValueError:
+                flash("Latitude and longitude are numbers, e.g. 8.7642 and 78.1348.", "error")
+                return redirect(url_for("inventory.locations"))
+            if (lat is None) != (lng is None) or (lat is not None and not (6 <= lat <= 38 and 68 <= lng <= 98)):
+                flash("Give both latitude and longitude, inside India - or leave both empty to use the pincode's.",
+                      "error")
+                return redirect(url_for("inventory.locations"))
+            if (lat, lng) != (location.latitude, location.longitude):
+                location.latitude, location.longitude = lat, lng
+                changes["point"] = [lat, lng]
+        if "service_area" in request.form:
+            try:
+                codes = nearest.set_service_area(location, request.form.get("service_area", ""))
+            except ValueError as exc:
+                db.session.rollback()
+                flash(str(exc), "error")
+                return redirect(url_for("inventory.locations"))
+            changes["service_area"] = codes
         registered = bool(request.form.get("address_registered"))
         if registered != location.address_registered:
             location.address_registered = registered

@@ -65,6 +65,8 @@ class InvoiceInput:
     financier_id: int | None = None
     finance_amount: Decimal | None = None
     loan_ref: str | None = None
+    # Delivered elsewhere than the billing address (from the sales order).
+    ship_to: dict | None = None
 
 
 def _to_decimal(value: str, field_name: str) -> Decimal:
@@ -312,6 +314,7 @@ def create_invoice(tenant: Tenant, created_by, data: InvoiceInput) -> Invoice:
         financier_id=data.financier_id if data.finance_amount else None,
         finance_amount=data.finance_amount or None,
         loan_ref=data.loan_ref if data.finance_amount else None,
+        ship_to=data.ship_to or None,
         **totals,
     )
     if invoice.finance_amount and Decimal(invoice.finance_amount) > Decimal(invoice.grand_total):

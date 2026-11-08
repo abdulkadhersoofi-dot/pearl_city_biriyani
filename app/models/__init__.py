@@ -41,7 +41,7 @@ from app.models.stock import BranchStockAllocation
 from app.models.scan import ScanAppToken, ScanDocument, ScanLesson
 from app.models.warehouse import (
     DeliveryScan, Financier, ReceivedUnit, SerialPick, SerialSwap, StockCount, StockCountScan, WarehouseLogin,
-    WarehouseNotice, WarehouseReceipt, WarehouseSession,
+    WarehouseNotice, WarehouseReceipt, WarehouseSession, PincodeGeo, WarehouseServiceArea,
 )
 from app.models import indexes as _indexes  # noqa: E402,F401 - registers the business+date indexes
 
@@ -86,5 +86,6 @@ __all__ = [
     "ScanAppToken",
     "ScanDocument", "ScanLesson",
     "WarehouseLogin", "WarehouseSession", "SerialPick", "WarehouseNotice", "WarehouseReceipt", "ReceivedUnit",
-    "StockCount", "StockCountScan", "Financier", "DeliveryScan", "SerialSwap",
+    "StockCount", "StockCountScan", "Financier", "DeliveryScan", "SerialSwap", "PincodeGeo",
+    "WarehouseServiceArea",
 ]

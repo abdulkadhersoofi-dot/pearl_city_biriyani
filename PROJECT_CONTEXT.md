@@ -813,6 +813,13 @@ this list is just the index.
   needs approval and keeps the invoice (recorded on the slip - owner's choice);
   racks (bin_code), showroom serial choice ordered EMI READY -> racked, and
   financier settlement with payout import.
+  Nearest warehouse (`app/warehouse/nearest.py`): delivery address (ship_to)
+  on orders -> invoice -> e-way bill; suggest_warehouse (service area > nearest
+  with stock > nearest > branch fallback), straight-line km from the shared
+  `pincode_geo` table (`flask pincodes-build` / `pincodes-load`, data/); orders
+  may be split across warehouses (owner's choice), never an EMI sale. The
+  India Post pincode file still has to be downloaded by the owner (data.gov.in
+  needs a browser form) and built into data/pincode_geo.csv.gz.
 
 ## 5. Chronological development history (this session)
 

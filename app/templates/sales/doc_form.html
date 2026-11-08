@@ -12,14 +12,32 @@
     <input type="date" name="valid_until" value="{{ request.form.get('valid_until', '') }}" class="field-input"></label>
   {% endif %}
   {% if warehouses is defined %}
+  <div class="field wh-ship" x-data="{ other: {{ 'true' if request.form.get('ship_elsewhere') else 'false' }} }">
+    <span class="field-label">Deliver to</span>
+    <p class="m-0 small-note" data-ship-summary>The customer's address.</p>
+    <label class="checkbox-row"><input type="checkbox" name="ship_elsewhere" value="1" x-model="other"> Deliver to a different address</label>
+    <div x-show="other" x-cloak class="form-grid mt-12">
+      <label class="field m-0"><span class="field-label">Name</span><input type="text" name="ship_name" value="{{ request.form.get('ship_name', '') }}" class="field-input"></label>
+      <label class="field m-0"><span class="field-label">Address</span><input type="text" name="ship_address_line1" value="{{ request.form.get('ship_address_line1', '') }}" class="field-input"></label>
+      <label class="field m-0"><span class="field-label">Area / landmark</span><input type="text" name="ship_address_line2" value="{{ request.form.get('ship_address_line2', '') }}" class="field-input"></label>
+      <label class="field m-0"><span class="field-label">City</span><input type="text" name="ship_city" value="{{ request.form.get('ship_city', '') }}" class="field-input"></label>
+      <label class="field m-0"><span class="field-label">Pincode</span><input type="text" name="ship_pincode" inputmode="numeric" maxlength="6" value="{{ request.form.get('ship_pincode', '') }}" class="field-input" data-ship-pincode></label>
+      <label class="field m-0"><span class="field-label">Phone</span><input type="tel" name="ship_phone" value="{{ request.form.get('ship_phone', '') }}" class="field-input"></label>
+      <input type="hidden" name="ship_state_code" value="{{ request.form.get('ship_state_code', '') }}">
+    </div>
+  </div>
   <label class="field wh-picker"><span class="field-label">Warehouse (ships from)</span>
-    <select name="dispatch_location_id" class="field-input" required data-free-url="{{ url_for('warehouse.free_json') }}">
+    <select name="dispatch_location_id" class="field-input" data-free-url="{{ url_for('warehouse.free_json') }}"
+            data-suggest-url="{{ url_for('warehouse.suggest_json') }}">
       <option value="">Pick the warehouse</option>
       {% for w in warehouses %}<option value="{{ w.id }}" data-name="{{ w.name }}" {{ 'selected' if chosen_warehouse == w.id|string }}>{{ w.name }}</option>{% endfor %}
     </select>
     {% if not warehouses %}<span class="field-error-msg">No warehouse yet - add a godown under Stock locations first.</span>{% endif %}
     <span class="field-help" data-free-hint>Free quantity at each warehouse shows here as you add items.</span>
+    <span class="field-help" data-suggest-reason></span>
+    <label class="checkbox-row" data-split-box hidden><input type="checkbox" name="split" value="1" {{ 'checked' if request.form.get('split') }}> <span data-split-text>Split the order across warehouses</span></label>
   </label>
+  <script type="application/json" id="customer-addresses">{{ customer_addresses|tojson }}</script>
   <div class="field emi-box" x-data="{ emi: {{ 'true' if request.form.get('is_finance_sale') else 'false' }} }">
     <label class="checkbox-row"><input type="checkbox" name="is_finance_sale" value="1" x-model="emi"> <strong>Finance (EMI) sale</strong> - the warehouse locks the real unit while the loan is processed</label>
     <div x-show="emi" x-cloak class="form-grid mt-12">

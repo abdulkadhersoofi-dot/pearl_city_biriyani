@@ -51,6 +51,12 @@
       {% if invoice.customer_snapshot.gstin %}GSTIN: {{ invoice.customer_snapshot.gstin }}<br>{% endif %}
       {{ invoice.customer_snapshot.address_line1 or '' }} {{ invoice.customer_snapshot.address_line2 or '' }}<br>
       {{ invoice.customer_snapshot.city or '' }} {{ invoice.customer_snapshot.state_name or '' }} {{ invoice.customer_snapshot.pincode or '' }}
+      {% set ship = invoice.ship_to or {} %}
+      {% if ship and (ship.address_line1 or ship.pincode) and (ship.address_line1 != invoice.customer_snapshot.address_line1 or ship.pincode != invoice.customer_snapshot.pincode) %}
+      <div class="label" style="margin-top:8px">Ship to</div>
+      {{ ship.name or '' }}<br>{{ ship.address_line1 or '' }} {{ ship.address_line2 or '' }}<br>
+      {{ ship.city or '' }} {{ ship.pincode or '' }}{% if ship.phone %} · {{ ship.phone }}{% endif %}
+      {% endif %}
     </div>
     <div class="block">
       <div class="label">Invoice date</div>

@@ -2378,3 +2378,4 @@ form.inline { display: inline; }
 }
 .tag.tag-emi { background: var(--color-danger-bg); color: var(--color-danger); font-weight: 700; }
 .emi-card { border-left: 4px solid var(--color-danger); }
+.checkbox-row[hidden] { display: none; }

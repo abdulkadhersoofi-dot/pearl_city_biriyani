@@ -33,6 +33,7 @@ from app.utils.features import feature_required
 from app.utils.tenant_scope import assert_owns, tenant_query
 from app.utils.entitlements import brand_logo_id
 from app.utils.uploads import image_data_uri
+from app.models.warehouse import CHOICE_REASONS
 from app.warehouse import dispatch, notify
 
 ADMIN = UserRole.CLIENT_ADMIN
@@ -104,6 +105,25 @@ def _finance_form() -> dict:
             "down_payment": money("down_payment")}
 
 
+def _ship_form() -> dict:
+    """The delivery address and the split choice from the order form."""
+    if not dispatch.is_on(current_user.tenant):
+        return {}
+    ship = {k: request.form.get(f"ship_{k}", "") for k in services.SHIP_TO_KEYS}
+    return {"ship_to": ship if request.form.get("ship_elsewhere") else None, "split": bool(request.form.get("split"))}
+
+
+def _customer_addresses() -> dict:
+    """For the form: each customer's address, to fill "deliver to" and ask
+    for the nearest warehouse when the customer is picked."""
+    from app.models.customer import Customer
+
+    return {str(c.id): {"name": c.name, "address_line1": c.address_line1 or "", "address_line2": c.address_line2 or "",
+                        "city": c.city or "", "state_code": c.state_code or "", "pincode": c.pincode or "",
+                        "phone": c.phone or ""}
+            for c in tenant_query(Customer).filter_by(is_active=True).all()}
+
+
 def _warehouse_context(doc=None):
     """The Warehouse picker: the warehouses, with free quantities for the
     items on the form (filled in by /warehouse/free.json as lines change)."""
@@ -117,7 +137,8 @@ def _warehouse_context(doc=None):
     from app.warehouse.emi import active_financiers
 
     return {"warehouses": dispatch.warehouses(current_user.tenant_id), "chosen_warehouse": chosen,
-            "financiers": active_financiers(current_user.tenant_id)}
+            "financiers": active_financiers(current_user.tenant_id),
+            "customer_addresses": _customer_addresses() if doc is None else {}}
 
 
 def _convertible_choices(form):
@@ -178,13 +199,17 @@ def new_document():
                 challan_purpose=ChallanPurpose(purpose) if purpose in {p.value for p in ChallanPurpose} else None,
                 notes=form.notes.data, terms=request.form.get("terms"),
                 dispatch_location_id=request.form.get("dispatch_location_id") or None,
-                **_finance_form(),
+                **_finance_form(), **_ship_form(),
             ))
             _audit("sales_document_created", "sales_document", doc, number=doc.number, kind=kind.value,
                    total=str(doc.grand_total))
             db.session.commit()
             notify.send_pending_quietly()
-            if doc.dispatch_location is not None:
+            parts = getattr(doc, "split_parts", None)
+            if parts and len(parts) > 1:
+                flash(f"{doc.label} split across warehouses: " + ", ".join(
+                    f"{p.number} to {p.dispatch_location.name}" for p in parts) + ".", "success")
+            elif doc.dispatch_location is not None:
                 flash(f"{doc.label} {doc.number} saved and sent to {doc.dispatch_location.name}.", "success")
             else:
                 flash(f"{doc.label} {doc.number} saved.", "success")
@@ -214,6 +239,9 @@ def view_document(doc_id):
         extra = {"progress": dispatch.line_progress(doc), "dispatch_labels": DISPATCH_STATUS_LABELS,
                  "complete": dispatch.is_complete(doc), "choices": choices, "show_all": show_all,
                  "pending_swaps": dispatch.pending_swaps(doc), "may_emi_invoice": _may_emi_invoice(doc),
+                 "choice_reasons": CHOICE_REASONS,
+                 "split_parts": (tenant_query(SalesDocument).filter_by(split_group_id=doc.split_group_id)
+                                 .order_by(SalesDocument.id).all() if doc.split_group_id else []),
                  **_warehouse_context(doc)}
     return render_template("sales/document_view.html", doc=doc, purposes=CHALLAN_PURPOSE_LABELS,
                            doc_type_labels=DOCUMENT_TYPE_LABELS, today=date.today(), **extra)

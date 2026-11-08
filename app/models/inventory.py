@@ -44,6 +44,12 @@ class StockLocation(db.Model, TenantScopedMixin, TimestampMixin):
                                                                        name="fk_stock_locations_default_dispatch"))
 
     branch_user = db.relationship("User")
+    # Where it is, for the nearest-warehouse default: its pincode, and the point
+    # (filled from the pincode table, editable).
+    pincode = db.Column(db.String(6))
+    latitude = db.Column(db.Float)
+    longitude = db.Column(db.Float)
+
     default_dispatch_location = db.relationship("StockLocation", remote_side="StockLocation.id")
 
     def __repr__(self):

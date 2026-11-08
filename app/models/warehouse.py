@@ -386,3 +386,47 @@ class SerialSwap(db.Model, TenantScopedMixin, TimestampMixin):
     requested_by = db.relationship("WarehouseLogin")
     decided_by = db.relationship("User")
     line = db.relationship("SalesDocumentLine")
+
+
+class PincodeGeo(db.Model):
+    """Where a pincode is (shared reference data, not one business's): from
+    India Post's All-India Pincode Directory (data.gov.in, Government Open
+    Data Licence - India), loaded by `flask pincodes-load`. level says where
+    the point came from: "own" (the pincode's own offices), "district" (the
+    average of its district's pincodes - its own were missing or wrong) or
+    "area" (the average of the pincodes sharing its first three digits)."""
+
+    __tablename__ = "pincode_geo"
+
+    pincode = db.Column(db.String(6), primary_key=True)
+    lat = db.Column(db.Float, nullable=False)
+    lng = db.Column(db.Float, nullable=False)
+    district = db.Column(db.String(80))
+    state = db.Column(db.String(60))
+    level = db.Column(db.String(10), nullable=False, default="own")
+
+
+class WarehouseServiceArea(db.Model, TenantScopedMixin, TimestampMixin):
+    """A manual override: orders to this pincode (628001) or area (628) ship
+    from this warehouse, whatever the straight-line distance says (a river,
+    a district border, the road)."""
+
+    __tablename__ = "warehouse_service_areas"
+    __table_args__ = (db.UniqueConstraint("tenant_id", "pincode_or_prefix", name="uq_warehouse_service_areas_tenant_code"),)
+
+    id = db.Column(db.Integer, primary_key=True)
+    location_id = db.Column(db.Integer, db.ForeignKey("stock_locations.id", name="fk_warehouse_service_areas_location",
+                                                      ondelete="CASCADE"), nullable=False, index=True)
+    pincode_or_prefix = db.Column(db.String(6), nullable=False)
+
+    location = db.relationship("StockLocation")
+
+
+CHOICE_REASONS = {
+    "service_area": "service area",
+    "nearest": "nearest",
+    "nearest_in_stock": "nearest with stock",
+    "fallback": "fallback - pincode not found",
+    "manual": "chosen by hand",
+    "split": "split across warehouses",
+}

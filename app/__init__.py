@@ -496,6 +496,9 @@ def _register_request_hooks(app: Flask) -> None:
 
 
 def _register_cli(app: Flask) -> None:
+    from app.warehouse.pincodes import register as register_pincodes
+
+    register_pincodes(app)
     import click
 
     @app.cli.command("create-super-admin")

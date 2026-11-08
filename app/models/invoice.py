@@ -71,6 +71,8 @@ class Invoice(db.Model, TenantScopedMixin, TimestampMixin):
     financier_id = db.Column(db.Integer, db.ForeignKey("financiers.id", name="fk_invoices_financier"))
     finance_amount = db.Column(db.Numeric(12, 2))
     loan_ref = db.Column(db.String(60))
+    # Delivered elsewhere than the billing address (from the sales order).
+    ship_to = db.Column(db.JSON)
     created_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
 
     voided_at = db.Column(db.DateTime(timezone=True))

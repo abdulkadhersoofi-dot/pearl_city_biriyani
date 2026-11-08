@@ -22,6 +22,7 @@ if [ "${RUN_MIGRATIONS_ON_START:-1}" = "1" ]; then
     # var) must never take the whole app down - `|| true` keeps the site up
     # even if this one step has a problem.
     flask bootstrap-super-admin || true
+    flask pincodes-load || true
 fi
 
 exec gunicorn -c deploy/gunicorn.conf.py wsgi:app

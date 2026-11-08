@@ -3168,6 +3168,46 @@ loan takes (`app/warehouse/dispatch.py`, `app/warehouse/emi.py`).
   for checking, then recorded as receipts; charges deducted are flagged to go
   in as an expense.
 
+### Warehouse dispatch - the nearest-warehouse default (and split orders)
+
+A sales order defaults to the warehouse nearest its **delivery address**
+(`app/warehouse/nearest.py`, owner's choices: straight-line distance plus
+manual service areas; splitting allowed).
+
+- **Deliver to** (`SalesDocument.ship_to`): the customer's address, or a
+  different one for this order only; carried to the invoice (`Invoice.ship_to`,
+  printed as "Ship to") and to the e-way bill's to-address and to-pincode.
+- **suggest_warehouse(tenant, pincode, lines) -> (location, reason, ranked)**:
+  a manual service area first (exact pincode beats the longest prefix; per
+  warehouse on Stock locations); else the nearest active godown by haversine
+  km that has every line free ("nearest", or "nearest_in_stock" with why the
+  nearer one was passed over: "A (12 km) is short of LG 1.5T - defaulted to B
+  (38 km)"); none can fill it: the nearest, with its shortage; an unknown or
+  blank pincode: the branch's **fallback warehouse**, flagged "Pincode not
+  found". The order form asks `/warehouse/suggest.json` as the customer,
+  address and items change: every warehouse with distance and free quantity,
+  the default selected until the salesperson picks by hand, and a one-line
+  reason. Saving recomputes it on the server: `dispatch_choice_reason` is
+  `service_area | nearest | nearest_in_stock | fallback | manual | split`.
+  Orders made without a warehouse (bulk / API) take the suggestion.
+- **Split** (owner's choice): when no single warehouse has the whole order, the
+  salesperson may tick "Split across warehouses": one sales order per
+  warehouse, nearest first, each with its share of the lines (a line may be
+  divided), each picked and invoiced on its own, all pointing at the first
+  (`split_group_id`). An EMI sale is never split (one invoice to the financier).
+- **Warehouses** get a pincode (required for a godown with the module on), an
+  optional exact point (latitude/longitude, else the pincode's), and a service
+  area ("628001, 629" - a code can belong to one warehouse only).
+- **The pincode table** (`pincode_geo`, shared reference data, not per
+  business) comes from India Post's All India Pincode Directory on data.gov.in
+  (Government Open Data Licence - India). It can only be downloaded in a
+  browser, so `flask pincodes-build <csv>` compacts it into
+  `data/pincode_geo.csv.gz` (one row per pincode; offices' average, else the
+  district's, else the 3-digit area's - the level is kept) and
+  `flask pincodes-load` (in deploy/migrate.sh) loads it. **Source file and
+  date: not added yet** - until it is, distance can't be measured and orders
+  use service areas or the branch's fallback warehouse.
+
 ### Warehouse dispatch - how to run it (hand-over)
 
 1. Ultra Admin: switch **Warehouse dispatch by serial scan** on for the client
@@ -3187,7 +3227,12 @@ loan takes (`app/warehouse/dispatch.py`, `app/warehouse/emi.py`).
    **Make invoice** -> print the invoice and the delivery slip.
 7. Optional, once: `scripts/gcp/warehouse_push_setup.sh` (docs/cloud-setup.md)
    so orders ring with the app closed.
-8. EMI sales: **Warehouse > Financiers** - add Bajaj Finserv / HDB (one
+8. Nearest warehouse: on **Stock locations** give each warehouse its pincode
+   (and, where distance misleads, the pincodes it always serves) and each
+   branch a fallback warehouse. The order form then picks the nearest
+   warehouse with stock for the delivery address; tick "Split across
+   warehouses" when none has it all.
+9. EMI sales: **Warehouse > Financiers** - add Bajaj Finserv / HDB (one
    click) or others. **Warehouse > Racks** - print rack labels and the EMI
    READY label; pickers scan a rack label before shelving units. The
    salesperson ticks *Finance (EMI) sale* on the order; the phones ring

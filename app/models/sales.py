@@ -128,6 +128,14 @@ class SalesDocument(db.Model, TenantScopedMixin, TimestampMixin):
     finance_amount = db.Column(db.Numeric(12, 2))
     priority = db.Column(db.String(10))          # "high" for an EMI sale (the customer is waiting)
     invoiced_at_showroom = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
+    # Where the goods go (name, address_line1/2, city, state_code, pincode, phone):
+    # from the customer, editable per order; carried to the invoice and e-way bill.
+    ship_to = db.Column(db.JSON)
+    # Why this warehouse: service_area | nearest | nearest_in_stock | fallback | manual | split.
+    dispatch_choice_reason = db.Column(db.String(20))
+    # An order split across warehouses: every part points at the first one.
+    split_group_id = db.Column(db.Integer, db.ForeignKey("sales_documents.id", name="fk_sales_documents_split_group"),
+                               index=True)
 
     gstin = db.relationship("Gstin")
     customer = db.relationship("Customer")

@@ -47,6 +47,15 @@ def _date(value):
         return None
 
 
+def _service_areas() -> dict:
+    from app.models.warehouse import WarehouseServiceArea
+
+    out = {}
+    for row in tenant_query(WarehouseServiceArea).order_by(WarehouseServiceArea.pincode_or_prefix):
+        out.setdefault(row.location_id, []).append(row.pincode_or_prefix)
+    return out
+
+
 def _locations(active_only=True):
     """The client's locations, branch locations included (each branch
     login gets one the first time it's needed - made here so they can be
@@ -108,7 +117,8 @@ def locations():
     if request.method == "POST":
         try:
             kind = LocationKind(request.form.get("kind") or "godown")
-            location = services.create_location(_tenant(), request.form.get("name"), kind, request.form.get("address"))
+            location = services.create_location(_tenant(), request.form.get("name"), kind, request.form.get("address"),
+                                                request.form.get("pincode"))
         except (ValueError, ledger.StockError) as e:
             db.session.rollback()
             flash(getattr(e, "message", "Pick a valid location type."), "error")
@@ -130,7 +140,8 @@ def locations():
 
         extra = {"branch_logins": tenant_query(User).filter_by(role=UserRole.STAFF, is_active=True)
                  .order_by(User.name).all(),
-                 "godowns": [l for l in all_locations if l.kind == LocationKind.GODOWN and l.is_active]}
+                 "godowns": [l for l in all_locations if l.kind == LocationKind.GODOWN and l.is_active],
+                 "service_areas": _service_areas()}
     return render_template("inventory/locations.html", locations=all_locations, counts=counts,
                            kind_labels=LOCATION_KIND_LABELS, **extra)
 

@@ -67,6 +67,9 @@
     <div><strong>Date</strong><p>{{ doc.doc_date.strftime('%d %b %Y') }}</p></div>
     {% if doc.valid_until %}<div><strong>Valid until</strong><p>{{ doc.valid_until.strftime('%d %b %Y') }}</p></div>{% endif %}
     {% if doc.challan_purpose %}<div><strong>Purpose</strong><p>{{ purposes[doc.challan_purpose] }}</p></div>{% endif %}
+    {% if doc.ship_to and (doc.ship_to.address_line1 or doc.ship_to.pincode) %}<div><strong>Deliver to</strong><p>{{ doc.ship_to.name }}<br>{{ doc.ship_to.address_line1 }} {{ doc.ship_to.address_line2 }}<br>{{ doc.ship_to.city }} {{ doc.ship_to.pincode }}{% if doc.ship_to.phone %} · {{ doc.ship_to.phone }}{% endif %}</p></div>{% endif %}
+    {% if doc.dispatch_location %}<div><strong>Ships from</strong><p>{{ doc.dispatch_location.name }}{% if doc.dispatch_choice_reason %} <small class="text-muted">({{ choice_reasons.get(doc.dispatch_choice_reason, doc.dispatch_choice_reason) }})</small>{% endif %}
+      {% if split_parts %}<br><small>Split order: {% for p in split_parts %}{% if p.id == doc.id %}{{ p.number }}{% else %}<a href="{{ url_for('sales.view_document', doc_id=p.id) }}">{{ p.number }}</a>{% endif %} ({{ p.dispatch_location.name }}){% if not loop.last %} · {% endif %}{% endfor %}</small>{% endif %}</p></div>{% endif %}
     {% if doc.is_finance_sale %}<div><strong>EMI sale</strong><p>{{ doc.financier.name if doc.financier }}{% if doc.loan_ref %} · loan {{ doc.loan_ref }}{% endif %}<br>Finance {{ doc.finance_amount|inr }} · down payment {{ doc.down_payment|inr }}</p></div>{% endif %}
     <div><strong>Place of supply</strong><p>{{ doc.place_of_supply_state_code|state_name }}</p></div>
     <div><strong>{{ 'Invoiced as' if doc.kind.value == 'delivery_challan' else 'Will be invoiced as' }}</strong><p>{{ doc_type_labels[doc.invoice_document_type] }}</p></div>
