@@ -67,7 +67,7 @@ def test_the_ultra_admins_menu_is_short(client, db, super_admin):
     _login(client, super_admin.email, "SuperSecret123")
     html = client.get("/admin/today").get_data(as_text=True)
     assert _menu(html) == ["Today", "Clients", "Auditors", "Filing &amp; GST", "Packages", "Sign-in domains",
-                             "Billing", "Audit log"]
+                             "Billing", "Teach the bill reader", "Audit log"]
     assert 'aria-current="page"' in html.split('class="nav-label">Today', 1)[0].rsplit("<a", 1)[1]
 
 

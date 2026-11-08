@@ -107,7 +107,7 @@ def test_firm_console_gets_its_own_groups(client, db, super_admin):
     _login(client, "firm@example.com", "SuperSecret123")
     html = _page(client, "/admin/clients")
     assert _menu_labels(html) == ["Today", "Clients", "Auditors", "Filing & GST", "Packages", "Sign-in domains",
-                                   "Billing", "Audit log"]
+                                   "Billing", "Teach the bill reader", "Audit log"]
     assert "btn-new" not in html  # nothing to create from the console's New
     assert "/admin/audit-log" in {e["url"] for e in _palette(html)}
 
