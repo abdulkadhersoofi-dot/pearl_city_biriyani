@@ -3,7 +3,7 @@
 {% block title %}{% block form_title %}New invoice{% endblock %} - {{ firm_name }}{% endblock %}
 
 {% block head %}
-<script>
+<script nonce="{{ csp_nonce() }}">
   const GSTIN_STATE = { {% for g in current_user.tenant.gstins %}{{ g.id }}: "{{ g.state_code }}",{% endfor %} };
   const CUSTOMER_STATE = { {% for c in customers %}"{{ c.id }}": "{{ c.state_code or '' }}",{% endfor %} };
   const BRANCH_TYPE = { {% for b in branches %}"{{ b.id }}": "{{ b.branch_type.value }}",{% endfor %} };
@@ -212,7 +212,7 @@
 {% endblock %}
 
 {% block scripts %}
-<script>
+<script nonce="{{ csp_nonce() }}">
 function invoiceForm() {
   return {
     lines: PREFILL_LINES.length ? PREFILL_LINES : [{description:'', hsn:'', qty:1, rate:0, discount:0, gst_rate:0, incl:DEFAULT_INCL, unit:'pcs', product_id:null}],

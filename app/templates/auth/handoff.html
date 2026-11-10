@@ -9,5 +9,5 @@
   <p class="text-muted mt-0">Taking you to your account.</p>
   <button type="submit" class="btn btn-primary btn-block btn-lg">Continue</button>
 </form>
-<script>document.getElementById("handoff-form").submit();</script>
+<script nonce="{{ csp_nonce() }}">document.getElementById("handoff-form").submit();</script>
 {% endblock %}

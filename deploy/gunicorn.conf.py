@@ -30,3 +30,21 @@ loglevel = os.environ.get("GUNICORN_LOG_LEVEL", "info")
 # workers - or running this behind multiple app servers - never fragments
 # who-is-logged-in-where.
 preload_app = True
+
+# On Google Cloud Run, gunicorn's own lines (worker timeouts, crashes, the
+# access log) are JSON too - the same shape as the app's (app/monitoring.py),
+# so each carries its real severity and a worker timeout counts as an error.
+# LOG_FORMAT=text keeps them plain.
+if os.environ.get("K_SERVICE") and (os.environ.get("LOG_FORMAT") or "json").lower() != "text":
+    logconfig_dict = {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "formatters": {"json": {"()": "app.monitoring.JsonFormatter"}},
+        "handlers": {"console": {"class": "logging.StreamHandler", "formatter": "json",
+                                 "stream": "ext://sys.stderr"}},
+        "root": {"level": "WARNING", "handlers": ["console"]},
+        "loggers": {
+            "gunicorn.error": {"level": "INFO", "handlers": ["console"], "propagate": False},
+            "gunicorn.access": {"level": "INFO", "handlers": ["console"], "propagate": False},
+        },
+    }

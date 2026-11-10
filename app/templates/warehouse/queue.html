@@ -18,7 +18,7 @@
 {% if not location and warehouses|length > 1 %}
 <form method="get" class="row gap-10 items-end mb-16">
   <label class="field m-0"><span class="field-label">Warehouse</span>
-    <select name="w" class="field-input" onchange="this.form.submit()">
+    <select name="w" class="field-input" data-autosubmit>
       <option value="">Every warehouse</option>
       {% for w in warehouses %}<option value="{{ w.id }}" {{ 'selected' if warehouse_id == w.id }}>{{ w.name }}</option>{% endfor %}
     </select></label>

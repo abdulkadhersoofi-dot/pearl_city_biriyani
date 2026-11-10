@@ -143,7 +143,9 @@ app/
 ├── loyalty/         # points ledger and history (Phase 9)
 ├── subscriptions/   # the firm's own subscription invoices (Phase 10)
 ├── onboarding.py    # first-run checklist (Phase 10)
-├── monitoring.py    # Sentry, only with SENTRY_DSN (Phase 10)
+├── monitoring.py    # JSON logs on Cloud Run, security events; Sentry only with SENTRY_DSN
+├── security_headers.py # HSTS, CSP (per-request nonce), frame/sniff/referrer/permissions headers
+├── ratelimit.py     # per-caller request limits (sign-in, API, pages, PDFs)
 ├── api/              # small JSON endpoints (product lookup today; POS
 │                     # cart/checkout from Phase 2) - kept separate so a
 │                     # future SPA frontend can reuse them
@@ -213,6 +215,9 @@ Optional environment variables (nothing breaks without them):
 | Variable | What it does |
 |---|---|
 | `SENTRY_DSN` (+ `SENTRY_ENVIRONMENT`, `SENTRY_TRACES_SAMPLE_RATE`) | error reports to Sentry; off when unset |
+| `LOG_FORMAT` (json on Cloud Run, else text), `LOG_LEVEL` (WARNING) | how logs are written |
+| `RATE_LIMITS_ENABLED` (1), `RATE_LIMIT_AUTH` (30), `RATE_LIMIT_API` (300), `RATE_LIMIT_WEB` (600), `RATE_LIMIT_HEAVY` (40), `RATE_LIMIT_REPORT` (30) | requests a minute per caller (app/ratelimit.py); 0 = no limit for that kind |
+| `CSP_MODE` (enforce) | `report` = log what the Content-Security-Policy would block without blocking; `off` |
 | `SMTP_HOST`, `SMTP_PORT` (587), `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM`, `SMTP_USE_TLS` (1) | the owner's day summary by email; WhatsApp sharing works without |
 | `PROXY_FIX_X_FOR` | set to `1` behind Render / nginx so lockout and limits see the real client IP |
 | `ADMIN_2FA_REQUIRED` (1), `ADMIN_IDLE_MINUTES` (30), `LOGIN_IP_LIMIT` (40) | sign-in security for the firm's own logins |
@@ -1810,10 +1815,28 @@ Five new flags, all off by default; with them off nothing changes (routes
   cashier. Lock / switch, auto-lock after the Client Admin's idle
   minutes, five wrong PINs = a minute's wait. Offline, the cashier on the
   counter stays (a PIN needs the server).
-- **Monitoring.** Sentry only when `SENTRY_DSN` is set (`app/monitoring.py`;
-  user id and role only, no email or form data; tracing off unless
+- **Monitoring.** On Cloud Run every log line is JSON (`app/monitoring.py`):
+  severity, method and path (no query string), trace; errors carry their
+  stack trace for Error Reporting. `security_event(kind, ...)` logs failed
+  sign-ins, lockouts, rate limits and CSP violations (ids only, never an
+  email). `scripts/gcp/monitoring_setup.sh <email>` sets up the uptime check,
+  log-based metrics and email alerts. Sentry only when `SENTRY_DSN` is set
+  (user id and role only, no email or form data; tracing off unless
   `SENTRY_TRACES_SAMPLE_RATE`). `/healthz` checks the database and Redis
   and answers 503 naming the part that's down.
+- **Security headers** (`app/security_headers.py`): HSTS over HTTPS
+  (includeSubDomains on PUBLIC_URL's domain only), a Content-Security-Policy
+  on pages - scripts only from /static or inline blocks with the response's
+  nonce (`<script nonce="{{ csp_nonce() }}">`), no inline `onclick=` (use the
+  data- attributes in `static/js/actions.js`), connect/img/font from ARFA
+  only, no framing by other sites; violations go to `/csp-report` and the
+  logs. `'unsafe-eval'` stays for Alpine.js. `CSP_MODE=report` logs without
+  blocking.
+- **Rate limits** (`app/ratelimit.py`): per caller per minute - sign-in
+  posts 30 per network, PDFs/spreadsheets 40 per login, `/api/` 300 per app
+  token, pages 600 per login; 429 with Retry-After. Counts are per server
+  process (a flood is stopped; the firm-wide failed-sign-in cap stays in the
+  database).
 - **First-run checklist** (`app/onboarding.py`) for a new Client Admin -
   business profile (Settings saved once), GSTIN / location, first item,
   first customer, first bill, printer test (a sample receipt on the

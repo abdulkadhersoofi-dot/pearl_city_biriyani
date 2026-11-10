@@ -9,7 +9,7 @@
 </div>
 {% include "accounts/_nav.html" %}
 <form method="get" class="search-bar">
-  <select name="supplier_id" class="field-input" onchange="this.form.submit()">
+  <select name="supplier_id" class="field-input" data-autosubmit>
     <option value="">Pick the supplier...</option>
     {% for s in suppliers %}<option value="{{ s.id }}" {{ 'selected' if supplier and supplier.id == s.id }}>{{ s.name }}</option>{% endfor %}
   </select>

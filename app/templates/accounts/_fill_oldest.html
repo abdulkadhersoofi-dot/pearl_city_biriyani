@@ -1,9 +1,9 @@
 <p class="row gap-8 items-center">
-  <button type="button" class="btn btn-secondary btn-sm" onclick="fillOldestFirst()">Fill oldest bills first</button>
-  <button type="button" class="btn btn-quiet btn-sm" onclick="document.querySelectorAll('.alloc-input').forEach(function (el) { el.value = ''; })">Clear</button>
+  <button type="button" class="btn btn-secondary btn-sm" data-fill-oldest>Fill oldest bills first</button>
+  <button type="button" class="btn btn-quiet btn-sm" data-clear-inputs=".alloc-input">Clear</button>
   <small class="text-muted">Whatever isn't set against a bill stays on account.</small>
 </p>
-<script>
+<script nonce="{{ csp_nonce() }}">
   function fillOldestFirst() {
     var amountField = document.getElementById('voucher-amount');
     var left = amountField ? parseFloat(amountField.value || '0') : 0;

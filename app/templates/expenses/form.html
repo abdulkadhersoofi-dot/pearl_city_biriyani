@@ -89,7 +89,7 @@
     <button name="action" value="post" class="btn btn-primary">Post expense</button>
   </div>
 </form>
-<script>
+<script nonce="{{ csp_nonce() }}">
   function expenseForm(gst, rcm, incl) {
     const r2 = (x) => Math.round((x + Number.EPSILON) * 100) / 100;
     return {

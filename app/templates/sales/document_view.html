@@ -2,7 +2,7 @@
 {% block title %}{{ doc.number }} - {{ firm_name }}{% endblock %}
 {% block scripts %}{{ super() }}
 {% if doc.dispatch_status and doc.dispatch_status.value != 'delivered' %}
-<script>
+<script nonce="{{ csp_nonce() }}">
 // Live status: the page reloads when the warehouse claims, scans, locks or delivers.
 (function () {
   const url = "{{ url_for('sales.dispatch_state', doc_id=doc.id) }}";

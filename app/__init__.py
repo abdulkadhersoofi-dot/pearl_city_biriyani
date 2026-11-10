@@ -1,4 +1,3 @@
-import logging
 import os
 import time
 
@@ -26,8 +25,16 @@ def create_app(config_object=None):
 
         app.wsgi_app = ProxyFix(app.wsgi_app, x_for=app.config.get("PROXY_FIX_X_FOR", 0), x_proto=1,
                                 x_host=app.config.get("PROXY_FIX_X_HOST", 0))
+    # First of the request hooks (before CSRF's): a flood is turned away
+    # before anything else runs.
+    from app.ratelimit import init_rate_limits
+
+    init_rate_limits(app)
     _init_extensions(app)
     _register_blueprints(app)
+    from app.security_headers import init_security_headers
+
+    init_security_headers(app)
     _register_error_handlers(app)
     _register_cli(app)
     _register_context_processors(app)
@@ -54,12 +61,12 @@ def _set_process_clock(app: Flask) -> None:
 
 
 def _configure_logging(app: Flask) -> None:
-    # A bare `flask run` / gunicorn process has no handler on the root
-    # logger by default, so anything logged via logging.getLogger(...)
-    # would silently vanish. Give the root logger a handler if nothing
-    # else has.
-    if not logging.getLogger().handlers:
-        logging.basicConfig(level=logging.WARNING, format="%(levelname)s:%(name)s:%(message)s")
+    # Plain text locally; one JSON object per line on Cloud Run, so Cloud
+    # Logging sees each line's severity and Error Reporting its stack trace
+    # (app/monitoring.py).
+    from app.monitoring import configure_logging
+
+    configure_logging()
 
 
 def _init_extensions(app: Flask) -> None:
@@ -163,6 +170,19 @@ def _register_blueprints(app: Flask) -> None:
 
 def _register_error_handlers(app: Flask) -> None:
     from flask import render_template
+
+    from flask_wtf.csrf import CSRFError
+
+    @app.errorhandler(CSRFError)
+    def csrf_failed(e):
+        # A form posted without its token: an expired page, or a forged
+        # request from another site - logged, then the usual 400.
+        from flask import request
+
+        from app.monitoring import security_event
+
+        security_event("csrf_failed", path=request.path, reason=e.description)
+        return e
 
     @app.errorhandler(403)
     def forbidden(_e):
@@ -377,7 +397,7 @@ READ_ONLY_FLAG = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__
 # Signing in and out still work on a read-only copy, so its records can be looked at.
 _READ_ONLY_ALLOWED = {"auth.login", "auth.logout", "auth.two_factor", "auth.two_factor_setup", "auth.handoff",
                       "counterapp.resume",
-                      "counterapp.pair", "counterapp.ping"}
+                      "counterapp.pair", "counterapp.ping", "csp_report"}
 
 
 def read_only_mode() -> bool:

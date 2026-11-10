@@ -139,7 +139,7 @@
         <select name="from_state" class="field-input">{% for code, name in states.items() %}<option value="{{ code }}" {{ 'selected' if code == f.state_code }}>{{ name }}</option>{% endfor %}</select></label>
       <input type="hidden" name="transporter_id" value="{{ ewb.transporter_id or '' }}"><input type="hidden" name="transporter_name" value="{{ ewb.transporter_name or '' }}">
       <input type="hidden" name="vehicle_type" value="{{ ewb.vehicle_type }}">
-      <label class="field"><span class="field-label">&nbsp;</span><span><input type="checkbox" name="on_portal" value="1" {% if not has_login %}checked onclick="return false;"{% endif %}> Already updated on the portal</span></label>
+      <label class="field"><span class="field-label">&nbsp;</span><span><input type="checkbox" name="on_portal" value="1" {% if not has_login %}checked data-locked{% endif %}> Already updated on the portal</span></label>
       <div class="field"><span class="field-label">&nbsp;</span><button class="btn btn-primary">Update vehicle</button></div>
     </form>
   </details>
@@ -152,7 +152,7 @@
       <label class="field"><span class="field-label">Reason</span>
         <select name="reason_code" class="field-input">{% for code, label in cancel_reasons.items() %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select></label>
       <label class="field"><span class="field-label">Remark</span><input type="text" name="remark" maxlength="50" required class="field-input"></label>
-      <label class="field"><span class="field-label">&nbsp;</span><span><input type="checkbox" name="on_portal" value="1" {% if not has_login %}checked onclick="return false;"{% endif %}> Already cancelled on the portal</span></label>
+      <label class="field"><span class="field-label">&nbsp;</span><span><input type="checkbox" name="on_portal" value="1" {% if not has_login %}checked data-locked{% endif %}> Already cancelled on the portal</span></label>
       <div class="field"><span class="field-label">&nbsp;</span><button class="btn btn-danger">Cancel e-way bill</button></div>
     </form>
   </details>

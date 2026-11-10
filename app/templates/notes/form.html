@@ -3,7 +3,7 @@
 {% block title %}New {{ document_label|lower }} - {{ firm_name }}{% endblock %}
 
 {% block head %}
-<script>
+<script nonce="{{ csp_nonce() }}">
   const IS_INTRA_STATE = {{ 'true' if invoice.is_intra_state else 'false' }};
   const CHARGES_GST = {{ 'true' if invoice.total_cgst or invoice.total_sgst or invoice.total_igst else 'false' }};
   const PREFILL_LINES = [
@@ -101,7 +101,7 @@
 {% endblock %}
 
 {% block scripts %}
-<script>
+<script nonce="{{ csp_nonce() }}">
 function noteForm() {
   return {
     lines: PREFILL_LINES.length ? JSON.parse(JSON.stringify(PREFILL_LINES)) : [{description:'', hsn:'', qty:1, rate:0, discount:0, gst_rate:0, incl:DEFAULT_INCL, unit:'pcs', product_id:null}],

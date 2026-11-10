@@ -7,7 +7,7 @@
 <ul class="recovery-codes">
   {% for code in codes %}<li><code>{{ code }}</code></li>{% endfor %}
 </ul>
-<button type="button" class="btn btn-secondary btn-block" onclick="window.print()">Print the codes</button>
+<button type="button" class="btn btn-secondary btn-block" data-print>Print the codes</button>
 {% if handoff %}
 {# Set up on a client's own sign-in address: continue to the main one. #}
 <form method="post" action="{{ handoff.action }}">

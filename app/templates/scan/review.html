@@ -386,7 +386,7 @@
 {% endblock %}
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/scan_zoom.js') }}" defer></script>
-<script>
+<script nonce="{{ csp_nonce() }}">
   /* The scanned bill as a tax invoice (app/scan). Its data comes from the
      JSON block above, so nothing in the bill can break the page's markup. */
   function scanReview() {

@@ -27,4 +27,10 @@ def record_audit(
         ip_address=request.remote_addr if request else None,
     )
     db.session.add(log)
+    from app.monitoring import AUDITED_SECURITY_EVENTS, security_event
+
+    if action in AUDITED_SECURITY_EVENTS:
+        # Also a log line, so a burst raises an alert (scripts/gcp/monitoring_setup.sh).
+        # The audit row keeps the details; the log gets ids only.
+        security_event(action, user_id=getattr(actor, "id", None), tenant_id=tenant_id)
     return log

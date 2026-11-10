@@ -32,7 +32,7 @@
   </table>
   <div style="padding:10px;"><button type="button" class="btn btn-secondary btn-sm" @click="add()">+ Add row</button></div>
 </div>
-<script>
+<script nonce="{{ csp_nonce() }}">
   function stockLines() {
     const PRODUCTS = {{ products_json|tojson }};
     const START = {{ rows|tojson }};

@@ -23,7 +23,7 @@
           <select name="reason_code" class="field-input" required>{% for code, label in p.reasons.items() %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select></label>
         <label class="field"><span class="field-label">Remark</span><input type="text" name="remark" maxlength="100" required class="field-input"></label>
         <label class="field"><span class="field-label">&nbsp;</span>
-          <span><input type="checkbox" name="on_portal" value="1" {% if not p.has_login %}checked onclick="return false;"{% endif %}> Already cancelled on the IRP portal</span></label>
+          <span><input type="checkbox" name="on_portal" value="1" {% if not p.has_login %}checked data-locked{% endif %}> Already cancelled on the IRP portal</span></label>
         <div class="field"><span class="field-label">&nbsp;</span><button class="btn btn-danger">Cancel IRN &amp; void</button></div>
       </form>
     </details>

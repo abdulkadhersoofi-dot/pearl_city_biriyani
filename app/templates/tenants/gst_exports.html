@@ -30,7 +30,7 @@
       <label class="field-label">Clients</label>
       <div class="table-wrap" style="max-height:320px; overflow-y:auto;">
         <table>
-          <thead><tr><th class="w-36"><input type="checkbox" onclick="document.querySelectorAll('.client-check').forEach(c => c.checked = this.checked)"></th><th>Client</th><th>GSTIN</th></tr></thead>
+          <thead><tr><th class="w-36"><input type="checkbox" data-check-all=".client-check" aria-label="Select all clients"></th><th>Client</th><th>GSTIN</th></tr></thead>
           <tbody>
           {% for t in tenants %}
             <tr>

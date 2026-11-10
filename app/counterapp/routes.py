@@ -48,16 +48,25 @@ SCREEN_VERSION_HEADER = "X-Screen-Version"
 
 def _screen(html):
     """A signed-in screen the app's service worker may keep for offline.
-    Its version - the page less its CSRF token - tells the phone whether a
-    fresh copy differs from the one it opened from (new prices, an item
-    sold out...), so it can reload with it."""
+    Its version - the page less its CSRF token and script nonce, which
+    change on every response - tells the phone whether a fresh copy differs
+    from the one it opened from (new prices, an item sold out...), so it
+    can reload with it. The kept copy keeps its own Content-Security-Policy
+    header (the service worker stores the whole response), so its nonce
+    still matches when it opens offline."""
     import hashlib
 
     from flask_wtf.csrf import generate_csrf
 
+    from app.security_headers import csp_nonce
+
     response = make_response(html)
     response.headers[SCREEN_HEADER] = "1"
-    response.headers[SCREEN_VERSION_HEADER] = hashlib.sha1(html.replace(generate_csrf(), "").encode()).hexdigest()[:12]
+    stable = html.replace(generate_csrf(), "")
+    nonce = csp_nonce()
+    if nonce:
+        stable = stable.replace(nonce, "")
+    response.headers[SCREEN_VERSION_HEADER] = hashlib.sha1(stable.encode()).hexdigest()[:12]
     response.headers["Cache-Control"] = "no-cache"
     return response
 

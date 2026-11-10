@@ -14,7 +14,7 @@
      (app.css, .is-counter) rather than a column or a folded rail. #}
   {% set rail_key = 'arfa.rail.pos' if request.endpoint == 'pos.terminal' else 'arfa.rail' %}
   {% if menu %}
-  <script>
+  <script nonce="{{ csp_nonce() }}">
     // Before first paint, so a folded menu never flashes open. Until
     // someone chooses, it starts folded at the counter and on screens
     // narrower than a laptop.
@@ -34,7 +34,7 @@
   <script src="{{ url_for('static', filename='js/vendor/htmx.min.js') }}"></script>
   <script src="{{ url_for('static', filename='js/gst_calc.js') }}"></script>
   <script src="{{ url_for('static', filename='js/print.js') }}"></script>
-  <script>
+  <script nonce="{{ csp_nonce() }}">
     // Opens a share link (WhatsApp click-to-chat). Inside the ARFA POS
     // Android app a new window can't open, so navigate instead - the app
     // hands wa.me links to WhatsApp (MainActivity.shouldOverrideUrlLoading).
@@ -43,6 +43,7 @@
     }
   </script>
   <script src="{{ url_for('static', filename='js/dialog.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/actions.js') }}"></script>
   <script defer src="{{ url_for('static', filename='js/shell.js') }}"></script>
   <script defer src="{{ url_for('static', filename='js/vendor/alpine.min.js') }}"></script>
   {% block head %}{% endblock %}

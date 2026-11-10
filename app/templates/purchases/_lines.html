@@ -66,7 +66,7 @@
 {# The Alpine component behind purchase_lines. Totals here are a preview;
    the server recomputes everything (app.utils.itc) when it's saved. #}
 {% macro purchase_lines_script(catalog, rows, batches_on=False, serials_on=False) %}
-<script>
+<script nonce="{{ csp_nonce() }}">
   function purchaseLines(extra) {
     const CATALOG = {{ catalog|tojson }};
     const START = {{ rows|tojson }};

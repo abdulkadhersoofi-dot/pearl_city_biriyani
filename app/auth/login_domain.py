@@ -35,7 +35,7 @@ HANDOFF_AFTER_SETUP_SECONDS = 600
 
 # What a client's sign-in domain serves; everything else goes to PUBLIC_URL.
 SERVED_ENDPOINTS = {"auth.login", "auth.two_factor", "auth.two_factor_setup", "static", "main.healthz",
-                    "main.media"}
+                    "main.media", "csp_report"}
 
 # Addresses that are never a client's sign-in domain (no lookup needed).
 _PLATFORM_SUFFIXES = (".web.app", ".firebaseapp.com", ".run.app")

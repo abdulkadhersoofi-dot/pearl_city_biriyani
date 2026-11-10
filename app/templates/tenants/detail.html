@@ -458,7 +458,7 @@
 {% endblock %}
 
 {% block scripts %}
-<script>
+<script nonce="{{ csp_nonce() }}">
 // The client page's tabs: one shows at a time; the URL keeps ?tab= so a
 // reload or a shared link opens the same one. An old #sec-... (or a
 // login's #login-N) link opens the tab holding it and scrolls there.

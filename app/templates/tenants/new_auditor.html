@@ -9,7 +9,7 @@
   <div class="form-grid">
     <div>
       <label>Role</label>
-      <select name="role" class="field-input" id="role-select" onchange="document.getElementById('parent-row').style.display = this.value === 'sub_auditor' ? '' : 'none';">
+      <select name="role" class="field-input" id="role-select" data-shows="parent-row" data-shows-when="sub_auditor">
         <option value="auditor" {% if default_role == 'auditor' %}selected{% endif %}>Auditor</option>
         <option value="sub_auditor" {% if default_role == 'sub_auditor' %}selected{% endif %}>Sub-Auditor</option>
       </select>

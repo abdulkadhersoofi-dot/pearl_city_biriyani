@@ -114,6 +114,18 @@ class Config:
     PROXY_FIX_X_HOST = int(os.environ.get("PROXY_FIX_X_HOST", "0"))
     LOG_FORWARDED_FOR = os.environ.get("LOG_FORWARDED_FOR") == "1"
 
+    # Requests a minute per caller, by kind (app/ratelimit.py); 0 = no limit
+    # for that kind. RATE_LIMITS_ENABLED=0 switches every limit off.
+    RATE_LIMITS_ENABLED = os.environ.get("RATE_LIMITS_ENABLED", "1") != "0"
+    RATE_LIMIT_AUTH = int(os.environ.get("RATE_LIMIT_AUTH", "30"))
+    RATE_LIMIT_REPORT = int(os.environ.get("RATE_LIMIT_REPORT", "30"))
+    RATE_LIMIT_HEAVY = int(os.environ.get("RATE_LIMIT_HEAVY", "40"))
+    RATE_LIMIT_API = int(os.environ.get("RATE_LIMIT_API", "300"))
+    RATE_LIMIT_WEB = int(os.environ.get("RATE_LIMIT_WEB", "600"))
+    # The browser security policy (app/security_headers.py): "enforce",
+    # "report" (logged only - to try a change safely) or "off".
+    CSP_MODE = os.environ.get("CSP_MODE", "enforce")
+
     # Error monitoring - Sentry only when a DSN is set (app.monitoring).
     SENTRY_DSN = os.environ.get("SENTRY_DSN")
     SENTRY_ENVIRONMENT = os.environ.get("SENTRY_ENVIRONMENT", os.environ.get("FLASK_ENV", "production"))
@@ -178,6 +190,9 @@ class TestingConfig(Config):
     ADMIN_2FA_REQUIRED = False
     SENTRY_DSN = None
     SMTP_HOST = None
+    # Tests sign in and post many times a second; tests/test_security_hardening.py
+    # switches the limits on for itself.
+    RATE_LIMITS_ENABLED = False
 
 
 class ProductionConfig(Config):

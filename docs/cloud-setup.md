@@ -317,6 +317,27 @@ message even with the app closed (Firebase Cloud Messaging).
    OPTIONAL_SECRETS and deploys; phones pick the push up at their next
    sign-in or app start.
 
+## Monitoring and alerts by email (once)
+
+The app already writes its logs the way Google Cloud reads them (each line's
+severity, errors with their stack traces, and a `security_event` line for
+failed sign-ins, lockouts, rate limits and blocked scripts). This step tells
+Google Cloud to watch them and email you:
+
+1. In Cloud Shell (as above): `cd pearl_city_biriyani && git pull`
+2. `bash scripts/gcp/monitoring_setup.sh you@yourfirm.in` (add more addresses
+   after it, separated by spaces) - ends with "Done.".
+3. The one click the script can't do: open the Error Reporting link it
+   prints, then **Configure notifications**, and tick the "ARFA alerts"
+   channel. That emails you on a new kind of error.
+
+What emails you: the site down (checked every minute), server errors,
+slow responses, nearly all servers busy, bursts of errors or security
+events, database CPU / memory / disk / connections high, or a failed
+nightly job. Every email says what to check. Run the script again any time:
+it updates instead of adding copies. Security events from Cloud Shell:
+`bash scripts/gcp/logs.sh security 24`.
+
 ---
 
 ## THINGS ONLY ABDUL CAN DO
