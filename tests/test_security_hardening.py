@@ -37,6 +37,7 @@ def test_every_page_carries_the_security_headers(client, db):
     assert h["X-Frame-Options"] == "SAMEORIGIN"
     assert h["Referrer-Policy"] == "strict-origin-when-cross-origin"
     assert "microphone=()" in h["Permissions-Policy"] and "camera=(self)" in h["Permissions-Policy"]
+    assert "browsing-topics" not in h["Permissions-Policy"]        # retired - Chrome warns on it
     assert h["Cross-Origin-Opener-Policy"] == "same-origin-allow-popups"
     csp = h["Content-Security-Policy"]
     for directive in ("default-src 'self'", "object-src 'none'", "frame-ancestors 'self'", "base-uri 'self'",

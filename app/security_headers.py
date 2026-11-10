@@ -110,8 +110,9 @@ def init_security_headers(app) -> None:
         headers.setdefault("X-Frame-Options", "SAMEORIGIN")
         headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
         headers.setdefault("Permissions-Policy",
-                           "camera=(self), microphone=(), geolocation=(), payment=(), usb=(), "
-                           "browsing-topics=()")
+                           # Only features every current browser knows: an unknown
+                           # name (browsing-topics, now retired) is a console warning.
+                           "camera=(self), microphone=(), geolocation=(), payment=(), usb=()")
         headers.setdefault("Cross-Origin-Opener-Policy", "same-origin-allow-popups")
         _hsts(resp)
         mode = (app.config.get("CSP_MODE") or "enforce").lower()
