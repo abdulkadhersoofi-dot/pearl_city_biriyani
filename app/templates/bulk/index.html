@@ -1,25 +1,26 @@
 {% extends "base.html" %}
-{% block title %}Import / export {{ spec.label|lower }} - {{ firm_name }}{% endblock %}
+{% block title %}{{ spec.label }} in bulk - {{ firm_name }}{% endblock %}
 {% block content %}
 <div class="page-header">
-  <h1>Import / export {{ spec.label|lower }}</h1>
+  <h1>Add or update {{ spec.label|lower }} in bulk</h1>
   <a href="{{ back_url }}" class="btn btn-quiet">Back</a>
 </div>
 
 <div class="form-grid">
   <div class="card stack">
     <h2 class="m-0 fs-md">1. Get the sheet</h2>
-    <p class="text-muted mt-0">Start from the blank template, or download everything you already have, edit it in Excel and upload it back.</p>
-    <a href="{{ url_for('bulk.template', kind=spec.kind) }}" class="btn btn-secondary">Download blank template</a>
+    <p class="text-muted mt-0">Start from a blank template - one row each - or download everything you already have, edit it and upload it back. The Excel template has a "How to fill" sheet with an example for every column.</p>
+    <a href="{{ url_for('bulk.template', kind=spec.kind) }}" class="btn btn-secondary">Download blank template (Excel)</a>
+    <a href="{{ url_for('bulk.template_csv', kind=spec.kind) }}" class="btn btn-quiet">Download blank template (CSV)</a>
     <a href="{{ url_for('bulk.export', kind=spec.kind) }}" class="btn btn-secondary">Download my {{ spec.label|lower }}</a>
   </div>
 
   <div class="card stack">
     <h2 class="m-0 fs-md">2. Upload it</h2>
-    <p class="text-muted mt-0">You'll see every row checked before anything is saved. Rows that match an existing record update it; the rest are added.</p>
+    <p class="text-muted mt-0">An Excel (.xlsx) or CSV file, up to 5,000 rows. You'll see every row checked before anything is saved. Rows that match an existing record update it; the rest are added.</p>
     <form method="post" action="{{ url_for('bulk.upload', kind=spec.kind) }}" enctype="multipart/form-data" class="stack">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <input type="file" name="file" accept=".xlsx" class="field-input" required>
+      <input type="file" name="file" accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" class="field-input" required>
       <button type="submit" class="btn btn-primary">Check file</button>
     </form>
   </div>

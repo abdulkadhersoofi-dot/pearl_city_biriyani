@@ -118,7 +118,7 @@ app/
 ├── staff/           # Client Admin: create/deactivate/reset staff logins
 ├── invoicing/        # form, PDF, GST calc, numbering
 ├── customers/, products/   # tenant-scoped catalog CRUD
-├── bulk/             # Excel import/export (items, customers): template,
+├── bulk/             # Excel/CSV import, Excel export (items, customers, suppliers): template,
 │                     # row-by-row preview, confirm - specs.py per kind
 ├── branches/         # branch logins, stock, per-branch permissions
 ├── settings/         # Client Admin settings: branding, business profile,
@@ -843,7 +843,11 @@ Gunicorn workers or add app servers behind Nginx as load grows.
   leading zero from (901 -> 0901) or GST rates entered as a percentage
   cell (0.18 -> 18) are repaired rather than rejected. Rows match an
   existing item by SKU then name, a customer by GSTIN then name -
-  always within the tenant only.
+  always within the tenant only. An upload may be .xlsx or CSV (same
+  headings; a blank CSV template too): a CSV saved by Excel on Windows
+  (cp1252, ; or tab between columns) reads correctly, and a code column
+  Excel shortened (8.90123E+12) is refused with the reason. Reached from
+  the list's "Bulk add (Excel / CSV)" button and New -> "Items in bulk".
 - **Per-staff permissions** (`app/utils/permissions.py`, Branches ->
   Permissions): give discounts (with a max %), change price at billing,
   refund, void, see Day-book/Z-report, adjust stock. Defaults equal

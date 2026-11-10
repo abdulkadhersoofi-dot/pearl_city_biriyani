@@ -344,6 +344,8 @@ def _new_actions() -> list[Link]:
              keywords="proforma sales order challan"),
         Link("Job card", "jobs.new", "wrench", feature="job_cards", keywords="repair"),
         Link("Item", "products.new_product", "package", keywords="product"),
+        Link("Items in bulk (Excel / CSV)", "bulk.index", "package", kwargs={"kind": "products"},
+             keywords="import upload excel csv template many products"),
         Link("Customer", "customers.new_customer", "users"),
         Link("Purchase bill", "purchases.new_bill", "truck", feature="purchases"),
         Link("Scan a bill", "scan.index", "scan-line", feature="doc_scan", keywords="photo camera"),
