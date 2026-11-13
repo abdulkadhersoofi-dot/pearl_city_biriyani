@@ -908,6 +908,24 @@ def _finish(doc, user, kind, record_id, label):
                  details={"as": kind, "record": label})
 
 
+def _order_from_form(tenant, form, supplier):
+    """The purchase order the check screen tied this bill to, if any - the
+    supplier's own, and still waiting for a bill."""
+    order_id = form.get("purchase_order_id", type=int) if hasattr(form, "get") else None
+    if not order_id:
+        return None
+    from app.models.purchase import PurchaseOrder
+    from app.purchases.matching import STILL_TO_COME
+
+    order = PurchaseOrder.query.filter_by(id=order_id, tenant_id=tenant.id).first()
+    if order is None or order.status not in STILL_TO_COME:
+        raise ScanError("That purchase order is no longer waiting for a bill - pick another, or post without one.")
+    if order.supplier_id != supplier.id:
+        raise ScanError(f"Purchase order {order.number} is {order.supplier.name}'s, not this supplier's - pick "
+                        "another order, or post without one.")
+    return order
+
+
 def post_purchase(tenant, user, doc: ScanDocument, form):
     from app.inventory.ledger import default_location
     from app.purchases.services import PurchaseError, PurchaseInput, create_purchase_bill, parse_purchase_lines
@@ -926,7 +944,9 @@ def post_purchase(tenant, user, doc: ScanDocument, form):
     try:
         lines = parse_purchase_lines(form)
         supplier = _supplier_from_form(tenant, form)
+        order = _order_from_form(tenant, form, supplier)
         bill = create_purchase_bill(tenant, user, PurchaseInput(
+            purchase_order_id=order.id if order is not None else None,
             supplier_id=supplier.id, gstin_id=gstin_id, supplier_invoice_no=form.get("invoice_number", ""),
             supplier_invoice_date=_date(form.get("invoice_date"), "bill date"),
             location_id=form.get("location_id", type=int) or default_location(tenant.id).id, lines=lines,

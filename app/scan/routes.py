@@ -303,10 +303,13 @@ def _review_context(doc, form=None):
              .order_by(ScanDocument.id).with_entities(ScanDocument.id)]
     position = queue.index(doc.id) if doc.id in queue else None
     gstins = tenant.gstins.filter(Gstin.is_active.is_(True)).order_by(Gstin.is_primary.desc(), Gstin.id).all()
+    lines = services.item_choices(tenant, _form_lines(form) or services.line_rows(doc))
+    details = _form_details(form) or services.detail_values(doc)
     return {
+        "po": _order_match(tenant, doc, supplier, lines, details, form) if doc.status == TO_CHECK else None,
         "doc": doc, "ex": ex, "v": doc.validation or {}, "form": form,
         "kind": (form or {}).get("kind") or services.suggested_kind(tenant, doc),
-        "lines": services.item_choices(tenant, _form_lines(form) or services.line_rows(doc)),
+        "lines": lines,
         "main_rate": services.main_gst_rate(doc),
         "supplier": supplier, "supplier_options": supplier_options,
         "customer": customer, "customer_options": customer_options,
@@ -324,10 +327,53 @@ def _review_context(doc, form=None):
         "payment_modes": PAYMENT_MODE_LABELS, "labels": CATEGORY_LABELS,
         "purchases_on": tenant.has_feature("purchases"), "expenses_on": tenant.has_feature("expenses"),
         "gstin_ok": services.gstin_ok, "posted_url": _posted_url(doc), "party": services.party,
-        "detail_fields": services.DETAIL_FIELDS, "details": _form_details(form) or services.detail_values(doc),
+        "detail_fields": services.DETAIL_FIELDS, "details": details,
         "tds": services.tds_read(doc) if form is None else (form.get("tds_amount", ""), form.get("tds_section", "")),
         "tds_sections": TDS_SECTIONS,
     }
+
+
+def _order_match(tenant, doc, supplier, lines, details, form):
+    """The purchase order this bill belongs to (app/purchases/matching.py):
+    the one ARFA proposes, or the one picked by hand (?po=<id>, or the form's
+    own choice when a post was refused; "none" for no order)."""
+    if not tenant.has_feature("purchases"):
+        return None
+    from decimal import Decimal, InvalidOperation
+
+    from app.purchases import matching
+
+    def number(value, default="0"):
+        try:
+            return Decimal(str(value if value not in (None, "") else default).replace(",", ""))
+        except InvalidOperation:
+            return Decimal(default)
+
+    rows = [matching.Row(description=(l.get("description") or "").strip(), qty=number(l.get("qty")),
+                         rate=number(l.get("rate")), gst_rate=number(l.get("gst_rate")),
+                         product_id=int(l["product_id"]) if str(l.get("product_id") or "").isdigit() else None,
+                         hsn=(l.get("hsn") or "").strip())
+            for l in lines if (l.get("description") or "").strip()]
+    bill_date = None
+    try:
+        from datetime import date as _date
+
+        bill_date = _date.fromisoformat(services.iso_date((doc.extracted or {}).get("invoice_date")))
+    except (TypeError, ValueError):
+        pass
+    picked = (form.get("purchase_order_id") if form is not None and hasattr(form, "get") else None) \
+        or request.args.get("po")
+    found = matching.candidates(tenant, supplier, (details or {}).get("po_number"), rows, bill_date)
+    chosen = found.proposed
+    if picked == "none":
+        chosen = None
+    elif picked and str(picked).isdigit():
+        chosen = matching.match_for(tenant, int(picked), rows, bill_date) or chosen
+    others = [m for m in ([found.proposed] if found.proposed else []) + found.others
+              if chosen is None or m.order.id != chosen.order.id]
+    return {"chosen": chosen, "others": others, "why": found.why, "picked_none": picked == "none",
+            "labels": {"number": "Matched by the order number on the bill.",
+                       "lines": "Matched by its items, quantities and rates.", "picked": "Picked by you."}}
 
 
 def _form_details(form):

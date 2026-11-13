@@ -17,7 +17,7 @@
         <td>{{ o.order_date.strftime('%d %b %Y') }}</td>
         <td>{{ o.expected_date.strftime('%d %b %Y') if o.expected_date else '-' }}</td>
         <td class="num">{{ '%.2f'|format(o.estimated_total) }}</td>
-        <td><span class="status-badge {{ 'status-void' if o.status.value == 'cancelled' else ('status-issued' if o.status.value == 'converted' else 'status-draft') }}">{{ o.status.value|title }}</span></td>
+        <td><span class="status-badge {{ 'status-void' if o.status.value == 'cancelled' else ('status-issued' if o.status.value == 'converted' else 'status-draft') }}">{{ {'open': 'Open', 'partly_billed': 'Partly billed', 'converted': 'Billed', 'cancelled': 'Cancelled'}[o.status.value] }}</span></td>
       </tr>
     {% else %}
       <tr><td colspan="6" class="empty-state">No purchase orders yet.</td></tr>

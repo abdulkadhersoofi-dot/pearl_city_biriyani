@@ -152,7 +152,9 @@ def _buy_waiting(tenant) -> list[dict]:
     if current_tenant_has("purchases"):
         from app.models.purchase import PurchaseOrder, PurchaseOrderStatus
 
-        open_orders = PurchaseOrder.query.filter_by(tenant_id=tenant.id, status=PurchaseOrderStatus.OPEN).count()
+        open_orders = PurchaseOrder.query.filter(
+            PurchaseOrder.tenant_id == tenant.id,
+            PurchaseOrder.status.in_((PurchaseOrderStatus.OPEN, PurchaseOrderStatus.PARTLY))).count()
         if open_orders:
             items.append({"label": f"{_plural(open_orders, 'purchase order')} waiting for goods or a bill",
                           "detail": "See the orders", "url": url_for("purchases.orders"), "icon": "file-text",

@@ -206,9 +206,12 @@ def _rows_from_form(form):
 
 
 def _rows_from_order(order):
+    """What is still to come on the order (all of it, on an order billed
+    before orders were billed in parts)."""
+    lines = [l for l in order.lines if l.outstanding > 0] or list(order.lines)
     return [{"product_id": str(l.product_id or ""), "description": l.description, "hsn": l.hsn_or_sac_code or "",
-             "qty": f"{l.qty.normalize():f}", "unit": l.unit, "rate": f"{l.rate:.2f}", "discount": "",
-             "gst_rate": f"{l.gst_rate.normalize():f}", "itc": "eligible"} for l in order.lines]
+             "qty": f"{(l.outstanding or l.qty).normalize():f}", "unit": l.unit, "rate": f"{l.rate:.2f}",
+             "discount": "", "gst_rate": f"{l.gst_rate.normalize():f}", "itc": "eligible"} for l in lines]
 
 
 @purchases_bp.route("/new", methods=["GET", "POST"])
@@ -447,7 +450,31 @@ def _order_form(form, rows, status=200):
 def view_order(order_id):
     order = tenant_query(PurchaseOrder).filter_by(id=order_id).first_or_404()
     assert_owns(order)
-    return render_template("purchases/order_view.html", order=order)
+    from app.purchases import matching
+
+    return render_template("purchases/order_view.html", order=order, received=matching.received_by_line(order))
+
+
+@purchases_bp.route("/orders/<int:order_id>/close", methods=["POST"])
+@roles_required(ADMIN)
+@feature_required("purchases")
+def close_order(order_id):
+    """The rest of a partly billed order isn't coming: close it as it stands."""
+    from app.purchases import matching
+
+    order = tenant_query(PurchaseOrder).filter_by(id=order_id).first_or_404()
+    assert_owns(order)
+    try:
+        matching.close_short(order, request.form.get("reason"))
+    except services.PurchaseError as e:
+        flash(e.message, "error")
+        return redirect(url_for("purchases.view_order", order_id=order.id))
+    record_audit(current_user, "purchase_order_closed_short", tenant_id=current_user.tenant_id,
+                 entity_type="purchase_order", entity_id=order.id, details={"number": order.number,
+                                                                            "reason": order.cancel_reason})
+    db.session.commit()
+    flash(f"{order.number} closed.", "success")
+    return redirect(url_for("purchases.view_order", order_id=order.id))
 
 
 @purchases_bp.route("/orders/<int:order_id>/cancel", methods=["POST"])

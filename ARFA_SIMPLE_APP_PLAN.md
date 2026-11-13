@@ -1,13 +1,13 @@
 # ARFA made simple: the plan
 
-**Progress:** Phase 0 (accuracy first) is built: one calculation for sales,
-the Books check, the test business with known answers and period closing.
-Phases 1 to 7 are not started.
+**Progress:** Phases 0 and 1 are live. Phase 2 (New sale) and Phase 3
+(purchase orders billed in parts, scanned bills matched to their order) are
+built and tested, waiting for approval to go live. Phases 4 to 7 follow.
 
 **What this is:** a plan to make ARFA look and feel minimal (few buttons, one
 way to do each job) without removing a single feature, while making its
-numbers provably correct. Nothing in this file is built yet. It is written
-from the code as it stands on 13 November 2026.
+numbers provably correct. It was written from the code as it stood on
+13 November 2026; the progress line above says what is built since.
 
 **The promises this plan keeps:**
 

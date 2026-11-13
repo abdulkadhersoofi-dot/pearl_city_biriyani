@@ -297,6 +297,44 @@
         </details>
       </section>
 
+      {# The purchase order this bill belongs to (app/purchases/matching.py). #}
+      {% if po %}
+      <section class="card stack po-match" x-show="kind === 'purchase'" x-cloak>
+        <input type="hidden" name="purchase_order_id" value="{{ po.chosen.order.id if po.chosen else '' }}" :disabled="kind !== 'purchase'">
+        {% if po.chosen %}
+        {% set m = po.chosen %}
+        <div class="row row-between items-center flex-wrap">
+          <h2 class="m-0">Purchase order <a href="{{ url_for('purchases.view_order', order_id=m.order.id) }}" target="_blank">{{ m.order.number }}</a>
+            <span class="tag {{ 'tag-fast' if m.clean else 'tag-warn' }}">{{ 'Agrees' if m.clean else 'Differs' }}</span></h2>
+          <small class="text-muted">{{ po.labels[m.by] }} Ordered {{ m.order.order_date.strftime('%d %b %Y') }}.</small>
+        </div>
+        <div class="table-wrap">
+          <table class="po-table">
+            <thead><tr><th>Item on the order</th><th class="num">Ordered</th>{% if m.pairs|selectattr('received', 'ne', none)|list %}<th class="num">Received</th>{% endif %}<th class="num">Billed before</th><th class="num">This bill</th><th>What differs</th></tr></thead>
+            <tbody>
+            {% for p in m.pairs %}
+              <tr class="{{ 'po-problem' if p.problems }}">
+                <td>{% if p.line %}{{ p.line.description }}{% else %}<em>{{ p.row.description }}</em>{% endif %}</td>
+                <td class="num">{{ p.line.qty|qty if p.line else '-' }}</td>
+                {% if m.pairs|selectattr('received', 'ne', none)|list %}<td class="num">{{ p.received|qty if p.received is not none else '-' }}</td>{% endif %}
+                <td class="num">{{ p.line.billed_qty|qty if p.line else '-' }}</td>
+                <td class="num">{{ p.row.qty|qty if p.row else '-' }}</td>
+                <td>{% for kind, text in p.remarks %}<span class="{{ 'po-bad' if kind == 'problem' else 'text-muted' }}">{{ text }}</span>{% if not loop.last %}<br>{% endif %}{% else %}<span class="text-muted">Agrees</span>{% endfor %}</td>
+              </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <p class="text-muted m-0">Posting ties this bill to the order: what it bills is counted off, and the order stays open for the rest. Edits to the lines above are checked again when you post.
+          <a href="{{ url_for('scan.review', doc_id=doc.id, po='none') }}">Post without an order</a>{% for o in po.others %}{% if loop.first %} · or match to {% endif %}<a href="{{ url_for('scan.review', doc_id=doc.id, po=o.order.id) }}">{{ o.order.number }}</a>{{ ', ' if not loop.last }}{% endfor %}</p>
+        {% else %}
+        <h2 class="m-0">Purchase order <span class="tag">None</span></h2>
+        <p class="text-muted m-0">{{ 'You chose to post this bill without an order.' if po.picked_none else po.why }}
+          {% for o in po.others %}{% if loop.first %}Match it to {% endif %}<a href="{{ url_for('scan.review', doc_id=doc.id, po=o.order.id) }}">{{ o.order.number }}</a> <small>({{ o.order.order_date.strftime('%d %b') }}, {{ o.score }}% alike)</small>{{ ', ' if not loop.last }}{% endfor %}</p>
+        {% endif %}
+      </section>
+      {% endif %}
+
       {# where it goes #}
       <section class="card stack">
         <div class="row row-between items-center">

@@ -1860,6 +1860,32 @@ Five new flags, all off by default; with them off nothing changes (routes
   or voided out of it; GSTR-3B does the same for purchase bills, returns to
   suppliers, supplier notes and expenses. Corrections are notes dated in an
   open month. Unmarking the return (the firm's filing tracker) reopens it.
+- **The seven doors** (`app/doors.py`, `app/hubs/`): the simple menu - Home,
+  Sell, Buy, Stock, Money, Reports, Setup - each a hub page with one main
+  button and every screen that existed before behind it (nothing removed;
+  `tests/test_doors.py` proves every menu entry still has a home). The
+  Classic menu stays as a switch (cookie `arfa_menu`; `MENU_DEFAULT`).
+- **New sale** (`app/sell/`, Sell > New sale): one form for a bill, a sales
+  order, a quotation, a proforma and a challan. `decide.decide()` puts each
+  line where it can be served from - billed now from this place's stock,
+  ordered from the nearest warehouse that has it, or kept waiting for stock
+  (`awaiting_stock`) - and shows the plan before saving (`/sell/new/plan.json`).
+  `save()` makes the documents with the existing invoice and sales-order
+  code; the parts of one sale share a `sale_ref` and open together at
+  `/sell/sale/<ref>`. A waiting order is sent on to a warehouse from its own
+  page once stock is there (`dispatch.send_waiting`).
+- **Purchase orders billed in parts, and bills that find their order**
+  (`app/purchases/matching.py`): each order line counts what is billed
+  (`billed_qty`), each bill line names the order line it settles, and an
+  order is Open, Partly billed or Billed; voiding a bill gives its share
+  back, and the rest "not coming" closes the order short with a reason. On
+  the scan check screen a purchase bill is matched to its order - by the
+  order number printed on it (cleaned of spaces, prefixes and leading
+  zeros), else by its items, quantities and rates, proposed only when one
+  order is clearly ahead - and shown beside it line by line with what
+  differs in words (quantity over, rate beyond 1% or Rs. 1, GST rate, item
+  not on the order, more billed than the warehouse has scanned in). The
+  owner can pick another order or none; posting ties the bill to the order.
 - **Security headers** (`app/security_headers.py`): HSTS over HTTPS
   (includeSubDomains on PUBLIC_URL's domain only), a Content-Security-Policy
   on pages - scripts only from /static or inline blocks with the response's

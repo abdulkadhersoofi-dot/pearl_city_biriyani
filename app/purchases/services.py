@@ -66,6 +66,9 @@ class PurchaseLineInput:
     mrp: Decimal | None = None
     serials: list = field(default_factory=list)
     item_code: str | None = None     # the supplier's code / part no. for the item
+    # The purchase order line this settles; left empty, a bill made against
+    # an order is matched to its lines by item (app/purchases/matching.py).
+    order_line_id: int | None = None
 
 
 @dataclass
@@ -347,8 +350,11 @@ def create_purchase_bill(tenant, user, data: PurchaseInput) -> PurchaseBill:
 
     if data.purchase_order_id:
         order = PurchaseOrder.query.filter_by(id=data.purchase_order_id, tenant_id=tenant.id).first()
-        if order is not None and order.status == PurchaseOrderStatus.OPEN:
-            order.status = PurchaseOrderStatus.CONVERTED
+        if order is not None:
+            from app.purchases import matching
+
+            db.session.flush()
+            matching.settle(order, bill, [l.order_line_id for l in data.lines])
     db.session.flush()
     return bill
 
@@ -394,6 +400,10 @@ def void_purchase_bill(bill: PurchaseBill, user, reason: str) -> None:
         if line.product is not None and ledger.sells_from_stock(line.product):
             ledger.unreceive_cost(line.product, line.qty, line.unit_cost)
     ledger.reverse_source(bill.tenant_id, "purchase_bill", bill.id, user.id, f"{bill.number} voided")
+    if bill.purchase_order_id:
+        from app.purchases import matching
+
+        matching.unsettle(bill)
     from app.accounts.services import release_payment_allocations
 
     release_payment_allocations(bill.tenant_id, purchase_bill_id=bill.id)

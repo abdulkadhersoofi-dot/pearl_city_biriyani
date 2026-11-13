@@ -54,7 +54,7 @@ def serial_lines(order: PurchaseOrder) -> list:
 
 
 def start_receipt(tenant, user, order: PurchaseOrder, location) -> WarehouseReceipt:
-    if order.status != PurchaseOrderStatus.OPEN:
+    if order.status not in (PurchaseOrderStatus.OPEN, PurchaseOrderStatus.PARTLY):
         raise ReceiveError("Only an open purchase order can be received.")
     if not serial_lines(order):
         raise ReceiveError("This order has no serial-tracked items to scan in.")
@@ -209,7 +209,8 @@ def receipts():
     counts = counts_q.order_by(StockCount.id.desc()).limit(20).all()
     open_orders = []
     if current_user.is_client_admin:
-        open_orders = [o for o in tenant_query(PurchaseOrder).filter_by(status=PurchaseOrderStatus.OPEN)
+        open_orders = [o for o in tenant_query(PurchaseOrder).filter(
+            PurchaseOrder.status.in_((PurchaseOrderStatus.OPEN, PurchaseOrderStatus.PARTLY)))
                        .order_by(PurchaseOrder.id.desc()).limit(100) if serial_lines(o)]
     return render_template("warehouse/receipts.html", rows=rows, counts=counts, location=location,
                            counted={r.id: received_counts(r) for r in rows}, open_orders=open_orders,

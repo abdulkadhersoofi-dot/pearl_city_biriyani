@@ -161,6 +161,9 @@ class PurchaseBillLine(db.Model, TimestampMixin):
     id = db.Column(db.Integer, primary_key=True)
     bill_id = db.Column(db.Integer, db.ForeignKey("purchase_bills.id", name="fk_purchase_bill_lines_bill"), nullable=False, index=True)
     product_id = db.Column(db.Integer, db.ForeignKey("products.id", name="fk_purchase_bill_lines_product"))
+    # The purchase order line this bill line settles (app/purchases/matching.py).
+    order_line_id = db.Column(db.Integer, db.ForeignKey("purchase_order_lines.id",
+                                                        name="fk_purchase_bill_lines_order_line"), index=True)
     description = db.Column(db.String(255), nullable=False)
     hsn_or_sac_code = db.Column(db.String(8))
     qty = db.Column(db.Numeric(12, 3), nullable=False)
@@ -345,8 +348,16 @@ class PurchaseReturnLine(db.Model):
 
 class PurchaseOrderStatus(str, enum.Enum):
     OPEN = "open"
-    CONVERTED = "converted"
+    # Some of it has been billed; more is still to come.
+    PARTLY = "partly_billed"
+    CONVERTED = "converted"       # every line billed in full (closed)
     CANCELLED = "cancelled"
+
+
+PURCHASE_ORDER_STATUS_LABELS = {
+    PurchaseOrderStatus.OPEN: "Open", PurchaseOrderStatus.PARTLY: "Partly billed",
+    PurchaseOrderStatus.CONVERTED: "Billed", PurchaseOrderStatus.CANCELLED: "Cancelled",
+}
 
 
 class PurchaseOrder(db.Model, TenantScopedMixin, TimestampMixin):
@@ -388,8 +399,17 @@ class PurchaseOrderLine(db.Model):
     unit = db.Column(db.String(20), nullable=False, default="PCS")
     rate = db.Column(db.Numeric(12, 2), nullable=False, default=0)
     gst_rate = db.Column(db.Numeric(5, 2), nullable=False, default=0)
+    # How much of this line purchase bills have settled so far (a voided
+    # bill gives its share back) - app/purchases/matching.py.
+    billed_qty = db.Column(db.Numeric(12, 3), nullable=False, default=0, server_default="0")
 
     product = db.relationship("Product")
+
+    @property
+    def outstanding(self):
+        from decimal import Decimal
+
+        return max(Decimal(self.qty) - Decimal(self.billed_qty or 0), Decimal("0"))
 
 
 class MatchStatus(str, enum.Enum):
