@@ -1931,6 +1931,22 @@ Five new flags, all off by default; with them off nothing changes (routes
   user (or OAuth client) allowed to read purchase orders. The code is
   tested against SAP's published field names with a stand-in SAP
   (`tests/test_sap_orders.py`), not yet against a real system.
+- **The dashboard in 3D** (`static/js/dash3d.js`, `templates/reports/dashboard.html`):
+  3D is how the figures are *shown*; every figure stays printed as text and
+  links to the report that proves it. **Branches today** is a skyline - one
+  tower per branch login (and "Head office" for what belongs to none), its
+  height today's sales, its colour ahead of or behind the same weekday last
+  week - from `sales_figures.by_branch()`, the one definition of sales, so
+  the towers add up to the Sales today tile and each equals the Sales
+  report for that branch (`tests/test_dashboard_3d.py`). The 14-day trend
+  is a ribbon. The flat charts and the screen-reader table stay in the
+  page: the 3D view is drawn over them only after the numbers are on
+  screen, and the page is flat by itself with no WebGL, with "reduce
+  motion" or data saver on, or on a weak phone. The Flat view / 3D view
+  button is remembered on the device. On a narrow screen the towers'
+  labels give way to the list under them (tap a tower for its label).
+  three.js 0.180 (MIT) is served from `static/vendor/three/` - nothing is
+  loaded from another server - and only on this page.
 - **Security headers** (`app/security_headers.py`): HSTS over HTTPS
   (includeSubDomains on PUBLIC_URL's domain only), a Content-Security-Policy
   on pages - scripts only from /static or inline blocks with the response's

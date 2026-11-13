@@ -50,6 +50,26 @@ def _collections(tenant, start: date, end: date) -> Decimal:
     return counter + receipts
 
 
+def branch_towers(tenant, today: date, week_ago: date) -> list[dict]:
+    """Today's sales branch by branch (and head office: whatever belongs to
+    no branch), each beside the same weekday last week. Empty for a business
+    without branch logins. The rows add up to the Sales today tile."""
+    from app.models.user import User, UserRole
+
+    staff = User.query.filter_by(tenant_id=tenant.id, role=UserRole.STAFF, is_active=True).order_by(User.name).all()
+    if not staff:
+        return []
+    ids = [b.id for b in staff]
+    now = sales_figures.by_branch(tenant, today, today, ids)
+    before = sales_figures.by_branch(tenant, week_ago, week_ago, ids)
+    rows = [{"id": b.id, "name": b.name, "today": now[b.id], "before": before[b.id],
+             "change": change(now[b.id], before[b.id])} for b in staff]
+    if now[None] or before[None]:
+        rows.append({"id": None, "name": "Head office", "today": now[None], "before": before[None],
+                     "change": change(now[None], before[None])})
+    return rows
+
+
 def dashboard(tenant, today: date | None = None) -> dict:
     today = today or date.today()
     month_start = today.replace(day=1)
@@ -68,6 +88,7 @@ def dashboard(tenant, today: date | None = None) -> dict:
     data["week_ago"] = week_ago
     data["sales_vs_week"] = change(data["sales_today"], dict(data["series"])[week_ago])
     data["collections_vs_week"] = change(data["collections_today"], _collections(tenant, week_ago, week_ago))
+    data["branches"] = branch_towers(tenant, today, week_ago)
     prev_end = month_start - timedelta(days=1)
     prev_start = prev_end.replace(day=1)
     prev_same = prev_start.replace(day=min(today.day, prev_end.day))

@@ -23,6 +23,7 @@
     <p class="text-muted mt-0">{{ d.today.strftime('%A, %d %b %Y') }}</p>
   </div>
   <div class="row">
+    <button type="button" class="btn btn-quiet" data-dash-view hidden aria-pressed="false">Flat view</button>
     <a href="{{ url_for('reports.daily_summary_view') }}" class="btn btn-secondary">Daily summary</a>
     <a href="{{ url_for('reports.profit_loss') }}" class="btn btn-secondary">Profit &amp; loss</a>
   </div>
@@ -33,7 +34,7 @@
 <section class="stat-grid-lg" aria-label="Today's figures">
   <div class="stat-tile stat-lead">
     <span class="stat-label">{{ icon('receipt-text', 'icon-sm') }} Sales today</span>
-    {{ money(d.sales_today) }}
+    {{ money(d.sales_today, url_for('reports.sales_view', start=d.today.isoformat(), end=d.today.isoformat())) }}
     {{ delta(d.sales_vs_week, 'vs last ' ~ d.week_ago.strftime('%A')) }}
     <div class="spark" aria-hidden="true">
       {% for day, v in d.series %}<i class="{{ 'is-today' if loop.last }}" style="--h: {{ ((v / peak * 100) if peak and v > 0 else 0)|round(1) }}%"></i>{% endfor %}
@@ -42,13 +43,13 @@
   </div>
   <div class="stat-tile">
     <span class="stat-label">{{ icon('banknote', 'icon-sm') }} Money received today</span>
-    {{ money(d.collections_today) }}
+    {{ money(d.collections_today, url_for('pos.day_book') if has_feature('pos') else None) }}
     {{ delta(d.collections_vs_week, 'vs last ' ~ d.week_ago.strftime('%A')) }}
     <small class="stat-sub">This month Rs. {{ d.collections_month|inr }}</small>
   </div>
   <div class="stat-tile">
     <span class="stat-label">{{ icon('wallet', 'icon-sm') }} {{ d.cash_label }}</span>
-    {{ money(d.cash_in_hand) }}
+    {{ money(d.cash_in_hand, url_for('accounts.book', book='cash') if has_feature('cash_bank_book') else (url_for('pos.day_book') if has_feature('pos') else None)) }}
   </div>
   {% if d.receivable is defined %}
   <div class="stat-tile">
@@ -65,6 +66,31 @@
   {% endif %}
 </section>
 
+{% if d.branches %}
+{% set top_branch = d.branches|map(attribute='today')|max %}
+<section class="card sky-card" aria-labelledby="sky-title">
+  <div class="chart-head">
+    <div>
+      <h2 id="sky-title">Branches today</h2>
+      <p class="text-muted m-0">Each tower is a branch: its height is today's sales, its colour says whether it is ahead of or behind last {{ d.week_ago.strftime('%A') }}.</p>
+    </div>
+    <a href="{{ url_for('live.dashboard') }}" class="card-link">Live {{ icon('arrow-right', 'icon-sm') }}</a>
+  </div>
+  <div class="sky3d" data-sky3d hidden><div class="dash3d-labels" data-labels></div></div>
+  <ol class="sky-flat" data-sky-flat>
+    {% for b in d.branches %}
+    {% set tone = 'none' if not b.change else ('same' if b.change.same else ('up' if b.change.up else 'down')) %}
+    <li class="sky-item tone-{{ tone }}" data-value="{{ '%.2f'|format(b.today) }}" data-tone="{{ tone }}">
+      <a class="sky-name" href="{{ url_for('reports.sales_view', start=d.today.isoformat(), end=d.today.isoformat(), branch_id=b.id) if b.id else url_for('reports.sales_view', start=d.today.isoformat(), end=d.today.isoformat()) }}">{{ b.name }}</a>
+      <span class="sky-bar" aria-hidden="true"><i style="--w: {{ ((b.today / top_branch * 100) if top_branch and b.today > 0 else 0)|round(1) }}%"></i></span>
+      <strong class="sky-value">Rs. {{ b.today|inr }}</strong>
+      <span class="sky-delta">{{ delta(b.change, 'vs Rs. ' ~ b.before|inr(0) ~ ' last ' ~ d.week_ago.strftime('%a')) }}{% if not b.change %}<span class="text-muted">nothing last {{ d.week_ago.strftime('%a') }}</span>{% endif %}</span>
+    </li>
+    {% endfor %}
+  </ol>
+</section>
+{% endif %}
+
 <div class="dash-row">
   <section class="card chart-card" aria-labelledby="trend-title">
     <div class="chart-head">
@@ -73,11 +99,13 @@
         <p class="text-muted m-0">Rs. {{ values|sum|inr(0) }} in all &middot; Rs. {{ ((values|sum) / 14)|inr(0) }} a day on average</p>
       </div>
     </div>
-    <div class="bars" role="img" aria-label="Daily sales for the last 14 days, highest Rs. {{ peak|inr(0) }}">
+    <div class="ribbon3d" data-ribbon3d hidden><div class="dash3d-labels" data-labels></div></div>
+    <div class="bars" data-ribbon-flat role="img" aria-label="Daily sales for the last 14 days, highest Rs. {{ peak|inr(0) }}">
       {% for day, v in d.series %}
       {% set h = ((v / peak * 100) if peak and v > 0 else 0) %}
       <div class="bar-slot{{ ' is-today' if loop.last }}{{ ' is-peak' if v == peak and peak > 0 }}" tabindex="0"
-           data-tip="{{ day.strftime('%a %d %b') }} &middot; Rs. {{ v|inr(0) }}">
+           data-tip="{{ day.strftime('%a %d %b') }} &middot; Rs. {{ v|inr(0) }}" data-value="{{ '%.2f'|format(v) }}"
+           data-day="{{ 'Today' if loop.last else day.strftime('%d') }}" data-short="{{ v|inr_compact }}">
         {% if (loop.last or (v == peak and peak > 0)) and v > 0 %}<span class="bar-cap">{{ v|inr_compact }}</span>{% endif %}
         <span class="bar" style="--h: {{ h|round(1) }}%"></span>
         <span class="bar-day">{{ 'Today' if loop.last else day.strftime('%d') }}</span>
@@ -182,4 +210,9 @@
   {% with data=summary %}{% include "reports/_owner_summary_body.html" %}{% endwith %}
 </section>
 {% endif %}
+{% endblock %}
+{% block scripts %}
+{# The 3D view of the same figures: loaded after the numbers are on the page. three.js is served from ARFA's own files. #}
+<script type="module" src="{{ url_for('static', filename='js/dash3d.js') }}"
+        data-three="{{ url_for('static', filename='vendor/three/three.module.min.js') }}" id="dash3d-script"></script>
 {% endblock %}

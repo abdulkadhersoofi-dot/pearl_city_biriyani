@@ -2459,6 +2459,38 @@ html.arfa-dialog-open { overflow: hidden; }
 .teach-compare .is-changed td, .teach-compare td.is-changed { background: var(--color-warn-bg); font-weight: 600; }
 .teach-rows tr.is-off { opacity: 0.6; }
 
+/* The dashboard's branch skyline and 3D view (reports/dashboard.html, js/dash3d.js). */
+.sky-card { margin-bottom: 16px; }
+.sky-flat { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 8px; }
+.sky-item { display: grid; grid-template-columns: minmax(90px, 1.2fr) minmax(60px, 2fr) auto minmax(0, 1.6fr); gap: 10px; align-items: center; }
+.sky-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sky-bar { display: block; height: 12px; border-radius: 999px; background: var(--color-neutral-bg); overflow: hidden; }
+.sky-bar i { display: block; height: 100%; width: var(--w, 0%); border-radius: 999px; background: var(--color-text-muted); }
+.sky-item.tone-up .sky-bar i { background: var(--color-primary); }
+.sky-item.tone-down .sky-bar i { background: #d9822b; }
+.sky-value { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.sky-delta { font-size: 0.85rem; }
+@media (max-width: 640px) {
+  .sky-item { grid-template-columns: minmax(0, 1fr) auto; }
+  .sky-bar { grid-column: 1 / -1; order: 3; }
+  .sky-delta { grid-column: 1 / -1; order: 4; }
+}
+.sky-flat[hidden], .bars[hidden], .sky3d[hidden], .ribbon3d[hidden] { display: none; }
+.sky3d, .ribbon3d { position: relative; overflow: hidden; margin-top: 8px; min-width: 0; }
+.sky3d.is-crowded .dash3d-label:not(.is-hot) { display: none; }
+.sky3d canvas, .ribbon3d canvas { display: block; width: 100%; max-width: 100%; touch-action: pan-y; }
+.dash3d-labels { position: absolute; inset: 0; pointer-events: none; }
+.dash3d-label { position: absolute; left: 0; top: 0; display: grid; justify-items: center; gap: 1px; padding: 3px 8px; border-radius: 8px; background: var(--color-surface, #fff); border: 1px solid var(--color-border); box-shadow: var(--shadow-1, 0 1px 2px rgba(0,0,0,.08)); font-size: 0.8rem; line-height: 1.25; white-space: nowrap; text-decoration: none; color: var(--color-text); pointer-events: auto; will-change: transform; }
+.dash3d-label b { font-weight: 700; }
+.dash3d-label span { font-variant-numeric: tabular-nums; }
+a.dash3d-label:hover, .dash3d-label.is-hot { border-color: var(--color-primary); }
+.dash3d-label.tone-up span { color: var(--color-primary-dark, #17603c); }
+.dash3d-label.tone-down span { color: #a85a12; }
+.dash3d-day, .dash3d-figure { display: block; background: none; border: 0; box-shadow: none; padding: 0 2px; font-size: 0.74rem; color: var(--color-text-muted); pointer-events: none; }
+.dash3d-figure { font-variant-numeric: tabular-nums; }
+.dash3d-day.is-today, .dash3d-figure.is-today, .dash3d-figure.is-peak { color: var(--color-text); font-weight: 700; }
+.dash-3d .stat-tile { transition: transform 0.12s ease-out, box-shadow 0.12s ease-out; will-change: transform; }
+
 /* SAP link (templates/sap). */
 .sap-stat { display: grid; gap: 2px; text-decoration: none; color: inherit; padding: 14px 16px; }
 .sap-stat-n { font-size: 1.6rem; font-weight: 700; line-height: 1.2; }

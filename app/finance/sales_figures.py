@@ -165,6 +165,32 @@ def total(tenant, start: date, end: date, branch_ids: list[int] | None = None) -
     return sum((e.signed_total for e in entries(tenant, start, end, branch_ids)), ZERO)
 
 
+def branch_of(entry: Entry) -> int | None:
+    """The branch login an entry belongs to - by the rule entries() filters
+    with: a counter bill, refund or return by who rang it up; an invoice by
+    the branch it was billed to; a note by its invoice's branch."""
+    doc = entry.doc
+    if entry.kind == INVOICE:
+        return doc.branch_user_id
+    if entry.kind in (CREDIT_NOTE, DEBIT_NOTE):
+        original = getattr(doc, "original_invoice", None)
+        return original.branch_user_id if original is not None else None
+    return doc.created_by_id
+
+
+def by_branch(tenant, start: date, end: date, branch_ids: list[int]) -> dict:
+    """Sales for the period for each of these branch logins, and under None
+    everything that belongs to none of them (head office). The parts add up
+    to total() over the same range."""
+    wanted = set(branch_ids)
+    out: dict = {b: ZERO for b in branch_ids}
+    out[None] = ZERO
+    for e in entries(tenant, start, end):
+        branch = branch_of(e)
+        out[branch if branch in wanted else None] += e.signed_total
+    return out
+
+
 def by_day(tenant, start: date, end: date) -> list[tuple[date, Decimal]]:
     """Sales for each day from start to end. The days add up to total()
     over the same range."""

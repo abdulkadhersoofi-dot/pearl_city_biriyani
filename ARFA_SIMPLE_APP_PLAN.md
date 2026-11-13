@@ -4,7 +4,8 @@
 orders billed in parts, scanned bills matched to their order), Phase 4 (bill
 reader training with heading lessons) and Phase 5 (the SAP link, tested
 against a stand-in SAP; a real connection needs the client's SAP team) are
-built and tested, waiting for approval to go live. Phases 6 and 7 follow.
+built and tested, and so is Phase 6 (the 3D dashboard), all waiting for
+approval to go live. Phase 7 follows.
 
 **What this is:** a plan to make ARFA look and feel minimal (few buttons, one
 way to do each job) without removing a single feature, while making its
