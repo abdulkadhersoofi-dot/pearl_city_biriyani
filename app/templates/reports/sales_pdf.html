@@ -16,7 +16,7 @@
 </head>
 <body>
   <h1>{{ firm_name }} - Sales report</h1>
-  <p class="doc-type">{{ data.start.strftime('%d %b %Y') }} - {{ data.end.strftime('%d %b %Y') }} &middot; {{ data.invoice_count }} invoice(s), {{ data.pos_bill_count }} POS bill(s)</p>
+  <p class="doc-type">{{ data.start.strftime('%d %b %Y') }} - {{ data.end.strftime('%d %b %Y') }} &middot; {{ data.invoice_count }} invoice(s), {{ data.pos_bill_count }} POS bill(s){% if data.note_count %}, {{ data.note_count }} credit / debit note(s){% endif %}</p>
 
   <table>
     <tr><th>Date</th><th>Type</th><th>Document no.</th><th>Billing GSTIN</th><th>Customer</th><th>Customer GSTIN</th><th>Payment</th><th class="num">Taxable</th><th class="num">CGST</th><th class="num">SGST</th><th class="num">IGST</th><th class="num">Total</th></tr>

@@ -4,7 +4,7 @@
 <div class="page-header">
   <div>
     <h1>Sales report</h1>
-    <p class="text-muted mt-0">{{ data.start.strftime('%d %b %Y') }} - {{ data.end.strftime('%d %b %Y') }} &middot; {{ data.invoice_count }} invoice(s), {{ data.pos_bill_count }} POS bill(s)</p>
+    <p class="text-muted mt-0">{{ data.start.strftime('%d %b %Y') }} - {{ data.end.strftime('%d %b %Y') }} &middot; {{ data.invoice_count }} invoice(s), {{ data.pos_bill_count }} POS bill(s){% if data.note_count %}, {{ data.note_count }} credit / debit note(s){% endif %}</p>
   </div>
   <div class="row">
     <a href="{{ url_for('reports.sales_xlsx', mode=filters.mode, start=filters.start.isoformat(), end=filters.end.isoformat(), date=filters.day_value, month=filters.month_value, branch_id=filters.branch_ids) }}" class="btn btn-secondary">Excel</a>

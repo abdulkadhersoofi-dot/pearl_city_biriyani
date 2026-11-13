@@ -5,62 +5,24 @@ figure, and only appears when that module is on."""
 from datetime import date, timedelta
 from decimal import Decimal
 
-from app.finance.pnl import NOT_SALES, ZERO, day_start
+from app.finance import sales_figures
+from app.finance.pnl import ZERO, day_start
 from app.models.accounts import ChequeStatus, CustomerReceipt, VoucherStatus
-from app.models.invoice import Invoice, InvoiceStatus
 from app.models.pos_bill import PaymentMode, POSBill, POSBillStatus, POSPayment
-from app.models.pos_return import POSReturn, POSReturnStatus
 
 NO_MONEY = (PaymentMode.CREDIT, PaymentMode.EXCHANGE)
 
 
 def _sales(tenant, start: date, end: date) -> Decimal:
-    lo, hi = day_start(start), day_start(end + timedelta(days=1))
-    pos = sum((Decimal(b.grand_total) for b in POSBill.query.filter(
-        POSBill.tenant_id == tenant.id, POSBill.status.in_([POSBillStatus.COMPLETED, POSBillStatus.REFUNDED]),
-        POSBill.completed_at >= lo, POSBill.completed_at < hi)), ZERO)
-    refunds = sum((Decimal(b.refunded_amount or 0) for b in POSBill.query.filter(
-        POSBill.tenant_id == tenant.id, POSBill.status == POSBillStatus.REFUNDED,
-        POSBill.refunded_at >= lo, POSBill.refunded_at < hi)), ZERO)
-    returns = sum((Decimal(r.grand_total) for r in POSReturn.query.filter(
-        POSReturn.tenant_id == tenant.id, POSReturn.status == POSReturnStatus.COMPLETED,
-        POSReturn.returned_at >= lo, POSReturn.returned_at < hi)), ZERO)
-    invoices = sum((Decimal(i.grand_total) for i in Invoice.query.filter(
-        Invoice.tenant_id == tenant.id, Invoice.status == InvoiceStatus.ISSUED,
-        Invoice.document_type.notin_(NOT_SALES), Invoice.invoice_date >= start, Invoice.invoice_date <= end)), ZERO)
-    return pos - refunds - returns + invoices
+    """Sales for the period, tax included - the one definition every screen
+    uses (app/finance/sales_figures.py)."""
+    return sales_figures.total(tenant, start, end)
 
 
 def daily_sales(tenant, start: date, end: date) -> list[tuple[date, Decimal]]:
-    """Sales for each day from start to end - the same rule as _sales
-    (counter bills less refunds and returns, plus issued sales invoices),
-    split by local day, read in four queries instead of four per day. The
-    days add up to _sales over the same range."""
-    lo, hi = day_start(start), day_start(end + timedelta(days=1))
-    days = {start + timedelta(days=i): ZERO for i in range((end - start).days + 1)}
-
-    def add(when, amount):
-        day = when.astimezone().date() if hasattr(when, "astimezone") else when
-        if day in days:
-            days[day] += Decimal(amount or 0)
-
-    for bill in POSBill.query.filter(
-            POSBill.tenant_id == tenant.id, POSBill.status.in_([POSBillStatus.COMPLETED, POSBillStatus.REFUNDED]),
-            POSBill.completed_at >= lo, POSBill.completed_at < hi):
-        add(bill.completed_at, bill.grand_total)
-    for bill in POSBill.query.filter(
-            POSBill.tenant_id == tenant.id, POSBill.status == POSBillStatus.REFUNDED,
-            POSBill.refunded_at >= lo, POSBill.refunded_at < hi):
-        add(bill.refunded_at, -Decimal(bill.refunded_amount or 0))
-    for ret in POSReturn.query.filter(
-            POSReturn.tenant_id == tenant.id, POSReturn.status == POSReturnStatus.COMPLETED,
-            POSReturn.returned_at >= lo, POSReturn.returned_at < hi):
-        add(ret.returned_at, -Decimal(ret.grand_total))
-    for inv in Invoice.query.filter(
-            Invoice.tenant_id == tenant.id, Invoice.status == InvoiceStatus.ISSUED,
-            Invoice.document_type.notin_(NOT_SALES), Invoice.invoice_date >= start, Invoice.invoice_date <= end):
-        add(inv.invoice_date, inv.grand_total)
-    return sorted(days.items())
+    """Sales for each day from start to end, by the same rule as _sales.
+    The days add up to _sales over the same range."""
+    return sales_figures.by_day(tenant, start, end)
 
 
 def change(now: Decimal, before: Decimal) -> dict | None:
