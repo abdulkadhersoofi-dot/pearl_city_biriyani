@@ -41,7 +41,7 @@ def _pair(client, code, name="Front phone", platform="android"):
 def test_the_owner_gets_a_one_time_code_for_a_branch(client, db, client_admin, staff):
     _login(client, client_admin.email, "ClientSecret123")
     html = client.get("/branches/").get_data(as_text=True)
-    assert f"/branches/{staff.id}/pair" in html and "Counter phones &amp; tablets" in html
+    assert f"/branches/{staff.id}/pair" in html and "Billing phones &amp; tablets" in html
     page = client.post(f"/branches/{staff.id}/pair").get_data(as_text=True)
     code = _code_from(page)
     assert len(code) == 6 and "Pair a phone with Cashier" in page
@@ -149,7 +149,7 @@ def test_switching_a_phone_off_stops_it(client, db, client_admin, staff, code):
     _fresh(client)
     _login(client, client_admin.email, "ClientSecret123")
     page = client.get("/branches/").get_data(as_text=True)
-    assert "Front phone" in page and "ARFA Counter app" in page and "Series O1" in page
+    assert "Front phone" in page and "ARFA Counter app" in page and "Bill series O1" in page
     device = CounterDevice.query.one()
     client.post(f"/branches/devices/{device.id}/active", data={"active": "0"})
     db.session.refresh(device)
@@ -226,3 +226,101 @@ def test_another_business_cannot_switch_my_phone(client, db, staff, code):
     assert "Front phone" not in client.get("/branches/").get_data(as_text=True)
     db.session.refresh(device)
     assert device.is_active is True
+
+
+# --- several phones for one branch -----------------------------------------------------------------
+
+def _as(other_client):
+    """Switch to another browser or phone. The tests share one app context, so
+    the signed-in user Flask-Login caches there is dropped first."""
+    from flask import g
+
+    g.pop("_login_user", None)
+    return other_client
+
+
+def _code_for(client, staff, phones):
+    page = client.post(f"/branches/{staff.id}/pair", data={"phones": str(phones)}).get_data(as_text=True)
+    return _code_from(page), page
+
+
+def test_one_code_pairs_several_phones_of_a_branch_then_stops(client, db, client_admin, staff):
+    _login(client, client_admin.email, "ClientSecret123")
+    code, page = _code_for(client, staff, 3)
+    assert "Pair 3 phones with Cashier" in page and "up to 3 phones" in page
+    record = DevicePairing.query.one()
+    status_url = f"/branches/pairings/{record.id}/status.json"
+    assert client.get(status_url).get_json() == {"paired": [], "max": 3, "done": False, "expired": False}
+    client.get("/auth/logout")
+
+    phones = [client.application.test_client() for _ in range(4)]
+    results = [_pair(_as(p), code, name=f"Counter {i + 1}") for i, p in enumerate(phones)]
+    assert [r.status_code for r in results[:3]] == [200, 200, 200]
+    assert results[3].status_code != 200                       # the code was for three
+    devices = CounterDevice.query.filter_by(user_id=staff.id).order_by(CounterDevice.id).all()
+    assert [d.name for d in devices] == ["Counter 1", "Counter 2", "Counter 3"]
+    assert len({d.code for d in devices}) == 3                 # each its own bill series
+    record = db.session.get(DevicePairing, record.id)
+    assert record.uses == 3 and record.used_at is not None
+
+    _login(_as(client), client_admin.email, "ClientSecret123")
+    status = client.get(status_url).get_json()
+    assert status["done"] is True and [p["name"] for p in status["paired"]] == ["Counter 1", "Counter 2", "Counter 3"]
+    # All three bill at once: each phone is signed in as the branch.
+    for p in phones[:3]:
+        resp = _as(p).get("/app/")
+        assert resp.status_code in (200, 302) and "/auth/login" not in (resp.headers.get("Location") or "")
+
+
+def test_the_phone_count_is_kept_between_one_and_ten(client, db, client_admin, staff):
+    _login(client, client_admin.email, "ClientSecret123")
+    _code_for(client, staff, 50)
+    assert DevicePairing.query.order_by(DevicePairing.id.desc()).first().max_uses == pairing.MAX_PHONES_PER_CODE
+    _code_for(client, staff, 0)
+    assert DevicePairing.query.order_by(DevicePairing.id.desc()).first().max_uses == 1
+    client.post(f"/branches/{staff.id}/pair", data={"phones": "lots"})
+    assert DevicePairing.query.order_by(DevicePairing.id.desc()).first().max_uses == 1
+
+
+def test_phones_are_listed_under_their_branch_and_can_be_renamed(client, db, client_admin, staff):
+    _login(client, client_admin.email, "ClientSecret123")
+    code, _ = _code_for(client, staff, 2)
+    client.get("/auth/logout")
+    _pair(_as(client.application.test_client()), code, name="Phone A")
+    _pair(_as(client.application.test_client()), code, name="")
+    _login(_as(client), client_admin.email, "ClientSecret123")
+    html = client.get("/branches/").get_data(as_text=True)
+    group = html.split(f'id="phones-{staff.id}"', 1)[1].split('class="phone-group"', 1)[0]
+    assert 'value="Phone A"' in group and 'value="Phone"' in group and "2 phones on" in group
+    assert f'href="#phones-{staff.id}">2 on</a>' in html
+    unnamed = CounterDevice.query.filter_by(name="Phone").one()        # no name typed on the phone
+    resp = client.post(f"/branches/devices/{unnamed.id}/rename", data={"name": "  Counter   2 "})
+    assert resp.status_code == 302 and resp.headers["Location"].endswith(f"#phones-{staff.id}")
+    assert db.session.get(CounterDevice, unnamed.id).name == "Counter 2"
+    assert AuditLog.query.filter_by(action="counter_device_renamed").count() == 1
+    client.post(f"/branches/devices/{unnamed.id}/rename", data={"name": "   "})
+    assert db.session.get(CounterDevice, unnamed.id).name == "Counter 2"
+
+
+def test_another_business_cant_see_or_rename_our_phones(client, db, client_admin, staff):
+    _login(client, client_admin.email, "ClientSecret123")
+    code, _ = _code_for(client, staff, 1)
+    record = DevicePairing.query.one()
+    client.get("/auth/logout")
+    _pair(_as(client.application.test_client()), code)
+    device = CounterDevice.query.one()
+
+    other = Tenant(legal_name="Other Co", registration_type=RegistrationType.REGULAR, billing_cycle=BillingCycle.MONTHLY)
+    db.session.add(other)
+    db.session.flush()
+    db.session.add(Gstin(tenant_id=other.id, gstin="29AAAAA0000A1Z5", state_code="29", state_name="Karnataka",
+                         is_primary=True))
+    owner = User(tenant_id=other.id, name="Other Owner", email="owner@other.example.com", role=UserRole.CLIENT_ADMIN,
+                 must_change_password=False)
+    owner.set_password("OtherSecret123")
+    db.session.add(owner)
+    db.session.commit()
+    _login(_as(client), "owner@other.example.com", "OtherSecret123")
+    assert client.get(f"/branches/pairings/{record.id}/status.json").status_code == 404
+    assert client.post(f"/branches/devices/{device.id}/rename", data={"name": "Mine now"}).status_code == 404
+    assert db.session.get(CounterDevice, device.id).name == "Front phone"

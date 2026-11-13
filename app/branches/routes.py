@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from flask import abort, flash, redirect, render_template, request, url_for
+from flask import abort, flash, jsonify, redirect, render_template, request, url_for
 from flask_login import current_user
 
 from app.auth.decorators import roles_required
@@ -34,11 +34,19 @@ def list_branches():
     tenant = current_user.tenant
     branches = tenant_query(User).filter_by(role=UserRole.STAFF).order_by(User.name).all()
     stock_by_branch = {b.id: branch_stock_status(current_user.tenant_id, b.id) for b in branches}
-    from app.counterapp.pairing import app_devices
+    from app.counterapp.pairing import MAX_PHONES_PER_CODE, app_devices
 
+    devices = app_devices(tenant)
+    # The phones under their branch; a browser counter of another login
+    # (the owner's own) in a group of its own.
+    by_branch = {b.id: [] for b in branches}
+    others = []
+    for d in devices:
+        (by_branch[d.user_id] if d.user_id in by_branch else others).append(d)
     return render_template("branches/list.html", branches=branches, stock_by_branch=stock_by_branch,
                            meters=[limit_meter(tenant, "branches"), limit_meter(tenant, "logins")],
-                           roles=BRANCH_ROLES, devices=app_devices(tenant))
+                           roles=BRANCH_ROLES, devices=devices, by_branch=by_branch, other_devices=others,
+                           max_phones=MAX_PHONES_PER_CODE)
 
 
 # --- the ARFA Counter app: pairing a phone (counter app, stage 1) ----------------------------
@@ -54,16 +62,40 @@ def pair_phone(user_id):
     branch = User.query.get_or_404(user_id)
     assert_owns(branch)
     try:
-        record, code = pairing.new_pairing(current_user.tenant, branch, current_user)
+        phones = int(request.form.get("phones") or 1)
+    except ValueError:
+        phones = 1
+    try:
+        record, code = pairing.new_pairing(current_user.tenant, branch, current_user, phones)
     except pairing.PairingError as exc:
         db.session.rollback()
         flash(exc.message, "error")
         return redirect(url_for("branches.list_branches"))
     record_audit(current_user, "counter_pairing_code_made", tenant_id=current_user.tenant_id, entity_type="user",
-                 entity_id=branch.id, details={"branch": branch.name})
+                 entity_id=branch.id, details={"branch": branch.name, "phones": record.max_uses})
     db.session.commit()
-    return render_template("branches/pair_code.html", branch=branch, code=code, expires_at=record.expires_at,
-                           minutes=pairing.PAIRING_MINUTES)
+    return render_template("branches/pair_code.html", branch=branch, code=code, record=record,
+                           expires_at=record.expires_at, minutes=pairing.PAIRING_MINUTES,
+                           max_phones=pairing.MAX_PHONES_PER_CODE)
+
+
+@branches_bp.route("/pairings/<int:pairing_id>/status.json")
+@roles_required(UserRole.CLIENT_ADMIN)
+def pairing_status(pairing_id):
+    """Which phones have paired with a code so far - the code page asks
+    every few seconds, so the owner sees each phone join."""
+    from app.counterapp import pairing
+    from app.models.mixins import utcnow
+    from app.models.platform import DevicePairing
+
+    record = tenant_query(DevicePairing).filter_by(id=pairing_id).first_or_404()
+    phones = pairing.paired_with(record)
+    return jsonify({
+        "paired": [{"name": d.name, "code": d.code} for d in phones],
+        "max": record.max_uses,
+        "done": record.used_at is not None,
+        "expired": record.used_at is None and record.expires_at <= utcnow(),
+    })
 
 
 @branches_bp.route("/devices/<int:device_id>/active", methods=["POST"])
@@ -79,7 +111,27 @@ def device_active(device_id):
     db.session.commit()
     flash(f"{device.name} ({device.code}) is {'on again' if device.is_active else 'switched off - it stops billing now'}.",
           "success")
-    return redirect(url_for("branches.list_branches", _anchor="sec-devices"))
+    return redirect(url_for("branches.list_branches", _anchor=f"phones-{device.user_id}"))
+
+
+@branches_bp.route("/devices/<int:device_id>/rename", methods=["POST"])
+@roles_required(UserRole.CLIENT_ADMIN)
+def device_rename(device_id):
+    """A name the counter staff know the phone by - "Counter 1", "Ravi's phone"."""
+    from app.models.platform import CounterDevice
+
+    device = tenant_query(CounterDevice).filter_by(id=device_id).first_or_404()
+    name = " ".join((request.form.get("name") or "").split())[:60]
+    if not name:
+        flash("Give the phone a name.", "error")
+    elif name != device.name:
+        record_audit(current_user, "counter_device_renamed", tenant_id=current_user.tenant_id,
+                     entity_type="counter_device", entity_id=device.id,
+                     details={"code": device.code, "from": device.name, "to": name})
+        device.name = name
+        db.session.commit()
+        flash(f"Renamed to {name} ({device.code}).", "success")
+    return redirect(url_for("branches.list_branches", _anchor=f"phones-{device.user_id}"))
 
 
 @branches_bp.route("/new", methods=["GET", "POST"])

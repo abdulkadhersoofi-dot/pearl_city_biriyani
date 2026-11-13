@@ -2668,11 +2668,15 @@ and tables & KOT where the business has them. It opens the website's own
 phone screens (`/app/`) inside the Android shell, so billing rules, GST
 and numbering are the website's. Stage 1 is how a phone gets in.
 
-- **The owner pairs a phone** - Branches > **Pair a phone** next to a
-  branch login shows a 6-digit code, good once for 15 minutes. A new code
-  for that branch retires the old one. Only a Client Admin makes codes,
-  and only for an active branch login of their own business. The code is
-  kept only as a hash.
+- **The owner pairs phones** - Branches > **Billing phones & tablets**
+  lists every phone under its branch (rename it, switch it off). "Add [n]
+  phone(s) > Get pairing code" shows a 6-digit code good for 15 minutes
+  and for up to n phones (1-10) of that branch - type the same code on
+  each; the code page lists each phone as it joins. A branch may bill on
+  any number of phones at once, each in its own offline series. A new
+  code for that branch retires the old one. Only a Client Admin makes
+  codes, and only for an active branch login of their own business. The
+  code is kept only as a hash.
 - **The phone types the code once** - `/app/` shows the pairing screen.
   With the right code the phone becomes one of the business's counter
   devices: the same record offline billing numbers its bills from
@@ -3278,9 +3282,10 @@ manual service areas; splitting allowed).
 
 ### Counter app - how to run it (hand-over)
 
-**The owner, once per phone**
-1. Website -> **Branches** -> **Pair a phone** next to the branch. A
-   6-digit code shows for 15 minutes.
+**The owner, once per branch (one code can pair several phones)**
+1. Website -> **Branches** -> **Billing phones & tablets** -> next to the
+   branch, "Add [how many] phone(s)" -> **Get pairing code**. A 6-digit
+   code shows for 15 minutes; type it on each phone.
 2. Optional: **Settings > Modules > Offline billing** on, so phones keep
    billing without internet.
 

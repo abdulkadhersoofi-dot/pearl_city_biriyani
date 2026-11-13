@@ -62,9 +62,15 @@ class DevicePairing(db.Model, TenantScopedMixin, TimestampMixin):
                         index=True)
     code_hash = db.Column(db.String(64), nullable=False, index=True)
     expires_at = db.Column(db.DateTime(timezone=True), nullable=False)
+    # Set once the code has paired as many phones as it was made for.
     used_at = db.Column(db.DateTime(timezone=True))
     created_by_id = db.Column(db.Integer, db.ForeignKey("users.id", name="fk_device_pairings_created_by"))
+    # The last device it paired.
     device_id = db.Column(db.Integer, db.ForeignKey("counter_devices.id", name="fk_device_pairings_device"))
+    # One code for several phones of the same branch: how many it may pair,
+    # and how many have so far.
+    max_uses = db.Column(db.Integer, nullable=False, default=1, server_default="1")
+    uses = db.Column(db.Integer, nullable=False, default=0, server_default="0")
 
     user = db.relationship("User", foreign_keys=[user_id])
     device = db.relationship("CounterDevice")

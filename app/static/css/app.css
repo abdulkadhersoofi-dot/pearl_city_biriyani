@@ -2030,6 +2030,16 @@ a.console-stat { text-decoration: none; }
 .pair-big span { padding: 12px 16px; border-radius: 16px; background: var(--color-primary-soft); }
 @media (max-width: 640px) { .pair-big { font-size: 2.2rem; } }
 .devices-note { margin: 0 0 12px; padding: 10px 14px; border-radius: var(--radius); background: var(--color-info-bg); color: var(--color-info-text); }
+/* Billing phones under their branch (Branches page). */
+.phone-group { padding: 14px 0; border-top: 1px solid var(--color-border); }
+.phone-group:first-of-type { border-top: 0; }
+.phone-group-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.phone-group-head small { font-weight: 500; font-size: 0.85rem; }
+input.phones-count { width: 4.75rem; flex: none; }
+input.field-input.device-name-input, .device-name input.field-input { min-width: 0; width: 12rem; max-width: 100%; flex: 1 1 8rem; }
+.device-name { flex-wrap: nowrap; }
+.pair-joined { margin: 12px 0 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.pair-joined li { display: flex; align-items: center; gap: 8px; }
 
 /* The app's own confirm / question box (static/js/dialog.js) - used in
    place of the browser's confirm() and prompt(), which the Android app

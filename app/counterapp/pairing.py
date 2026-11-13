@@ -25,6 +25,7 @@ from app.models.platform import CounterDevice, DevicePairing
 from app.models.user import UserRole
 
 PAIRING_MINUTES = 15
+MAX_PHONES_PER_CODE = 10     # one code may pair up to this many phones of a branch
 PAIR_ATTEMPTS = 10           # wrong codes / secrets from one address...
 PAIR_WINDOW_MINUTES = 15     # ...within this many minutes, then wait
 FAILED_ACTION = "device_pair_failed"
@@ -45,9 +46,11 @@ def _clean(code) -> str:
     return "".join(ch for ch in str(code or "") if ch.isdigit())
 
 
-def new_pairing(tenant, branch_user, actor) -> tuple[DevicePairing, str]:
-    """A fresh code for one branch login. Any earlier unused code for that
-    login stops working, so only the code on screen now pairs."""
+def new_pairing(tenant, branch_user, actor, phones: int = 1) -> tuple[DevicePairing, str]:
+    """A fresh code for one branch login, good for `phones` phones (1 to
+    MAX_PHONES_PER_CODE) - type the same code on each. Any earlier unused
+    code for that login stops working, so only the code on screen now pairs."""
+    phones = max(1, min(int(phones or 1), MAX_PHONES_PER_CODE))
     if branch_user.tenant_id != tenant.id or branch_user.role != UserRole.STAFF:
         raise PairingError("Phones pair with a branch login.")
     if not branch_user.is_active:
@@ -66,7 +69,8 @@ def new_pairing(tenant, branch_user, actor) -> tuple[DevicePairing, str]:
     else:  # pragma: no cover - a million codes, a handful live
         raise PairingError("Couldn't make a code just now - try again.")
     pairing = DevicePairing(tenant_id=tenant.id, user_id=branch_user.id, code_hash=_hash(code),
-                            expires_at=now + timedelta(minutes=PAIRING_MINUTES), created_by_id=actor.id)
+                            expires_at=now + timedelta(minutes=PAIRING_MINUTES), created_by_id=actor.id,
+                            max_uses=phones, uses=0)
     db.session.add(pairing)
     db.session.flush()
     return pairing, code
@@ -111,8 +115,10 @@ def pair(code, device_name: str, platform: str) -> tuple[CounterDevice, str]:
         device, token = offline.register_device(user.tenant, user, device_name or "Phone", platform)
     except offline.OfflineError as exc:
         raise PairingError(exc.message)
-    pairing.used_at = now
+    pairing.uses = (pairing.uses or 0) + 1
     pairing.device_id = device.id
+    if pairing.uses >= (pairing.max_uses or 1):
+        pairing.used_at = now          # every phone it was made for has paired
     return device, token
 
 
@@ -131,6 +137,15 @@ def resume(device_id, token: str) -> CounterDevice:
     _can_sign_in(device.user)
     device.last_seen_at = utcnow()
     return device
+
+
+def paired_with(pairing: DevicePairing) -> list[CounterDevice]:
+    """The phones that have paired with this code so far (they are the
+    branch's devices made since the code was)."""
+    return (CounterDevice.query.filter(CounterDevice.tenant_id == pairing.tenant_id,
+                                       CounterDevice.user_id == pairing.user_id,
+                                       CounterDevice.created_at >= pairing.created_at)
+            .order_by(CounterDevice.created_at).limit(pairing.max_uses or 1).all())
 
 
 def app_devices(tenant):
