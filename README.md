@@ -1886,6 +1886,22 @@ Five new flags, all off by default; with them off nothing changes (routes
   differs in words (quantity over, rate beyond 1% or Rs. 1, GST rate, item
   not on the order, more billed than the warehouse has scanned in). The
   owner can pick another order or none; posting ties the bill to the order.
+- **Bill reader training** (Setup > Bill reader training, `/scan/teach`;
+  `app/scan/lessons.py`): besides the rows it learns from corrections and
+  the owner's notes, the reader is taught **headings** - "on this supplier's
+  bills, 'Cust. PO' means your order (PO) number", or a column heading
+  ("Basic" is the rate). A heading lesson (`ScanLesson.kind = "heading"`,
+  per supplier GSTIN or for every supplier; the Ultra Admin's reach every
+  business) is told to the reader with the bill and then applied as a fixed
+  rule to what it returned (`reader.apply_headings`): a value read under
+  another field whose printed label is the taught heading is moved, a
+  "label: value" left in other references is taken, a column read under the
+  wrong name is moved or swapped back. Only values the reader read are
+  moved; the reader is asked for the printed labels only when headings have
+  been taught. **Train on a bill** (`/scan/teach/bill/<id>`): click a heading
+  on the bill's picture and ARFA reads it into the box (`reader.read_label`),
+  pick what it means, then **Read again** shows that bill before and after
+  without changing it. Training reads are capped at 40 a day per business.
 - **Security headers** (`app/security_headers.py`): HSTS over HTTPS
   (includeSubDomains on PUBLIC_URL's domain only), a Content-Security-Policy
   on pages - scripts only from /static or inline blocks with the response's

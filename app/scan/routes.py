@@ -526,6 +526,9 @@ def teach():
     supplier = (request.args.get("supplier") or "").strip().upper()
     stats = lessons.supplier_stats(tenant)
     chosen = next((s for s in stats if s["gstin"] == supplier), None) if supplier else None
+    bills = lessons.recent_bills(tenant, supplier) if supplier else []
+    if supplier and chosen is None and bills:
+        chosen = {"gstin": supplier, "name": services.party(bills[0])[0] or supplier}   # none posted yet
     query = ScanLesson.query.filter(ScanLesson.tenant_id == tenant.id)
     query = query.filter(ScanLesson.supplier_gstin == supplier) if supplier else \
         query.filter(ScanLesson.supplier_gstin.is_(None))
@@ -533,7 +536,8 @@ def teach():
     platform = ScanLesson.query.filter(ScanLesson.tenant_id.is_(None), ScanLesson.active.is_(True)) \
         .order_by(ScanLesson.id.desc()).limit(50).all()
     return render_template("scan/teach.html", stats=stats, supplier=supplier, chosen=chosen, shown=shown,
-                           platform=platform, all_view=False)
+                           platform=platform, all_view=False, fields=lessons.HEADING_FIELDS,
+                           bills=bills, party=services.party)
 
 
 @scan_bp.route("/teach/all")
@@ -543,8 +547,10 @@ def teach_all():
 
     shown = ScanLesson.query.filter(ScanLesson.tenant_id.is_(None)) \
         .order_by(ScanLesson.created_at.desc(), ScanLesson.id.desc()).limit(300).all()
+    from app.scan import lessons
+
     return render_template("scan/teach.html", stats=[], supplier="", chosen=None, shown=shown, platform=[],
-                           all_view=True)
+                           all_view=True, fields=lessons.HEADING_FIELDS, bills=[], party=services.party)
 
 
 @scan_bp.route("/teach/note", methods=["POST"])
@@ -566,6 +572,98 @@ def teach_note():
         db.session.rollback()
         flash(exc.message, "error")
     return _teach_back()
+
+
+@scan_bp.route("/teach/heading", methods=["POST"])
+@login_required
+def teach_heading():
+    """A heading on a supplier's bills and what it means."""
+    from app.scan import lessons
+    from app.utils.audit import record_audit
+
+    scope = _teach_scope()
+    doc_id = request.form.get("doc", type=int)
+    try:
+        lesson = lessons.add_heading(scope, current_user, request.form.get("heading", ""),
+                                     request.form.get("field", ""), request.form.get("gstin", ""),
+                                     request.form.get("name", ""), source_doc_id=doc_id if scope else None)
+        db.session.flush()
+        record_audit(current_user, "scan_heading_taught", tenant_id=scope, entity_type="scan_lesson",
+                     entity_id=lesson.id, details={"supplier_gstin": lesson.supplier_gstin, "heading": lesson.text,
+                                                   "field": lesson.example.get("field")})
+        db.session.commit()
+        flash(f"Taught: \"{lesson.text}\" means {lessons.HEADING_FIELDS[lesson.example['field']]}.", "success")
+    except lessons.LessonError as exc:
+        db.session.rollback()
+        flash(exc.message, "error")
+    if doc_id and scope:
+        return redirect(url_for("scan.teach_bill", doc_id=doc_id))
+    return _teach_back()
+
+
+def _teach_bill_page(doc, trial=None, status=200):
+    from app.models.scan import LESSON_HEADING, ScanLesson
+    from app.scan import lessons
+
+    name, gstin = services.party(doc)
+    taught = ScanLesson.query.filter(ScanLesson.tenant_id == doc.tenant_id, ScanLesson.kind == LESSON_HEADING,
+                                     db.or_(ScanLesson.supplier_gstin == gstin, ScanLesson.supplier_gstin.is_(None))) \
+        .order_by(ScanLesson.id.desc()).limit(100).all()
+    ex = doc.extracted or {}
+    read = [{"label": label, "value": services._shown(ex.get(key))} for key, label in lessons.HEADING_FIELDS.items()
+            if not key.startswith("col:") and services._shown(ex.get(key))]
+    return render_template("scan/teach_bill.html", doc=doc, name=name, gstin=gstin, taught=taught, read=read,
+                           fields=lessons.HEADING_FIELDS, trial=trial, pages=doc.page_count or 1,
+                           ver=int(doc.updated_at.timestamp()) if doc.updated_at else 0,
+                           set_up=services.is_set_up()), status
+
+
+@scan_bp.route("/teach/bill/<int:doc_id>")
+@roles_required(ADMIN)
+@feature_required("doc_scan")
+def teach_bill(doc_id):
+    """Train on one bill: click a heading on its picture, say what it means."""
+    doc = _doc(doc_id)
+    if not doc.extracted:
+        flash("That bill hasn't been read yet.", "error")
+        return redirect(url_for("scan.teach"))
+    return _teach_bill_page(doc)
+
+
+@scan_bp.route("/teach/bill/<int:doc_id>/label", methods=["POST"])
+@roles_required(ADMIN)
+@feature_required("doc_scan")
+def teach_label(doc_id):
+    """The heading printed where the person clicked on the bill's picture."""
+    doc = _doc(doc_id)
+    data = request.get_json(silent=True) or {}
+    try:
+        text = services.label_at(_tenant(), current_user, doc, int(data.get("n") or 0), float(data.get("x") or 0),
+                                 float(data.get("y") or 0))
+        db.session.commit()
+    except (TypeError, ValueError):
+        return jsonify({"error": "Click on the bill's picture."}), 400
+    except ScanError as exc:
+        db.session.rollback()
+        return jsonify({"error": exc.message}), 422
+    return jsonify({"text": text})
+
+
+@scan_bp.route("/teach/bill/<int:doc_id>/read-again", methods=["POST"])
+@roles_required(ADMIN)
+@feature_required("doc_scan")
+def teach_read_again(doc_id):
+    """Reads the bill again with the lessons so far: before and after, side
+    by side. The bill itself stays as it was."""
+    doc = _doc(doc_id)
+    try:
+        trial = services.trial_read(_tenant(), current_user, doc)
+        db.session.commit()
+    except ScanError as exc:
+        db.session.rollback()
+        flash(exc.message, "error")
+        return redirect(url_for("scan.teach_bill", doc_id=doc.id))
+    return _teach_bill_page(doc, trial)
 
 
 def _lesson(lesson_id):

@@ -55,7 +55,8 @@ _BY_ENDPOINT = {
     "hubs.sell": "sell", "hubs.buy": "buy", "hubs.stock": "stock", "hubs.money": "money", "hubs.setup": "setup",
     "jewellery.rates": "stock",
     "inventory.locations": "setup", "inventory.deactivate_location": "setup",
-    "warehouse.logins": "setup", "scan.teach": "setup", "subscriptions.mine": "setup",
+    "warehouse.logins": "setup", "scan.teach": "setup", "scan.teach_bill": "setup",
+    "scan.teach_read_again": "setup", "subscriptions.mine": "setup",
     "warehouse.financiers": "money", "warehouse.settlement": "money",
 }
 _BY_BLUEPRINT = {

@@ -2444,6 +2444,20 @@ html.arfa-dialog-open { overflow: hidden; }
 .teach-note-text { white-space: pre-line; }
 .teach-rows td, .teach-rows th { font-size: 0.88rem; }
 .teach-form textarea { resize: vertical; }
+.teach-h3 { font-size: 1rem; margin: 16px 0 4px; }
+.teach-heading-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; align-items: end; }
+.teach-heading-form .btn { justify-self: start; }
+.teach-heading-text { background: var(--color-warn-bg); padding: 1px 6px; border-radius: 6px; }
+.teach-bill-link { display: inline-block; margin: 4px 6px 0 0; padding: 3px 10px; border: 1px solid var(--color-border); border-radius: 999px; font-size: 0.88rem; }
+.teach-steps { margin: 0 0 16px; padding-left: 20px; display: grid; gap: 4px; }
+.teach-bill { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); align-items: start; }
+@media (min-width: 1000px) { .teach-bill { grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); } .teach-picture { position: sticky; top: 76px; } }
+.teach-picture { display: grid; gap: 8px; padding: 10px; }
+.teach-stage { position: relative; max-height: 78vh; overflow: auto; border-radius: var(--radius-md, 8px); background: #f3f4f6; }
+.teach-stage-img { display: block; width: 100%; height: auto; cursor: crosshair; }
+.teach-pin { position: absolute; width: 22px; height: 22px; margin: -11px 0 0 -11px; border: 3px solid var(--color-primary); border-radius: 50%; background: rgba(255, 255, 255, 0.55); pointer-events: none; }
+.teach-compare .is-changed td, .teach-compare td.is-changed { background: var(--color-warn-bg); font-weight: 600; }
+.teach-rows tr.is-off { opacity: 0.6; }
 tr.is-current td { background: var(--color-primary-soft); }
 
 /* --- Warehouse dispatch (app/warehouse) ----------------------------------------------------- */

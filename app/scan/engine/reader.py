@@ -94,6 +94,9 @@ class Context:
     # What this business taught the reader (app/scan/lessons.py): the
     # prompt text for bills from each supplier GSTIN, and "" for every bill.
     lessons: dict[str, str] = field(default_factory=dict)
+    # Headings taught (lessons.heading_rules): per supplier GSTIN and "" for
+    # every bill, [(the heading as printed, the field it means)].
+    headings: dict[str, list] = field(default_factory=dict)
 
 
 class ReadError(Exception):
@@ -458,6 +461,13 @@ def _shape(parsed: dict) -> dict:
     out["boxes"] = {k: b for k, b in ((k, _box(v)) for k, v in boxes.items() if k in known) if b}
     columns = parsed.get("columns") if isinstance(parsed.get("columns"), dict) else {}
     out["columns"] = {k: b for k, b in ((k, _box(v)) for k, v in columns.items() if k in TABLE_COLUMNS) if b}
+    # The labels the values were read from - asked for only when headings
+    # have been taught (apply_headings uses them).
+    for key, allowed in (("headings", known), ("column_headings", set(LINE_FIELDS))):
+        said = parsed.get(key) if isinstance(parsed.get(key), dict) else {}
+        kept = {k: str(v).strip()[:80] for k, v in said.items() if k in allowed and str(v or "").strip()}
+        if kept:
+            out[key] = kept
     turns = parsed.get("rotation")
     turns = turns if isinstance(turns, list) else [turns]
     out["rotation"] = [int(_f(t) or 0) % 360 if int(_f(t) or 0) % 360 in ROTATIONS else 0 for t in turns[:50]]
@@ -465,6 +475,11 @@ def _shape(parsed: dict) -> dict:
 
 
 ROTATIONS = (0, 90, 180, 270)
+# A line item's fields a column heading can be taught to mean: numbers, and text.
+LINE_NUMBERS = ("quantity", "rate_per_unit", "discount_percent", "discount_amount", "taxable_value", "gst_rate",
+                "amount", "mrp", "igst", "cgst", "sgst", "cess")
+LINE_TEXTS = ("description", "item_code", "hsn_sac", "unit", "batch", "expiry", "mfg_date")
+LINE_FIELDS = LINE_NUMBERS + LINE_TEXTS
 # The items table's columns the reader places (each line's cell = its row
 # across the column).
 TABLE_COLUMNS = ("description", "item_code", "hsn_sac", "quantity", "unit", "rate_per_unit", "discount",
@@ -1079,6 +1094,157 @@ def lessons_for(ctx: Context, gstins) -> tuple[str, list[str]]:
     return "\n".join(texts), used
 
 
+def _heading_key(text) -> str:
+    return re.sub(r"[^a-z0-9]", "", str(text or "").lower())
+
+
+def headings_for(ctx: Context, gstins) -> list[tuple[str, str]]:
+    """The heading rules for these supplier GSTINs, then every bill's; the
+    first rule for a heading wins."""
+    out, seen = [], set()
+    for key in [g for g in dict.fromkeys(gstins) if g] + [""]:
+        for heading, fld in ctx.headings.get(key) or []:
+            k = _heading_key(heading)
+            if k and k not in seen:
+                seen.add(k)
+                out.append((heading, fld))
+    return out
+
+
+def apply_headings(extracted: dict, rules: list[tuple[str, str]]) -> list[str]:
+    """What was taught about headings, applied as fixed rules to what the
+    reader returned: a value the reader put under another field although its
+    own printed label is a taught heading is moved to the taught field; so is
+    a "label: value" left in other_references; a column read under the wrong
+    name is moved (or swapped with the column that took its place). Returns
+    what it changed, in words. Nothing is invented: only values the reader
+    read are moved."""
+    if not rules:
+        return []
+    notes = []
+    top = {_heading_key(h): (h, f) for h, f in reversed(rules) if not f.startswith("col:")}
+    cols = {_heading_key(h): (h, f[4:]) for h, f in reversed(rules) if f.startswith("col:")}
+    numbers = set(MONEY_FIELDS) | {"invoice_value", "taxable_value"}
+
+    def put(fld, value):
+        if fld in numbers:
+            number = _f(value)
+            if number is None:
+                return False
+            extracted[fld] = number
+        else:
+            extracted[fld] = str(value).strip() or None
+        return True
+
+    def pending(said, taught, same_kind):
+        """(the field the value is under, the taught heading, the field it belongs in) still to move."""
+        out = []
+        for was, label in said.items():
+            rule = taught.get(_heading_key(label))
+            if rule and rule[1] != was and same_kind(was, rule[1]):
+                out.append((was, rule[0], rule[1]))
+        return out
+
+    def next_move(moves):
+        # A field that is itself waiting to move is emptied first, so nothing is overwritten.
+        waiting = {m[0] for m in moves}
+        return next((m for m in moves if m[2] not in waiting), moves[0])
+
+    printed = {k: v for k, v in (extracted.get("headings") or {}).items() if extracted.get(k) not in (None, "", 0)}
+    for _ in range(len(printed)):
+        moves = pending(printed, top, lambda a, b: (a in numbers) == (b in numbers))
+        if not moves:
+            break
+        was, heading, fld = next_move(moves)
+        if not put(fld, extracted[was]):
+            printed.pop(was)
+            continue
+        extracted[was] = 0 if was in numbers else None
+        boxes = extracted.get("boxes") or {}
+        if was in boxes:
+            boxes[fld] = boxes.pop(was)
+        printed[fld] = printed.pop(was)
+        notes.append(f"'{heading}' is {fld.replace('_', ' ')} on this supplier's bills (taught): moved from "
+                     f"{was.replace('_', ' ')}.")
+    if extracted.get("headings"):
+        extracted["headings"] = printed
+
+    # "Cust. PO: 4500012345; Indent: 77" left under other references.
+    pairs = [p.strip() for p in re.split(r"[;\n]+", str(extracted.get("other_references") or "")) if p.strip()]
+    left = []
+    for pair in pairs:
+        label, sep, value = pair.partition(":")
+        rule = top.get(_heading_key(label)) if sep and value.strip() else None
+        if rule and extracted.get(rule[1]) in (None, "", 0) and put(rule[1], value):
+            notes.append(f"'{rule[0]}' is {rule[1].replace('_', ' ')} on this supplier's bills (taught): taken "
+                         "from the other references.")
+        else:
+            left.append(pair)
+    if len(left) != len(pairs):
+        extracted["other_references"] = "; ".join(left) or None
+
+    said = dict(extracted.get("column_headings") or {})
+    for _ in range(len(said)):
+        moves = pending(said, cols, lambda a, b: b in LINE_FIELDS and (a in LINE_NUMBERS) == (b in LINE_NUMBERS))
+        if not moves:
+            break
+        was, heading, fld = next_move(moves)
+        empty = 0 if fld in LINE_NUMBERS else ""
+        # Two columns read under each other's names swap back.
+        swap = fld in said
+        for item in extracted.get("line_items") or []:
+            item[fld], item[was] = item.get(was, empty), (item.get(fld, empty) if swap else empty)
+        columns = extracted.get("columns") or {}
+        if was in columns:
+            mine = columns.pop(was)
+            if swap and fld in columns:
+                columns[was] = columns[fld]
+            columns[fld] = mine
+        if swap:
+            said[fld], said[was] = said[was], said[fld]
+        else:
+            said[fld] = said.pop(was)
+        notes.append(f"The column '{heading}' is {fld.replace('_', ' ')} on this supplier's bills (taught): "
+                     f"{'swapped with' if swap else 'moved from'} {was.replace('_', ' ')}.")
+    if said:
+        extracted["column_headings"] = said
+    return notes
+
+
+LABEL_PROMPT = ('This is a small piece cut from a bill, around the point a person clicked (its centre). Return ONLY '
+                'JSON {"text":"<the heading or label printed at or nearest the centre, exactly as printed, without '
+                'the value beside or under it and without a trailing colon>"}. If nothing is printed there, '
+                '{"text":""}.')
+
+
+def read_label(page_jpeg: bytes, x: float, y: float, settings: Settings, http=requests, budget: float = 12.0) -> str:
+    """The heading printed where a person clicked on the bill (x, y as 0-1
+    of the page) - read from a strip cut around the click."""
+    from PIL import Image
+
+    with _RASTER:
+        img = Image.open(io.BytesIO(page_jpeg)).convert("RGB")
+        w, h = img.size
+        half_w, half_h = max(int(w * 0.17), 120), max(int(h * 0.035), 60)
+        cx, cy = min(max(x, 0.0), 1.0) * w, min(max(y, 0.0), 1.0) * h
+        crop = img.crop((int(max(cx - half_w, 0)), int(max(cy - half_h, 0)), int(min(cx + half_w, w)),
+                         int(min(cy + half_h, h))))
+        if crop.width < 900:
+            scale = 900 / crop.width
+            crop = crop.resize((900, max(int(crop.height * scale), 1)))
+        buf = io.BytesIO()
+        crop.save(buf, "JPEG", quality=90)
+    text, _model = call_model([_image_part(buf.getvalue()), {"text": LABEL_PROMPT}], settings, settings.models,
+                              time.time() + budget, max_tokens=256, http=http)
+    if not text:
+        raise ReadError("The reading service didn't answer - type the heading instead.", "model_unavailable")
+    try:
+        found = json.loads(_clean_json(text)).get("text")
+    except (ValueError, TypeError, AttributeError):
+        found = text
+    return re.sub(r"\s+", " ", str(found or "")).strip(" :-")[:80]
+
+
 def _gstins_in(text: str) -> list[str]:
     return [m.group(0) for m in re.finditer(r"\b[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]Z[0-9A-Z]\b", (text or "").upper())]
 
@@ -1210,14 +1376,25 @@ def read(file_bytes: bytes, is_pdf: bool, ctx: Context, settings: Settings, http
                 extracted["line_items"] = second["line_items"]
                 if second.get("columns"):
                     extracted["columns"] = second["columns"]
+                if second.get("column_headings"):
+                    extracted["column_headings"] = second["column_headings"]
                 engine["rows_pass"] = "fixed" if abs(bill - rows2) <= max(1.0, bill * 0.005) else "closer"
                 rows_note = (f"Rows re-read: the first reading's rows came to Rs {rows:,.2f} of the Rs {bill:,.2f} "
                              f"taxable; now Rs {rows2:,.2f} ({len(second['line_items'])} rows).")
+
+    # Headings this business taught, as fixed rules on what was read.
+    taught_rules = headings_for(ctx, [clean_gstin(extracted.get("supplier_gstin") or "")] + list(early)) \
+        if ctx.headings else []
+    heading_notes = apply_headings(extracted, taught_rules)
+    if heading_notes:
+        engine["headings"] = len(heading_notes)
 
     extracted["category"] = classify_category(extracted, own, company_name)
     validation = validate_and_repair(extracted, company_gstin=own)
     if side_note:
         validation.setdefault("repairs", []).append(side_note)
+    for note in heading_notes:
+        validation.setdefault("repairs", []).append(note)
     if rows_note:
         validation.setdefault("repairs", []).append(rows_note)
 
@@ -1234,8 +1411,11 @@ def read(file_bytes: bytes, is_pdf: bool, ctx: Context, settings: Settings, http
         if model3:
             if qr:
                 _apply_qr(second, qr)
+            notes2 = apply_headings(second, taught_rules)
             second["category"] = classify_category(second, own, company_name)
             v2 = validate_and_repair(second, company_gstin=own)
+            for note in notes2:
+                v2.setdefault("repairs", []).append(note)
             if v2.get("score", 0) > validation.get("score", 0):
                 extracted, validation = second, v2
 

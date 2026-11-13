@@ -101,6 +101,7 @@ class ScanAppToken(db.Model, TenantScopedMixin, TimestampMixin):
 
 LESSON_CORRECTION = "correction"   # rows the reader missed on a bill, learnt when it was posted
 LESSON_NOTE = "note"               # a note someone wrote ("Teach ARFA")
+LESSON_HEADING = "heading"         # a heading on a supplier's bills and what it means
 
 
 class ScanLesson(db.Model, TimestampMixin):

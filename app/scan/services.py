@@ -175,6 +175,7 @@ def _context(tenant, doc: ScanDocument | None = None) -> reader.Context:
                          phone_qr=phone.get("qr") if isinstance(phone.get("qr"), dict) else None,
                          lessons=taught)
     ctx.lesson_ids = taught_ids   # which lessons each key's text came from (marked used after the read)
+    ctx.headings = lessons.heading_rules(tenant)
     return ctx
 
 
@@ -1122,6 +1123,88 @@ def reread(user, doc: ScanDocument) -> None:
     if doc.status not in (TO_CHECK, REJECTED, FAILED):
         raise ScanError("Only a read, rejected or failed document can be read again.")
     doc.status, doc.message, doc.rejection_code = UPLOADED, None, None
+
+
+# --- Bill reader training: trying a lesson on a bill -------------------------------------------
+
+TRIAL_READS_A_DAY = 40
+TRIAL_COLUMNS = (("description", "Item"), ("hsn_sac", "HSN"), ("quantity", "Qty"), ("rate_per_unit", "Rate"),
+                 ("taxable_value", "Taxable"), ("gst_rate", "GST %"))
+
+
+def _trials_today(tenant_id: int) -> int:
+    from app.models.audit_log import AuditLog
+
+    start = datetime.combine(date.today(), dtime.min).astimezone(timezone.utc)
+    return AuditLog.query.filter(AuditLog.tenant_id == tenant_id, AuditLog.created_at >= start,
+                                 AuditLog.action.in_(("scan_trial_read", "scan_heading_read"))).count()
+
+
+def _trial_allowed(tenant) -> reader.Settings:
+    settings = engine_settings()
+    if settings is None:
+        raise ScanError("Reading bills isn't set up yet - the AI key hasn't been added.")
+    if _trials_today(tenant.id) >= TRIAL_READS_A_DAY:
+        raise ScanError(f"Today's {TRIAL_READS_A_DAY} training reads are used up - more tomorrow. Headings you "
+                        "type are still saved and used.")
+    return settings
+
+
+def label_at(tenant, user, doc: ScanDocument, n: int, x: float, y: float, http=None) -> str:
+    """The heading printed where the person clicked on page n (x, y as 0-1)."""
+    settings = _trial_allowed(tenant)
+    try:
+        text = reader.read_label(page_image(doc, n), x, y, settings, **({"http": http} if http is not None else {}))
+    except reader.ReadError as exc:
+        raise ScanError(exc.message)
+    record_audit(user, "scan_heading_read", tenant_id=tenant.id, entity_type="scan_document", entity_id=doc.id,
+                 details={"text": text})
+    return text
+
+
+def _shown(value) -> str:
+    if value in (None, "", 0, 0.0):
+        return ""
+    if isinstance(value, float):
+        return f"{value:,.2f}".rstrip("0").rstrip(".") if value % 1 else f"{value:,.0f}"
+    return str(value)
+
+
+def trial_read(tenant, user, doc: ScanDocument, http=None) -> dict:
+    """Reads the bill again with what has been taught so far and puts the
+    two readings side by side. The document itself is not changed."""
+    from app.scan import lessons
+
+    if not doc.extracted:
+        raise ScanError("This bill hasn't been read yet.")
+    settings = _trial_allowed(tenant)
+    ctx = _context(tenant, doc)
+    try:
+        result = reader.read(doc.file_data, doc.is_pdf, ctx, settings, **({"http": http} if http is not None else {}))
+    except reader.ReadError as exc:
+        raise ScanError(exc.message)
+    before, after = doc.extracted or {}, result["extracted"] or {}
+    fields = []
+    for key, label in lessons.HEADING_FIELDS.items():
+        if key.startswith("col:"):
+            continue
+        was, now = _shown(before.get(key)), _shown(after.get(key))
+        if was or now:
+            fields.append({"label": label, "before": was, "after": now, "changed": was != now})
+    rows_before, rows_after = before.get("line_items") or [], after.get("line_items") or []
+    lines = []
+    for i in range(max(len(rows_before), len(rows_after))):
+        b = rows_before[i] if i < len(rows_before) else {}
+        a = rows_after[i] if i < len(rows_after) else {}
+        lines.append([{"before": _shown(b.get(key)), "after": _shown(a.get(key)),
+                       "changed": _shown(b.get(key)) != _shown(a.get(key))} for key, _ in TRIAL_COLUMNS])
+    repairs = [r for r in (result["validation"] or {}).get("repairs") or [] if "(taught)" in r]
+    record_audit(user, "scan_trial_read", tenant_id=tenant.id, entity_type="scan_document", entity_id=doc.id,
+                 details={"changed": sum(f["changed"] for f in fields) + sum(c["changed"] for l in lines for c in l),
+                          "rules": len(repairs)})
+    return {"fields": fields, "lines": lines, "columns": [label for _, label in TRIAL_COLUMNS], "rules": repairs,
+            "changed": any(f["changed"] for f in fields) or any(c["changed"] for l in lines for c in l),
+            "check_before": (doc.validation or {}).get("status"), "check_after": (result["validation"] or {}).get("status")}
 
 
 def gstin_ok(value: str) -> bool:

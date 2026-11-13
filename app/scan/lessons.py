@@ -5,8 +5,12 @@ and what the owner (or the Ultra Admin, for every business) tells it.
     reader had missed (record_correction): the rows that were added, the
     supplier, the invoice. The next bills from that supplier are read with
     them in mind ("last time you missed 'Freight charges', HSN 9965 ...").
-  * A note is written on the Teach ARFA page (/scan/teach): about one
-    supplier's bills (by GSTIN) or about every bill.
+  * A note is written on the Bill reader training page (/scan/teach): about
+    one supplier's bills (by GSTIN) or about every bill.
+  * A heading is taught there too: "on this supplier's bills, 'Cust. PO'
+    means your order (PO) number". The reader is told, and after it has
+    read, the same rule is applied to what it returned (reader.apply_headings)
+    so a taught heading isn't left to chance.
 
 None of this changes the AI model itself; it is memory the reader is handed
 with each bill (Context.lessons -> reader.extract_fields). Each business's
@@ -24,11 +28,29 @@ from sqlalchemy import or_
 
 from app.extensions import db
 from app.models.mixins import utcnow
-from app.models.scan import LESSON_CORRECTION, LESSON_NOTE, POSTED, ScanDocument, ScanLesson
+from app.models.scan import LESSON_CORRECTION, LESSON_HEADING, LESSON_NOTE, POSTED, ScanDocument, ScanLesson
 
 CORRECTIONS_SHOWN = 3       # a supplier's latest corrections given to the reader
 ROWS_PER_CORRECTION = 8
 NOTE_MAX = 600
+HEADING_MAX = 60
+# What a heading can be taught to mean: the reader's field -> what people call
+# it. "col:" fields are columns of the items table.
+HEADING_FIELDS = {
+    "invoice_number": "Invoice number", "invoice_date": "Invoice date",
+    "po_number": "Your order (PO) number", "po_date": "Your order (PO) date",
+    "order_number": "Supplier's own order number", "challan_number": "Challan / delivery note number",
+    "supplier_reference": "Supplier's reference number", "due_date": "Due date", "payment_terms": "Payment terms",
+    "ewb_number": "e-Way bill number", "lr_number": "LR / docket number", "vehicle_number": "Vehicle number",
+    "taxable_value": "Taxable value (the bill's total before tax)", "invoice_value": "Bill total",
+    "discount": "Discount on the whole bill", "round_off": "Round off", "tds": "TDS deducted",
+    "col:description": "Items: name", "col:item_code": "Items: supplier's item code", "col:hsn_sac": "Items: HSN / SAC",
+    "col:quantity": "Items: quantity", "col:unit": "Items: unit", "col:rate_per_unit": "Items: rate",
+    "col:discount_percent": "Items: discount %", "col:discount_amount": "Items: discount in rupees",
+    "col:taxable_value": "Items: taxable value of the row", "col:gst_rate": "Items: GST %",
+    "col:amount": "Items: row amount with tax", "col:mrp": "Items: MRP", "col:batch": "Items: batch number",
+    "col:expiry": "Items: expiry date",
+}
 GSTIN = re.compile(r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]Z[0-9A-Z]$")
 
 
@@ -133,6 +155,28 @@ def _row_text(row: dict) -> str:
     return " ".join(bits)
 
 
+def norm_heading(text) -> str:
+    """"Cust. PO", "CUST PO :" and "cust.po" are one heading."""
+    return re.sub(r"[^a-z0-9]", "", str(text or "").lower())
+
+
+def _heading_line(lesson: ScanLesson, where: str) -> str:
+    field = (lesson.example or {}).get("field") or ""
+    label = HEADING_FIELDS.get(field, field)
+    heading = (lesson.text or "").strip()
+    if field.startswith("col:"):
+        name = field[4:]
+        return (f'- On {where}, the items-table column headed "{heading}" is {name} ({label}): read each row\'s '
+                f"value in that column into {name}.")
+    return (f'- On {where}, the heading or label "{heading}" means {field} ({label}): read the value printed under '
+            f"or beside it into {field}.")
+
+
+HEADINGS_ASK = ('- For the headings taught above, also return "headings":{"<field>":"<its heading or label exactly as '
+                'printed>"} for each top-level field you filled from a labelled value, and "column_headings":'
+                '{"<column>":"<the column heading exactly as printed>"} for each column of the items table.')
+
+
 def active(tenant) -> list[ScanLesson]:
     """This business's lessons and the Ultra Admin's, newest first."""
     return (ScanLesson.query.filter(ScanLesson.active.is_(True),
@@ -151,9 +195,15 @@ def for_reading(tenant) -> tuple[dict[str, str], dict[str, list[int]]]:
         notes = [l for l in lessons if l.kind == LESSON_NOTE and (l.text or "").strip()]
         corrections = [l for l in lessons if l.kind == LESSON_CORRECTION and (l.example or {}).get("rows")]
         corrections = corrections[:CORRECTIONS_SHOWN]
+        headings = [l for l in lessons if l.kind == LESSON_HEADING and (l.text or "").strip()
+                    and (l.example or {}).get("field") in HEADING_FIELDS]
         where = "every bill" if not key else "bills from this supplier"
         for note in notes:
             lines.append(f"- About {where}: {note.text.strip()[:NOTE_MAX]}")
+        for heading in headings:
+            lines.append(_heading_line(heading, where))
+        if headings:
+            lines.append(HEADINGS_ASK)
         for c in corrections:
             ex = c.example or {}
             rows = "; ".join(_row_text(r) for r in ex.get("rows", [])[:ROWS_PER_CORRECTION])
@@ -163,8 +213,20 @@ def for_reading(tenant) -> tuple[dict[str, str], dict[str, list[int]]]:
                          f"when it shows them.")
         if lines:
             texts[key] = "\n".join(lines)
-            ids[key] = [l.id for l in notes + corrections]
+            ids[key] = [l.id for l in notes + headings + corrections]
     return texts, ids
+
+
+def heading_rules(tenant) -> dict[str, list[tuple[str, str]]]:
+    """{GSTIN or "": [(the heading as printed, the field it means)]} - the
+    same lessons as rules, applied to what the reader returned. A supplier's
+    own lesson about a heading comes before every-supplier's and ARFA's."""
+    rules: dict[str, list[tuple[str, str]]] = defaultdict(list)
+    lessons = [l for l in active(tenant) if l.kind == LESSON_HEADING and (l.text or "").strip()
+               and (l.example or {}).get("field") in HEADING_FIELDS]
+    for lesson in sorted(lessons, key=lambda l: l.tenant_id is None):   # the business's own first
+        rules[lesson.supplier_gstin or ""].append((lesson.text.strip(), lesson.example["field"]))
+    return dict(rules)
 
 
 def mark_used(ids: dict[str, list[int]], keys) -> None:
@@ -187,6 +249,39 @@ def add_note(tenant_id: int | None, user, text: str, gstin: str = "", name: str 
         raise LessonError("That GSTIN isn't 15 characters in the GSTIN format.")
     lesson = ScanLesson(tenant_id=tenant_id, kind=LESSON_NOTE, supplier_gstin=gstin or None,
                         supplier_name=(name or "").strip()[:255] or None, text=text, created_by_id=user.id)
+    db.session.add(lesson)
+    return lesson
+
+
+def add_heading(tenant_id: int | None, user, heading: str, field: str, gstin: str = "", name: str = "",
+                source_doc_id: int | None = None) -> ScanLesson:
+    """A heading means one thing for a supplier: taught again, the lesson
+    is changed rather than doubled."""
+    heading = re.sub(r"\s+", " ", (heading or "").strip()).strip(" :-")
+    gstin = (gstin or "").strip().upper()
+    if not heading:
+        raise LessonError("Type the heading as it is printed on the bill.")
+    if len(heading) > HEADING_MAX:
+        raise LessonError(f"A heading is a few words - keep it to {HEADING_MAX} characters.")
+    if not norm_heading(heading):
+        raise LessonError("A heading needs letters or numbers in it.")
+    if field not in HEADING_FIELDS:
+        raise LessonError("Pick what the heading means.")
+    if gstin and not GSTIN.match(gstin):
+        raise LessonError("That GSTIN isn't 15 characters in the GSTIN format.")
+    same = [l for l in ScanLesson.query.filter(ScanLesson.kind == LESSON_HEADING,
+                                               ScanLesson.tenant_id == tenant_id if tenant_id is not None
+                                               else ScanLesson.tenant_id.is_(None),
+                                               ScanLesson.supplier_gstin == gstin if gstin
+                                               else ScanLesson.supplier_gstin.is_(None)).all()
+            if norm_heading(l.text) == norm_heading(heading)]
+    if same:
+        lesson = same[0]
+        lesson.text, lesson.example, lesson.active = heading, {"field": field}, True
+        return lesson
+    lesson = ScanLesson(tenant_id=tenant_id, kind=LESSON_HEADING, supplier_gstin=gstin or None,
+                        supplier_name=(name or "").strip()[:255] or None, text=heading, example={"field": field},
+                        created_by_id=user.id, source_doc_id=source_doc_id)
     db.session.add(lesson)
     return lesson
 
@@ -221,8 +316,22 @@ def supplier_stats(tenant, days: int = 180) -> list[dict]:
             row["corrected"] += 1
             if lesson.created_at and (row["last"] is None or lesson.created_at > row["last"]):
                 row["last"] = lesson.created_at
+        elif lesson.kind == LESSON_HEADING:
+            row["headings"] = row.get("headings", 0) + 1
         else:
             row["notes"] += 1
         if lesson.active:
             row["lessons"] += 1
+    for row in stats.values():
+        # Bills that were posted as ARFA read them (no rows had to be added).
+        row["right_first_time"] = max(row["bills"] - row["corrected"], 0)
     return sorted(stats.values(), key=lambda r: (-r["corrected"], -r["bills"], r["name"].lower()))
+
+
+def recent_bills(tenant, gstin: str, limit: int = 6) -> list[ScanDocument]:
+    """A supplier's latest scanned bills - the ones to train on."""
+    from app.scan.services import party
+
+    docs = (ScanDocument.query.filter(ScanDocument.tenant_id == tenant.id, ScanDocument.extracted.isnot(None))
+            .order_by(ScanDocument.id.desc()).limit(400).all())
+    return [d for d in docs if party(d)[1] == gstin][:limit]
