@@ -270,6 +270,14 @@ FEATURES = {
             available=True,
         ),
         Feature(
+            "sap_link",
+            "SAP purchase orders",
+            "Fetch purchase orders from your SAP S/4HANA into ARFA (read only - ARFA never changes SAP), so a "
+            "scanned supplier bill finds the SAP order it belongs to. Needs Purchases, and your SAP team's "
+            "address and a read-only login.",
+            available=True,
+        ),
+        Feature(
             "daily_summary",
             "Daily owner summary",
             "The end-of-day picture - sales, payment modes, branches, top items, low and oversold stock - on the "

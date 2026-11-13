@@ -91,6 +91,7 @@ ENTRIES = [
     Entry("payables", MODULE, "landmark", "buying", setup="accounts.payables_index", setup_label="Supplier accounts"),
     Entry("expenses", MODULE, "wallet", "buying", setup="expenses.categories", setup_label="Expense categories"),
     Entry("doc_scan", MODULE, "scan-line", "buying", setup="scan.index", setup_label="Scan bills"),
+    Entry("sap_link", MODULE, "repeat", "buying", needs=("purchases",), setup="sap.index", setup_label="SAP link"),
     # --- stock ---
     Entry("inventory", MODULE, "warehouse", "stock", setup="inventory.locations", setup_label="Stock locations"),
     Entry("batch_expiry", MODULE, "calendar-clock", "stock", needs=("inventory",), setup="inventory.expiry",

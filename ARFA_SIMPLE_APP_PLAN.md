@@ -1,9 +1,10 @@
 # ARFA made simple: the plan
 
 **Progress:** Phases 0 and 1 are live. Phase 2 (New sale), Phase 3 (purchase
-orders billed in parts, scanned bills matched to their order) and Phase 4
-(bill reader training with heading lessons) are built and tested, waiting
-for approval to go live. Phases 5 to 7 follow.
+orders billed in parts, scanned bills matched to their order), Phase 4 (bill
+reader training with heading lessons) and Phase 5 (the SAP link, tested
+against a stand-in SAP; a real connection needs the client's SAP team) are
+built and tested, waiting for approval to go live. Phases 6 and 7 follow.
 
 **What this is:** a plan to make ARFA look and feel minimal (few buttons, one
 way to do each job) without removing a single feature, while making its

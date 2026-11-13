@@ -581,6 +581,8 @@ def create_purchase_order(tenant, user, supplier_id, gstin_id, lines: list[Purch
 
 
 def cancel_purchase_order(order: PurchaseOrder, reason: str) -> None:
+    if getattr(order, "source", "arfa") == "sap":
+        raise PurchaseError("This order came from SAP - cancel it there, and it is cancelled here on the next fetch.")
     if order.status != PurchaseOrderStatus.OPEN:
         raise PurchaseError("Only an open order can be cancelled.")
     if not (reason or "").strip():

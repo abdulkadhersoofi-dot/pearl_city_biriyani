@@ -34,6 +34,7 @@ MODULE_RECORDS = {
     "restaurant_mode": (("KitchenTicket",), "restaurant.tables"),
     "eway_bill": (("EWayBill",), "einvoice.eway_bills"),
     "doc_scan": (("ScanDocument",), "scan.index"),
+    "sap_link": (("SapOrder",), "sap.index"),
     "batch_expiry": (("ProductBatch",), "inventory.expiry"),
     "serial_imei": (("ProductSerial",), "inventory.serials"),
     "warehouse_dispatch": (("WarehouseLogin", "SerialPick"), "warehouse.queue"),

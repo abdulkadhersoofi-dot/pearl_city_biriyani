@@ -1902,6 +1902,35 @@ Five new flags, all off by default; with them off nothing changes (routes
   on the bill's picture and ARFA reads it into the box (`reader.read_label`),
   pick what it means, then **Read again** shows that bill before and after
   without changing it. Training reads are capped at 40 a day per business.
+- **SAP link** (module "SAP purchase orders", Setup > SAP link;
+  `app/integrations/sap/`): purchase orders are fetched from a client's SAP
+  S/4HANA - read only, ARFA never writes to SAP - so a scanned supplier bill
+  finds the SAP order it belongs to. `client.py` speaks SAP's Purchase Order
+  OData service in both versions (V2 `API_PURCHASEORDER_PROCESS_SRV`, which
+  SAP marks deprecated, and its V4 successor `API_PURCHASEORDER_2`), asks
+  only for orders changed since the last fetch, pages through them, and
+  never follows a link to another host. **Test** reads the service's own
+  `$metadata` and names any field ARFA reads that the system lacks.
+  `sync.py` keeps each order as it came (`SapOrder`), then makes or updates
+  the ARFA purchase order (its number is SAP's number, tagged SAP, changed
+  and cancelled only in SAP). SAP's vendor codes and material numbers are
+  matched to the business's own suppliers and items (`SapMapping`): a
+  supplier by GSTIN (looked up in SAP's Business Partner service when the
+  login may read it), an item by its SAP number being the ARFA SKU; the rest
+  wait on the **to match** list for a person - an order waits until its
+  supplier is matched, an unmatched item comes in under SAP's own name.
+  Nothing is guessed. What is already billed survives changes in SAP: a
+  quantity is never taken below what is billed. The login is kept encrypted
+  (`app/einvoice/vault.py`), the address must be public https (or on
+  `SAP_ALLOWED_HOSTS`), and every call is logged (`SapCall`: when, what,
+  how it went - never the login or SAP's answer). `flask sap-pull` fetches
+  for every business with the link on: the `arfa-sap-pull` Cloud Run job,
+  every 15 minutes once `scripts/gcp/setup.sh sap-scheduler` is run, and in
+  the nightly run. **Going live needs the client's SAP team:** the address,
+  which service version their system exposes, and a read-only technical
+  user (or OAuth client) allowed to read purchase orders. The code is
+  tested against SAP's published field names with a stand-in SAP
+  (`tests/test_sap_orders.py`), not yet against a real system.
 - **Security headers** (`app/security_headers.py`): HSTS over HTTPS
   (includeSubDomains on PUBLIC_URL's domain only), a Content-Security-Policy
   on pages - scripts only from /static or inline blocks with the response's

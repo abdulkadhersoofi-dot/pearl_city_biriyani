@@ -9,6 +9,7 @@
 #   scripts/gcp/setup.sh image         builds the first image (no deploy)
 #   scripts/gcp/setup.sh staging       first staging release + its Firebase site
 #   scripts/gcp/setup.sh scheduler     the nightly job at 01:30 IST
+#   scripts/gcp/setup.sh sap-scheduler purchase orders from SAP every 15 minutes (only when a client uses the SAP link)
 #   scripts/gcp/setup.sh trigger       git push -> deploy (needs the GitHub connection, setup guide step 5)
 #   scripts/gcp/setup.sh domain        asks Firebase for arfa.live and prints the DNS records to add
 set -euo pipefail
@@ -117,6 +118,27 @@ staging)
   npx --yes firebase-tools@15.32.1 hosting:sites:get "$PROJECT_ID-staging" --project "$PROJECT_ID" >/dev/null 2>&1 || \
     npx --yes firebase-tools@15.32.1 hosting:sites:create "$PROJECT_ID-staging" --project "$PROJECT_ID" --non-interactive
   scripts/gcp/deploy.sh
+  ;;
+
+sap-scheduler)
+  # The arfa-sap-pull Cloud Run job appears with a production release
+  # (release.sh). Run this once a client switches the SAP link on.
+  if ! gcloud run jobs describe arfa-sap-pull --project "$PROJECT_ID" --region "$REGION" >/dev/null 2>&1; then
+    echo "The arfa-sap-pull job doesn't exist yet - it appears with the next production release. Run this again after it."
+    exit 1
+  fi
+  gcloud run jobs add-iam-policy-binding arfa-sap-pull --project "$PROJECT_ID" --region "$REGION" \
+    --member "serviceAccount:$(sa arfa-scheduler)" --role roles/run.invoker --quiet >/dev/null
+  URI="https://run.googleapis.com/v2/projects/$PROJECT_ID/locations/$REGION/jobs/arfa-sap-pull:run"
+  if gcloud scheduler jobs describe arfa-sap-pull --location "$REGION" --project "$PROJECT_ID" >/dev/null 2>&1; then
+    VERB=update
+  else
+    VERB=create
+  fi
+  gcloud scheduler jobs "$VERB" http arfa-sap-pull --location "$REGION" --project "$PROJECT_ID" \
+    --schedule "*/15 * * * *" --time-zone "Asia/Kolkata" --uri "$URI" --http-method POST \
+    --oauth-service-account-email "$(sa arfa-scheduler)" --attempt-deadline 10m
+  echo "Purchase orders are fetched from SAP every 15 minutes."
   ;;
 
 scheduler)

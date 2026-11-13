@@ -60,7 +60,7 @@ _BY_ENDPOINT = {
     "warehouse.financiers": "money", "warehouse.settlement": "money",
 }
 _BY_BLUEPRINT = {
-    "live": "home",
+    "live": "home", "sap": "setup",
     "sell": "sell",
     "pos": "sell", "restaurant": "sell", "invoicing": "sell", "notes": "sell", "sales": "sell", "jobs": "sell",
     "jewellery": "sell", "margin": "sell",
@@ -386,6 +386,7 @@ def _setup() -> dict:
                 _L("Scale labels & loyalty points", "settings.modules", "settings",
                    any_feature=("weighing", "loyalty")),
                 _L("Bill reader training", "scan.teach", "scan-line", feature="doc_scan"),
+                _L("SAP link", "sap.index", "repeat", feature="sap_link"),
             ]),
             ("Account", [
                 _L("Sign-in & security", "settings.security", "shield-check"),

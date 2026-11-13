@@ -380,10 +380,20 @@ class PurchaseOrder(db.Model, TenantScopedMixin, TimestampMixin):
     estimated_total = db.Column(db.Numeric(12, 2), nullable=False, default=0)
     created_by_id = db.Column(db.Integer, db.ForeignKey("users.id", name="fk_purchase_orders_created_by"), nullable=False)
     cancel_reason = db.Column(db.Text)
+    # Where the order was made: typed here, or fetched from the client's SAP
+    # (app/integrations/sap) - then `number` is SAP's own order number and
+    # the order is changed in SAP, not here.
+    source = db.Column(db.String(10), nullable=False, default="arfa", server_default="arfa")
+    external_ref = db.Column(db.String(40), index=True)
+    external_synced_at = db.Column(db.DateTime(timezone=True))
 
     supplier = db.relationship("Supplier")
     created_by = db.relationship("User")
     lines = db.relationship("PurchaseOrderLine", backref="order", cascade="all, delete-orphan", order_by="PurchaseOrderLine.id")
+
+    @property
+    def from_sap(self) -> bool:
+        return self.source == "sap"
     bills = db.relationship("PurchaseBill", backref="purchase_order")
 
 
@@ -402,6 +412,9 @@ class PurchaseOrderLine(db.Model):
     # How much of this line purchase bills have settled so far (a voided
     # bill gives its share back) - app/purchases/matching.py.
     billed_qty = db.Column(db.Numeric(12, 3), nullable=False, default=0, server_default="0")
+    # An order fetched from SAP: its item number there, and SAP's material number.
+    external_ref = db.Column(db.String(10))
+    external_code = db.Column(db.String(40))
 
     product = db.relationship("Product")
 

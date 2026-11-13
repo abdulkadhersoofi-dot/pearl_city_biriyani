@@ -2458,6 +2458,16 @@ html.arfa-dialog-open { overflow: hidden; }
 .teach-pin { position: absolute; width: 22px; height: 22px; margin: -11px 0 0 -11px; border: 3px solid var(--color-primary); border-radius: 50%; background: rgba(255, 255, 255, 0.55); pointer-events: none; }
 .teach-compare .is-changed td, .teach-compare td.is-changed { background: var(--color-warn-bg); font-weight: 600; }
 .teach-rows tr.is-off { opacity: 0.6; }
+
+/* SAP link (templates/sap). */
+.sap-stat { display: grid; gap: 2px; text-decoration: none; color: inherit; padding: 14px 16px; }
+.sap-stat-n { font-size: 1.6rem; font-weight: 700; line-height: 1.2; }
+.sap-stat-when { font-size: 1.1rem; }
+.sap-stat.is-warn { border-color: var(--color-warn-text); }
+.sap-stat.is-bad, .sap-error { border-color: var(--color-danger, #b42318); }
+.sap-error { margin-bottom: 16px; }
+.sap-path { font-family: ui-monospace, monospace; font-size: 0.8rem; word-break: break-all; }
+.sap-map-form .field-input { min-width: 0; max-width: 340px; }
 tr.is-current td { background: var(--color-primary-soft); }
 
 /* --- Warehouse dispatch (app/warehouse) ----------------------------------------------------- */

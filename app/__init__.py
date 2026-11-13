@@ -172,6 +172,9 @@ def _register_blueprints(app: Flask) -> None:
     from app.sell import sell_bp
 
     app.register_blueprint(sell_bp)
+    from app.integrations.sap import sap_bp
+
+    app.register_blueprint(sap_bp)
 
 
 def _register_error_handlers(app: Flask) -> None:
@@ -691,6 +694,25 @@ def _register_cli(app: Flask) -> None:
                                     ",".join(c.key for c in report.failed))
         click.echo(f"{ran} month(s) checked, {failed} with figures that don't agree.")
 
+    @app.cli.command("sap-pull")
+    def sap_pull():
+        """Fetches purchase orders from SAP for every business with the SAP
+        link switched on (app/integrations/sap). Meant to run every 15
+        minutes (Cloud Scheduler -> the "arfa-sap-pull" Cloud Run Job); the
+        nightly run does it too."""
+        import logging
+
+        from app.integrations.sap import sync as sap_sync
+
+        results = sap_sync.pull_all()
+        for tenant_id, said in results:
+            click.echo(f"tenant {tenant_id}: {said}")
+        if not results:
+            click.echo("No business has the SAP link switched on.")
+        failed = [t for t, said in results if said.startswith("failed")]
+        if failed:
+            logging.getLogger("arfa.sap").error("sap pull failed: tenants=%s", ",".join(str(t) for t in failed))
+
     @app.cli.command("nightly")
     @click.pass_context
     def nightly(ctx):
@@ -700,7 +722,8 @@ def _register_cli(app: Flask) -> None:
         earlier one failed."""
         failed = []
         steps = [("sessions-cleanup", sessions_cleanup), ("expenses-generate-drafts", expenses_generate_drafts),
-                 ("recurring-invoices-generate", recurring_invoices_generate), ("books-check", books_check)]
+                 ("recurring-invoices-generate", recurring_invoices_generate), ("books-check", books_check),
+                 ("sap-pull", sap_pull)]
         for name, command in steps:
             try:
                 ctx.invoke(command)

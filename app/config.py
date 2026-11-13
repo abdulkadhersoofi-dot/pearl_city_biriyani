@@ -167,6 +167,13 @@ class Config:
     SCAN_MODELS = [m for m in re.split(r"[,;\s]+", os.environ.get("SCAN_MODELS", "")) if m] or None
     SCAN_STRONG_MODEL = os.environ.get("SCAN_STRONG_MODEL") or None
     SCAN_DAILY_LIMIT = int(os.environ.get("SCAN_DAILY_LIMIT", "300"))
+    # The SAP link (app/integrations/sap). SAP_ALLOWED_HOSTS: when set, the
+    # only hosts (comma-separated) a business's SAP address may be on.
+    # SAP_ALLOW_PRIVATE: let the address be a private one (a VPN to an
+    # on-premise system) - off unless the deployment has such a route.
+    SAP_ALLOWED_HOSTS = os.environ.get("SAP_ALLOWED_HOSTS", "")
+    SAP_ALLOW_PRIVATE = os.environ.get("SAP_ALLOW_PRIVATE", "") == "1"
+    SAP_TIMEOUT = int(os.environ.get("SAP_TIMEOUT", "30"))
     SCAN_MAX_FILE_MB = int(os.environ.get("SCAN_MAX_FILE_MB", "15"))
 
 

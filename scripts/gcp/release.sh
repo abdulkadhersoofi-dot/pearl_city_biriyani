@@ -111,5 +111,11 @@ if [ "$TARGET" = "production" ]; then
   gcloud run jobs deploy arfa-nightly --project "$PROJECT_ID" --region "$REGION" --image "$IMAGE" \
     --service-account "$RUN_SA" --set-cloudsql-instances "$CONN" --command flask --args nightly \
     --set-env-vars "$ENV_VARS" --set-secrets "$SECRETS" --max-retries 1 --task-timeout 1800 --quiet
+  # Purchase orders from clients' SAP (flask sap-pull). It does nothing until
+  # a business switches the SAP link on; "scripts/gcp/setup.sh sap-scheduler"
+  # runs it every 15 minutes.
+  gcloud run jobs deploy arfa-sap-pull --project "$PROJECT_ID" --region "$REGION" --image "$IMAGE" \
+    --service-account "$RUN_SA" --set-cloudsql-instances "$CONN" --command flask --args sap-pull \
+    --set-env-vars "$ENV_VARS" --set-secrets "$SECRETS" --max-retries 0 --task-timeout 600 --quiet
 fi
 echo "== $TARGET: live on $VERSION"

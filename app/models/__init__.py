@@ -38,6 +38,7 @@ from app.models.note import CreditDebitNote, NoteLine, NoteStatus
 from app.models.audit_log import AuditLog
 from app.models.package import AuditorPowers, LoginGrant, ModuleRequest, Package, TenantPackage
 from app.models.stock import BranchStockAllocation
+from app.models.sap import SapCall, SapConnection, SapMapping, SapOrder
 from app.models.scan import ScanAppToken, ScanDocument, ScanLesson
 from app.models.warehouse import (
     DeliveryScan, Financier, ReceivedUnit, SerialPick, SerialSwap, StockCount, StockCountScan, WarehouseLogin,
@@ -84,7 +85,7 @@ __all__ = [
     "AuditLog",
     "BranchStockAllocation",
     "ScanAppToken",
-    "ScanDocument", "ScanLesson",
+    "ScanDocument", "ScanLesson", "SapCall", "SapConnection", "SapMapping", "SapOrder",
     "WarehouseLogin", "WarehouseSession", "SerialPick", "WarehouseNotice", "WarehouseReceipt", "ReceivedUnit",
     "StockCount", "StockCountScan", "Financier", "DeliveryScan", "SerialSwap", "PincodeGeo",
     "WarehouseServiceArea",

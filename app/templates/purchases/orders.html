@@ -3,7 +3,14 @@
 {% block content %}
 <div class="page-header">
   <h1>Purchase orders</h1>
-  <a href="{{ url_for('purchases.new_order') }}" class="btn btn-primary">+ New order</a>
+  <div class="row gap-8">
+    {% if has_feature('sap_link') and current_user.role.value == 'client_admin' %}
+    <form method="post" action="{{ url_for('sap.fetch') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="next" value="{{ url_for('purchases.orders') }}">
+      <button class="btn btn-secondary">Fetch from SAP</button></form>
+    {% endif %}
+    <a href="{{ url_for('purchases.new_order') }}" class="btn btn-primary">+ New order</a>
+  </div>
 </div>
 {% include "purchases/_nav.html" %}
 <div class="table-wrap card">
@@ -12,7 +19,7 @@
     <tbody>
     {% for o in orders %}
       <tr>
-        <td><a href="{{ url_for('purchases.view_order', order_id=o.id) }}">{{ o.number }}</a></td>
+        <td><a href="{{ url_for('purchases.view_order', order_id=o.id) }}">{{ o.number }}</a>{% if o.from_sap %} <span class="tag">SAP</span>{% endif %}</td>
         <td>{{ o.supplier.name }}</td>
         <td>{{ o.order_date.strftime('%d %b %Y') }}</td>
         <td>{{ o.expected_date.strftime('%d %b %Y') if o.expected_date else '-' }}</td>
