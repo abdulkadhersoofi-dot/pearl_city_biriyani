@@ -235,7 +235,8 @@ def scan_buying(app, db, buying):
 
 def _scanned(client, monkeypatch, **over):
     monkeypatch.setattr(reader, "call_model", FakeModel(_bill(**over)))
-    doc_id = _upload(client, _jpeg()).get_json()["id"]
+    # Its own picture each time: the same file twice is one document.
+    doc_id = _upload(client, _jpeg(f"TAX INVOICE {over.get('invoice_number', '')}")).get_json()["id"]
     _read(client, doc_id)
     return doc_id
 
@@ -308,3 +309,61 @@ def test_one_order_that_only_half_fits_is_offered_not_chosen(db, buying):
                                 TODAY)
     assert found.proposed is None and [m.order.id for m in found.others] == [order.id]
     assert "may be this bill's" in found.why
+
+
+# --- posting several matched bills in one go -------------------------------------------------------------------
+
+def test_bills_that_agree_with_their_order_are_posted_together(client, db, scan_buying, monkeypatch):
+    from app.models.scan import ScanDocument
+    from app.scan import services as scan_services
+
+    b = scan_buying
+    first = _order(db, b, _pline(b.cumin, 10, 400), _pline(b.tin, 2, 500), on=ORDERED)
+    second = _order(db, b, _pline(b.cumin, 10, 400), _pline(b.tin, 2, 500), on=ORDERED)
+    _login(client)
+    one = _scanned(client, monkeypatch, po_number=first.number)
+    two = _scanned(client, monkeypatch, po_number=second.number, invoice_number="TS/26-27/0043")
+    # A third bill is dearer than its order: it is not posted without a look.
+    dear = _order(db, b, _pline(b.cumin, 10, 350), _pline(b.tin, 2, 500), on=ORDERED)
+    three = _scanned(client, monkeypatch, po_number=dear.number, invoice_number="TS/26-27/0044")
+    page = client.get("/scan/?tab=check").get_data(as_text=True)
+    assert "Post 2 matched bills" in page and "agree with their purchase order" in page
+
+    page = client.post("/scan/post-matched", follow_redirects=True).get_data(as_text=True)
+    assert "2 bills posted, each tied to its order" in page
+    docs = {d.id: d for d in ScanDocument.query.all()}
+    assert docs[one].status == "posted" and docs[two].status == "posted" and docs[three].status == "to_check"
+    for order in (first, second):
+        db.session.refresh(order)
+        assert order.status == S.CONVERTED and len(order.bills) == 1
+    db.session.refresh(dear)
+    assert dear.status == S.OPEN and dear.bills == []
+    assert order.bills[0].notes == "Entered from a scanned bill, matched to its order."
+    # Nothing left that agrees: the button is gone, and pressing again posts nothing.
+    assert "matched bill" not in client.get("/scan/?tab=check").get_data(as_text=True)
+    assert "No bill agrees" in client.post("/scan/post-matched", follow_redirects=True).get_data(as_text=True)
+    assert scan_services.matched_bills(b.tenant, b.admin) == []
+
+
+def test_a_bill_is_only_posted_unseen_when_everything_about_it_is_known(client, db, scan_buying, monkeypatch):
+    from app.scan import services as scan_services
+
+    b = scan_buying
+    _login(client)
+    # No order waiting: not matched.
+    _scanned(client, monkeypatch)
+    assert scan_services.matched_bills(b.tenant, b.admin) == []
+    # With an order, but for an item ARFA doesn't know by that name: not matched either.
+    order = _order(db, b, _pline(b.cumin, 10, 400), _pline(b.tin, 2, 500), on=ORDERED)
+    assert len(scan_services.matched_bills(b.tenant, b.admin)) == 1
+    b.tin.name = "Storage box (steel)"
+    db.session.commit()
+    assert scan_services.matched_bills(b.tenant, b.admin) == []
+    b.tin.name = "Steel container"
+    db.session.commit()
+    # Two bills for one order's goods: the first uses the order up, the second is left for a person.
+    _scanned(client, monkeypatch, invoice_number="TS/26-27/0099")
+    result = scan_services.post_matched(b.tenant, b.admin)
+    assert len(result["posted"]) == 1 and len(result["left"]) == 1 and "no longer agrees" in result["left"][0][1]
+    db.session.refresh(order)
+    assert order.status == S.CONVERTED and len(order.bills) == 1

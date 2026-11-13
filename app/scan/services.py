@@ -909,6 +909,95 @@ def _finish(doc, user, kind, record_id, label):
                  details={"as": kind, "record": label})
 
 
+# --- the purchase order a scanned bill belongs to (app/purchases/matching.py) ---------------------
+
+def order_candidates(tenant, doc: ScanDocument, supplier, lines: list[dict], details: dict | None = None):
+    """(what matching found for this bill, the bill's lines as matching reads
+    them, the bill's date). `lines`: rows as item_choices() gives them."""
+    from app.purchases import matching
+
+    def number(value):
+        try:
+            return Decimal(str(value if value not in (None, "") else "0").replace(",", ""))
+        except InvalidOperation:
+            return Decimal("0")
+
+    rows = [matching.Row(description=(l.get("description") or "").strip(), qty=number(l.get("qty")),
+                         rate=number(l.get("rate")), gst_rate=number(l.get("gst_rate")),
+                         product_id=int(l["product_id"]) if str(l.get("product_id") or "").isdigit() else None,
+                         hsn=(l.get("hsn") or "").strip())
+            for l in lines if (l.get("description") or "").strip()]
+    bill_date = None
+    try:
+        bill_date = date.fromisoformat(iso_date((doc.extracted or {}).get("invoice_date")))
+    except (TypeError, ValueError):
+        pass
+    details = details if details is not None else detail_values(doc)
+    return matching.candidates(tenant, supplier, (details or {}).get("po_number"), rows, bill_date), rows, bill_date
+
+
+MATCHED_AT_ONCE = 40        # bills looked at for "Post matched bills" in one go
+
+
+def matched_and_agreeing(tenant, user, doc: ScanDocument):
+    """(the form to post, the order) for a bill that can be posted without
+    opening it: read with every check passed, not entered already, a
+    supplier and items ARFA already knows, and a purchase order it agrees
+    with on every line. None for any bill a person should look at."""
+    if doc.status != TO_CHECK or doc.duplicate_of or (doc.validation or {}).get("status") != "verified":
+        return None
+    if not tenant.has_feature("purchases") or suggested_kind(tenant, doc) != KIND_PURCHASE:
+        return None
+    supplier = matched_supplier(tenant, doc)
+    if supplier is None:
+        return None
+    lines = item_choices(tenant, line_rows(doc))
+    if not lines or any(not str(l.get("product_id") or "").isdigit() for l in lines):
+        return None
+    found, _rows, _on = order_candidates(tenant, doc, supplier, lines)
+    match = found.proposed
+    if match is None or not match.clean:
+        return None
+    form = approval_form(tenant, user, doc, {"notes": "Entered from a scanned bill, matched to its order."})
+    form["purchase_order_id"] = str(match.order.id)
+    return form, match.order
+
+
+def matched_bills(tenant, user) -> list[tuple]:
+    """[(bill, form, order)] waiting to be checked that agree with their order."""
+    docs = (ScanDocument.query.filter(ScanDocument.tenant_id == tenant.id, ScanDocument.status == TO_CHECK)
+            .order_by(ScanDocument.id).limit(MATCHED_AT_ONCE).all())
+    out = []
+    for doc in docs:
+        ready = matched_and_agreeing(tenant, user, doc)
+        if ready is not None:
+            out.append((doc, ready[0], ready[1]))
+    return out
+
+
+def post_matched(tenant, user) -> dict:
+    """Posts every bill that agrees with its order, one at a time - a bill
+    that can't be posted after all (its total is off, its month is closed)
+    is left to be checked by hand, and says why."""
+    posted, left = [], []
+    for doc in [d for d, _f, _o in matched_bills(tenant, user)]:
+        # Looked at again just before posting: an earlier bill in this run may
+        # have used up the order.
+        ready = matched_and_agreeing(tenant, user, doc)
+        if ready is None:
+            left.append((doc.id, "Its order no longer agrees with it."))
+            continue
+        form, order = ready
+        try:
+            post(tenant, user, doc, form)
+            db.session.commit()
+            posted.append((doc.id, order.number))
+        except ScanError as exc:
+            db.session.rollback()
+            left.append((doc.id, exc.message))
+    return {"posted": posted, "left": left}
+
+
 def _order_from_form(tenant, form, supplier):
     """The purchase order the check screen tied this bill to, if any - the
     supplier's own, and still waiting for a bill."""

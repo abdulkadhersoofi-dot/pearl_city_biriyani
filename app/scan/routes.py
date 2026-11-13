@@ -80,13 +80,35 @@ def index():
         db.or_(ScanDocument.status == UPLOADED,
                db.and_(ScanDocument.status == READING, ScanDocument.updated_at < stale)))
         .order_by(ScanDocument.id).limit(100)]
+    # Bills that agree with their purchase order on every line can be posted together.
+    matched = len(services.matched_bills(tenant, current_user)) if tab == "check" and counts["check"] and \
+        tenant.has_feature("purchases") else 0
     return render_template("scan/index.html", scan_tabs=TABS, tab=tab, counts=counts, docs=docs, pending=pending,
+                           matched=matched,
                            set_up=services.is_set_up(), used=services.reads_today(tenant.id),
                            limit=services.daily_limit(), labels=CATEGORY_LABELS, filters=filters, total=total,
                            shown_limit=LIST_LIMIT, suppliers=_supplier_options(in_tab), checks=CHECKS, spans=UPLOAD_SPANS,
                            kinds=_kind_options(in_tab), posted_urls={d.id: _posted_url(d) for d in docs},
                            approvers=services.approvers(tenant), approver_choices=services.APPROVERS,
                            party=services.party)
+
+
+@scan_bp.route("/post-matched", methods=["POST"])
+@roles_required(ADMIN)
+@feature_required("doc_scan")
+@feature_required("purchases")
+def post_matched():
+    """Posts, in one go, the bills that agree with their purchase order."""
+    result = services.post_matched(_tenant(), current_user)
+    n = len(result["posted"])
+    if n:
+        flash(f"{n} bill{'s' if n != 1 else ''} posted, each tied to its order: "
+              + ", ".join(number for _id, number in result["posted"][:8]) + ("..." if n > 8 else "") + ".", "success")
+    for doc_id, why in result["left"][:5]:
+        flash(f"A bill was left for you to check: {why}", "error")
+    if not n and not result["left"]:
+        flash("No bill agrees with a purchase order on every line - check them one by one.", "info")
+    return redirect(url_for("scan.index", tab="check"))
 
 
 @scan_bp.route("/approvers", methods=["POST"])
@@ -339,31 +361,11 @@ def _order_match(tenant, doc, supplier, lines, details, form):
     own choice when a post was refused; "none" for no order)."""
     if not tenant.has_feature("purchases"):
         return None
-    from decimal import Decimal, InvalidOperation
-
     from app.purchases import matching
 
-    def number(value, default="0"):
-        try:
-            return Decimal(str(value if value not in (None, "") else default).replace(",", ""))
-        except InvalidOperation:
-            return Decimal(default)
-
-    rows = [matching.Row(description=(l.get("description") or "").strip(), qty=number(l.get("qty")),
-                         rate=number(l.get("rate")), gst_rate=number(l.get("gst_rate")),
-                         product_id=int(l["product_id"]) if str(l.get("product_id") or "").isdigit() else None,
-                         hsn=(l.get("hsn") or "").strip())
-            for l in lines if (l.get("description") or "").strip()]
-    bill_date = None
-    try:
-        from datetime import date as _date
-
-        bill_date = _date.fromisoformat(services.iso_date((doc.extracted or {}).get("invoice_date")))
-    except (TypeError, ValueError):
-        pass
     picked = (form.get("purchase_order_id") if form is not None and hasattr(form, "get") else None) \
         or request.args.get("po")
-    found = matching.candidates(tenant, supplier, (details or {}).get("po_number"), rows, bill_date)
+    found, rows, bill_date = services.order_candidates(tenant, doc, supplier, lines, details)
     chosen = found.proposed
     if picked == "none":
         chosen = None

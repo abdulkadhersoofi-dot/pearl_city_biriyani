@@ -1886,6 +1886,12 @@ Five new flags, all off by default; with them off nothing changes (routes
   differs in words (quantity over, rate beyond 1% or Rs. 1, GST rate, item
   not on the order, more billed than the warehouse has scanned in). The
   owner can pick another order or none; posting ties the bill to the order.
+  **Post N matched bills** on Scan bills posts in one go the bills a person
+  need not open: every check passed, not entered already, a supplier and
+  items ARFA already knows, and an order they agree with on every line
+  (`services.matched_and_agreeing`). Each is posted on its own and looked
+  at again just before, so two bills for one order's goods don't both go
+  through; anything else stays to be checked by hand.
 - **Bill reader training** (Setup > Bill reader training, `/scan/teach`;
   `app/scan/lessons.py`): besides the rows it learns from corrections and
   the owner's notes, the reader is taught **headings** - "on this supplier's

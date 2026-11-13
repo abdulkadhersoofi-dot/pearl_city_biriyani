@@ -37,6 +37,15 @@
   </div>
 </section>
 
+{% if matched %}
+<form method="post" action="{{ url_for('scan.post_matched') }}" class="card row row-between items-center flex-wrap gap-10 mt-16 scan-matched"
+      data-confirm="Post {{ matched }} bill{{ '' if matched == 1 else 's' }} now? Each agrees with its purchase order on every line and passed every check. Stock comes in and the supplier's balance goes up.">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <p class="m-0"><strong>{{ matched }} bill{{ '' if matched == 1 else 's' }} agree{{ 's' if matched == 1 else '' }} with {{ 'its' if matched == 1 else 'their' }} purchase order</strong>
+    <span class="text-muted">- every check passed, every item and quantity is as ordered. Post {{ 'it' if matched == 1 else 'them' }} without opening each one, or check any of them below first.</span></p>
+  <button class="btn btn-primary">Post {{ matched }} matched bill{{ '' if matched == 1 else 's' }}</button>
+</form>
+{% endif %}
 <div class="filter-chips mt-16" role="tablist" aria-label="Scanned bills">
   {% for key, (label, _) in scan_tabs.items() %}
   <a href="{{ url_for('scan.index', tab=key) }}" class="filter-chip {{ 'is-on' if key == tab }}"
