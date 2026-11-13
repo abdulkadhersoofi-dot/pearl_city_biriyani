@@ -7,6 +7,7 @@
     <p class="text-muted mt-0">
       {{ document_label }} ·
       <span class="status-badge status-{{ invoice.status.value }}">{{ invoice.status.value|title }}</span>
+      {% if invoice.sale_ref %}· <a href="{{ url_for('sell.sale', ref=invoice.sale_ref) }}">part of a sale with an order - see all of it</a>{% endif %}
     </p>
   </div>
   <div class="row">

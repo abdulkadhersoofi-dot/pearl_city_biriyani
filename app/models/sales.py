@@ -136,6 +136,12 @@ class SalesDocument(db.Model, TenantScopedMixin, TimestampMixin):
     # An order split across warehouses: every part points at the first one.
     split_group_id = db.Column(db.Integer, db.ForeignKey("sales_documents.id", name="fk_sales_documents_split_group"),
                                index=True)
+    # One sale made on the New sale form (app/sell): the invoice for what was
+    # in the showroom and the order(s) for the rest carry the same reference.
+    sale_ref = db.Column(db.String(16), index=True)
+    # A sales order nothing could supply yet: no warehouse holds it. It is
+    # sent to a warehouse (dispatch.send_waiting) once stock arrives.
+    awaiting_stock = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
 
     gstin = db.relationship("Gstin")
     customer = db.relationship("Customer")

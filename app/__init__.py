@@ -169,6 +169,9 @@ def _register_blueprints(app: Flask) -> None:
     from app.hubs import hubs_bp
 
     app.register_blueprint(hubs_bp)
+    from app.sell import sell_bp
+
+    app.register_blueprint(sell_bp)
 
 
 def _register_error_handlers(app: Flask) -> None:

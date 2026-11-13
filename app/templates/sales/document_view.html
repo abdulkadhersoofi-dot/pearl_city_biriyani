@@ -39,6 +39,23 @@
 
 {% if doc.dispatch_status %}{% include "warehouse/_order_status.html" %}{% endif %}
 
+{% if doc.awaiting_stock and doc.status.value == 'open' and not doc.dispatch_status %}
+{# Taken on the New sale form when no warehouse had it free (app/sell). #}
+<form method="post" action="{{ url_for('sales.change_warehouse', doc_id=doc.id) }}" class="card row gap-10 items-end mb-16 flex-wrap">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="grow"><strong>Waiting for stock.</strong> No warehouse had this free when the order was taken. Once stock is in, send it to a warehouse to be picked.</div>
+  <label class="field m-0"><span class="field-label">Warehouse</span>
+    <select name="dispatch_location_id" class="field-input" required>
+      <option value="">Pick the warehouse</option>
+      {% for w in waiting_warehouses %}<option value="{{ w.id }}">{{ w.name }}</option>{% endfor %}
+    </select></label>
+  <button class="btn btn-primary">Send to warehouse</button>
+</form>
+{% endif %}
+{% if doc.sale_ref %}
+<p class="text-muted">Made together with other documents as one sale - <a href="{{ url_for('sell.sale', ref=doc.sale_ref) }}">see the whole sale</a>.</p>
+{% endif %}
+
 {% if may_emi_invoice %}
 <form method="post" action="{{ url_for('sales.emi_invoice', doc_id=doc.id) }}" class="card row gap-10 items-end mb-16 emi-card flex-wrap">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

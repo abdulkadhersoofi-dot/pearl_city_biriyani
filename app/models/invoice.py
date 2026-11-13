@@ -73,6 +73,8 @@ class Invoice(db.Model, TenantScopedMixin, TimestampMixin):
     loan_ref = db.Column(db.String(60))
     # Delivered elsewhere than the billing address (from the sales order).
     ship_to = db.Column(db.JSON)
+    # The New sale (app/sell) this invoice is part of - shared with its order(s).
+    sale_ref = db.Column(db.String(16), index=True)
     created_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
 
     voided_at = db.Column(db.DateTime(timezone=True))

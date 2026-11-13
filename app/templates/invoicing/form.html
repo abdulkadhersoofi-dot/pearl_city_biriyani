@@ -161,6 +161,7 @@
               <td>
                 <input type="text" list="product-names" x-model="line.description" maxlength="255"
                        @change="applyProduct(line)" name="line_description[]" placeholder="Item name">
+                {% block line_under_item %}{% endblock %}
               </td>
               <td><input type="text" x-model="line.hsn" name="line_hsn[]" maxlength="8"></td>
               <td><input type="number" step="0.001" min="0" x-model.number="line.qty" @input="recalc()" @change="suggestPrice(line)" name="line_qty[]"></td>
@@ -207,7 +208,8 @@
   {{ field(form.notes) }}
   {% block footer_extras %}{% endblock %}
 
-  <button type="submit" class="btn btn-primary btn-lg btn-block">{% block submit_label %}Save &amp; issue invoice{% endblock %}</button>
+  {% block before_submit %}{% endblock %}
+  <button type="submit" class="btn btn-primary btn-lg btn-block" data-submit>{% block submit_label %}Save &amp; issue invoice{% endblock %}</button>
 </form>
 {% endblock %}
 

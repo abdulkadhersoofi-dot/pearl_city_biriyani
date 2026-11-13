@@ -60,6 +60,7 @@ _BY_ENDPOINT = {
 }
 _BY_BLUEPRINT = {
     "live": "home",
+    "sell": "sell",
     "pos": "sell", "restaurant": "sell", "invoicing": "sell", "notes": "sell", "sales": "sell", "jobs": "sell",
     "jewellery": "sell", "margin": "sell",
     "purchases": "buy", "scan": "buy", "expenses": "buy",
@@ -200,14 +201,14 @@ def _L(label, endpoint, icon, **kw) -> Link:
 def _sell() -> dict:
     return {
         "actions": [
-            _L("New invoice", "invoicing.new_invoice", "receipt-text"),
+            _L("New sale", "sell.new_sale", "receipt-text"),
             _L("Counter bill", "pos.terminal", "monitor", feature="pos"),
-            _L("Quote or order", "sales.new_document", "file-text", feature="sales_documents"),
         ],
         "waiting": _sell_waiting,
         "sections": [
             ("Bills", [
                 _L("Invoices", "invoicing.list_invoices", "receipt-text"),
+                _L("Invoice form (classic)", "invoicing.new_invoice", "receipt-text"),
                 _L("Credit & debit notes", "notes.list_notes", "file-minus"),
                 _L("Counter (POS)", "pos.terminal", "monitor", feature="pos"),
                 _L("Day-book", "pos.day_book", "list", feature="pos"),
@@ -226,6 +227,7 @@ def _sell() -> dict:
                 _L("Delivery challans", "sales.documents", "truck", feature="sales_documents",
                    kwargs={"kind": "delivery_challan"}),
                 _L("Recurring invoices", "sales.recurring", "repeat", feature="recurring_invoices"),
+                _L("Quote or order form (classic)", "sales.new_document", "file-text", feature="sales_documents"),
             ]),
             ("Your trade", [
                 _L("Tables", "restaurant.tables", "utensils-crossed", feature="restaurant_mode", also=("pos",)),

@@ -219,6 +219,9 @@ def _branch_groups() -> list[Group]:
                  endpoints=("jobs.warranty",), keywords="imei serial"),
             Link("Ready to invoice", "warehouse.queue", "truck", feature="warehouse_dispatch",
                  check=_warehouse_computer, blueprints=("warehouse",), keywords="warehouse dispatch picked"),
+            Link("New sale", "sell.new_sale", "receipt-text", feature="warehouse_dispatch",
+                 also=("sales_documents",), endpoints=("sell.new_sale", "sell.sale"),
+                 keywords="sell bill order invoice"),
             Link("Sales orders", "sales.documents", "file-text", feature="warehouse_dispatch",
                  also=("sales_documents",), kwargs={"kind": "sales_order"},
                  endpoints=("sales.documents", "sales.new_document", "sales.view_document"),
@@ -363,6 +366,7 @@ def menu_groups(user) -> list[dict]:
 
 def _new_actions() -> list[Link]:
     return [
+        Link("Sale", "sell.new_sale", "receipt-text", keywords="new sale invoice order bill sell"),
         Link("Counter bill", "pos.terminal", "monitor", feature="pos", keywords="pos sale"),
         Link("Tax invoice", "invoicing.new_invoice", "receipt-text", keywords="invoice"),
         # (Credit / debit notes start from an issued invoice, not from here.)

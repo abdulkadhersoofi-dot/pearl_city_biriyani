@@ -73,6 +73,9 @@ class SalesDocInput:
     split: bool = False
     # Set when this order is one part of a split (internal).
     split_group_id: int | None = None
+    # No warehouse can supply it yet: saved without a warehouse or a hold
+    # (app/sell); sent to one later with dispatch.send_waiting.
+    await_stock: bool = False
 
 
 def _customer_snapshot(customer: Customer) -> dict:
@@ -101,7 +104,10 @@ def create_sales_document(tenant, user, data: SalesDocInput) -> SalesDocument:
     if data.valid_until and data.valid_until < data.doc_date:
         raise SalesError("'Valid until' can't be before the date.")
     warehouse, ship_to, reason = None, None, None
-    if data.kind == SalesDocumentKind.SALES_ORDER and dispatch.is_on(tenant):
+    waiting = data.kind == SalesDocumentKind.SALES_ORDER and data.await_stock and dispatch.is_on(tenant)
+    if waiting:
+        ship_to = _ship_to(customer, data.ship_to)
+    elif data.kind == SalesDocumentKind.SALES_ORDER and dispatch.is_on(tenant):
         ship_to = _ship_to(customer, data.ship_to)
         if data.split_group_id is not None:
             reason = "split"
@@ -135,6 +141,7 @@ def create_sales_document(tenant, user, data: SalesDocInput) -> SalesDocument:
         status=SalesDocumentStatus.OPEN, notes=(data.notes or "").strip() or None,
         terms=(data.terms or "").strip() or None, created_by_id=user.id, **totals, **finance,
         ship_to=ship_to, dispatch_choice_reason=reason, split_group_id=data.split_group_id or None,
+        awaiting_stock=waiting,
     )
     for order, item in enumerate(computed):
         li = item["input"]

@@ -243,6 +243,8 @@ def view_document(doc_id):
                  "split_parts": (tenant_query(SalesDocument).filter_by(split_group_id=doc.split_group_id)
                                  .order_by(SalesDocument.id).all() if doc.split_group_id else []),
                  **_warehouse_context(doc)}
+    if doc.awaiting_stock and doc.dispatch_status is None:
+        extra["waiting_warehouses"] = dispatch.warehouses(current_user.tenant_id)
     return render_template("sales/document_view.html", doc=doc, purposes=CHALLAN_PURPOSE_LABELS,
                            doc_type_labels=DOCUMENT_TYPE_LABELS, today=date.today(), **extra)
 
@@ -338,7 +340,12 @@ def change_warehouse(doc_id):
     doc = _doc(doc_id)
     try:
         location = dispatch.resolve_warehouse(current_user.tenant, request.form.get("dispatch_location_id"))
-        old = dispatch.change_warehouse(current_user.tenant, doc, location)
+        if doc.awaiting_stock and doc.dispatch_status is None:
+            dispatch.send_waiting(current_user.tenant, doc, location)
+            _audit("sales_order_sent_to_warehouse", "sales_document", doc, number=doc.number, after=location.name)
+            old = None
+        else:
+            old = dispatch.change_warehouse(current_user.tenant, doc, location)
         if old is not None:
             _audit("sales_order_warehouse_changed", "sales_document", doc, number=doc.number, before=old.name,
                    after=location.name)

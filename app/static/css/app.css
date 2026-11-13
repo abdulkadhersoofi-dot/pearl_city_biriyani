@@ -2030,6 +2030,20 @@ a.console-stat { text-decoration: none; }
 .pair-big span { padding: 12px 16px; border-radius: 16px; background: var(--color-primary-soft); }
 @media (max-width: 640px) { .pair-big { font-size: 2.2rem; } }
 .devices-note { margin: 0 0 12px; padding: 10px 14px; border-radius: var(--radius); background: var(--color-info-bg); color: var(--color-info-text); }
+/* New sale (templates/sell): where each line comes from, and what saving will do. */
+.sale-from { margin-top: 6px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.sale-from-row { display: inline-flex; align-items: center; gap: 6px; font-size: 0.82rem; color: var(--color-text-muted); }
+select.sale-from-pick { width: auto; min-height: 32px; padding: 2px 26px 2px 8px; font-size: 0.85rem; }
+.sale-stock { color: var(--color-text-muted); font-size: 0.82rem; line-height: 1.35; }
+input.sale-serials { flex: 1 1 100%; min-height: 34px; font-size: 0.88rem; }
+.sale-wide { grid-column: 1 / -1; }
+.sale-outcome { margin: 16px 0 12px; padding: 14px 16px; border-radius: var(--radius-lg); background: var(--color-primary-soft); border-left: 5px solid var(--color-primary); }
+.sale-outcome.has-problems { background: var(--color-warn-bg); border-left-color: var(--color-warn-text); }
+.sale-sentence { font-size: 1.08rem; font-weight: 700; color: var(--color-text); }
+.sale-problems { margin: 8px 0 0; padding-left: 20px; color: var(--color-warn-text); font-weight: 600; }
+.sale-parts { display: grid; gap: 12px; max-width: 760px; }
+.sale-part h2 { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 1.1rem; margin-bottom: 6px !important; }
+
 /* The simple menu (seven doors) and the hub page behind each door (app/doors.py). */
 .nav-doors { margin-top: 10px; }
 .nav-doors .nav-link { min-height: 52px; font-size: 1.02rem; margin: 3px 0; }

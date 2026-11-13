@@ -181,6 +181,17 @@ def start(tenant, doc: SalesDocument, location: StockLocation) -> None:
     notify.new_order(doc, location, _branch_label(doc))
 
 
+def send_waiting(tenant, doc: SalesDocument, location: StockLocation) -> None:
+    """An order that was waiting for stock (app/sell) goes to a warehouse
+    now that one can supply it: held there and sent to its pickers."""
+    if doc.kind != SalesDocumentKind.SALES_ORDER or doc.status != SalesDocumentStatus.OPEN \
+            or doc.dispatch_status is not None:
+        raise DispatchError("This order isn't waiting for stock.", 409)
+    start(tenant, doc, location)
+    doc.awaiting_stock = False
+    doc.dispatch_choice_reason = "manual"
+
+
 def change_warehouse(tenant, doc: SalesDocument, location: StockLocation) -> StockLocation | None:
     """Move an open, unclaimed order to another warehouse (its hold moves
     with it; the new warehouse is told, the old one's phones refresh)."""
