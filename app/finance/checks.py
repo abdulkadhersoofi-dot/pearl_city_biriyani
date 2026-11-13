@@ -170,7 +170,7 @@ def check_sales_vs_gstr1(tenant, period, entries) -> Check:
     c = Check("sales_vs_gstr1", "Sales and GSTR-1",
               "For each GSTIN, the taxable value and the tax in GSTR-1 are those of the same documents as the Sales "
               "report (bills of supply aside - they are not reported there).", blocks_filing=True,
-              labels=("Sales documents", "GSTR-1"))
+              labels=("Sales documents, value and tax", "GSTR-1, value and tax"))
     if not _regular(tenant):
         return c.skip("GSTR-1 is for regular GST registrations.")
     if _margin(entries):
