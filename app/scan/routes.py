@@ -102,7 +102,7 @@ def post_matched():
     result = services.post_matched(_tenant(), current_user)
     n = len(result["posted"])
     if n:
-        flash(f"{n} bill{'s' if n != 1 else ''} posted, each tied to its order: "
+        flash(f"{n} bill{'s' if n != 1 else ''} posted, {'each ' if n != 1 else ''}tied to its order: "
               + ", ".join(number for _id, number in result["posted"][:8]) + ("..." if n > 8 else "") + ".", "success")
     for doc_id, why in result["left"][:5]:
         flash(f"A bill was left for you to check: {why}", "error")
