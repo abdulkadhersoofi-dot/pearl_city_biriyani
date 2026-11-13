@@ -53,6 +53,7 @@ BY_KEY = {d.key: d for d in DOORS}
 _BY_ENDPOINT = {
     "reports.dashboard": "home", "hubs.home": "home",
     "hubs.sell": "sell", "hubs.buy": "buy", "hubs.stock": "stock", "hubs.money": "money", "hubs.setup": "setup",
+    "hubs.moved": "setup",
     "jewellery.rates": "stock",
     "inventory.locations": "setup", "inventory.deactivate_location": "setup",
     "warehouse.logins": "setup", "scan.teach": "setup", "scan.teach_bill": "setup",
@@ -80,6 +81,42 @@ def current_door() -> str | None:
     if request.blueprint == "bulk":
         return _BULK_KIND.get((request.view_args or {}).get("kind"))
     return _BY_BLUEPRINT.get(request.blueprint or "")
+
+
+def door_of(link: Link) -> Door | None:
+    """The door a classic menu entry is behind now."""
+    key = _BY_ENDPOINT.get(link.endpoint)
+    if key is None and link.endpoint.startswith("bulk."):
+        key = _BULK_KIND.get((link.kwargs or {}).get("kind"))
+    if key is None:
+        key = _BY_BLUEPRINT.get(link.endpoint.split(".", 1)[0])
+    return BY_KEY.get(key) if key else None
+
+
+def what_moved() -> list[dict]:
+    """The one-screen guide for people used to the classic menu: each of its
+    entries this business has, and the door it is behind now. Built from the
+    two menus themselves, so it is never out of step with them."""
+    from app.navigation import _client_groups
+
+    tiles: dict[str, str] = {}
+    for key, build in _HUBS.items():
+        spec = build()
+        for title, links in spec["sections"]:
+            for link in links:
+                tiles.setdefault(link.url if link.visible() else "", title)
+    rows = []
+    for group in _client_groups():
+        for link in group.links:
+            if not link.visible():
+                continue
+            door = door_of(link)
+            if door is None:
+                continue
+            url = home_url() if door.key == "home" else url_for(door.endpoint)
+            rows.append({"was_under": group.label, "label": link.label, "url": link.url, "icon": link.icon,
+                         "door": door.label, "door_url": url, "section": tiles.get(link.url, "")})
+    return rows
 
 
 def _buy_is_on() -> bool:
@@ -387,6 +424,7 @@ def _setup() -> dict:
                    any_feature=("weighing", "loyalty")),
                 _L("Bill reader training", "scan.teach", "scan-line", feature="doc_scan"),
                 _L("SAP link", "sap.index", "repeat", feature="sap_link"),
+                _L("What moved where", "hubs.moved", "list"),
             ]),
             ("Account", [
                 _L("Sign-in & security", "settings.security", "shield-check"),

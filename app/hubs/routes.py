@@ -57,6 +57,24 @@ def setup():
     return _hub("setup")
 
 
+@hubs_bp.route("/moved")
+@roles_required(UserRole.CLIENT_ADMIN)
+def moved():
+    """What moved where: every entry of the classic menu and its new door."""
+    return render_template("hubs/moved.html", rows=doors.what_moved())
+
+
+@hubs_bp.route("/find.json")
+@roles_required(UserRole.CLIENT_ADMIN)
+def find():
+    """Records for the search box (Ctrl K): app/search.py."""
+    from flask import jsonify, request
+
+    from app import search
+
+    return jsonify({"records": search.records(current_user.tenant, request.args.get("q", ""))})
+
+
 @hubs_bp.route("/menu/<style>", methods=["POST"])
 @roles_required(UserRole.CLIENT_ADMIN)
 def choose_menu(style):

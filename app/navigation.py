@@ -219,6 +219,10 @@ def _branch_groups() -> list[Group]:
                  endpoints=("jobs.warranty",), keywords="imei serial"),
             Link("Ready to invoice", "warehouse.queue", "truck", feature="warehouse_dispatch",
                  check=_warehouse_computer, blueprints=("warehouse",), keywords="warehouse dispatch picked"),
+        )),
+        # A branch login has three doors: Counter, New sale, Today. The orders
+        # New sale made stay one tap away under it.
+        Group("sell", "New sale", (
             Link("New sale", "sell.new_sale", "receipt-text", feature="warehouse_dispatch",
                  also=("sales_documents",), endpoints=("sell.new_sale", "sell.sale"),
                  keywords="sell bill order invoice"),
@@ -242,7 +246,8 @@ def _branch_groups() -> list[Group]:
 
 def _branch_has_screens() -> bool:
     """Has this branch login anything to open beside the counter itself?"""
-    return any(link.visible() for link in _branch_groups()[0].links[1:])
+    counter, sell = _branch_groups()[:2]
+    return any(link.visible() for link in counter.links[1:] + sell.links)
 
 
 def _groups_for(user) -> list[Group]:

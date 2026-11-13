@@ -1947,6 +1947,19 @@ Five new flags, all off by default; with them off nothing changes (routes
   labels give way to the list under them (tap a tower for its label).
   three.js 0.180 (MIT) is served from `static/vendor/three/` - nothing is
   loaded from another server - and only on this page.
+- **Search finds records** (`app/search.py`, `/find.json`): the search box
+  (Ctrl K) lists screens as before and, a moment after typing stops, the
+  owner's own records that match - bills, notes, counter bills, orders and
+  quotes, customers (name, phone, GSTIN), items (name, SKU, barcode),
+  suppliers, purchase bills and orders (an SAP order by its SAP number),
+  serial numbers - a few of each, only for modules that are on, only this
+  business's. **What moved where** (`/moved`, in the account menu and under
+  Setup) lists every classic menu entry beside the door it is behind now,
+  built from the two menus themselves. A **branch login's menu** is three
+  groups: Counter, New sale (with the orders it made), Today. The Classic
+  menu switch stays (the plan keeps it for a month after the simple menu
+  is live). Every screen was opened at phone width (390 px) in a browser:
+  none scrolls sideways.
 - **Security headers** (`app/security_headers.py`): HSTS over HTTPS
   (includeSubDomains on PUBLIC_URL's domain only), a Content-Security-Policy
   on pages - scripts only from /static or inline blocks with the response's

@@ -4,8 +4,13 @@
 orders billed in parts, scanned bills matched to their order), Phase 4 (bill
 reader training with heading lessons) and Phase 5 (the SAP link, tested
 against a stand-in SAP; a real connection needs the client's SAP team) are
-built and tested, and so is Phase 6 (the 3D dashboard), all waiting for
-approval to go live. Phase 7 follows.
+built and tested, and so are Phase 6 (the 3D dashboard) and Phase 7 (record
+search, the branch login's three doors, the "What moved where" guide, the
+phone-width sweep), all waiting for approval to go live. Still open: the
+Classic menu switch stays for a month after go-live (decision 7); a real
+SAP connection needs the client's SAP team (decision 6); posting several
+matched bills in one go (section 5) is not built - each bill is still
+confirmed and posted on its own.
 
 **What this is:** a plan to make ARFA look and feel minimal (few buttons, one
 way to do each job) without removing a single feature, while making its

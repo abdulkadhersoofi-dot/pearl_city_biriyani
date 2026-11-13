@@ -34,9 +34,16 @@ document.addEventListener("alpine:init", function () {
       query: "",
       pick: 0,
       entries: [],
+      records: [],          // what the server found for the query: invoices, customers, items...
+      recordsFor: "",
+      findUrl: "",
+      findTimer: 0,
+      enterWaiting: false,
 
       init: function () {
         this.entries = readJSON("palette-data");
+        var box = document.querySelector(".palette[data-find]");
+        this.findUrl = box ? box.dataset.find : "";
       },
 
       // --- side menu ---------------------------------------------------------
@@ -60,7 +67,37 @@ document.addEventListener("alpine:init", function () {
         var self = this;
         this.$nextTick(function () { if (self.$refs.paletteInput) self.$refs.paletteInput.focus(); });
       },
+      // Records are looked up on the server a moment after typing stops.
+      findRecords: function () {
+        var self = this;
+        var q = this.query.trim();
+        clearTimeout(this.findTimer);
+        this.enterWaiting = false;
+        if (!this.findUrl || q.length < 2) { this.records = []; this.recordsFor = ""; return; }
+        this.findTimer = setTimeout(function () {
+          fetch(self.findUrl + "?q=" + encodeURIComponent(q), {
+            credentials: "same-origin", headers: {"X-Requested-With": "XMLHttpRequest", "Accept": "application/json"}
+          }).then(function (r) { return r.ok ? r.json() : {records: []}; }).then(function (data) {
+            if (self.query.trim() !== q) return;          // an answer to what was typed before
+            self.records = data.records || [];
+            self.recordsFor = q;
+            // Enter was pressed while the records were still being looked up.
+            if (self.enterWaiting) {
+              self.enterWaiting = false;
+              var hit = self.results()[self.pick] || self.results()[0];
+              if (hit && self.palette) window.location.href = hit.url;
+            }
+          }).catch(function () { self.records = []; self.enterWaiting = false; });
+        }, 220);
+      },
       results: function () {
+        var screens = this.screens();
+        var found = this.recordsFor && this.recordsFor === this.query.trim() ? this.records : [];
+        if (!found.length) return screens;
+        // Screens first (fewer of them, to leave room), then the records found.
+        return screens.slice(0, 5).concat(found.slice(0, 12));
+      },
+      screens: function () {
         var words = this.query.toLowerCase().split(/\s+/).filter(Boolean);
         if (!words.length) {
           return this.entries.filter(function (e) { return e.group !== "Account"; }).slice(0, 9);
@@ -89,7 +126,10 @@ document.addEventListener("alpine:init", function () {
         else if (ev.key === "Enter") {
           ev.preventDefault();
           var hit = this.results()[this.pick];
+          var q = this.query.trim();
           if (hit) window.location.href = hit.url;
+          // No screen by that name, and the records aren't back yet: open the first one when they are.
+          else if (this.findUrl && q.length >= 2 && this.recordsFor !== q) this.enterWaiting = true;
         }
       },
       scrollPick: function () {

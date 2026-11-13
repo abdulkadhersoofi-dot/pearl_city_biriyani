@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}What moved where - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>What moved where</h1>
+    <p class="text-muted mt-0">Nothing was removed. The menu now has seven doors; every screen you used is behind one of them.
+      The search box (Ctrl K) also finds each screen by its old name.</p>
+  </div>
+</div>
+<div class="table-wrap card">
+  <table>
+    <thead><tr><th>You used to open</th><th>From the menu</th><th>Now it is under</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td><a href="{{ r.url }}">{{ icon(r.icon, 'icon-sm') }} {{ r.label }}</a></td>
+        <td>{{ r.was_under }}</td>
+        <td><a href="{{ r.door_url }}"><strong>{{ r.door }}</strong></a>{% if r.section %} <span class="text-muted">&rsaquo; {{ r.section }}</span>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

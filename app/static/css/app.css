@@ -396,6 +396,7 @@ kbd {
 .palette-item.is-picked { background: var(--color-primary-soft); color: var(--color-primary-dark); }
 .palette-item.is-picked .icon { color: var(--color-primary); }
 .palette-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.palette-detail { display: block; font-size: 0.78rem; font-weight: 500; color: var(--color-text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .palette-group { flex-shrink: 0; font-size: 0.78rem; font-weight: 500; color: var(--color-text-muted); }
 .palette-none { padding: 22px; text-align: center; color: var(--color-text-muted); }
 
@@ -641,6 +642,9 @@ textarea { min-height: 88px; }
 
 /* --- Tables --- */
 .table-wrap { overflow-x: auto; }
+/* A label kept for screen readers (.sr-only) is taken out of the flow: inside a table that scrolls
+   sideways it must stay inside that table, or it makes the whole page scroll sideways on a phone. */
+.table-wrap, .table-wrap > table { position: relative; }
 table { width: 100%; border-collapse: collapse; background: var(--color-surface); border-radius: var(--radius); overflow: hidden; }
 tbody tr { transition: background-color 0.12s; }
 tbody tr:hover { background: var(--color-surface-2); }
