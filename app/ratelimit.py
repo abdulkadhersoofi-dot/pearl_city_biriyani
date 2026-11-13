@@ -86,7 +86,9 @@ class Limiter:
         with self._lock:
             tat = max(self._tat.get(key, now), now)
             new_tat = tat + interval
-            if new_tat - now > burst:
+            # 1e-6: (now + 60) - now isn't always exactly 60 in floating point,
+            # which refused the last request of a full allowance now and then.
+            if new_tat - now > burst + 1e-6:
                 return False, new_tat - now - burst
             self._tat[key] = new_tat
             if len(self._tat) > _MAX_KEYS:

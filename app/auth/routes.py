@@ -1,5 +1,5 @@
 import time
-from datetime import timedelta
+from datetime import date, timedelta
 
 from flask import abort, current_app, flash, redirect, render_template, request, session, url_for
 from flask_login import current_user, login_required, login_user, logout_user
@@ -429,7 +429,9 @@ def change_password():
                 billing_subject = current_user
 
             if billing_subject is not None and billing_subject.cycle_anchor_date is None:
-                billing_subject.cycle_anchor_date = utcnow().date()
+                # Today in India (the process clock), not the UTC date - which is
+                # still yesterday until 5:30 AM.
+                billing_subject.cycle_anchor_date = date.today()
                 billing_subject.next_billing_due = advance_billing_cycle(
                     billing_subject, billing_subject.cycle_anchor_date
                 )
