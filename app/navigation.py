@@ -506,7 +506,7 @@ def palette_entries(user) -> list[dict]:
             if action.visible():
                 entry = action.as_entry("New")
                 entry["label"] = "New " + action.label[0].lower() + action.label[1:]
-                entries.append(entry)
+                add(entry)
         for group_label, link in _more_screens():
             if link.visible():
                 add(link.as_entry(group_label))

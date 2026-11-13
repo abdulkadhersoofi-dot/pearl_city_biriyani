@@ -111,7 +111,7 @@ def test_branch_logins_and_the_console_keep_their_own_menus(client, db, tenant, 
 def test_a_hub_shows_only_what_is_switched_on(client, db, tenant, client_admin, simple):
     _login(client)
     sell = client.get("/sell").get_data(as_text=True)
-    assert "New invoice" in sell and "Invoices" in sell and "Credit &amp; debit notes" in sell
+    assert "New sale" in sell and "Invoices" in sell and "Credit &amp; debit notes" in sell
     for hidden in ("Sales orders", "Job cards", "Old gold", "Second-hand goods", "Ready to bill", "Tables"):
         assert hidden not in sell
     assert client.get("/buy").status_code == 404                       # nothing to buy with yet
@@ -120,7 +120,7 @@ def test_a_hub_shows_only_what_is_switched_on(client, db, tenant, client_admin, 
     tenant.set_feature("purchases", True)
     db.session.commit()
     sell = client.get("/sell").get_data(as_text=True)
-    assert "Sales orders" in sell and "Job cards" in sell and "Quote or order" in sell
+    assert "Sales orders" in sell and "Job cards" in sell and "Quote or order form (classic)" in sell
     buy = client.get("/buy").get_data(as_text=True)
     assert "Add a bill" in buy and "Purchase orders" in buy and "Scan bills" not in buy
 
@@ -182,7 +182,7 @@ def test_one_broken_waiting_list_never_takes_a_hub_down(client, db, tenant, clie
     monkeypatch.setattr(doors, "_sell_waiting", boom)
     _login(client)
     resp = client.get("/sell")
-    assert resp.status_code == 200 and "New invoice" in resp.get_data(as_text=True)
+    assert resp.status_code == 200 and "New sale" in resp.get_data(as_text=True)
 
 
 def test_reports_pins_the_answers_asked_for_most_days(client, db, tenant, client_admin, simple):
