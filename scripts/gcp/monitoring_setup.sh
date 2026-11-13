@@ -9,9 +9,10 @@
 # It sets up:
 #   1. the APIs (Monitoring, Logging, Error Reporting);
 #   2. an email notification channel per address given;
-#   3. two log-based metrics - arfa_app_errors (the app's ERROR lines) and
+#   3. log-based metrics - arfa_app_errors (the app's ERROR lines),
 #      arfa_security_events (failed sign-ins, lockouts, rate limits, blocked
-#      scripts - app/monitoring.py), counted by kind;
+#      scripts - app/monitoring.py), counted by kind, and
+#      arfa_books_check_failed (the nightly Books check);
 #   4. an uptime check on PUBLIC_URL/health every minute from around the world;
 #   5. alert policies, each emailing with what to check:
 #        website down            the uptime check fails
@@ -23,6 +24,8 @@
 #                                someone locked out)
 #        database CPU / memory / disk / connections high
 #        a scheduled job failed  (the nightly run, a migration)
+#        books check failed      the nightly check found a business whose
+#                                figures don't agree with each other
 # Safe to run again: it updates what is there instead of adding copies.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
@@ -79,7 +82,13 @@ metricDescriptor:
     valueType: STRING
     description: what happened (login_failed, rate_limited, csp_violation ...)
 EOF
-for METRIC in arfa_app_errors arfa_security_events; do
+cat > "$WORK/arfa_books_check_failed.yaml" <<EOF
+description: The nightly Books check found a business whose figures don't agree (flask books-check, app/finance/checks.py)
+filter: >-
+  resource.type="cloud_run_job" AND textPayload:"books check"
+  AND (textPayload:"books check failed" OR textPayload:"books check could not run")
+EOF
+for METRIC in arfa_app_errors arfa_security_events arfa_books_check_failed; do
   if gcloud logging metrics describe "$METRIC" >/dev/null 2>&1; then
     gcloud logging metrics update "$METRIC" --config-from-file "$WORK/$METRIC.yaml" --quiet >/dev/null
   else
@@ -169,6 +178,14 @@ policy("security", "ARFA security events burst",
            "account_locked), a flood (rate_limited) or a page script being blocked (csp_violation). The log "
            "lines carry the network (httpRequest.remoteIp) and the path. Query: "
            "`jsonPayload.security_event:*`")
+policy("books", "ARFA books check failed",
+       'metric.type="logging.googleapis.com/user/arfa_books_check_failed" AND resource.type="cloud_run_job"',
+       0, aligner="ALIGN_DELTA", period=3600,
+       doc="The nightly Books check found a business whose figures don't agree with each other - the dashboard, "
+           "the Sales report, the GST working papers, stock or accounts. The log line names the business "
+           "(tenant id), the month and the checks. The owner sees the same under Needs you, and Reports > "
+           "Books check shows the difference and the records behind it. `bash scripts/gcp/logs.sh job "
+           "arfa-nightly` shows the run.")
 policy("db_cpu", "ARFA database CPU high",
        f'metric.type="cloudsql.googleapis.com/database/cpu/utilization" AND {sql}',
        0.8, aligner="ALIGN_MEAN", reducer=None, duration=900,

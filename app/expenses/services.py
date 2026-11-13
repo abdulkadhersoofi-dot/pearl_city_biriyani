@@ -240,6 +240,10 @@ def post_expense(expense: Expense, user) -> None:
         raise ExpenseError("This expense is already posted or voided.")
     if expense.expense_date > date.today():
         raise ExpenseError("An expense can't be posted before its date.")
+    from app.finance import periods
+
+    periods.ensure_open(expense.tenant_id, expense.gstin_id, expense.expense_date, periods.BUYING, ExpenseError,
+                        "post an expense")
     series = get_or_create_series(expense.tenant_id, expense.gstin_id, DocumentType.EXPENSE,
                                   financial_year_for(expense.expense_date))
     expense.invoice_series_id = series.id
@@ -254,6 +258,11 @@ def void_expense(expense: Expense, user, reason: str) -> None:
     reason = (reason or "").strip()
     if not reason:
         raise ExpenseError("A reason is required.")
+    if expense.status == ExpenseStatus.POSTED:
+        from app.finance import periods
+
+        periods.ensure_open(expense.tenant_id, expense.gstin_id, expense.expense_date, periods.BUYING, ExpenseError,
+                            "void an expense")
     expense.status = ExpenseStatus.VOIDED
     expense.void_reason = reason
     from app.accounts.services import release_payment_allocations

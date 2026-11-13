@@ -1828,6 +1828,38 @@ Five new flags, all off by default; with them off nothing changes (routes
   (user id and role only, no email or form data; tracing off unless
   `SENTRY_TRACES_SAMPLE_RATE`). `/healthz` checks the database and Redis
   and answers 503 naming the part that's down.
+- **One definition of sales** (`app/finance/sales_figures.py`): which
+  documents count as sales, and on which day - invoices (not delivery
+  challans), counter bills, counter refunds (on the day of the refund),
+  counter returns, credit and debit notes. The dashboard, the Sales report,
+  the owner's summary and Profit & loss all read `entries()`; the GST
+  working papers follow the same rule line by line. Fixed when they were
+  joined up: a challan for stock sent to an owned branch was counted as a
+  sale in the Sales report and as taxable turnover in GSTR-1 / GSTR-3B; a
+  refund of an earlier month's counter bill changed that earlier month in
+  the Sales report and the GST papers; the Sales report left out credit and
+  debit notes.
+- **Books check** (`app/finance/checks.py`, Reports > Books check): twelve
+  checks, each working a figure out two ways - dashboard against the Sales
+  report, the Sales report against P&L, GSTR-1, GSTR-3B and the accounting
+  journal, every document's top against its lines, stock never below zero,
+  serial numbers against stock, each customer's and supplier's ledger
+  against their unpaid bills, receipts against what they are set against,
+  the cash and bank books. A check that can't answer fairly for a business
+  says "not checked" (a margin-scheme month, for one). Results are kept
+  (`BooksCheckRun`); `flask books-check` runs it for every business for
+  this month and last (part of `flask nightly`) and logs "books check
+  failed", which `scripts/gcp/monitoring_setup.sh` turns into an alert; a
+  failing month shows under Needs you. Marking a month "ready to file"
+  runs it first: with a blocking check failing, the owner fixes it or
+  writes why it stands (kept in the audit log).
+  `tests/test_books_agree.py` is the test business with hand-worked answers
+  that every one of those screens must match to the paisa.
+- **Closed months** (`app/finance/periods.py`): once GSTR-1 is marked filed
+  for a GSTIN and month, no invoice or note can be added with a date in it
+  or voided out of it; GSTR-3B does the same for purchase bills, returns to
+  suppliers, supplier notes and expenses. Corrections are notes dated in an
+  open month. Unmarking the return (the firm's filing tracker) reopens it.
 - **Security headers** (`app/security_headers.py`): HSTS over HTTPS
   (includeSubDomains on PUBLIC_URL's domain only), a Content-Security-Policy
   on pages - scripts only from /static or inline blocks with the response's

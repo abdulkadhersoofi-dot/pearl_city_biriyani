@@ -59,6 +59,11 @@ def test_month_bounds_rejects_a_bad_period():
 
 
 def test_gstr1_separates_b2b_and_b2c_and_nets_a_credit_note(db, tenant, client_admin):
+    # The counter bill below is rung up "now", so the invoice and the note are
+    # dated today too and the month checked is this one - the test used fixed
+    # October dates, and failed from the first of November.
+    today = date.today()
+    period = f"{today.year:04d}-{today.month:02d}"
     gstin = tenant.gstins.first()
     b2b_customer = _b2b_customer(db, tenant)
 
@@ -66,7 +71,7 @@ def test_gstr1_separates_b2b_and_b2c_and_nets_a_credit_note(db, tenant, client_a
         tenant, client_admin,
         InvoiceInput(
             gstin_id=gstin.id, document_type=DocumentType.TAX_INVOICE, customer_id=b2b_customer.id,
-            place_of_supply_state_code="29", invoice_date=date(2026, 10, 5), notes=None,
+            place_of_supply_state_code="29", invoice_date=today, notes=None,
             lines=[LineInput(description="Catering", hsn_or_sac_code="996331", qty=Decimal("1"), rate=Decimal("10000"), discount_percent=Decimal("0"), gst_rate=Decimal("18"))],
         ),
     )
@@ -82,14 +87,14 @@ def test_gstr1_separates_b2b_and_b2c_and_nets_a_credit_note(db, tenant, client_a
     create_note(
         tenant, client_admin,
         NoteInput(
-            original_invoice_id=invoice.id, document_type=DocumentType.CREDIT_NOTE, note_date=date(2026, 10, 10),
+            original_invoice_id=invoice.id, document_type=DocumentType.CREDIT_NOTE, note_date=today,
             reason="Partial service shortfall",
             lines=[LineInput(description="Catering", hsn_or_sac_code="996331", qty=Decimal("1"), rate=Decimal("1000"), discount_percent=Decimal("0"), gst_rate=Decimal("18"))],
         ),
     )
     db.session.commit()
 
-    data = gstr1_data(tenant, gstin, "2026-10")
+    data = gstr1_data(tenant, gstin, period)
 
     assert len(data["b2b"]) == 1
     assert data["b2b"][0]["customer_gstin"] == "29BBBBB0000B1Z5"

@@ -283,6 +283,10 @@ def create_purchase_bill(tenant, user, data: PurchaseInput) -> PurchaseBill:
     costs = itc.landed_costs(computed, [l.qty for l in data.lines], eligibilities, other_charges)
 
     bill_date = data.bill_date or date.today()
+    # A month whose GSTR-3B is filed takes no new purchases (app/finance/periods.py).
+    from app.finance import periods
+
+    periods.ensure_open(tenant.id, gstin.id, bill_date, periods.BUYING, PurchaseError, "enter a purchase bill")
     series = get_or_create_series(tenant.id, gstin.id,
                                   DocumentType.MARGIN_PURCHASE if voucher else DocumentType.PURCHASE_BILL,
                                   financial_year_for(bill_date))
@@ -372,6 +376,10 @@ def void_purchase_bill(bill: PurchaseBill, user, reason: str) -> None:
         raise PurchaseError("This bill is already voided.")
     if not (reason or "").strip():
         raise PurchaseError("A reason is required to void a purchase bill.")
+    from app.finance import periods
+
+    periods.ensure_open(bill.tenant_id, bill.gstin_id, bill.bill_date, periods.BUYING, PurchaseError,
+                        "void a purchase bill")
     if PurchaseReturn.query.filter_by(purchase_bill_id=bill.id, status=PurchaseStatus.POSTED).first() is not None:
         raise PurchaseError("Goods on this bill were returned to the supplier - void those returns first.")
     from app.margin.services import sold_from
@@ -466,6 +474,10 @@ def create_purchase_return(bill: PurchaseBill, user, quantities: dict[int, Decim
     totals = compute_invoice_totals([a for _, _, a in computed])
     itc_back = [itc.return_itc(a, line.itc_eligibility) for line, _, a in computed]
     return_date = return_date or date.today()
+    from app.finance import periods
+
+    periods.ensure_open(bill.tenant_id, bill.gstin_id, return_date, periods.BUYING, PurchaseError,
+                        "record a return to the supplier")
     series = get_or_create_series(bill.tenant_id, bill.gstin_id, DocumentType.PURCHASE_RETURN, financial_year_for(return_date))
     ret = PurchaseReturn(
         tenant_id=bill.tenant_id, gstin_id=bill.gstin_id, invoice_series_id=series.id, number=allocate_number(series),
@@ -509,6 +521,10 @@ def void_purchase_return(ret: PurchaseReturn, user, reason: str) -> None:
         raise PurchaseError("This return is already voided.")
     if not (reason or "").strip():
         raise PurchaseError("A reason is required to void it.")
+    from app.finance import periods
+
+    periods.ensure_open(ret.tenant_id, ret.gstin_id, ret.return_date, periods.BUYING, PurchaseError,
+                        "void a return to the supplier")
     for line in ret.lines:
         if line.product is not None and ledger.sells_from_stock(line.product):
             ledger.receive_cost(line.product, line.qty, line.unit_cost)
@@ -592,6 +608,10 @@ def create_supplier_note(tenant, user, data: SupplierNoteInput) -> SupplierNote:
         raise PurchaseError("Enter the supplier's note number.")
     if not data.note_date:
         raise PurchaseError("Enter the note's date.")
+    from app.finance import periods
+
+    periods.ensure_open(tenant.id, gstin.id, data.note_date, periods.BUYING, PurchaseError,
+                        "record a supplier's note")
     if not data.lines:
         raise PurchaseError("Add at least one line.")
     duplicate = SupplierNote.query.filter(
@@ -646,6 +666,10 @@ def void_supplier_note(note: SupplierNote, user, reason: str) -> None:
         raise PurchaseError("This note is already voided.")
     if not (reason or "").strip():
         raise PurchaseError("A reason is required to void a note.")
+    from app.finance import periods
+
+    periods.ensure_open(note.tenant_id, note.gstin_id, note.note_date, periods.BUYING, PurchaseError,
+                        "void a supplier's note")
     note.status = PurchaseStatus.VOIDED
     note.void_reason = reason.strip()
     note.voided_at = utcnow()

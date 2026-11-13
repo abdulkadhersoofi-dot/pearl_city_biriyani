@@ -68,6 +68,9 @@ GROUPS = [
                "scan-line", ("einvoice",)),
     ]),
     ("accounts", "Accounts & registers", "landmark", [
+        Report("Books check", "Do the figures agree? The dashboard, the reports, the GST returns, stock and "
+               "accounts, each checked against the others and the records behind them.", "reports.books_check",
+               "file-check"),
         Report("Customer accounts", "Who owes you, how long it's been due, and statements to send.",
                "accounts.receivables_index", "users", ("receivables",)),
         Report("Supplier accounts", "What you owe each supplier and when it's due.", "accounts.payables_index",

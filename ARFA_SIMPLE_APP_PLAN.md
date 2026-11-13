@@ -1,5 +1,9 @@
 # ARFA made simple: the plan
 
+**Progress:** Phase 0 (accuracy first) is built: one calculation for sales,
+the Books check, the test business with known answers and period closing.
+Phases 1 to 7 are not started.
+
 **What this is:** a plan to make ARFA look and feel minimal (few buttons, one
 way to do each job) without removing a single feature, while making its
 numbers provably correct. Nothing in this file is built yet. It is written
@@ -370,6 +374,11 @@ lets a bill find its order by number.
 Each phase goes to the test copy first, is checked in a browser and by the
 test suite, and reaches the live site only on your approval.
 
+Phase 0 found and fixed three errors in the figures (see README, "Books
+check"): a branch stock transfer counted as a sale and as GST turnover; a
+refund changing the figures of an earlier, possibly filed, month; and the
+Sales report leaving out credit and debit notes.
+
 | Phase | What | Depends on | Size |
 |---|---|---|---|
 | 0 | **Accuracy first:** one calculation per number, the test business, the Books check page, period closing | Nothing | Large |
@@ -389,7 +398,12 @@ on for one business first. Old web addresses redirect to their new home.
 
 ---
 
-## 10. Decisions needed from you
+## 10. Decisions
+
+**Decided on 13 November 2026: every recommendation below is accepted.**
+Decision 6 (SAP) still needs the client's SAP team; phases 0 to 4 and 6 do
+not wait for it.
+
 
 1. **Mixed sale** (some items here, some in a warehouse): bill what is here
    now and order the rest (recommended), or always send one order for

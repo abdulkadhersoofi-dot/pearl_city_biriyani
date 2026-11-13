@@ -157,6 +157,11 @@ def create_invoice(tenant: Tenant, created_by, data: InvoiceInput) -> Invoice:
     gstin = Gstin.query.filter_by(id=data.gstin_id, tenant_id=tenant.id, is_active=True).first()
     if not gstin:
         raise InvoiceValidationError("Select a valid GSTIN to bill from.")
+    # A month whose GSTR-1 is filed takes no new documents (app/finance/periods.py).
+    from app.finance import periods
+
+    periods.ensure_open(tenant.id, gstin.id, data.invoice_date, periods.SALES, InvoiceValidationError,
+                        "add an invoice")
 
     customer = None
     if branch:
@@ -384,6 +389,10 @@ def void_invoice(invoice: Invoice, voided_by, reason: str) -> None:
         raise InvoiceValidationError("Invoice is already void.")
     if not reason or not reason.strip():
         raise InvoiceValidationError("A reason is required to void an invoice.")
+    from app.finance import periods
+
+    periods.ensure_open(invoice.tenant_id, invoice.gstin_id, invoice.invoice_date, periods.SALES,
+                        InvoiceValidationError, "void an invoice")
     if invoice.irn and not invoice.irn_cancelled_at:
         raise InvoiceValidationError(f"This invoice has an IRN on the IRP - cancel the IRN first (allowed within {gst_config.IRN_CANCEL_HOURS} "
                                      "hours of generating it), or issue a credit note against it.")

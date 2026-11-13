@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Books check - {{ firm_name }}{% endblock %}
+{% block content %}
+{# Do the figures agree? Each one worked out two ways (app/finance/checks.py). #}
+<div class="page-header">
+  <div>
+    <a href="{{ url_for('reports.index') }}" class="back-link">{{ icon('chevron-right', 'icon-sm icon-flip') }}Reports</a>
+    <h1>Books check - {{ period }}</h1>
+    <p class="text-muted mt-0">Every figure is worked out two ways and compared. Nothing here changes a record.</p>
+  </div>
+  <div class="row gap-8 items-end">
+    <form method="get" class="row gap-8 items-end">
+      <label class="field m-0"><span class="field-label">Month</span><input type="month" name="period" value="{{ period }}" class="field-input"></label>
+      <button class="btn btn-secondary">Show</button>
+    </form>
+    <form method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="period" value="{{ period }}">
+      {% if explain_for %}<input type="hidden" name="gstin_id" value="{{ explain_for.id }}">{% endif %}
+      <button class="btn btn-primary">Check again now</button>
+    </form>
+  </div>
+</div>
+
+<div class="card books-summary {{ 'books-bad' if failed else 'books-good' }}" role="status">
+  {% if failed %}
+    <p class="books-headline">{{ icon('triangle-alert') }} {{ failed|length }} of {{ results|length }} checks need a look</p>
+    <p class="m-0">{% if blocking %}{{ blocking|length }} of them stop {{ period }} being marked ready to file until fixed or explained.{% else %}None of them stops the month being marked ready to file.{% endif %}</p>
+  {% else %}
+    <p class="books-headline">{{ icon('circle-check') }} The figures agree</p>
+    <p class="m-0">Every check that applies to your business passed.</p>
+  {% endif %}
+  <small class="text-muted">Checked {{ row.ran_at|ist('%d %b %Y, %H:%M') }}</small>
+</div>
+
+<div class="books-list">
+  {% for c in results %}
+  <section class="card books-check books-{{ c.status }}" aria-labelledby="check-{{ c.key }}">
+    <div class="books-check-head">
+      <span class="books-mark" aria-hidden="true">{{ icon({'ok': 'circle-check', 'fail': 'circle-x', 'error': 'triangle-alert'}.get(c.status, 'minus')) }}</span>
+      <div>
+        <h2 class="m-0" id="check-{{ c.key }}">{{ c.title }}
+          <span class="tag {{ {'ok': 'tag-fast', 'fail': 'tag-dead', 'error': 'tag-dead'}.get(c.status, '') }}">{{ {'ok': 'Agrees', 'fail': 'Differs', 'error': 'Could not check', 'skip': 'Not checked'}[c.status] }}</span>
+          {% if c.blocks_filing and c.status in ('fail', 'error') %}<span class="tag tag-warn">Stops filing</span>{% endif %}
+        </h2>
+        <p class="text-muted m-0">{{ c.what }}</p>
+      </div>
+    </div>
+    {% if c.expected is not none and c.actual is not none %}
+    <dl class="books-figures">
+      <div><dt>{{ c.labels[0] }}</dt><dd>Rs. {{ c.expected|inr }}</dd></div>
+      <div><dt>{{ c.labels[1] }}</dt><dd>Rs. {{ c.actual|inr }}</dd></div>
+      {% if c.status == 'fail' and c.difference and c.difference not in ('0.00', '-0.00') %}<div class="books-diff"><dt>Difference</dt><dd>Rs. {{ c.difference|inr }}</dd></div>{% endif %}
+    </dl>
+    {% endif %}
+    {% if c.note %}<p class="m-0 books-note">{{ c.note }}</p>{% endif %}
+    {% if c.rows %}
+    <ul class="books-rows">
+      {% for r in c.rows %}
+      <li>{% if r.url %}<a href="{{ r.url }}">{{ r.label }}</a>{% else %}{{ r.label }}{% endif %}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </section>
+  {% endfor %}
+</div>
+
+{% if explain_for %}
+<section class="card mt-20" id="explain">
+  <h2 class="mt-0">Mark {{ period }} ready all the same</h2>
+  <p class="text-muted mt-0">Fixing the difference is better. If it is known and accepted, say why: your words are kept in the audit log with the month.</p>
+  <form method="post" action="{{ url_for('reports.filing_status') }}" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="period" value="{{ period }}"><input type="hidden" name="gstin_id" value="{{ explain_for.id }}">
+    <input type="hidden" name="action" value="ready">
+    <label class="field"><span class="field-label">Why the difference stands (for {{ explain_for.display_label }})</span>
+      <textarea name="explanation" class="field-input" rows="3" minlength="10" maxlength="500" required></textarea></label>
+    <div><button class="btn btn-secondary">Explain and mark ready</button></div>
+  </form>
+</section>
+{% endif %}
+{% endblock %}

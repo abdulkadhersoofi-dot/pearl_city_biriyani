@@ -54,6 +54,9 @@ def create_note(tenant: Tenant, created_by, data: NoteInput) -> CreditDebitNote:
                                   "per unit sold. Void the invoice and bill it again instead.")
 
     gstin = original.gstin
+    from app.finance import periods
+
+    periods.ensure_open(tenant.id, gstin.id, data.note_date, periods.SALES, NoteValidationError, "issue a note")
     # Same rule as a Bill of Supply / POS sale: unregistered and
     # composition clients never charge GST, on any document.
     charge_gst = tenant.registration_type == RegistrationType.REGULAR
@@ -136,6 +139,10 @@ def void_note(note: CreditDebitNote, voided_by, reason: str) -> None:
         raise NoteValidationError("Note is already void.")
     if not reason or not reason.strip():
         raise NoteValidationError("A reason is required to void a note.")
+    from app.finance import periods
+
+    periods.ensure_open(note.tenant_id, note.gstin_id, note.note_date, periods.SALES, NoteValidationError,
+                        "void a note")
     if note.irn and not note.irn_cancelled_at:
         raise NoteValidationError(f"This note has an IRN on the IRP - cancel the IRN first (allowed within {gst_config.IRN_CANCEL_HOURS} hours "
                                   "of generating it).")

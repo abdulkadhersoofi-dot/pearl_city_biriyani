@@ -641,15 +641,59 @@ def _register_cli(app: Flask) -> None:
 
         click.echo(f"{delete_old_handoffs()} old sign-in hand-over(s) deleted.")
 
+    @app.cli.command("books-check")
+    @click.option("--tenant-id", type=int, default=None, help="Only this business.")
+    def books_check(tenant_id):
+        """Runs the Books check (app/finance/checks.py) for every business,
+        for this month and last, and keeps each result. A month whose
+        figures don't agree is logged as an error - "books check failed" -
+        which raises an alert (scripts/gcp/monitoring_setup.sh), and shows
+        under the owner's "Needs you"."""
+        import logging
+        from datetime import date
+
+        from app.finance import checks
+        from app.models.tenant import Tenant
+
+        books_log = logging.getLogger("arfa.books")
+        today = date.today()
+        first = today.replace(day=1)
+        last_month = first.fromordinal(first.toordinal() - 1)
+        periods = [f"{today.year:04d}-{today.month:02d}", f"{last_month.year:04d}-{last_month.month:02d}"]
+        ran = failed = 0
+        query = Tenant.query.order_by(Tenant.id)
+        if tenant_id:
+            query = query.filter_by(id=tenant_id)
+        for tenant in query.all():
+            if not tenant.is_active:
+                continue
+            for period in periods:
+                try:
+                    report = checks.run(tenant, period)
+                    checks.save(tenant, report)
+                    db.session.commit()
+                except Exception:  # noqa: BLE001 - one business must not stop the rest
+                    db.session.rollback()
+                    books_log.exception("books check could not run: tenant=%s period=%s", tenant.id, period)
+                    failed += 1
+                    continue
+                ran += 1
+                if not report.ok:
+                    failed += 1
+                    books_log.error("books check failed: tenant=%s period=%s checks=%s", tenant.id, period,
+                                    ",".join(c.key for c in report.failed))
+        click.echo(f"{ran} month(s) checked, {failed} with figures that don't agree.")
+
     @app.cli.command("nightly")
     @click.pass_context
     def nightly(ctx):
         """The jobs that run every night on Google Cloud (Cloud Scheduler ->
         the "nightly" Cloud Run Job): expired sessions, recurring expense
-        and invoice drafts. Each step runs even if an earlier one failed."""
+        and invoice drafts, the Books check. Each step runs even if an
+        earlier one failed."""
         failed = []
         steps = [("sessions-cleanup", sessions_cleanup), ("expenses-generate-drafts", expenses_generate_drafts),
-                 ("recurring-invoices-generate", recurring_invoices_generate)]
+                 ("recurring-invoices-generate", recurring_invoices_generate), ("books-check", books_check)]
         for name, command in steps:
             try:
                 ctx.invoke(command)

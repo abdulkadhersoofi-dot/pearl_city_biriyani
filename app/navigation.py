@@ -529,6 +529,14 @@ def needs_you(tenant) -> list[dict]:
             items.append({"label": f"{failed} offline bill{'s' if failed != 1 else ''} could not be saved",
                           "detail": "Check and save or cancel them", "url": url_for("pos.offline_bills"),
                           "icon": "cloud-off", "tone": "bad"})
+    from app.finance import checks as books
+
+    for run in books.failing_now(tenant)[:2]:
+        items.append({"label": f"The figures for {run.period} don't agree ({run.failed_count} check"
+                               f"{'s' if run.failed_count != 1 else ''})",
+                      "detail": "See what differs in the Books check",
+                      "url": url_for("reports.books_check", period=run.period), "icon": "triangle-alert",
+                      "tone": "bad"})
     if tenant.has_feature("inventory"):
         from app.inventory.reports import low_stock
 

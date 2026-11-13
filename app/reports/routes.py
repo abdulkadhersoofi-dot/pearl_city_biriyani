@@ -433,13 +433,72 @@ def filing_status():
     if request.method == "POST":
         gstin = _resolve_gstin(request.form.get("gstin_id", type=int))
         ready = request.form.get("action") != "not_ready"
+        details = {"period": period}
+        if ready:
+            # A month goes to the accountant only when its figures agree -
+            # or the owner has said, in words, why a difference stands.
+            from app.finance import checks
+
+            report = checks.run(tenant, period)
+            checks.save(tenant, report)
+            blocking = checks.blocking_failures(report)
+            explanation = " ".join((request.form.get("explanation") or "").split())[:500]
+            if blocking and len(explanation) < 10:
+                db.session.commit()
+                flash(f"{period} can't be marked ready yet: {len(blocking)} check(s) on the figures don't agree. "
+                      "See what differs below - fix it, or explain it and mark the month ready all the same.", "error")
+                return redirect(url_for("reports.books_check", period=period, gstin_id=gstin.id))
+            if blocking:
+                details.update(books_check_failed=[c.key for c in blocking], explanation=explanation)
         mark_ready(tenant.id, gstin.id, period, current_user, ready)
         record_audit(current_user, "filing_data_ready" if ready else "filing_data_not_ready", tenant_id=tenant.id,
-                     entity_type="gstin", entity_id=gstin.id, details={"period": period})
+                     entity_type="gstin", entity_id=gstin.id, details=details)
         db.session.commit()
         flash(f"{period} marked {'ready for filing' if ready else 'not ready yet'}.", "success")
         return redirect(url_for("reports.filing_status", period=period))
     return render_template("reports/filing.html", cards=filing_cards(tenant, period), period=period)
+
+
+# --- the Books check: do the figures agree? (app/finance/checks.py) --------------------------
+
+@reports_bp.route("/books-check", methods=["GET", "POST"])
+@roles_required(UserRole.CLIENT_ADMIN)
+def books_check():
+    """Each figure worked out two ways. GET shows the last kept result for
+    the month (running the checks when there is none yet); POST runs them
+    again now."""
+    from app.extensions import db
+    from app.finance import checks
+    from app.finance.filing import period_bounds
+    from app.utils.audit import record_audit
+
+    tenant = current_user.tenant
+    period = request.values.get("period") or _current_period()
+    try:
+        period_bounds(period)
+    except (ValueError, TypeError):
+        abort(404)
+    row = None if request.method == "POST" else checks.latest(tenant, period)
+    if row is None:
+        report = checks.run(tenant, period)
+        row = checks.save(tenant, report)
+        if request.method == "POST":
+            record_audit(current_user, "books_check_run", tenant_id=tenant.id,
+                         details={"period": period, "failed": len(report.failed)})
+        db.session.commit()
+        if request.method == "POST":
+            return redirect(url_for("reports.books_check", period=period,
+                                    gstin_id=request.form.get("gstin_id") or None))
+    results = row.results or []
+    failed = [c for c in results if c["status"] in (checks.FAIL, checks.ERROR)]
+    # Arriving from "My data is complete" with checks failing: the owner may
+    # explain and mark the month ready all the same.
+    explain_for = None
+    gstin_id = request.args.get("gstin_id", type=int)
+    if gstin_id and any(c["blocks_filing"] for c in failed):
+        explain_for = _resolve_gstin(gstin_id)
+    return render_template("reports/books_check.html", period=period, row=row, results=results, failed=failed,
+                           blocking=[c for c in failed if c["blocks_filing"]], explain_for=explain_for)
 
 
 # --- the owner's end-of-day summary (feature "daily_summary") ------------------------------
