@@ -166,6 +166,9 @@ def _register_blueprints(app: Flask) -> None:
     from app.apps import apps_bp
 
     app.register_blueprint(apps_bp)
+    from app.hubs import hubs_bp
+
+    app.register_blueprint(hubs_bp)
 
 
 def _register_error_handlers(app: Flask) -> None:
@@ -275,6 +278,7 @@ def _register_context_processors(app: Flask) -> None:
     app.jinja_env.globals["palette_entries"] = navigation.palette_entries
     app.jinja_env.globals["bottom_tabs"] = navigation.bottom_tabs
     app.jinja_env.globals["has_menu"] = navigation.has_menu
+    app.jinja_env.globals["menu_style"] = navigation.menu_style
     app.jinja_env.globals["icon"] = navigation.icon
     # {% if has_feature('categories') %} / {% if can('refund') %} - the
     # template-side counterparts of feature_required/permission_required,

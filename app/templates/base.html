@@ -74,8 +74,8 @@
       </div>
       <nav class="sidenav-scroll" aria-label="Screens">
         {% for group in menu %}
-        <div class="nav-group">
-          <p class="nav-group-label">{{ group.label }}</p>
+        <div class="nav-group{{ ' nav-doors' if group.key == 'doors' }}">
+          {% if group.label %}<p class="nav-group-label">{{ group.label }}</p>{% endif %}
           {% for link in group.links %}
           <a href="{{ link.url }}" class="nav-link{{ ' active' if link.active }}" title="{{ link.label }}"{% if link.active %} aria-current="page"{% endif %}>
             {{ icon(link.icon) }}<span class="nav-label">{{ link.label }}</span>
@@ -157,6 +157,15 @@
                 <a href="{{ url_for('auth.account_security') }}" class="pop-item" role="menuitem">{{ icon('shield-check') }}<span>Security</span></a>
                 <a href="{{ url_for('auth.change_password') }}" class="pop-item" role="menuitem">{{ icon('key-round') }}<span>Change password</span></a>
                 <a href="{{ url_for('apps.index') }}" class="pop-item" role="menuitem">{{ icon('smartphone') }}<span>Phone apps</span></a>
+                {% if current_user.is_client_admin %}
+                {# Simple (seven doors) or classic (every screen listed) - remembered on this device. #}
+                {% set other_menu = 'classic' if menu_style(current_user) == 'simple' else 'simple' %}
+                <form method="post" action="{{ url_for('hubs.choose_menu', style=other_menu) }}" class="pop-form">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="next" value="{{ request.full_path if request.method == 'GET' else url_for('main.index') }}">
+                  <button class="pop-item" role="menuitem">{{ icon('layout-grid') }}<span>{{ 'Use the classic menu' if other_menu == 'classic' else 'Use the simple menu' }}</span></button>
+                </form>
+                {% endif %}
                 <a href="{{ url_for('auth.logout') }}" class="pop-item" role="menuitem">{{ icon('log-out') }}<span>Sign out</span></a>
               </div>
             </div>

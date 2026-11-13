@@ -51,7 +51,7 @@ def index():
     gstins = tenant.gstins.filter_by(is_active=True).all()
     period = request.args.get("period", _current_period())
     not_regular = tenant.registration_type != RegistrationType.REGULAR
-    from app.reports.hub import hub_groups
+    from app.reports.hub import daily_reports, hub_groups
 
     return render_template(
         "reports/index.html",
@@ -60,6 +60,7 @@ def index():
         period=period,
         not_regular=not_regular,
         groups=hub_groups(),
+        daily=daily_reports(),
     )
 
 

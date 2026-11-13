@@ -122,6 +122,9 @@ class Config:
     RATE_LIMIT_HEAVY = int(os.environ.get("RATE_LIMIT_HEAVY", "40"))
     RATE_LIMIT_API = int(os.environ.get("RATE_LIMIT_API", "300"))
     RATE_LIMIT_WEB = int(os.environ.get("RATE_LIMIT_WEB", "600"))
+    # The Client Admin's menu when they haven't chosen one: "simple" (the seven
+    # doors, app/doors.py) or "classic" (the grouped menu, app/navigation.py).
+    MENU_DEFAULT = os.environ.get("MENU_DEFAULT", "simple")
     # The browser security policy (app/security_headers.py): "enforce",
     # "report" (logged only - to try a change safely) or "off".
     CSP_MODE = os.environ.get("CSP_MODE", "enforce")
@@ -190,6 +193,9 @@ class TestingConfig(Config):
     ADMIN_2FA_REQUIRED = False
     SENTRY_DSN = None
     SMTP_HOST = None
+    # The tests written for the classic menu keep it; tests/test_doors.py turns
+    # the simple one on for itself.
+    MENU_DEFAULT = "classic"
     # Tests sign in and post many times a second; tests/test_security_hardening.py
     # switches the limits on for itself.
     RATE_LIMITS_ENABLED = False

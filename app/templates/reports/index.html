@@ -13,6 +13,17 @@
     </label>
   </div>
 
+  {% if daily %}
+  <section class="report-daily" aria-label="Asked for most days" x-show="!q">
+    <h2 class="hub-title">Asked for most days</h2>
+    <div class="hub-tiles">
+      {% for r in daily %}
+      <a href="{{ r.url }}" class="hub-tile hub-daily">{{ icon(r.icon) }}<span><strong>{{ r.title }}</strong><small>{{ r.description }}</small></span></a>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
   <nav class="report-jump" aria-label="Report groups">
     {% for g in groups %}<a href="#group-{{ g.key }}">{{ icon(g.icon, 'icon-sm') }}{{ g.label }}</a>{% endfor %}
   </nav>

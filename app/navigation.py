@@ -312,6 +312,28 @@ def _admin_groups(user) -> list[Group]:
     ]
 
 
+# --- simple or classic -----------------------------------------------------------------------------
+
+MENU_COOKIE = "arfa_menu"
+MENU_STYLES = ("simple", "classic")
+
+
+def menu_style(user) -> str:
+    """"simple": the seven doors (app/doors.py). "classic": the grouped menu
+    above. A Client Admin picks on the account menu and it is remembered on
+    that device (a cookie); otherwise MENU_DEFAULT decides. The firm's
+    console and branch logins always have their own menus."""
+    if not (getattr(user, "is_authenticated", False) and user.is_client_admin):
+        return "classic"
+    from flask import current_app
+
+    chosen = request.cookies.get(MENU_COOKIE)
+    if chosen in MENU_STYLES:
+        return chosen
+    default = current_app.config.get("MENU_DEFAULT", "simple")
+    return default if default in MENU_STYLES else "simple"
+
+
 def has_menu(user) -> bool:
     if not getattr(user, "is_authenticated", False):
         return False
@@ -325,6 +347,10 @@ def menu_groups(user) -> list[dict]:
     empty groups dropped."""
     if not has_menu(user):
         return []
+    if menu_style(user) == "simple":
+        from app import doors
+
+        return [{"key": "doors", "label": "", "links": doors.menu_links()}]
     groups = _groups_for(user)
     out = []
     for group in groups:
@@ -480,6 +506,17 @@ def palette_entries(user) -> list[dict]:
         for group_label, link in _more_screens():
             if link.visible():
                 add(link.as_entry(group_label))
+        from app import doors
+
+        # The doors and every tile behind them: a screen is found under the
+        # name it has on its hub as well as its classic name.
+        for door in doors.visible_doors():
+            if door.key not in ("home", "reports"):
+                add({"label": door.label, "group": "Menu", "url": url_for(door.endpoint), "icon": door.icon,
+                     "keywords": door.intro})
+        for door_label, link in doors.all_tiles():
+            if link.visible():
+                add(link.as_entry(door_label))
     if user.is_client_admin or user.is_admin_hierarchy:
         add({"label": "Account security (two-step sign-in)", "group": "Account",
              "url": url_for("auth.account_security"), "icon": "shield-check", "keywords": "2fa totp password"})
@@ -494,6 +531,11 @@ def bottom_tabs(user) -> list[dict]:
     """The phone's bottom bar: Home, Sell, (New), Reports, More."""
     if not (getattr(user, "is_authenticated", False) and user.is_client_admin):
         return []
+    if menu_style(user) == "simple":
+        from app import doors
+
+        by_key = {d["key"]: d for d in doors.menu_links()}
+        return [by_key[k] for k in ("home", "sell", "reports")]
     home = (Link("Home", "reports.dashboard", "house", endpoints=("reports.dashboard",))
             if current_tenant_has("business_reports")
             else Link("Home", "invoicing.list_invoices", "house", blueprints=("invoicing",)))

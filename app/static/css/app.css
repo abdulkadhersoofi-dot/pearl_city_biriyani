@@ -2030,6 +2030,53 @@ a.console-stat { text-decoration: none; }
 .pair-big span { padding: 12px 16px; border-radius: 16px; background: var(--color-primary-soft); }
 @media (max-width: 640px) { .pair-big { font-size: 2.2rem; } }
 .devices-note { margin: 0 0 12px; padding: 10px 14px; border-radius: var(--radius); background: var(--color-info-bg); color: var(--color-info-text); }
+/* The simple menu (seven doors) and the hub page behind each door (app/doors.py). */
+.nav-doors { margin-top: 10px; }
+.nav-doors .nav-link { min-height: 52px; font-size: 1.02rem; margin: 3px 0; }
+.nav-doors .nav-link .icon { width: 22px; height: 22px; }
+.pop-form { margin: 0; }
+.pop-form .pop-item { width: 100%; border: 0; background: none; cursor: pointer; font-family: inherit; text-align: left; }
+.hub { display: grid; gap: 24px; }
+.hub-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px; }
+.hub-head h1 { margin: 0 0 2px; }
+.hub-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.hub-actions .btn { display: inline-flex; align-items: center; gap: 8px; }
+.hub-title { margin: 0 0 10px; font-size: 0.78rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-text-muted); }
+.hub-waiting-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
+.hub-wait {
+  display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: var(--radius-lg);
+  background: var(--color-surface); color: var(--color-text); text-decoration: none;
+  border: 1px solid var(--color-border); border-left: 5px solid var(--color-primary); box-shadow: var(--shadow-1);
+  transition: box-shadow 0.2s, transform 0.2s var(--ease-out);
+}
+.hub-wait:hover { box-shadow: var(--shadow-2); transform: translateY(-2px); }
+.hub-wait > span { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.hub-wait small { color: var(--color-text-muted); }
+.hub-wait-warn { border-left-color: var(--color-warn-text); }
+.hub-wait-bad { border-left-color: var(--color-danger); }
+.hub-wait > .icon:first-child { flex: none; color: var(--color-primary); }
+.hub-wait-warn > .icon:first-child { color: var(--color-warn-text); }
+.hub-wait-bad > .icon:first-child { color: var(--color-danger); }
+.hub-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+.hub-tile {
+  display: flex; align-items: center; gap: 12px; min-height: 60px; padding: 12px 14px; border-radius: var(--radius-lg);
+  background: var(--color-surface); color: var(--color-text); text-decoration: none; font-weight: 600;
+  border: 1px solid var(--color-border); box-shadow: var(--shadow-1);
+  transition: border-color 0.15s, box-shadow 0.2s, transform 0.2s var(--ease-out);
+}
+.hub-tile:hover { border-color: color-mix(in srgb, var(--color-primary) 40%, var(--color-border)); box-shadow: var(--shadow-2); transform: translateY(-2px); }
+.hub-tile .icon { flex: none; width: 22px; height: 22px; color: var(--color-primary); }
+.hub-door { min-height: 84px; font-size: 1.1rem; }
+.hub-daily > span { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.hub-daily small { color: var(--color-text-muted); font-weight: 500; font-size: 0.84rem; }
+.report-daily { margin-bottom: 20px; }
+.hub-door .icon { width: 28px; height: 28px; }
+@media (max-width: 640px) {
+  .hub-actions { width: 100%; }
+  .hub-actions .hub-main { flex: 1 1 100%; justify-content: center; }
+  .hub-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
 /* Books check (Reports): each figure worked out two ways. */
 .books-summary { border-left: 6px solid var(--color-primary); margin-bottom: 16px; }
 .books-summary.books-bad { border-left-color: var(--color-danger); }
