@@ -7,3 +7,5 @@
 set -e
 DB_STATEMENT_TIMEOUT_MS=0 flask db upgrade
 flask bootstrap-super-admin || true
+# The pincode table (nearest warehouse) - from the bundled file; quick when up to date.
+flask pincodes-load || true

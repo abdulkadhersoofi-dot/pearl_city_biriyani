@@ -7,6 +7,7 @@
   {% include "_theme_boot.html" %}
   <link rel="icon" href="{{ url_for('static', filename='img/arfa-logo.jpg') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+  <script defer src="{{ url_for('static', filename='js/actions.js') }}"></script>
   {% if login_tenant %}<style>{{ tenant_theme_css(login_tenant) }}</style>{% endif %}
 </head>
 {# Sign-in, two-step and password pages (redesign stage 6): the brand on

@@ -94,7 +94,10 @@ def _normalize_optional_fields(product: Product) -> None:
 def _apply_category_selection(form: ProductForm, product: Product) -> None:
     category_id = form.category_id.data or None
     sub_category_id = form.sub_category_id.data or None
+    # populate_obj left the pickers' text ("" for none) on the item - both
+    # become ids (or None) before anything below can query and so flush it.
     product.category_id = int(category_id) if category_id else None
+    product.sub_category_id = None
     sub_category = (
         tenant_query(SubCategory).filter_by(id=int(sub_category_id)).first() if sub_category_id else None
     )
@@ -133,11 +136,11 @@ def new_product():
     if form.validate_on_submit():
         product = Product(tenant_id=current_user.tenant_id)
         form.populate_obj(product)
+        _apply_category_selection(form, product)
         _restore_switched_off(product, dict(_NEW_ITEM_DEFAULTS))
         if not tenant.has_feature("favourites"):
             product.is_favourite = False
         _normalize_optional_fields(product)
-        _apply_category_selection(form, product)
         try:
             product.image_id = save_uploaded_image(form.image.data, square_size=PRODUCT_IMAGE_SIZE)
         except UploadError as exc:
@@ -165,12 +168,17 @@ def edit_product(product_id):
     if form.validate_on_submit():
         was_favourite = product.is_favourite
         before = _snapshot_module_fields(product)
-        form.populate_obj(product)
-        _restore_switched_off(product, before)
-        if not current_user.tenant.has_feature("favourites"):
-            product.is_favourite = was_favourite  # the box wasn't on the page
-        _normalize_optional_fields(product)
-        _apply_category_selection(form, product)
+        # Nothing is written while the form's raw values are on the item:
+        # a query here (a module check) would otherwise flush them as they
+        # are - a blank category is "" in a number column, which failed
+        # every save of an item without one.
+        with db.session.no_autoflush:
+            form.populate_obj(product)
+            _apply_category_selection(form, product)
+            _restore_switched_off(product, before)
+            if not current_user.tenant.has_feature("favourites"):
+                product.is_favourite = was_favourite  # the box wasn't on the page
+            _normalize_optional_fields(product)
         if form.image.data and form.image.data.filename:
             try:
                 new_image_id = save_uploaded_image(form.image.data, square_size=PRODUCT_IMAGE_SIZE)

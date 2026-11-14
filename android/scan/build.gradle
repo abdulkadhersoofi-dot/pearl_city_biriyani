@@ -1,0 +1,101 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+}
+
+// ARFA Scan - the phone app for scanning purchase and expense bills
+// (owners and branches). A separate app from ARFA Counter (android/app),
+// built and published by the same workflow (.github/workflows/android-apk.yml).
+
+def envOr = { String name, String fallback ->
+    def value = System.getenv(name)
+    return (value == null || value.isEmpty()) ? fallback : value
+}
+
+android {
+    namespace 'com.arfa.scan'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.arfa.scan"
+        minSdk 26
+        targetSdk 34
+        def ciVersionCode = (System.getenv("ANDROID_VERSION_CODE") ?: "1").toInteger()
+        versionCode ciVersionCode
+        versionName "1.${ciVersionCode}"
+        buildConfigField "String", "SERVER_BASE_URL", "\"https://arfa.live\""
+        buildConfigField "String", "RELEASE_REPO", "\"abdulkadhersoofi-dot/pearl_city_biriyani\""
+        // Phones only (no emulator x86 copies) for any native library left.
+        ndk {
+            abiFilters 'arm64-v8a', 'armeabi-v7a'
+        }
+    }
+
+    // The same shared key as ARFA Counter (a different app id, so the two
+    // never clash), so every build installs over the last one.
+    signingConfigs {
+        shared {
+            storeFile file(envOr("ANDROID_KEYSTORE_FILE", "../app/arfa-counter-debug.keystore"))
+            storePassword envOr("ANDROID_KEYSTORE_PASSWORD", "android")
+            keyAlias envOr("ANDROID_KEY_ALIAS", "arfacounter")
+            keyPassword envOr("ANDROID_KEY_PASSWORD", "android")
+        }
+    }
+
+    // The published APK is the release build: R8 drops the code and
+    // resources the app never uses (most of AndroidX and Material), which
+    // is most of its size. Signed with the same shared key as before, so it
+    // installs over the debug builds phones already have.
+    buildTypes {
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            signingConfig signingConfigs.shared
+        }
+        debug {
+            signingConfig signingConfigs.shared
+        }
+    }
+
+    buildFeatures {
+        buildConfig true
+        viewBinding true
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+}
+
+dependencies {
+    implementation 'androidx.core:core-ktx:1.13.1'
+    implementation 'androidx.activity:activity-ktx:1.9.0'
+    implementation 'androidx.appcompat:appcompat:1.7.0'
+    implementation 'com.google.android.material:material:1.12.0'
+    implementation 'androidx.recyclerview:recyclerview:1.3.2'
+    implementation 'androidx.swiperefreshlayout:swiperefreshlayout:1.1.0'
+    implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.7.0'
+    implementation 'androidx.work:work-runtime-ktx:2.9.1'
+    implementation 'androidx.security:security-crypto:1.1.0-alpha06'
+    implementation 'androidx.exifinterface:exifinterface:1.3.7'
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1'
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.8.1'
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+    implementation 'io.coil-kt:coil:2.6.0'
+    implementation 'com.davemorrissey.labs:subsampling-scale-image-view-androidx:3.10.0'
+
+    // On the phone: Google's document scanner (edges, auto-capture,
+    // straighten, crop, pages - the camera screen), its text recognition
+    // and its QR reader. None of them sends anything anywhere. All three are
+    // the Google Play services versions: the reading models live once in Play
+    // services (fetched at install - AndroidManifest's DEPENDENCIES), not
+    // inside this APK. The same reading, about 25 MB less to download.
+    implementation 'com.google.android.gms:play-services-mlkit-document-scanner:16.0.0-beta1'
+    implementation 'com.google.android.gms:play-services-mlkit-text-recognition:19.0.1'
+    implementation 'com.google.android.gms:play-services-mlkit-barcode-scanning:18.3.1'
+}

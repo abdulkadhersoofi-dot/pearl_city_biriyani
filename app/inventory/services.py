@@ -260,16 +260,23 @@ def void_transfer(transfer: StockTransfer, user, reason: str) -> None:
 
 # --- locations --------------------------------------------------------------------------
 
-def create_location(tenant, name: str, kind: LocationKind, address: str | None = None) -> StockLocation:
+def create_location(tenant, name: str, kind: LocationKind, address: str | None = None,
+                    pincode: str | None = None) -> StockLocation:
     name = (name or "").strip()[:100]
     if not name:
         raise ledger.StockError("Give the location a name.")
+    digits = "".join(c for c in str(pincode or "") if c.isdigit())
+    if pincode and str(pincode).strip() and len(digits) != 6:
+        raise ledger.StockError("A pincode is 6 digits.")
+    if kind == LocationKind.GODOWN and tenant.has_feature("warehouse_dispatch") and not digits:
+        raise ledger.StockError("Give the warehouse's pincode - orders default to the warehouse nearest the customer.")
     if StockLocation.query.filter(StockLocation.tenant_id == tenant.id, db.func.lower(StockLocation.name) == name.lower()).first():
         raise ledger.StockError(f"There's already a location called {name}.")
     if kind == LocationKind.BRANCH:
         raise ledger.StockError("Branch locations are created automatically for each branch login.")
     ledger.default_location(tenant.id)  # the main store always exists first
-    location = StockLocation(tenant_id=tenant.id, name=name, kind=kind, address=(address or "").strip() or None)
+    location = StockLocation(tenant_id=tenant.id, name=name, kind=kind, address=(address or "").strip() or None,
+                             pincode=digits or None)
     db.session.add(location)
     db.session.flush()
     return location

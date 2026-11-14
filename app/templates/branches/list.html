@@ -5,6 +5,7 @@
 <div class="page-header">
   <h1>Branches</h1>
   <div class="row">
+    <a href="{{ url_for('apps.index') }}" class="btn btn-secondary">{{ icon('smartphone') }}Phone apps</a>
     {% if has_feature('cashier_pin') %}<a href="{{ url_for('branches.cashiers') }}" class="btn btn-secondary">Cashiers &amp; PINs</a>{% endif %}
     <a href="{{ url_for('branches.new_branch') }}" class="btn btn-primary">+ Add branch</a>
   </div>
@@ -13,7 +14,7 @@
 
 <div class="table-wrap card">
   <table>
-    <thead><tr><th>Name</th><th>Type</th><th>Role</th><th>Email</th><th>Phone</th><th>Status</th><th></th></tr></thead>
+    <thead><tr><th>Name</th><th>Type</th><th>Role</th><th>Email</th><th>Phone</th>{% if has_feature('pos') %}<th>Billing phones</th>{% endif %}<th>Status</th><th></th></tr></thead>
     <tbody>
     {% for u in branches %}
       <tr>
@@ -22,6 +23,10 @@
         <td>{{ roles[u.branch_role].label if u.branch_role in roles else 'Own set' }}</td>
         <td>{{ u.email }}</td>
         <td>{{ u.phone or '-' }}</td>
+        {% if has_feature('pos') %}
+        {% set ph = by_branch[u.id] %}{% set ph_on = ph|selectattr('is_active')|list|length %}
+        <td><a href="#phones-{{ u.id }}">{{ ph_on }} on{% if ph|length > ph_on %} · {{ ph|length - ph_on }} off{% endif %}</a></td>
+        {% endif %}
         <td>{{ 'Active' if u.is_active else 'Inactive' }}</td>
         <td class="row">
           <a href="{{ url_for('branches.branch_stock', user_id=u.id) }}">Stock</a>
@@ -30,10 +35,7 @@
           {% if u.is_active %}
           {# The ARFA Counter app: a one-time code signs a phone in as this branch. #}
           {% if has_feature('pos') %}
-          <form method="post" action="{{ url_for('branches.pair_phone', user_id=u.id) }}">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button class="btn btn-secondary btn-sm">{{ icon('smartphone', 'icon-sm') }}Pair a phone</button>
-          </form>
+          <a href="#phones-{{ u.id }}" class="btn btn-secondary btn-sm">{{ icon('smartphone', 'icon-sm') }}Billing phones</a>
           {% endif %}
           <form method="post" action="{{ url_for('branches.deactivate_branch', user_id=u.id) }}"
                 data-confirm="Deactivate {{ u.name }}? They will no longer be able to sign in." data-danger>
@@ -49,7 +51,7 @@
         </td>
       </tr>
       <tr>
-        <td colspan="7" style="padding:0;">
+        <td colspan="{{ 8 if has_feature('pos') else 7 }}" style="padding:0;">
           <details class="card m-0 mb-12">
             <summary>Today's stock{% if stock_by_branch[u.id] %} ({{ stock_by_branch[u.id]|length }} item{{ 's' if stock_by_branch[u.id]|length != 1 }}){% endif %}</summary>
             {% set status = stock_by_branch[u.id] %}
@@ -74,33 +76,31 @@
         </td>
       </tr>
     {% else %}
-      <tr><td colspan="7" class="empty-state">No branches yet. Add your first one.</td></tr>
+      <tr><td colspan="{{ 8 if has_feature('pos') else 7 }}" class="empty-state">No branches yet. Add your first one.</td></tr>
     {% endfor %}
     </tbody>
   </table>
 </div>
 
 {% if has_feature('pos') %}
-{# Phones and tablets that bill as a branch (the ARFA Counter app), and any
-   browser counter registered for offline billing. #}
-<section class="card mt-20" id="sec-devices">
-  <div class="card-head">
-    <div><h2 class="m-0">Counter phones &amp; tablets</h2>
-      <p class="text-muted m-0">Each one bills as its branch, in its own offline series. Switch one off and it stops at once - its bills stay.</p></div>
-  </div>
-  {% if not has_feature('offline_pos') %}
-  <p class="devices-note">Phones bill while online. To keep billing without internet, switch on <strong>Offline billing</strong>
-    under Settings &gt; Modules.</p>
-  {% endif %}
-  {% if devices %}
+{# Phones and tablets that bill as a branch (the ARFA Counter app), under
+   their branch - a branch may have as many as it needs, each with its own
+   offline bill series - and any browser counter of another login. #}
+{% macro device_rows(list) %}
   <div class="table-wrap">
     <table class="console-table">
-      <thead><tr><th>Device</th><th>Branch</th><th>Kind</th><th>Last seen</th><th>Status</th><th><span class="sr-only">Switch</span></th></tr></thead>
+      <thead><tr><th>Phone</th><th>Kind</th><th>Last seen</th><th>Status</th><th aria-label="Switch on or off"></th></tr></thead>
       <tbody>
-        {% for d in devices %}
+        {% for d in list %}
         <tr>
-          <td><strong>{{ d.name }}</strong><small class="block text-muted">Series {{ d.code }}</small></td>
-          <td>{{ d.user.name }}</td>
+          <td>
+            <form method="post" action="{{ url_for('branches.device_rename', device_id=d.id) }}" class="row gap-6 device-name">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="text" name="name" value="{{ d.name }}" maxlength="60" required class="field-input" aria-label="Name of {{ d.name }}">
+              <button class="btn btn-quiet btn-sm">Rename</button>
+            </form>
+            <small class="block text-muted">Bill series {{ d.code }}</small>
+          </td>
           <td>{{ {'android': 'ARFA Counter app', 'app': 'Counter app (browser)'}.get(d.platform, 'Browser counter') }}</td>
           <td>{{ d.last_seen_at|ist('%d %b %H:%M') if d.last_seen_at else '-' }}</td>
           <td>{% if d.is_active %}<span class="status-badge status-issued">On</span>{% else %}<span class="status-badge status-draft">Off</span>{% endif %}</td>
@@ -117,8 +117,44 @@
       </tbody>
     </table>
   </div>
-  {% else %}
-  <p class="text-muted m-0">None yet. Tap <strong>Pair a phone</strong> next to a branch, then type the code in the ARFA Counter app on that phone.</p>
+{% endmacro %}
+<section class="card mt-20" id="sec-devices">
+  <div class="card-head">
+    <div><h2 class="m-0">Billing phones &amp; tablets</h2>
+      <p class="text-muted m-0">A branch can bill on as many phones as it needs - all at the same time, each with its own offline bill series. One code pairs several phones: type it on each. Switch one off and it stops at once - its bills stay.</p></div>
+  </div>
+  {% if not has_feature('offline_pos') %}
+  <p class="devices-note">Phones bill while online. To keep billing without internet, switch on <strong>Offline billing</strong>
+    under Settings &gt; Modules.</p>
+  {% endif %}
+  {% for u in branches if u.is_active or by_branch[u.id] %}
+  {% set ph = by_branch[u.id] %}{% set ph_on = ph|selectattr('is_active')|list|length %}
+  <div class="phone-group" id="phones-{{ u.id }}">
+    <div class="phone-group-head">
+      <h3 class="m-0">{{ u.name }} <small class="text-muted">{{ ph_on }} phone{{ 's' if ph_on != 1 }} on{% if ph|length > ph_on %}, {{ ph|length - ph_on }} off{% endif %}</small></h3>
+      {% if u.is_active %}
+      <form method="post" action="{{ url_for('branches.pair_phone', user_id=u.id) }}" class="row gap-6 items-center">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label class="row gap-6 items-center"><span>Add</span>
+          <input type="number" name="phones" value="1" min="1" max="{{ max_phones }}" class="field-input phones-count" aria-label="How many phones to pair for {{ u.name }}">
+          <span>phone(s)</span></label>
+        <button class="btn btn-secondary btn-sm">{{ icon('smartphone', 'icon-sm') }}Get pairing code</button>
+      </form>
+      {% endif %}
+    </div>
+    {% if ph %}{{ device_rows(ph) }}{% else %}
+    <p class="text-muted m-0">No phones yet. Get a pairing code, then type it in the ARFA Counter app on each phone.</p>
+    {% endif %}
+  </div>
+  {% endfor %}
+  {% if other_devices %}
+  <div class="phone-group" id="phones-other">
+    <div class="phone-group-head"><h3 class="m-0">Other counters <small class="text-muted">browser counters of other logins</small></h3></div>
+    {{ device_rows(other_devices) }}
+  </div>
+  {% endif %}
+  {% if not branches %}
+  <p class="text-muted m-0">Add a branch first - phones bill as a branch.</p>
   {% endif %}
 </section>
 {% endif %}

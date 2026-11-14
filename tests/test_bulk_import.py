@@ -139,7 +139,76 @@ def test_confirm_without_an_upload_does_nothing(client, db, client_admin):
 def test_non_excel_upload_is_rejected_cleanly(client, db, client_admin):
     _login(client, client_admin.email, "ClientSecret123")
     resp = _upload(client, "products", BytesIO(b"not,a,spreadsheet"), "items.csv")
+    assert resp.status_code == 302          # a CSV, but without the item columns
+    resp = _upload(client, "products", BytesIO(b"\x00\x01\x02 binary junk"), "photo.jpg", )
     assert resp.status_code == 302
+    resp = _upload(client, "products", BytesIO(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1rest"), "old.xls")
+    assert resp.status_code == 302
+    assert b"old Excel (.xls)" in client.get("/bulk/products/").data
+
+
+# --- CSV ---------------------------------------------------------------------------------------
+
+def test_csv_template_has_the_same_headings(client, db, client_admin):
+    _login(client, client_admin.email, "ClientSecret123")
+    resp = client.get("/bulk/products/template.csv")
+    assert resp.status_code == 200 and resp.mimetype == "text/csv"
+    assert resp.data.startswith("\ufeff".encode())                 # Excel opens it as UTF-8
+    headers = resp.data.decode("utf-8-sig").strip().split(",")
+    assert headers == [c.header + (" *" if c.required else "") for c in PRODUCT_COLUMNS]
+
+
+def test_a_filled_in_csv_template_imports(client, db, tenant, client_admin):
+    _login(client, client_admin.email, "ClientSecret123")
+    template = client.get("/bulk/products/template.csv").data.decode("utf-8-sig").strip()
+    body = template + "\r\n" + "\r\n".join([
+        "Masala Dosa,2106,5,120,Yes,NOS,No,,,,,MD-1,,,,,,,,Crispy",
+        "Coffee,901,5%,\"Rs. 1,020\",,,,,,,,,,,,,,,,",       # Excel dropped the 0 of 0901
+        "Bad,2106,7,10,,,,,,,,,,,,,,,,",
+    ]) + "\r\n"
+    resp = _upload(client, "products", BytesIO(body.encode("utf-8")), "items.csv")
+    assert resp.status_code == 200
+    page = resp.data.decode()
+    assert "2 to add" in page and "1 with problems" in page
+    client.post("/bulk/products/confirm")
+    dosa = Product.query.filter_by(tenant_id=tenant.id, name="Masala Dosa").one()
+    assert dosa.sku == "MD-1" and dosa.sale_price == Decimal("120.00") and dosa.description == "Crispy"
+    coffee = Product.query.filter_by(tenant_id=tenant.id, name="Coffee").one()
+    assert coffee.hsn_or_sac_code == "0901" and coffee.gst_rate == Decimal("5") and coffee.sale_price == Decimal("1020.00")
+
+
+def test_csv_saved_by_excel_on_windows_semicolons_and_cp1252(client, db, tenant, client_admin):
+    _login(client, client_admin.email, "ClientSecret123")
+    body = "Item name;HSN/SAC code;GST rate %;Sale price;Description\r\nCaf\u00e9 latte;2101;18;150;\u201cSpecial\u201d\r\n"
+    resp = _upload(client, "products", BytesIO(body.encode("cp1252")), "items.csv")
+    assert b"1 to add" in resp.data
+    client.post("/bulk/products/confirm")
+    item = Product.query.filter_by(tenant_id=tenant.id).one()
+    assert item.name == "Caf\u00e9 latte" and item.description == "\u201cSpecial\u201d"
+
+
+def test_a_barcode_excel_shortened_in_a_csv_is_refused(client, db, tenant, client_admin):
+    _login(client, client_admin.email, "ClientSecret123")
+    body = "Item name,HSN/SAC code,GST rate %,Sale price,Barcode\nSoap,3401,18,40,8.90123E+12\n"
+    resp = _upload(client, "products", BytesIO(body.encode()), "items.csv")
+    assert b"Excel shortened this number" in resp.data and b"1 with problems" in resp.data
+
+
+def test_customers_import_from_csv_too(client, db, tenant, client_admin):
+    _login(client, client_admin.email, "ClientSecret123")
+    body = "Customer name,GSTIN,State,City\nRavi Traders,33AAAAA0000A1Z5,,Chennai\n"
+    resp = _upload(client, "customers", BytesIO(body.encode()), "customers.csv")
+    assert b"1 to add" in resp.data
+    client.post("/bulk/customers/confirm")
+    assert Customer.query.filter_by(tenant_id=tenant.id, name="Ravi Traders").one().city == "Chennai"
+
+
+def test_the_items_page_and_new_menu_lead_to_bulk_add(client, db, tenant, client_admin):
+    _login(client, client_admin.email, "ClientSecret123")
+    assert b"Bulk add (Excel / CSV)" in client.get("/products/").data
+    page = client.get("/bulk/products/").data
+    assert b"Download blank template (CSV)" in page and b'accept=".xlsx,.csv' in page
+    assert b"Items in bulk (Excel / CSV)" in client.get("/invoices/").data
 
 
 def test_missing_required_column_is_reported(client, db, client_admin):

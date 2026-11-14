@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}SAP link - {{ firm_name }}{% endblock %}
+{% set f = form or {} %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>SAP link</h1>
+    <p class="text-muted mt-0">ARFA fetches purchase orders from your SAP S/4HANA so a scanned supplier bill finds its order.
+      It only reads: nothing in SAP is ever changed from here.</p>
+  </div>
+  {% if conn %}
+  <div class="row gap-8">
+    <form method="post" action="{{ url_for('sap.test') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn btn-secondary">Test</button></form>
+    <form method="post" action="{{ url_for('sap.fetch') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn btn-primary">Fetch now</button></form>
+  </div>
+  {% endif %}
+</div>
+
+{% if conn %}
+<div class="stat-grid mb-16">
+  <a class="card sap-stat" href="{{ url_for('purchases.orders') }}"><span class="sap-stat-n">{{ orders }}</span><span>SAP order{{ '' if orders == 1 else 's' }} in ARFA</span></a>
+  <a class="card sap-stat {{ 'is-warn' if to_map }}" href="{{ url_for('sap.mapping') }}"><span class="sap-stat-n">{{ to_map }}</span><span>SAP code{{ '' if to_map == 1 else 's' }} to match</span></a>
+  <a class="card sap-stat {{ 'is-warn' if held }}" href="{{ url_for('sap.mapping') }}"><span class="sap-stat-n">{{ held }}</span><span>order{{ '' if held == 1 else 's' }} waiting for a supplier</span></a>
+  <div class="card sap-stat {{ 'is-bad' if conn.last_pull_ok is false }}">
+    <span class="sap-stat-n sap-stat-when">{% if conn.last_pull_at %}{{ conn.last_pull_at|ist('%d %b, %H:%M') }}{% else %}Never{% endif %}</span>
+    <span>{% if conn.last_pull_ok is false %}Last fetch failed{% elif conn.last_pull_at %}Last fetch{% else %}Not fetched yet{% endif %}</span></div>
+</div>
+{% if conn.last_pull_ok is false %}<p class="card sap-error" role="alert"><strong>The last fetch failed:</strong> {{ conn.last_pull_message }}</p>{% endif %}
+{% endif %}
+
+<form method="post" class="card stack" autocomplete="off">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <h2 class="m-0 teach-h2">Connection</h2>
+  <p class="text-muted m-0">Your SAP team gives you these. Ask for a technical user that may only <em>read</em> purchase orders{{ ' and suppliers' }}.</p>
+  <div class="form-grid">
+    <label class="field"><span class="field-label">SAP address</span>
+      <input class="field-input" name="base_url" required placeholder="https://my400000-api.s4hana.cloud.sap" value="{{ f.get('base_url', conn.base_url if conn else '') }}"></label>
+    <label class="field"><span class="field-label">Purchase order service</span>
+      {% set api = f.get('api', conn.api if conn else 'v2') %}
+      <select class="field-input" name="api">
+        <option value="v2" {{ 'selected' if api == 'v2' }}>API_PURCHASEORDER_PROCESS_SRV (OData V2)</option>
+        <option value="v4" {{ 'selected' if api == 'v4' }}>API_PURCHASEORDER_2 (OData V4, newer)</option>
+      </select></label>
+    <label class="field"><span class="field-label">Sign-in</span>
+      {% set auth = f.get('auth', conn.auth if conn else 'basic') %}
+      <select class="field-input" name="auth">
+        <option value="basic" {{ 'selected' if auth == 'basic' }}>User and password</option>
+        <option value="oauth" {{ 'selected' if auth == 'oauth' }}>OAuth client (client credentials)</option>
+      </select></label>
+    <label class="field"><span class="field-label">User, or OAuth client id</span>
+      <input class="field-input" name="username" required maxlength="120" value="{{ f.get('username', conn.username if conn else '') }}"></label>
+    <label class="field"><span class="field-label">Password, or client secret</span>
+      <input class="field-input" type="password" name="secret" autocomplete="new-password" placeholder="{{ 'Saved - leave empty to keep it' if conn and conn.secrets else '' }}" {{ '' if conn and conn.secrets else 'required' }}></label>
+    <label class="field"><span class="field-label">Token address (OAuth only)</span>
+      <input class="field-input" name="token_url" placeholder="https://.../oauth/token" value="{{ f.get('token_url', conn.token_url if conn else '') or '' }}"></label>
+    <label class="field"><span class="field-label">SAP client (optional)</span>
+      <input class="field-input" name="sap_client" maxlength="3" inputmode="numeric" placeholder="100" value="{{ f.get('sap_client', conn.sap_client if conn else '') or '' }}"></label>
+  </div>
+  <h2 class="m-0 teach-h2">Which orders</h2>
+  <div class="form-grid">
+    <label class="field"><span class="field-label">Company code (optional)</span>
+      <input class="field-input" name="company_code" maxlength="10" value="{{ f.get('company_code', conn.company_code if conn else '') or '' }}"></label>
+    <label class="field"><span class="field-label">Purchasing organisation (optional)</span>
+      <input class="field-input" name="purchasing_org" maxlength="10" value="{{ f.get('purchasing_org', conn.purchasing_org if conn else '') or '' }}"></label>
+    <label class="field"><span class="field-label">Plant (optional)</span>
+      <input class="field-input" name="plant" maxlength="10" value="{{ f.get('plant', conn.plant if conn else '') or '' }}"></label>
+    <label class="field"><span class="field-label">Orders from (optional)</span>
+      <input class="field-input" type="date" name="since" value="{{ f.get('since', conn.since.isoformat() if conn and conn.since else '') }}"></label>
+    <label class="field"><span class="field-label">Bought under</span>
+      {% set gid = (f.get('gstin_id') or (conn.gstin_id if conn else ''))|string %}
+      <select class="field-input" name="gstin_id">
+        {% for g in gstins %}<option value="{{ g.id }}" {{ 'selected' if g.id|string == gid }}>{{ g.gstin or 'Unregistered' }}{% if g.state_name %} - {{ g.state_name }}{% endif %}</option>{% endfor %}
+      </select></label>
+  </div>
+  {% set lookup = (f.get('lookup_partners') if form else (conn.lookup_partners if conn else true)) %}
+  {% set on = (f.get('enabled') if form else (conn.enabled if conn else false)) %}
+  <label class="row gap-8 items-center"><input type="checkbox" name="lookup_partners" value="1" {{ 'checked' if lookup }}>
+    <span>Look up each supplier's name and GSTIN in SAP, to match suppliers by GSTIN</span></label>
+  <label class="row gap-8 items-center"><input type="checkbox" name="enabled" value="1" {{ 'checked' if on }}>
+    <span>Fetch by itself through the day (as well as when you press Fetch now)</span></label>
+  <div><button class="btn btn-primary">Save</button></div>
+</form>
+
+{% if calls %}
+<section class="card mt-20">
+  <h2 class="m-0 teach-h2">Calls made to SAP</h2>
+  <p class="text-muted mt-4">Every request ARFA made, newest first. The login and SAP's answers are never kept here.</p>
+  <div class="table-wrap">
+    <table class="teach-rows">
+      <thead><tr><th>When</th><th>For</th><th>Address</th><th class="num">Answer</th><th class="num">Records</th><th class="num">Time</th><th>Problem</th></tr></thead>
+      <tbody>
+      {% for c in calls %}
+        <tr><td>{{ c.at|ist('%d %b, %H:%M:%S') }}</td><td>{{ c.purpose }}</td><td class="sap-path">{{ c.path }}</td>
+          <td class="num">{{ c.status or '-' }}</td><td class="num">{{ c.records if c.records is not none else '-' }}</td>
+          <td class="num">{{ c.ms }} ms</td><td>{{ c.error or '' }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+{% endblock %}

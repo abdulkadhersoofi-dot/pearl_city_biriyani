@@ -9,6 +9,7 @@ class Product(db.Model, TenantScopedMixin, TimestampMixin):
         # never collide - only two items claiming the same code do.
         db.UniqueConstraint("tenant_id", "sku", name="uq_products_tenant_sku"),
         db.UniqueConstraint("tenant_id", "barcode", name="uq_products_tenant_barcode"),
+        db.Index("ix_products_tenant_model_no", "tenant_id", "model_no"),
     )
 
     id = db.Column(db.Integer, primary_key=True)
@@ -45,6 +46,9 @@ class Product(db.Model, TenantScopedMixin, TimestampMixin):
 
     sku = db.Column(db.String(64))
     barcode = db.Column(db.String(64))
+    # The maker's model number (printed on the box label, e.g. "AR18TY3QBWK") -
+    # the warehouse scanner matches labels against it.
+    model_no = db.Column(db.String(64))
     min_stock_level = db.Column(db.Numeric(12, 3))
     # A service (repair labour, consultation) - SAC code, never stocked.
     is_service = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())

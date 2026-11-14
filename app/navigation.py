@@ -143,10 +143,14 @@ def _client_groups() -> list[Group]:
                  keywords="products catalogue price list categories"),
             Link("Stock", "inventory.index", "warehouse", feature="inventory", blueprints=("inventory",),
                  keywords="inventory transfer adjustment godown location"),
+            Link("Warehouse", "warehouse.queue", "truck", feature="warehouse_dispatch", blueprints=("warehouse",),
+                 keywords="dispatch picking pickers serial scan ready to invoice receive count app logins"),
             Link("Purchases", "purchases.bills", "truck", feature="purchases", blueprints=("purchases",),
                  keywords="supplier purchase bill order gstr-2b"),
             Link("Expenses", "expenses.index", "wallet", feature="expenses", blueprints=("expenses",),
                  keywords="rent salary electricity petty cash"),
+            Link("Scan bills", "scan.index", "scan-line", feature="doc_scan", blueprints=("scan",),
+                 keywords="photo camera upload invoice parser ai read bill"),
             Link("Metal rates", "jewellery.rates", "trending-up", feature="jewellery",
                  endpoints=("jewellery.rates",), keywords="gold silver rate today"),
         )),
@@ -187,6 +191,14 @@ def _offline_review() -> bool:
     return bool(current_user.is_client_admin and offline_review_on(current_user.tenant))
 
 
+def _warehouse_computer() -> bool:
+    from flask_login import current_user
+
+    from app.warehouse.routes import computer_location
+
+    return computer_location(current_user) is not None
+
+
 def _branch_groups() -> list[Group]:
     """A branch login's menu: its counter and the screens around it. Every
     entry follows the business's modules, what is hidden at this counter
@@ -205,6 +217,19 @@ def _branch_groups() -> list[Group]:
                  endpoints=("jobs.index", "jobs.new", "jobs.view"), keywords="repair service"),
             Link("Warranty check", "jobs.warranty", "shield-check", feature="electronics",
                  endpoints=("jobs.warranty",), keywords="imei serial"),
+            Link("Ready to invoice", "warehouse.queue", "truck", feature="warehouse_dispatch",
+                 check=_warehouse_computer, blueprints=("warehouse",), keywords="warehouse dispatch picked"),
+        )),
+        # A branch login has three doors: Counter, New sale, Today. The orders
+        # New sale made stay one tap away under it.
+        Group("sell", "New sale", (
+            Link("New sale", "sell.new_sale", "receipt-text", feature="warehouse_dispatch",
+                 also=("sales_documents",), endpoints=("sell.new_sale", "sell.sale"),
+                 keywords="sell bill order invoice"),
+            Link("Sales orders", "sales.documents", "file-text", feature="warehouse_dispatch",
+                 also=("sales_documents",), kwargs={"kind": "sales_order"},
+                 endpoints=("sales.documents", "sales.new_document", "sales.view_document"),
+                 keywords="order warehouse dispatch"),
         )),
         Group("today", "Today", (
             Link("Day-book", "pos.day_book", "list", feature="pos", permission="view_reports",
@@ -221,7 +246,8 @@ def _branch_groups() -> list[Group]:
 
 def _branch_has_screens() -> bool:
     """Has this branch login anything to open beside the counter itself?"""
-    return any(link.visible() for link in _branch_groups()[0].links[1:])
+    counter, sell = _branch_groups()[:2]
+    return any(link.visible() for link in counter.links[1:] + sell.links)
 
 
 def _groups_for(user) -> list[Group]:
@@ -263,8 +289,13 @@ def _admin_groups(user) -> list[Group]:
                 Link("Packages", "tenants.packages", "layout-grid",
                      endpoints=("tenants.packages", "tenants.package_new", "tenants.package_edit", "tenants.packages_compare"),
                      keywords="plans modules subscription tiers"),
+                Link("Sign-in domains", "tenants.sign_in_domains", "key-round",
+                     endpoints=("tenants.sign_in_domains", "tenants.sign_in_domain"),
+                     keywords="vvip custom domain login page"),
                 Link("Billing", "subscriptions.index", "banknote", blueprints=("subscriptions",),
                      keywords="subscriptions invoices fees"),
+                Link("Teach the bill reader", "scan.teach_all", "scan-line", endpoints=("scan.teach_all",),
+                     keywords="scan bills lessons notes reader ai"),
                 Link("Audit log", "tenants.audit_log", "list", endpoints=("tenants.audit_log",)),
             )),
         ]
@@ -289,6 +320,28 @@ def _admin_groups(user) -> list[Group]:
     ]
 
 
+# --- simple or classic -----------------------------------------------------------------------------
+
+MENU_COOKIE = "arfa_menu"
+MENU_STYLES = ("simple", "classic")
+
+
+def menu_style(user) -> str:
+    """"simple": the seven doors (app/doors.py). "classic": the grouped menu
+    above. A Client Admin picks on the account menu and it is remembered on
+    that device (a cookie); otherwise MENU_DEFAULT decides. The firm's
+    console and branch logins always have their own menus."""
+    if not (getattr(user, "is_authenticated", False) and user.is_client_admin):
+        return "classic"
+    from flask import current_app
+
+    chosen = request.cookies.get(MENU_COOKIE)
+    if chosen in MENU_STYLES:
+        return chosen
+    default = current_app.config.get("MENU_DEFAULT", "simple")
+    return default if default in MENU_STYLES else "simple"
+
+
 def has_menu(user) -> bool:
     if not getattr(user, "is_authenticated", False):
         return False
@@ -302,6 +355,10 @@ def menu_groups(user) -> list[dict]:
     empty groups dropped."""
     if not has_menu(user):
         return []
+    if menu_style(user) == "simple":
+        from app import doors
+
+        return [{"key": "doors", "label": "", "links": doors.menu_links()}]
     groups = _groups_for(user)
     out = []
     for group in groups:
@@ -314,6 +371,7 @@ def menu_groups(user) -> list[dict]:
 
 def _new_actions() -> list[Link]:
     return [
+        Link("Sale", "sell.new_sale", "receipt-text", keywords="new sale invoice order bill sell"),
         Link("Counter bill", "pos.terminal", "monitor", feature="pos", keywords="pos sale"),
         Link("Tax invoice", "invoicing.new_invoice", "receipt-text", keywords="invoice"),
         # (Credit / debit notes start from an issued invoice, not from here.)
@@ -321,8 +379,11 @@ def _new_actions() -> list[Link]:
              keywords="proforma sales order challan"),
         Link("Job card", "jobs.new", "wrench", feature="job_cards", keywords="repair"),
         Link("Item", "products.new_product", "package", keywords="product"),
+        Link("Items in bulk (Excel / CSV)", "bulk.index", "package", kwargs={"kind": "products"},
+             keywords="import upload excel csv template many products"),
         Link("Customer", "customers.new_customer", "users"),
         Link("Purchase bill", "purchases.new_bill", "truck", feature="purchases"),
+        Link("Scan a bill", "scan.index", "scan-line", feature="doc_scan", keywords="photo camera"),
         Link("Buy used goods", "margin.buy_new", "coins", feature="margin_scheme", keywords="second hand margin"),
         Link("Second-hand sale", "margin.sell_new", "receipt-text", feature="margin_scheme",
              keywords="margin scheme invoice"),
@@ -450,10 +511,21 @@ def palette_entries(user) -> list[dict]:
             if action.visible():
                 entry = action.as_entry("New")
                 entry["label"] = "New " + action.label[0].lower() + action.label[1:]
-                entries.append(entry)
+                add(entry)
         for group_label, link in _more_screens():
             if link.visible():
                 add(link.as_entry(group_label))
+        from app import doors
+
+        # The doors and every tile behind them: a screen is found under the
+        # name it has on its hub as well as its classic name.
+        for door in doors.visible_doors():
+            if door.key not in ("home", "reports"):
+                add({"label": door.label, "group": "Menu", "url": url_for(door.endpoint), "icon": door.icon,
+                     "keywords": door.intro})
+        for door_label, link in doors.all_tiles():
+            if link.visible():
+                add(link.as_entry(door_label))
     if user.is_client_admin or user.is_admin_hierarchy:
         add({"label": "Account security (two-step sign-in)", "group": "Account",
              "url": url_for("auth.account_security"), "icon": "shield-check", "keywords": "2fa totp password"})
@@ -468,6 +540,11 @@ def bottom_tabs(user) -> list[dict]:
     """The phone's bottom bar: Home, Sell, (New), Reports, More."""
     if not (getattr(user, "is_authenticated", False) and user.is_client_admin):
         return []
+    if menu_style(user) == "simple":
+        from app import doors
+
+        by_key = {d["key"]: d for d in doors.menu_links()}
+        return [by_key[k] for k in ("home", "sell", "reports")]
     home = (Link("Home", "reports.dashboard", "house", endpoints=("reports.dashboard",))
             if current_tenant_has("business_reports")
             else Link("Home", "invoicing.list_invoices", "house", blueprints=("invoicing",)))
@@ -503,6 +580,14 @@ def needs_you(tenant) -> list[dict]:
             items.append({"label": f"{failed} offline bill{'s' if failed != 1 else ''} could not be saved",
                           "detail": "Check and save or cancel them", "url": url_for("pos.offline_bills"),
                           "icon": "cloud-off", "tone": "bad"})
+    from app.finance import checks as books
+
+    for run in books.failing_now(tenant)[:2]:
+        items.append({"label": f"The figures for {run.period} don't agree ({run.failed_count} check"
+                               f"{'s' if run.failed_count != 1 else ''})",
+                      "detail": "See what differs in the Books check",
+                      "url": url_for("reports.books_check", period=run.period), "icon": "triangle-alert",
+                      "tone": "bad"})
     if tenant.has_feature("inventory"):
         from app.inventory.reports import low_stock
 

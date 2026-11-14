@@ -195,6 +195,27 @@
           <button type="submit" class="btn btn-secondary">{{ 'Replace logo' if tenant.logo_image_id else 'Upload logo' }}</button>
         </form>
         {% endif %}
+        {% if current_user.is_super_admin %}
+        <h3 class="mt-16">Sign-in domain</h3>
+        <p class="text-muted mt-0">Every login of this client - the owner's, staff and branch logins - can sign in at the
+          chosen domain; after signing in they carry on at {{ config.PUBLIC_URL }}.
+          {% if tenant.sign_in_domain %}Now: <a href="https://{{ tenant.sign_in_domain.domain }}" target="_blank" rel="noopener">https://{{ tenant.sign_in_domain.domain }}</a>{% if not tenant.sign_in_domain.is_active %} (switched off){% endif %}{% endif %}
+          <a href="{{ url_for('tenants.sign_in_domains') }}">Manage sign-in domains</a></p>
+        {% if sign_in_domains %}
+        <form method="post" action="{{ url_for('tenants.set_client_sign_in_domain', tenant_id=tenant.id) }}" class="row">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <select name="domain_id" class="field-input" aria-label="Sign-in domain">
+            <option value="">The main address only</option>
+            {% for d in sign_in_domains %}
+            <option value="{{ d.id }}" {{ 'selected' if tenant.sign_in_domain_id == d.id }}>{{ d.domain }}{{ '' if d.is_active else ' (switched off)' }}</option>
+            {% endfor %}
+          </select>
+          <button type="submit" class="btn btn-secondary">Save</button>
+        </form>
+        {% else %}
+        <p class="text-muted m-0">No sign-in domains yet - <a href="{{ url_for('tenants.sign_in_domains') }}">add one</a>.</p>
+        {% endif %}
+        {% endif %}
       </div>
     </div>
   </section>
@@ -223,7 +244,8 @@
               <td><strong>{{ u.name }}</strong><small class="block text-muted">{{ u.email }}</small></td>
               <td>{{ 'Owner (Client Admin)' if u.role.value == 'client_admin' else u.role_label }}</td>
               <td>{% if u.is_active %}<span class="status-badge status-issued">Active</span>{% else %}<span class="status-badge status-draft">Blocked</span>{% endif %}
-                {% if u.has_two_factor %}<span class="pill pill-muted">two-step</span>{% endif %}</td>
+                {% if u.has_two_factor %}<span class="pill pill-muted">two-step</span>{% endif %}
+                {% if locked_logins.get(u.id) %}<span class="pill pill-warn" title="Too many wrong passwords - resetting the password unlocks it">locked until {{ locked_logins[u.id]|ist('%H:%M') }}</span>{% endif %}</td>
               <td class="num">
                 {% if u.role.value in ('client_admin', 'staff') %}
                 <div class="row row-end gap-6">
@@ -234,11 +256,11 @@
                   </form>
                   {% endif %}
                   {% if console_can('reset_logins') %}
+                  <a href="{{ url_for('tenants.reset_client_password', tenant_id=tenant.id, user_id=u.id) }}" class="btn btn-secondary btn-sm">{{ icon('key-round') }}Reset password</a>
                   <div class="pop-wrap menu-wrap" x-data="{ open: false }" @click.outside="open = false" @keydown.escape.window="open = false">
                     <button type="button" class="btn btn-quiet btn-sm" @click="open = !open" aria-haspopup="menu" :aria-expanded="open.toString()"
                             aria-label="More for {{ u.name }}">{{ icon('ellipsis') }}</button>
                     <div class="pop pop-right more-pop" role="menu" x-show="open" x-transition.opacity x-cloak>
-                      <a href="{{ url_for('tenants.reset_client_password', tenant_id=tenant.id, user_id=u.id) }}" class="btn" role="menuitem">Reset password</a>
                       {% if u.has_two_factor %}
                       <form method="post" action="{{ url_for('tenants.reset_client_two_factor', tenant_id=tenant.id, user_id=u.id) }}"
                             data-confirm="Turn off two-step sign-in for {{ u.name }}? Only do this if they lost their phone." data-danger>
@@ -436,7 +458,7 @@
 {% endblock %}
 
 {% block scripts %}
-<script>
+<script nonce="{{ csp_nonce() }}">
 // The client page's tabs: one shows at a time; the URL keeps ?tab= so a
 // reload or a shared link opens the same one. An old #sec-... (or a
 // login's #login-N) link opens the tab holding it and scrolls there.

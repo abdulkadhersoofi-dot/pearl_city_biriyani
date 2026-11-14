@@ -26,8 +26,9 @@ ZERO = Decimal("0")
 UNIT_COST_PLACES = Decimal("0.0001")
 
 
-def compute_purchase_line(qty, rate, discount_percent, gst_rate, is_intra_state: bool) -> dict:
-    """A supplier's line, priced before tax as purchase bills are."""
+def compute_purchase_line(qty, rate, discount_percent, gst_rate, is_intra_state: bool, discount_flat=0) -> dict:
+    """A supplier's line, priced before tax as purchase bills are; a
+    rupee discount comes off after any percentage."""
     return compute_line(
         qty=qty,
         rate=rate,
@@ -36,6 +37,7 @@ def compute_purchase_line(qty, rate, discount_percent, gst_rate, is_intra_state:
         is_intra_state=is_intra_state,
         charge_gst=True,
         price_includes_tax=False,
+        discount_flat=discount_flat,
     )
 
 

@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Sign-in domains - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Sign-in domains</h1>
+    <p class="text-muted mt-0">Domains that show only a sign-in page - in a client's own look - for the clients you let
+      onto them. Every login of those clients (owner, staff, branches) can sign in there, and so can you; after
+      signing in, everyone carries on at {{ config.PUBLIC_URL }}.</p>
+  </div>
+</div>
+
+<section class="card">
+  <h2 class="mt-0">Add a domain</h2>
+  <form method="post" class="row">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="text" name="domain" class="field-input" placeholder="pcbinvoice.com" aria-label="Domain"
+           autocapitalize="off" spellcheck="false" required>
+    <button type="submit" class="btn btn-primary">{{ icon('plus') }}Add domain</button>
+  </form>
+  <p class="text-muted mb-0">The domain must be owned by the firm or the client. Once it is added, Claude connects it
+    to hosting and gives you its DNS records for the registrar.</p>
+</section>
+
+<div class="table-wrap card console-card mt-16">
+  <table class="console-table">
+    <thead><tr><th>Domain</th><th>Clients</th><th>Look</th><th>Status</th></tr></thead>
+    <tbody>
+      {% for d in domains %}
+      <tr>
+        <td><a href="{{ url_for('tenants.sign_in_domain', domain_id=d.id) }}"><strong>{{ d.domain }}</strong></a></td>
+        <td>{% for t in d.tenants %}{{ t.display_name }}{{ ', ' if not loop.last }}{% else %}<span class="text-muted">None yet</span>{% endfor %}</td>
+        <td>{{ d.brand.display_name if d.brand else 'ARFA' }}</td>
+        <td>{% if d.is_active %}<span class="status-badge status-issued">On</span>{% else %}<span class="status-badge status-draft">Off</span>{% endif %}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="4" class="text-muted">No sign-in domains yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

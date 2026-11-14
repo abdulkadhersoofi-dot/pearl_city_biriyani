@@ -65,6 +65,16 @@ class Invoice(db.Model, TenantScopedMixin, TimestampMixin):
     grand_total = db.Column(db.Numeric(12, 2), nullable=False, default=0)
 
     notes = db.Column(db.Text)
+    # An EMI sale (warehouse dispatch, stage 5B): this much of the invoice is
+    # due from the financier, on its own customer account - the customer owes
+    # the rest (the down payment). Printed as "Financed by".
+    financier_id = db.Column(db.Integer, db.ForeignKey("financiers.id", name="fk_invoices_financier"))
+    finance_amount = db.Column(db.Numeric(12, 2))
+    loan_ref = db.Column(db.String(60))
+    # Delivered elsewhere than the billing address (from the sales order).
+    ship_to = db.Column(db.JSON)
+    # The New sale (app/sell) this invoice is part of - shared with its order(s).
+    sale_ref = db.Column(db.String(16), index=True)
     created_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
 
     voided_at = db.Column(db.DateTime(timezone=True))
@@ -93,6 +103,7 @@ class Invoice(db.Model, TenantScopedMixin, TimestampMixin):
     customer = db.relationship("Customer")
     branch_user = db.relationship("User", foreign_keys=[branch_user_id])
     created_by = db.relationship("User", foreign_keys=[created_by_id])
+    financier = db.relationship("Financier")
     voided_by = db.relationship("User", foreign_keys=[voided_by_id])
     salesman = db.relationship("Salesman")
     lines = db.relationship(

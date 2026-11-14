@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Teach the bill reader' if all_view else 'Bill reader training' }} - {{ firm_name }}{% endblock %}
+
+{% macro lesson_card(l, can_edit=True) %}
+<li class="teach-lesson {{ '' if l.active else 'is-off' }}">
+  <div class="teach-lesson-head">
+    {% if l.kind == 'correction' %}<span class="pill pill-warn">Learnt from a bill</span>
+    {% elif l.kind == 'heading' %}<span class="pill pill-ok">Heading</span>
+    {% else %}<span class="pill pill-ok">Note</span>{% endif %}
+    {% if not l.active %}<span class="pill pill-muted">Switched off</span>{% endif %}
+    <span class="text-muted teach-meta">{{ l.created_at.strftime('%d %b %Y') }}
+      {%- if l.created_by %} &middot; {{ l.created_by.name }}{% endif %}
+      &middot; used {{ l.uses }} time{{ '' if l.uses == 1 else 's' }}</span>
+  </div>
+  {% if l.kind == 'correction' %}
+    {% set ex = l.example or {} %}
+    <p class="m-0">On invoice <strong>{{ ex.invoice_number or '-' }}</strong> ARFA read {{ ex.read_rows }} row{{ '' if ex.read_rows == 1 else 's' }}
+      (Rs. {{ '{:,.2f}'.format(ex.read_total or 0) }}); it was posted with {{ ex.posted_rows }}
+      (Rs. {{ '{:,.2f}'.format(ex.posted_total or 0) }}). The rows it missed:</p>
+    <div class="table-wrap mt-8"><table class="teach-rows">
+      <thead><tr><th>Row</th><th>HSN</th><th class="num">Qty</th><th class="num">Rate</th><th class="num">Value</th></tr></thead>
+      <tbody>{% for r in ex.rows or [] %}
+        <tr><td>{{ r.description }}</td><td>{{ r.hsn or '-' }}</td><td class="num">{{ '%g'|format(r.qty or 0) }}</td>
+          <td class="num">{{ '{:,.2f}'.format(r.rate or 0) }}</td><td class="num">{{ '{:,.2f}'.format(r.value or 0) }}</td></tr>
+      {% endfor %}</tbody>
+    </table></div>
+  {% elif l.kind == 'heading' %}
+    <p class="m-0"><strong class="teach-heading-text">{{ l.text }}</strong> means <strong>{{ fields.get((l.example or {}).get('field'), (l.example or {}).get('field')) }}</strong></p>
+    {% if all_view and l.supplier_gstin %}<p class="text-muted m-0 mt-4">On bills from {{ l.supplier_name or '' }} {{ l.supplier_gstin }}</p>{% endif %}
+  {% else %}
+    <p class="m-0 teach-note-text">{{ l.text }}</p>
+    {% if all_view and l.supplier_gstin %}<p class="text-muted m-0 mt-4">For bills from {{ l.supplier_name or '' }} {{ l.supplier_gstin }}</p>{% endif %}
+  {% endif %}
+  {% if can_edit %}
+  <div class="row mt-8">
+    <form method="post" action="{{ url_for('scan.teach_switch', lesson_id=l.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="back" value="{{ supplier }}">
+      <button class="btn btn-quiet btn-sm">{{ 'Switch off' if l.active else 'Switch on' }}</button>
+    </form>
+    <form method="post" action="{{ url_for('scan.teach_delete', lesson_id=l.id) }}"
+          data-confirm="Delete this lesson? ARFA forgets it." data-danger>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="back" value="{{ supplier }}">
+      <button class="btn btn-quiet btn-sm">Delete</button>
+    </form>
+  </div>
+  {% endif %}
+</li>
+{% endmacro %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>{{ 'Teach the bill reader' if all_view else 'Bill reader training' }}</h1>
+    <p class="text-muted mt-0">
+      {% if all_view %}Notes and headings here reach every business's bill reader - for layouts many suppliers share.
+        Each business also teaches its own reader, from its own corrections, headings and notes.
+      {% else %}Suppliers print the same thing under different headings. Tell ARFA what a supplier's heading means
+        once, and it reads that supplier's next bills with it. It also remembers rows you had to add by hand.{% endif %}</p>
+  </div>
+  {% if not all_view %}<a href="{{ url_for('scan.index') }}" class="btn btn-secondary">Back to Scan bills</a>{% endif %}
+</div>
+
+{% if not all_view %}
+<section class="card" aria-labelledby="teach-suppliers">
+  <h2 class="m-0 teach-h2" id="teach-suppliers">Suppliers</h2>
+  <p class="text-muted mt-4">The last six months of scanned bills. Suppliers whose bills needed rows added are at the top.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Supplier</th><th class="num">Bills posted</th><th class="num">Right first time</th>
+        <th class="num">Rows added by you</th><th class="num">Fixed by ARFA's re-read</th><th class="num">Lessons</th><th></th></tr></thead>
+      <tbody>
+        <tr class="{{ 'is-current' if not supplier }}">
+          <td><strong>Every supplier</strong><br><span class="text-muted">Headings and notes for all your bills</span></td>
+          <td class="num">-</td><td class="num">-</td><td class="num">-</td><td class="num">-</td><td class="num">-</td>
+          <td><a href="{{ url_for('scan.teach') }}#lessons">Teach</a></td>
+        </tr>
+        {% for s in stats %}
+        <tr class="{{ 'is-current' if s.gstin == supplier }}">
+          <td>{{ s.name }}<br><span class="text-muted">{{ s.gstin }}</span></td>
+          <td class="num">{{ s.bills }}</td>
+          <td class="num">{% if s.bills %}{{ s.right_first_time }} of {{ s.bills }}{% else %}-{% endif %}</td>
+          <td class="num">{% if s.corrected %}<span class="pill pill-warn">{{ s.corrected }}</span>{% else %}0{% endif %}</td>
+          <td class="num">{{ s.fixed_by_reread }}</td>
+          <td class="num">{{ s.lessons }}</td>
+          <td><a href="{{ url_for('scan.teach', supplier=s.gstin) }}#lessons">Teach</a></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" class="text-muted">No scanned bills posted yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+
+<section class="card mt-20" id="lessons" aria-labelledby="teach-lessons">
+  <h2 class="m-0 teach-h2" id="teach-lessons">
+    {% if all_view %}Notes for every business{% elif chosen %}{{ chosen.name }}{% elif supplier %}{{ supplier }}{% else %}Every supplier{% endif %}</h2>
+  {% if supplier %}<p class="text-muted mt-4">{{ supplier }} - what ARFA knows about this supplier's bills.</p>
+  {% elif not all_view %}<p class="text-muted mt-4">Notes ARFA keeps in mind with every bill you scan.</p>{% endif %}
+
+  {# --- a heading and what it means --- #}
+  <h3 class="teach-h3">Headings</h3>
+  <p class="text-muted mt-0">Type a heading exactly as {{ 'this supplier prints' if supplier else 'bills print' }} it, and pick what it means.
+    {% if bills %}Or open one of their bills and click the heading on the picture.{% endif %}</p>
+  <form method="post" action="{{ url_for('scan.teach_heading') }}" class="teach-heading-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="back" value="{{ supplier }}">
+    {% if all_view %}
+    <label class="field m-0"><span class="field-label">Supplier GSTIN (optional)</span>
+      <input class="field-input" name="gstin" maxlength="15" placeholder="Empty = every bill"></label>
+    {% else %}
+    <input type="hidden" name="gstin" value="{{ supplier }}">
+    <input type="hidden" name="name" value="{{ chosen.name if chosen else '' }}">
+    {% endif %}
+    <label class="field m-0"><span class="field-label">Heading on the bill</span>
+      <input class="field-input" name="heading" maxlength="60" required placeholder="e.g. Cust. PO"></label>
+    <label class="field m-0"><span class="field-label">It means</span>
+      <select class="field-input" name="field" required>
+        <option value="">Pick one</option>
+        {% for key, label in fields.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+      </select></label>
+    <button class="btn btn-primary">Teach</button>
+  </form>
+  {% if bills %}
+  <p class="mt-12 mb-0"><strong>Train on a bill:</strong>
+    {% for d in bills %}<a class="teach-bill-link" href="{{ url_for('scan.teach_bill', doc_id=d.id) }}">{{ (d.extracted or {}).get('invoice_number') or d.filename }}</a>{{ ' ' }}{% endfor %}</p>
+  {% endif %}
+
+  <h3 class="teach-h3 mt-20">Notes</h3>
+  <form method="post" action="{{ url_for('scan.teach_note') }}" class="teach-form mt-12">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="back" value="{{ supplier }}">
+    {% if all_view %}
+    <div class="form-grid">
+      <label class="field"><span class="field-label">Supplier GSTIN (optional)</span>
+        <input class="field-input" name="gstin" maxlength="15" placeholder="Empty = every bill"></label>
+      <label class="field"><span class="field-label">Supplier name (optional)</span>
+        <input class="field-input" name="name" maxlength="255"></label>
+    </div>
+    {% else %}
+    <input type="hidden" name="gstin" value="{{ supplier }}">
+    <input type="hidden" name="name" value="{{ chosen.name if chosen else '' }}">
+    {% endif %}
+    <label class="field m-0"><span class="field-label">Add a note</span>
+      <textarea class="field-input" name="text" rows="3" maxlength="600" required
+                placeholder="{{ 'e.g. The items continue on page 2 without a heading - read every page. The Scheme discount row is a negative row.' if supplier or all_view else 'e.g. Freight and packing charges are separate rows - always include them.' }}"></textarea></label>
+    <button class="btn btn-primary mt-8">Save note</button>
+  </form>
+
+  {% if shown %}
+  <ul class="teach-list">
+    {% for l in shown %}{{ lesson_card(l) }}{% endfor %}
+  </ul>
+  {% else %}
+  <p class="text-muted mt-16 mb-0">{{ 'Nothing yet.' if all_view else 'Nothing learnt here yet - corrections appear by themselves when you post a bill with rows added.' }}</p>
+  {% endif %}
+</section>
+
+{% if platform %}
+<section class="card mt-20" aria-labelledby="teach-arfa">
+  <h2 class="m-0 teach-h2" id="teach-arfa">From ARFA</h2>
+  <p class="text-muted mt-4">Notes the ARFA team keeps the reader for every business.</p>
+  <ul class="teach-list">{% for l in platform %}{{ lesson_card(l, can_edit=False) }}{% endfor %}</ul>
+</section>
+{% endif %}
+{% endblock %}

@@ -3,8 +3,10 @@ the documents - same shape as app.accounts.receivables:
 
   + opening balance (Supplier.opening_balance)
   + posted purchase bills (grand total = what's payable; under reverse
-    charge that's without the tax, which goes to the government)
+    charge that's without the tax, which goes to the government; less
+    any TDS deducted, which is paid to the government too)
   - posted purchase returns (debit notes) against those bills
+  - / + the supplier's own credit / debit notes (SupplierNote)
   + posted expenses booked to this supplier as "unpaid"
   - payment vouchers (a bounced cheque pays nothing)
 
@@ -18,7 +20,7 @@ from decimal import Decimal
 from app.accounts.receivables import AGE_BUCKETS, LedgerEntry, OpenItem
 from app.models.accounts import ChequeStatus, SupplierPayment, VoucherStatus
 from app.models.expense import Expense, ExpensePaymentMode, ExpenseStatus
-from app.models.purchase import PurchaseBill, PurchaseReturn, PurchaseStatus, Supplier
+from app.models.purchase import PurchaseBill, PurchaseReturn, PurchaseStatus, Supplier, SupplierNote
 
 ZERO = Decimal("0.00")
 
@@ -79,12 +81,17 @@ def supplier_account(tenant, supplier: Supplier, with_entries: bool = True) -> S
     if start:
         bills = bills.filter(PurchaseBill.bill_date >= start)
     for bill in bills.order_by(PurchaseBill.bill_date, PurchaseBill.id).all():
-        amount = Decimal(bill.grand_total)
+        amount, tds = Decimal(bill.grand_total), Decimal(bill.tds_amount or 0)
+        # TDS held back is paid to the government, not the supplier.
         item = OpenItem("purchase_bill", bill.id, f"{bill.number} ({bill.supplier_invoice_no})", bill.bill_date,
-                        _due(bill.bill_date, supplier), amount)
+                        _due(bill.bill_date, supplier), amount - tds)
         items[item.key] = item
         entries.append(LedgerEntry(bill.bill_date, "purchase_bill", bill.number, f"Purchase bill {bill.supplier_invoice_no}",
                                    credit=amount, link=("purchases.view_bill", {"bill_id": bill.id}), order=1))
+        if tds:
+            entries.append(LedgerEntry(bill.bill_date, "tds", bill.number,
+                                       f"TDS deducted{' u/s ' + bill.tds_section if bill.tds_section else ''}",
+                                       debit=tds, link=("purchases.view_bill", {"bill_id": bill.id}), order=2))
     bill_ids = [i.id for i in items.values() if i.kind == "purchase_bill"]
     if bill_ids:
         for ret in PurchaseReturn.query.filter(PurchaseReturn.tenant_id == tenant.id,
@@ -94,6 +101,33 @@ def supplier_account(tenant, supplier: Supplier, with_entries: bool = True) -> S
             items[f"purchase_bill:{ret.purchase_bill_id}"].amount -= amount
             entries.append(LedgerEntry(ret.return_date, "purchase_return", ret.number, "Goods returned (debit note)",
                                        debit=amount, link=("purchases.view_return", {"return_id": ret.id}), order=2))
+
+    # The supplier's own notes: a credit note takes off what is owed (off its
+    # bill, when it names one); a debit note is owed like a bill.
+    notes = SupplierNote.query.filter_by(tenant_id=tenant.id, supplier_id=supplier.id, status=PurchaseStatus.POSTED)
+    if start:
+        notes = notes.filter(SupplierNote.note_date >= start)
+    for note in notes.order_by(SupplierNote.note_date, SupplierNote.id).all():
+        amount = Decimal(note.grand_total)
+        link = ("purchases.view_supplier_note", {"note_id": note.id})
+        if note.is_credit:
+            key = f"purchase_bill:{note.purchase_bill_id}"
+            if note.purchase_bill_id and key in items:
+                items[key].amount -= amount
+            else:
+                account.on_account += amount
+            entries.append(LedgerEntry(note.note_date, "supplier_note", note.note_number,
+                                       f"Credit note {note.note_number}", debit=amount, link=link, order=2))
+        else:
+            key = f"purchase_bill:{note.purchase_bill_id}"
+            if note.purchase_bill_id and key in items:
+                items[key].amount += amount   # paid with its bill
+            else:
+                item = OpenItem("supplier_note", note.id, f"Debit note {note.note_number}", note.note_date,
+                                _due(note.note_date, supplier), amount)
+                items[item.key] = item
+            entries.append(LedgerEntry(note.note_date, "supplier_note", note.note_number,
+                                       f"Debit note {note.note_number}", credit=amount, link=link, order=1))
 
     expenses = Expense.query.filter_by(tenant_id=tenant.id, supplier_id=supplier.id, status=ExpenseStatus.POSTED,
                                        payment_mode=ExpensePaymentMode.UNPAID)

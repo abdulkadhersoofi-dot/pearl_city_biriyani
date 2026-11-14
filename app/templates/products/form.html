@@ -36,7 +36,7 @@
   {% endif %}
   {{ field(form.image, help="Shown on the POS item tile, alongside the name and price.") }}
 
-  {% set more_has_errors = form.mrp.errors or form.wholesale_price.errors or form.purchase_rate.errors or form.cost_price.errors or form.sku.errors or form.barcode.errors or form.alt_unit.errors or form.alt_unit_factor.errors or form.min_stock_level.errors %}
+  {% set more_has_errors = form.mrp.errors or form.wholesale_price.errors or form.purchase_rate.errors or form.cost_price.errors or form.sku.errors or form.barcode.errors or form.model_no.errors or form.alt_unit.errors or form.alt_unit_factor.errors or form.min_stock_level.errors %}
   <details class="more-details" {% if more_has_errors %}open{% endif %}>
     <summary>More details (optional) - MRP, other prices, codes, pack size, stock alert</summary>
     <div class="stack mt-12">
@@ -49,6 +49,7 @@
       <div class="form-grid">
         {{ field(form.sku) }}
         {{ field(form.barcode, help="Type it or scan it into this box.") }}
+        {% if has_feature('serial_imei') %}{{ field(form.model_no, help="The maker's model number on the box label - the warehouse scanner matches it.") }}{% endif %}
       </div>
       <div class="form-grid">
         {{ field(form.alt_unit, help="e.g. BOX, if you also buy/sell by the box.") }}

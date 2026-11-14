@@ -119,6 +119,15 @@ class PurchaseBill(db.Model, TenantScopedMixin, TimestampMixin):
     # For a margin voucher: who sold the goods - address, ID proof, how
     # they were paid ({"address", "id_type", "id_no", "paid_by"}).
     seller_details = db.Column(db.JSON)
+    # Income tax deducted at source on this bill (194Q on goods, 194C /
+    # 194J on work and fees): the supplier is owed the total less it, and
+    # it is paid to the government instead. It doesn't touch the GST.
+    tds_amount = db.Column(db.Numeric(12, 2), nullable=False, default=0, server_default="0")
+    tds_section = db.Column(db.String(10))
+    # Everything else printed on the bill that isn't needed for GST but is
+    # for warranty and follow-up: order / challan / dispatch references,
+    # the supplier's bank details, payment terms ({"label": "value"}).
+    details = db.Column(db.JSON)
     notes = db.Column(db.Text)
     attachment_id = db.Column(db.Integer, db.ForeignKey("uploaded_images.id", name="fk_purchase_bills_attachment"))
     created_by_id = db.Column(db.Integer, db.ForeignKey("users.id", name="fk_purchase_bills_created_by"), nullable=False)
@@ -140,6 +149,11 @@ class PurchaseBill(db.Model, TenantScopedMixin, TimestampMixin):
     def itc_total(self):
         return self.itc_cgst + self.itc_sgst + self.itc_igst
 
+    @property
+    def net_payable(self):
+        """What the supplier is paid: the bill's total less the TDS."""
+        return self.grand_total - (self.tds_amount or 0)
+
 
 class PurchaseBillLine(db.Model, TimestampMixin):
     __tablename__ = "purchase_bill_lines"
@@ -147,12 +161,18 @@ class PurchaseBillLine(db.Model, TimestampMixin):
     id = db.Column(db.Integer, primary_key=True)
     bill_id = db.Column(db.Integer, db.ForeignKey("purchase_bills.id", name="fk_purchase_bill_lines_bill"), nullable=False, index=True)
     product_id = db.Column(db.Integer, db.ForeignKey("products.id", name="fk_purchase_bill_lines_product"))
+    # The purchase order line this bill line settles (app/purchases/matching.py).
+    order_line_id = db.Column(db.Integer, db.ForeignKey("purchase_order_lines.id",
+                                                        name="fk_purchase_bill_lines_order_line"), index=True)
     description = db.Column(db.String(255), nullable=False)
     hsn_or_sac_code = db.Column(db.String(8))
     qty = db.Column(db.Numeric(12, 3), nullable=False)
     unit = db.Column(db.String(20), nullable=False, default="PCS")
     rate = db.Column(db.Numeric(12, 2), nullable=False)
     discount_percent = db.Column(db.Numeric(5, 2), nullable=False, default=0)
+    # Rupees off the line as printed (after any percentage) - bills give
+    # discounts either way, and each is taken exactly.
+    discount_flat = db.Column(db.Numeric(12, 2), nullable=False, default=0, server_default="0")
     discount_amount = db.Column(db.Numeric(12, 2), nullable=False, default=0)
     gst_rate = db.Column(db.Numeric(5, 2), nullable=False, default=0)
     taxable_value = db.Column(db.Numeric(12, 2), nullable=False, default=0)
@@ -170,6 +190,10 @@ class PurchaseBillLine(db.Model, TimestampMixin):
     # unit's price is what the margin is later worked out against.
     is_margin_scheme = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
     sort_order = db.Column(db.Integer, nullable=False, default=0)
+    # As printed against the line: serial / IMEI numbers, the supplier's
+    # item code, batch, dates, MRP - kept for warranty and stock queries
+    # even when the item doesn't track them ({"serials": [...], ...}).
+    details = db.Column(db.JSON)
 
     product = db.relationship("Product")
     batch = db.relationship("ProductBatch")
@@ -230,6 +254,72 @@ class PurchaseReturn(db.Model, TenantScopedMixin, TimestampMixin):
     lines = db.relationship("PurchaseReturnLine", backref="purchase_return", cascade="all, delete-orphan", order_by="PurchaseReturnLine.id")
 
 
+class SupplierNote(db.Model, TenantScopedMixin, TimestampMixin):
+    """A credit or debit note a supplier issued: "credit" - the supplier
+    takes something off (a rate difference, a discount, a bill charged too
+    high): the client owes them less and its input tax credit comes back
+    down; "debit" - the supplier charges more: owed more, more credit.
+    Goods sent back are a PurchaseReturn instead (it moves the stock).
+    Recorded under the supplier's own note number; never deleted -
+    voided with a reason."""
+
+    __tablename__ = "supplier_notes"
+    __table_args__ = (
+        db.Index("ix_supplier_notes_tenant_supplier", "tenant_id", "supplier_id"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    kind = db.Column(db.String(10), nullable=False)   # credit / debit
+    gstin_id = db.Column(db.Integer, db.ForeignKey("gstins.id", name="fk_supplier_notes_gstin"), nullable=False)
+    supplier_id = db.Column(db.Integer, db.ForeignKey("suppliers.id", name="fk_supplier_notes_supplier"), nullable=False)
+    supplier_snapshot = db.Column(db.JSON, nullable=False)
+    note_number = db.Column(db.String(50), nullable=False)
+    note_date = db.Column(db.Date, nullable=False)
+    purchase_bill_id = db.Column(db.Integer, db.ForeignKey("purchase_bills.id", name="fk_supplier_notes_bill"), index=True)
+    reason = db.Column(db.Text)
+    # [{description, hsn, qty, unit, rate, discount_percent, discount_flat,
+    #   gst_rate, taxable_value, cgst, sgst, igst, line_total}]
+    lines = db.Column(db.JSON, nullable=False, default=list)
+    total_taxable_value = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    total_cgst = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    total_sgst = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    total_igst = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    round_off = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    grand_total = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    # The input tax credit it takes back (credit) or gives (debit).
+    itc_cgst = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    itc_sgst = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    itc_igst = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    status = db.Column(db.Enum(PurchaseStatus, name="purchase_status"), nullable=False, default=PurchaseStatus.POSTED)
+    attachment_id = db.Column(db.Integer, db.ForeignKey("uploaded_images.id", name="fk_supplier_notes_attachment"))
+    notes = db.Column(db.Text)
+    created_by_id = db.Column(db.Integer, db.ForeignKey("users.id", name="fk_supplier_notes_created_by"), nullable=False)
+    voided_at = db.Column(db.DateTime(timezone=True))
+    void_reason = db.Column(db.Text)
+    voided_by_id = db.Column(db.Integer, db.ForeignKey("users.id", name="fk_supplier_notes_voided_by"))
+
+    gstin = db.relationship("Gstin")
+    supplier = db.relationship("Supplier")
+    bill = db.relationship("PurchaseBill", backref=db.backref("supplier_notes", order_by="SupplierNote.id"))
+    created_by = db.relationship("User", foreign_keys=[created_by_id])
+
+    @property
+    def is_credit(self) -> bool:
+        return self.kind == "credit"
+
+    @property
+    def total_tax(self):
+        return self.total_cgst + self.total_sgst + self.total_igst
+
+    @property
+    def itc_total(self):
+        return self.itc_cgst + self.itc_sgst + self.itc_igst
+
+    @property
+    def label(self) -> str:
+        return "Credit note from supplier" if self.is_credit else "Debit note from supplier"
+
+
 class PurchaseReturnLine(db.Model):
     __tablename__ = "purchase_return_lines"
 
@@ -258,8 +348,16 @@ class PurchaseReturnLine(db.Model):
 
 class PurchaseOrderStatus(str, enum.Enum):
     OPEN = "open"
-    CONVERTED = "converted"
+    # Some of it has been billed; more is still to come.
+    PARTLY = "partly_billed"
+    CONVERTED = "converted"       # every line billed in full (closed)
     CANCELLED = "cancelled"
+
+
+PURCHASE_ORDER_STATUS_LABELS = {
+    PurchaseOrderStatus.OPEN: "Open", PurchaseOrderStatus.PARTLY: "Partly billed",
+    PurchaseOrderStatus.CONVERTED: "Billed", PurchaseOrderStatus.CANCELLED: "Cancelled",
+}
 
 
 class PurchaseOrder(db.Model, TenantScopedMixin, TimestampMixin):
@@ -282,10 +380,20 @@ class PurchaseOrder(db.Model, TenantScopedMixin, TimestampMixin):
     estimated_total = db.Column(db.Numeric(12, 2), nullable=False, default=0)
     created_by_id = db.Column(db.Integer, db.ForeignKey("users.id", name="fk_purchase_orders_created_by"), nullable=False)
     cancel_reason = db.Column(db.Text)
+    # Where the order was made: typed here, or fetched from the client's SAP
+    # (app/integrations/sap) - then `number` is SAP's own order number and
+    # the order is changed in SAP, not here.
+    source = db.Column(db.String(10), nullable=False, default="arfa", server_default="arfa")
+    external_ref = db.Column(db.String(40), index=True)
+    external_synced_at = db.Column(db.DateTime(timezone=True))
 
     supplier = db.relationship("Supplier")
     created_by = db.relationship("User")
     lines = db.relationship("PurchaseOrderLine", backref="order", cascade="all, delete-orphan", order_by="PurchaseOrderLine.id")
+
+    @property
+    def from_sap(self) -> bool:
+        return self.source == "sap"
     bills = db.relationship("PurchaseBill", backref="purchase_order")
 
 
@@ -301,8 +409,20 @@ class PurchaseOrderLine(db.Model):
     unit = db.Column(db.String(20), nullable=False, default="PCS")
     rate = db.Column(db.Numeric(12, 2), nullable=False, default=0)
     gst_rate = db.Column(db.Numeric(5, 2), nullable=False, default=0)
+    # How much of this line purchase bills have settled so far (a voided
+    # bill gives its share back) - app/purchases/matching.py.
+    billed_qty = db.Column(db.Numeric(12, 3), nullable=False, default=0, server_default="0")
+    # An order fetched from SAP: its item number there, and SAP's material number.
+    external_ref = db.Column(db.String(10))
+    external_code = db.Column(db.String(40))
 
     product = db.relationship("Product")
+
+    @property
+    def outstanding(self):
+        from decimal import Decimal
+
+        return max(Decimal(self.qty) - Decimal(self.billed_qty or 0), Decimal("0"))
 
 
 class MatchStatus(str, enum.Enum):

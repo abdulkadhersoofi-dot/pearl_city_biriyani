@@ -1,3 +1,9 @@
+# The ARFA Android apps
+
+This project builds two apps: **ARFA Counter** (`app/`, below) for a
+branch's counter, and **ARFA Scan** (`scan/`, at the end) for scanning
+purchase and expense bills.
+
 # ARFA Counter - the Android app for a branch's counter
 
 A small native Android app around the ARFA Counter screens the server
@@ -44,16 +50,17 @@ update - see "Signing" below for the one-time reinstall.
 
 ## Server URL
 
-Set once, in `app/build.gradle`:
+A **new install** talks to the address built into `app/build.gradle`:
 
 ```groovy
-buildConfigField "String", "SERVER_BASE_URL", "\"https://gst-billing-app-prdx.onrender.com\""
+buildConfigField "String", "SERVER_BASE_URL", "\"https://arfa.live\""
 ```
 
-This is the Render.com URL in use right now. When a real domain
-replaces it, change this one line (and bump `versionCode`/`versionName`
-just above it) and let the GitHub Actions workflow below rebuild - no
-other file references the server URL.
+A phone **already in use** keeps its own address and is moved by
+`android/server.json` (see "Server address" below) - changing the built-in
+address never moves it. A phone updated from a version before 1.9 (built
+for Render) stays on Render until that move, so its pairing and any bill
+still waiting to be sent go with it.
 
 ## Printing
 
@@ -124,7 +131,8 @@ waiting for a slow server.
 
 ### Server address (moving the server without reinstalling)
 
-The address built in is `SERVER_BASE_URL` (app/build.gradle). The release's
+A new install starts on `SERVER_BASE_URL` (app/build.gradle); from then on
+the phone keeps its address in `ServerAddress.kt`. The release's
 `version.json` also carries `server_url`, taken from `android/server.json`:
 set it to a new https address and push, and each phone moves on its next
 update check (at most 12 hours) - `ServerAddress.kt` keeps the address,
@@ -132,17 +140,28 @@ and `MainActivity` copies everything the app keeps on the old address
 ("arfa.*" in localStorage: pairing, mode, held bills, waiting KOTs) and
 writes it back on the new one. It moves only when no offline bill is
 waiting on the phone (they are sent first, while online) and only to an
-address whose `/healthz` answers.
+address whose `/health` (or, on an older server, `/healthz`) answers.
 
 ### Update check
 
 `.github/workflows/android-apk.yml` builds with `ANDROID_VERSION_CODE`
-= the workflow run number and publishes `version.json` next to the APK
-on the `android-latest` release. `UpdateChecker.kt` reads it at start
-(at most twice a day) or from settings, and offers the download when its
-versionCode is higher than the installed one. The repository is set by
-`RELEASE_REPO` in `app/build.gradle`; a private repository's releases
-can't be read without signing in, so the check then just finds nothing.
+= the workflow run number and writes `version.json` (Counter) and
+`scan-version.json` (Scan). It uploads the APKs and those files to the
+private bucket `APPS_BUCKET` (`latest/`), signing in to Google Cloud
+without a key (Workload Identity Federation, `scripts/gcp/apps_setup.sh`),
+and still publishes them on the `android-latest` release too.
+
+The apps ask the ARFA server first: ARFA Counter
+`/apps/counter/latest.json` with its WebView's signed-in session, ARFA
+Scan `/api/scan/v1/app-update` with its token (`app/apps` on the server).
+The answer carries a download link that works for a day and leads to a
+signed Cloud Storage link that works for 15 minutes - so an APK is only
+handed to a signed-in person or app. Only when the server can't answer, or
+has nothing published yet, do the apps read the GitHub release, as builds
+before this did (that is also how a Counter phone hears the server moved).
+`UpdateChecker.kt` checks at start (at most twice a day) or from the menu,
+and offers the download when the versionCode is higher than the installed
+one. People install from **Phone apps** on the website (`/apps`).
 
 ## Why this isn't built locally
 
@@ -225,3 +244,34 @@ Output: `app/build/outputs/apk/debug/app-debug.apk`.
   can be a single adaptive vector (no separate legacy PNG fallback set)
   and so the real AndroidX SplashScreen API is available rather than
   its reduced compat shim for older devices.
+
+
+# ARFA Scan - scanning bills (`scan/`, `com.arfa.scan`)
+
+A native app for a business's **owner and branches**: sign in with the
+ARFA email and password (and the authenticator code, when the account has
+two-step sign-in); every bill sent is a message in a chat, ticked as it is
+sent and read, tagged by how its checks went.
+
+- **The camera** is Google's on-device document scanner (ML Kit): it finds
+  the bill's edges, takes the picture by itself when the phone is steady,
+  straightens and crops it, and takes more pages. Hold the camera button
+  for "a pile of bills" (every page its own bill). The paperclip picks
+  photos or PDFs; any app can share a bill to ARFA Scan.
+- **Read on the phone**: before a bill is sent, ML Kit's on-device text
+  recognition reads it and the e-invoice QR is decoded; both go with the
+  picture, and the server's reader uses them as a second pair of eyes.
+- **Sent in the background** (WorkManager): a bill waits on the phone
+  without internet and goes when it's back; uploads one by one, reads two
+  at a time.
+- **A bill's page**: the picture zooms to a value when it is tapped; what
+  is wrong is said plainly and the wrong values are marked; values from
+  the e-invoice QR are tagged. **Approve & post** for whoever may approve -
+  the owner, and a branch for its own bills when the owner chose
+  "Branches approve" (website: Scan bills > Who approves). A bill that
+  couldn't be read has **Retake**, which replaces it.
+- The server side is `app/scan/api.py` (`/api/scan/v1`); the same reading,
+  checks, matching and posting as the website.
+
+Built by the same workflow: `ARFA-Scan.apk` and `scan-version.json` (its
+update check) on the `android-latest` release.

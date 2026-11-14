@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}SAP codes to match - {{ firm_name }}{% endblock %}
+
+{% macro picker(row, options, label) %}
+<form method="post" class="row gap-8 items-center sap-map-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="mapping_id" value="{{ row.id }}">
+  <select class="field-input" name="target_id" aria-label="{{ label }} for SAP {{ row.sap_code }}" {{ 'required' if not row.mapped }}>
+    <option value="">{{ 'Not matched' if row.mapped else 'Pick ' ~ label }}</option>
+    {% set current = row.supplier_id if row.kind == 'supplier' else row.product_id %}
+    {% for o in options %}<option value="{{ o.id }}" {{ 'selected' if o.id == current }}>{{ o.name }}{% if row.kind == 'supplier' and o.gstin %} - {{ o.gstin }}{% elif row.kind == 'material' and o.sku %} - {{ o.sku }}{% endif %}</option>{% endfor %}
+  </select>
+  <button class="btn btn-secondary btn-sm">{{ 'Change' if row.mapped else 'Match' }}</button>
+</form>
+{% endmacro %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>SAP codes to match</h1>
+    <p class="text-muted mt-0">SAP knows your suppliers and items by its own codes. Say once which of yours each one is.
+      ARFA matches a supplier by GSTIN and an item by its SKU where it can; nothing is guessed.</p>
+  </div>
+  <a href="{{ url_for('sap.index') }}" class="btn btn-secondary">Back to SAP link</a>
+</div>
+
+<section class="card">
+  <h2 class="m-0 teach-h2">Suppliers <span class="pill {{ 'pill-warn' if waiting.suppliers else 'pill-ok' }}">{{ waiting.suppliers|length }} to match</span></h2>
+  <p class="text-muted mt-4">An order waits outside ARFA until its supplier is matched.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>SAP vendor</th><th>Name in SAP</th><th>GSTIN in SAP</th><th class="num">Orders waiting</th><th>Your supplier</th></tr></thead>
+      <tbody>
+      {% for r in waiting.suppliers %}
+        <tr><td><strong>{{ r.sap_code }}</strong></td><td>{{ r.sap_name or '-' }}</td><td>{{ r.sap_gstin or '-' }}</td>
+          <td class="num">{{ waiting.held.get(r.sap_code, 0) }}</td><td>{{ picker(r, suppliers, 'your supplier') }}</td></tr>
+      {% else %}
+        <tr><td colspan="5" class="text-muted">Every SAP supplier fetched so far is matched.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if waiting.suppliers %}<p class="text-muted mb-0">Not in the list? <a href="{{ url_for('purchases.new_supplier') }}">Add the supplier</a> first, then match it here.</p>{% endif %}
+</section>
+
+<section class="card mt-20">
+  <h2 class="m-0 teach-h2">Items <span class="pill {{ 'pill-warn' if waiting.materials else 'pill-ok' }}">{{ waiting.materials|length }} to match</span></h2>
+  <p class="text-muted mt-4">An order with an unmatched item still comes in, with SAP's own name for it; match it so the bill and stock use your item.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>SAP material</th><th>Name in SAP</th><th>Your item</th></tr></thead>
+      <tbody>
+      {% for r in waiting.materials %}
+        <tr><td><strong>{{ r.sap_code }}</strong></td><td>{{ r.sap_name or '-' }}</td><td>{{ picker(r, products, 'your item') }}</td></tr>
+      {% else %}
+        <tr><td colspan="3" class="text-muted">Every SAP material fetched so far is matched.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+{% if waiting.mapped %}
+<details class="card mt-20">
+  <summary><strong>Matched already ({{ waiting.mapped|length }})</strong></summary>
+  <div class="table-wrap mt-12">
+    <table>
+      <thead><tr><th>Kind</th><th>SAP code</th><th>Name in SAP</th><th>Matched</th><th>Yours</th></tr></thead>
+      <tbody>
+      {% for r in waiting.mapped %}
+        <tr><td>{{ 'Supplier' if r.kind == 'supplier' else 'Item' }}</td><td>{{ r.sap_code }}</td><td>{{ r.sap_name or '-' }}</td>
+          <td>{{ {'gstin': 'by GSTIN', 'sku': 'by SKU', 'person': 'by you'}.get(r.how, '-') }}</td>
+          <td>{{ picker(r, suppliers if r.kind == 'supplier' else products, 'yours') }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</details>
+{% endif %}
+{% endblock %}

@@ -2,7 +2,8 @@
 # Releases one built image to staging or production:
 #   1. the "migrate" job brings that database's schema up to date,
 #   2. the new revision is deployed with no traffic,
-#   3. its /healthz must answer 200 with the new version,
+#   3. its /health must answer 200 with the new version (not /healthz:
+#      Cloud Run keeps paths ending in "z" for itself),
 #   4. only then does it take the traffic (and the nightly job is updated).
 # If 2-3 fail, the version already serving keeps serving.
 #
@@ -16,7 +17,7 @@ source deploy/gcp/settings.env
 
 TARGET=${1:?staging or production}
 IMAGE=${2:?image}
-VERSION=${3:?version}
+VERSION=${COMMIT:-${3:?version}}   # COMMIT: the pushed commit (trigger builds); else the 3rd argument
 CONN="$PROJECT_ID:$REGION:$SQL_INSTANCE"
 RUN_SA="arfa-run@$PROJECT_ID.iam.gserviceaccount.com"
 
@@ -36,23 +37,33 @@ esac
 ENV_VARS="FLASK_ENV=production,SESSION_TYPE=database,SESSION_COOKIE_NAME=__session,RUN_MIGRATIONS_ON_START=0"
 ENV_VARS+=",GUNICORN_WORKERS=$WORKERS,GUNICORN_THREADS=$THREADS,DB_POOL_SIZE=$POOL_SIZE,DB_MAX_OVERFLOW=$MAX_OVERFLOW"
 ENV_VARS+=",PROXY_FIX_X_FOR=$PROXY_FIX_X_FOR,PROXY_FIX_X_HOST=1,PUBLIC_URL=$PUBLIC_URL,APP_VERSION=$VERSION,$EXTRA_ENV"
+ENV_VARS+=",SCAN_PROVIDER=${SCAN_PROVIDER:-gemini},SCAN_VERTEX_LOCATION=${SCAN_VERTEX_LOCATION:-asia-south1},GCP_PROJECT=$PROJECT_ID"
+ENV_VARS+=",SCAN_MODELS=${SCAN_MODELS:-},SCAN_STRONG_MODEL=${SCAN_STRONG_MODEL:-}"
+ENV_VARS+=",APPS_BUCKET=${APPS_BUCKET:-}"
 SECRETS="DATABASE_URL=arfa-db-url$SUFFIX:latest,SECRET_KEY=arfa-secret-key$SUFFIX:latest"
 SECRETS+=",EINVOICE_SECRET_KEY=arfa-einvoice-key$SUFFIX:latest"
-# Optional extras, only when they have been stored (scripts/gcp/secret.sh).
-for pair in SENTRY_DSN:arfa-sentry-dsn SMTP_HOST:arfa-smtp-host SMTP_USERNAME:arfa-smtp-username \
-            SMTP_PASSWORD:arfa-smtp-password SMTP_FROM:arfa-smtp-from; do
-  name=${pair%%:*} secret=${pair#*:}
-  if gcloud secrets versions describe latest --secret "$secret" --project "$PROJECT_ID" >/dev/null 2>&1; then
-    SECRETS+=",$name=$secret:latest"
-  fi
-done
+# Optional extras, listed in OPTIONAL_SECRETS (deploy/gcp/settings.env) once
+# they hold a value. The build account may read a secret but not look one up,
+# so a "does it exist?" check here would always say no.
+uses() { case " $OPTIONAL_SECRETS " in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
+uses sentry && SECRETS+=",SENTRY_DSN=arfa-sentry-dsn:latest"
+uses gemini && SECRETS+=",GEMINI_API_KEY=arfa-gemini-key:latest"   # Scan bills (app/scan) reads with it
+# ARFA Warehouse pushes (scripts/gcp/warehouse_push_setup.sh makes the secret):
+# the phone app's Firebase settings, and the project the server sends through.
+if uses warehouse-push; then
+  SECRETS+=",WAREHOUSE_FCM_CONFIG=arfa-warehouse-fcm:latest"
+  ENV_VARS+=",FCM_PROJECT_ID=$PROJECT_ID"
+fi
+if uses smtp; then
+  SECRETS+=",SMTP_HOST=arfa-smtp-host:latest,SMTP_USERNAME=arfa-smtp-username:latest"
+  SECRETS+=",SMTP_PASSWORD=arfa-smtp-password:latest,SMTP_FROM=arfa-smtp-from:latest"
+fi
 
 # The Ultra Admin login, made by the migrate job on an empty database
 # (flask bootstrap-super-admin; it does nothing once the account exists).
 # Only the job sees it, never the web service.
 JOB_SECRETS=$SECRETS
-if gcloud secrets versions describe latest --secret arfa-super-admin-email --project "$PROJECT_ID" >/dev/null 2>&1 &&
-   gcloud secrets versions describe latest --secret arfa-super-admin-password --project "$PROJECT_ID" >/dev/null 2>&1; then
+if uses super-admin; then
   JOB_SECRETS+=",SUPER_ADMIN_EMAIL=arfa-super-admin-email:latest,SUPER_ADMIN_PASSWORD=arfa-super-admin-password:latest"
 fi
 
@@ -64,18 +75,24 @@ gcloud run jobs deploy "arfa-migrate$SUFFIX" --project "$PROJECT_ID" --region "$
 gcloud run jobs execute "arfa-migrate$SUFFIX" --project "$PROJECT_ID" --region "$REGION" --wait
 
 echo "== $TARGET: new revision, no traffic yet"
+# Cloud Run can't create a service with --no-traffic. The very first deploy
+# of each service has no older version to protect, so it takes the traffic
+# at once; the health check below still has to pass before the release is
+# reported done.
+NO_TRAFFIC="--no-traffic"
+gcloud run services describe "$SVC" --project "$PROJECT_ID" --region "$REGION" >/dev/null 2>&1 || NO_TRAFFIC=""
 gcloud run deploy "$SVC" --project "$PROJECT_ID" --region "$REGION" --image "$IMAGE" \
   --service-account "$RUN_SA" --add-cloudsql-instances "$CONN" \
   --cpu "$CPU" --memory "$MEMORY" --concurrency "$CONCURRENCY" --min-instances "$MIN" --max-instances "$MAX" \
   --timeout 60 --cpu-boost --set-env-vars "$ENV_VARS" --set-secrets "$SECRETS" \
-  --allow-unauthenticated --no-traffic --tag candidate --quiet
+  --allow-unauthenticated $NO_TRAFFIC --tag candidate --quiet
 
 URL=$(gcloud run services describe "$SVC" --project "$PROJECT_ID" --region "$REGION" \
   --format 'value(status.traffic[].url)' | tr ';' '\n' | grep '^https://candidate---' | head -1)
-echo "== $TARGET: checking $URL/healthz"
+echo "== $TARGET: checking $URL/health"
 ok=""
 for attempt in 1 2 3 4 5 6; do
-  body=$(curl -fsS --max-time 20 "$URL/healthz" || true)
+  body=$(curl -fsS --max-time 20 "$URL/health" || true)
   if echo "$body" | grep -q "\"version\": *\"${VERSION:0:7}\"" && echo "$body" | grep -q '"status": *"ok"'; then
     ok=1; break
   fi
@@ -94,5 +111,11 @@ if [ "$TARGET" = "production" ]; then
   gcloud run jobs deploy arfa-nightly --project "$PROJECT_ID" --region "$REGION" --image "$IMAGE" \
     --service-account "$RUN_SA" --set-cloudsql-instances "$CONN" --command flask --args nightly \
     --set-env-vars "$ENV_VARS" --set-secrets "$SECRETS" --max-retries 1 --task-timeout 1800 --quiet
+  # Purchase orders from clients' SAP (flask sap-pull). It does nothing until
+  # a business switches the SAP link on; "scripts/gcp/setup.sh sap-scheduler"
+  # runs it every 15 minutes.
+  gcloud run jobs deploy arfa-sap-pull --project "$PROJECT_ID" --region "$REGION" --image "$IMAGE" \
+    --service-account "$RUN_SA" --set-cloudsql-instances "$CONN" --command flask --args sap-pull \
+    --set-env-vars "$ENV_VARS" --set-secrets "$SECRETS" --max-retries 0 --task-timeout 600 --quiet
 fi
 echo "== $TARGET: live on $VERSION"

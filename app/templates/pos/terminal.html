@@ -3,7 +3,7 @@
 {% block title %}POS - {{ firm_name }}{% endblock %}
 
 {% block head %}
-<script>
+<script nonce="{{ csp_nonce() }}">
   // If anything on this screen throws, say so on the screen itself (with
   // the version) instead of leaving a silently blank POS.
   window.addEventListener("error", function (ev) {
@@ -18,7 +18,7 @@
     box.textContent = "This screen hit an error (version " + {{ app_version|tojson }} + "): " + (ev.message || "unknown") + " - please send this to support.";
   });
 </script>
-<script>
+<script nonce="{{ csp_nonce() }}">
   const PRODUCTS = [
     {% for p in products %}
     {{ product_js(p) }},
@@ -107,7 +107,7 @@
     </div>
   </div>
 </div>
-<script>
+<script nonce="{{ csp_nonce() }}">
   function cashierLock() {
     const cfg = MODULES.cashier;
     return {
@@ -777,7 +777,7 @@
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/escpos.js') }}"></script>
 {% if modules.offline %}<script src="{{ url_for('static', filename='js/pos_offline.js') }}"></script>{% endif %}
-<script>
+<script nonce="{{ csp_nonce() }}">
 // One id per checkout - a retry after a lost reply returns the same bill.
 function newCheckoutId() {
   if (window.crypto && crypto.randomUUID) return crypto.randomUUID();

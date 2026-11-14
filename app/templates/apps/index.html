@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Phone apps - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Phone apps</h1>
+    <p class="text-muted mt-0">The ARFA apps for Android phones, straight from ARFA. Only people signed in to ARFA can
+      download them.</p>
+  </div>
+</div>
+
+{% if not configured %}
+<p class="flash flash-warning">The apps aren't published on this server yet.</p>
+{% elif trouble %}
+<p class="flash flash-warning">ARFA couldn't reach the app store just now - try again in a minute.</p>
+{% endif %}
+
+<div class="apps-grid">
+  {% for card in cards %}
+  {% set app, info = card.app, card.info %}
+  <section class="card app-card" aria-labelledby="app-{{ app.key }}">
+    <div class="app-card-head">
+      <img src="{{ url_for('static', filename='img/arfa-logo-192.png') }}" alt="" class="app-card-logo" width="56" height="56">
+      <div>
+        <h2 id="app-{{ app.key }}" class="m-0">{{ app.name }}</h2>
+        {% if info %}
+        <p class="text-muted m-0">Version {{ info.versionName }}
+          {%- if card.built_at %} &middot; {{ card.built_at.strftime('%d %b %Y') }}{% endif %}
+          {%- if info.size %} &middot; {{ '%.0f'|format(info.size / 1048576) }} MB{% endif %}</p>
+        {% else %}
+        <p class="text-muted m-0">Not published here yet</p>
+        {% endif %}
+      </div>
+    </div>
+    <p class="app-card-blurb">{{ app.blurb }}</p>
+    {% if info %}
+    <a href="{{ url_for('apps.download', key=app.key) }}" class="btn btn-primary btn-lg app-card-get">
+      {{ icon('smartphone') }}Download {{ app.name }}</a>
+    {% endif %}
+  </section>
+  {% endfor %}
+</div>
+
+<section class="card mt-24 app-howto">
+  <div>
+    <h2 class="m-0">Installing on a phone</h2>
+    <ol class="app-steps">
+      <li>Open this page on the phone - sign in, or scan the code with the phone's camera.</li>
+      <li>Tap <strong>Download</strong>. When the phone asks, allow your browser to install apps
+        (<em>Install unknown apps</em>).</li>
+      <li>Open the downloaded file and tap <strong>Install</strong>.</li>
+      {% set keys = cards|map(attribute='app.key')|list %}
+      <li><strong>ARFA Counter:</strong> pair it with a code from <strong>Branches &rarr; Pair a phone</strong>.
+        {%- if 'scan' in keys %} <strong>ARFA Scan:</strong> sign in with your ARFA email and password.{% endif %}
+        {%- if 'warehouse' in keys %} <strong>ARFA Warehouse:</strong> sign in with the business code, login id and password from <strong>Warehouse &rarr; App logins</strong>.{% endif %}</li>
+    </ol>
+    <p class="text-muted mb-0">After that the apps tell you when a new version is ready (and from the menu:
+      <strong>Check for an update</strong>) - updates come from here too, and install over the old version
+      without losing anything.</p>
+  </div>
+  <figure class="app-qr m-0">
+    <div class="app-qr-code">{{ qr|safe }}</div>
+    <figcaption class="text-muted">Opens this page on a phone</figcaption>
+  </figure>
+</section>
+{% endblock %}

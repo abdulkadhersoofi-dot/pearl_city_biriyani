@@ -1,0 +1,514 @@
+{% extends "base.html" %}
+{% block title %}Check a scanned bill - {{ firm_name }}{% endblock %}
+{% macro val(name, default='') -%}{{ form.get(name, default) if form else default }}{%- endmacro %}
+{% macro flag(f) -%}{{ 'is-flagged' if varargs|select('in', f)|list }}{%- endmacro %}
+{# Where a value is printed on the bill, for the zoom (app/static/js/scan_zoom.js). #}
+{% macro zoom(key) -%}{% set b = (ex.get('boxes') or {}).get(key) %}{% if b %} data-zoom='{{ b|tojson }}'{% endif %}{%- endmacro %}
+{% block content %}
+{% set check = v.get('status') %}
+{% set einv = ex.get('einvoice') or {} %}
+{% set sup_gstin = (val('supplier_gstin', ex.get('supplier_gstin') or '')) %}
+{% set flagged = (v.get('field_flags') or []) + (ex.get('flags') or []) %}
+<div class="page-header">
+  <div>
+    <p class="m-0"><a href="{{ url_for('scan.index', tab='check') }}">Scan bills</a>
+      {% if position is not none %} · Bill {{ position + 1 }} of {{ queue|length }}{% endif %}</p>
+    <h1>{{ party(doc)[0] or doc.filename }}</h1>
+    <p class="text-muted mt-0">{{ labels.get(doc.category or '', doc.category or 'Not read yet') }}{% if doc.page_count and doc.page_count > 1 %} · {{ doc.page_count }} pages{% endif %}</p>
+  </div>
+  {% if position is not none and queue|length > 1 %}
+  <div class="row">
+    {% if position > 0 %}<a class="btn btn-secondary" href="{{ url_for('scan.review', doc_id=queue[position - 1]) }}">‹ Previous</a>{% endif %}
+    {% if position + 1 < queue|length %}<a class="btn btn-secondary" href="{{ url_for('scan.review', doc_id=queue[position + 1]) }}">Next ›</a>{% endif %}
+  </div>
+  {% endif %}
+</div>
+
+<div class="scan-review-wrap"><div class="scan-review">
+  {% set pages = doc.page_count or 1 %}
+  {# a version in the address, so a bill turned since is never shown from the browser's cache #}
+  {% set ver = (doc.updated_at.timestamp()|int) if doc.updated_at else 0 %}
+  <aside class="scan-picture card">
+    {% if true %}
+    <div class="scan-viewer" data-scan-viewer data-pages="{{ pages }}"
+         data-page-url="{{ url_for('scan.page', doc_id=doc.id, n=0, v=ver)|replace('/page/0.jpg', '/page/{n}.jpg') }}">
+      <div class="scan-stage"><img class="scan-stage-img" src="{{ url_for('scan.page', doc_id=doc.id, n=0, v=ver) }}" alt="The scanned bill" draggable="false"><span class="scan-stage-mark" hidden></span></div>
+      {% if ex.get('boxes') %}<span class="scan-viewer-hint">Point at any value to zoom in here</span>{% endif %}
+    </div>
+    {% endif %}
+    <div class="scan-viewer-bar">
+      {% if pages > 1 %}
+      <span class="row gap-6 items-center"><button type="button" class="btn btn-quiet btn-sm" data-page-step="-1" aria-label="Previous page">‹</button>
+        <span data-page-label>Page 1 of {{ pages }}</span>
+        <button type="button" class="btn btn-quiet btn-sm" data-page-step="1" aria-label="Next page">›</button></span>
+      {% endif %}
+      {% if ex.get('boxes') %}<button type="button" class="btn btn-quiet btn-sm" data-show-all aria-pressed="false" title="Mark every value ARFA read on the bill - click a mark to go to its field">Show all</button>{% endif %}
+      {% if doc.status in ('to_check', 'rejected', 'failed') %}
+      <form method="post" action="{{ url_for('scan.turn', doc_id=doc.id) }}" class="row gap-4" title="Turn the bill if it's on its side">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-quiet btn-sm" name="deg" value="270" aria-label="Turn left">↺</button>
+        <button class="btn btn-quiet btn-sm" name="deg" value="90" aria-label="Turn right">↻</button>
+      </form>
+      {% endif %}
+      <a href="{{ url_for('scan.file', doc_id=doc.id, v=ver) }}" target="_blank" rel="noopener">Open the {{ 'PDF' if doc.is_pdf else 'photo' }} full size</a>
+    </div>
+    {% if (ex.get('turned') or {}).values()|select|list %}<p class="m-0 text-center text-muted scan-zoom-tip">Turned upright by ARFA.</p>{% endif %}
+  </aside>
+
+  <div class="stack">
+    {# --- what the checks found ------------------------------------------------------------ #}
+    {% if doc.status in ('posted', 'filed') %}
+    <section class="card">
+      <h2 class="mt-0">{{ 'Posted' if doc.status == 'posted' else 'Kept on file' }}</h2>
+      {% if posted_url %}<p><a href="{{ posted_url }}" class="btn btn-primary">Open the {{ {'purchase_bill': 'purchase bill', 'expense': 'expense', 'invoice': 'sales invoice', 'credit_note': 'note', 'supplier_note': "supplier's note"}.get(doc.posted_type, 'record') }}</a></p>{% endif %}
+      {% if doc.message %}<p class="text-muted m-0">{{ doc.message }}</p>{% endif %}
+    </section>
+    {% else %}
+    <section class="card scan-checks">
+      {% if doc.status == 'rejected' %}
+        <p class="scan-verdict is-bad">{{ icon('circle-x') }}<span>{{ doc.message }}</span></p>
+      {% elif doc.status == 'failed' %}
+        <p class="scan-verdict is-bad">{{ icon('triangle-alert') }}<span>{{ doc.message or "This file couldn't be read." }}</span></p>
+      {% elif doc.status in ('uploaded', 'reading') %}
+        <p class="scan-verdict">{{ icon('clock') }}<span>Not read yet - <a href="{{ url_for('scan.index', tab='reading') }}">open Scan bills</a> to read it.</span></p>
+      {% elif check == 'verified' %}
+        <p class="scan-verdict is-ok">{{ icon('circle-check') }}<span>Every check passed. Glance over it and approve.</span></p>
+      {% else %}
+        <p class="scan-verdict is-warn">{{ icon('triangle-alert') }}<span>Check the highlighted fields against the bill, correct them, then approve.</span></p>
+      {% endif %}
+      {% if einv.get('present') %}
+        <p class="m-0"><span class="pill pill-ok">{{ 'e-Invoice QR matches the print' if einv.get('verified') else 'e-Invoice QR used' }}</span>
+        <small class="block text-muted">The QR is signed by the government's invoice portal, so its GSTINs, invoice number, date and total are used over the print.</small>
+        {% for n in einv.get('notes') or [] %}<small class="block text-muted">{{ n }}</small>{% endfor %}</p>
+      {% endif %}
+      {% if doc.duplicate_of %}<p class="scan-warn m-0">{{ icon('triangle-alert', 'icon-sm') }} This bill looks already entered: <strong>{{ doc.duplicate_of }}</strong>.</p>{% endif %}
+      {% set failed = (v.get('checks') or [])|rejectattr('ok')|list %}
+      {% if failed %}
+      <ul class="scan-check-list">
+        {% for c in failed %}<li class="{{ 'is-bad' if c.level == 'hard' else 'is-warn' }}"><strong>{{ c.label }}</strong> <span class="text-muted">{{ c.detail }}</span></li>{% endfor %}
+      </ul>
+      {% endif %}
+      {% if v.get('repairs') %}
+      <details><summary class="text-muted">{{ v.get('repairs')|length }} automatic correction{{ 's' if v.get('repairs')|length != 1 }}</summary>
+        <ul class="scan-check-list">{% for r in v.get('repairs') %}<li>{{ r }}</li>{% endfor %}</ul></details>
+      {% endif %}
+    </section>
+    {% endif %}
+
+    {# --- the bill, as a tax invoice - every field editable ---------------------------------- #}
+    {% if doc.status == 'to_check' %}
+    {% set has_tax = (ex.get('igst') or 0) + (ex.get('cgst') or 0) + (ex.get('sgst') or 0) > 0 %}
+    {% set own = gstins|selectattr('id', 'equalto', doc.gstin_id or (gstins[0].id if gstins else 0))|first %}
+    <script type="application/json" id="scan-data">{{ {
+      'lines': lines, 'billTotal': val('bill_total', ex.get('invoice_value') or 0), 'kind': kind,
+      'supplier': val('supplier_id', (supplier.id|string) if supplier else 'new'),
+      'supplierGstin': sup_gstin,
+      'customer': val('customer_id', (customer.id|string) if customer else 'new'),
+      'customerGstin': val('customer_gstin', ex.get('receiver_gstin') or ''),
+      'customers': customer_options|map(attribute='id')|map('string')|list,
+      'customerGstins': customer_options|map(attribute='gstin')|map('default', '', true)|list,
+      'noteType': note_type,
+      'suppliers': supplier_options|map(attribute='id')|map('string')|list,
+      'supplierGstins': supplier_options|map(attribute='gstin')|map('default', '', true)|list,
+      'gstin': val('gstin_id', (own.id|string) if own else ''),
+      'gstinStates': gstins|map(attribute='id')|map('string')|list,
+      'gstinStateCodes': gstins|map(attribute='state_code')|map('default', '', true)|list,
+              'readIgst': ex.get('igst') or 0, 'tds': tds[0], 'tdsSection': tds[1],
+      'rcm': (val('is_rcm', '1' if (ex.get('reverse_charge') or '')|lower in ('y', 'yes', 'true') else '')) == '1'
+    }|tojson }}</script>
+    <form method="post" action="{{ url_for('scan.post', doc_id=doc.id) }}" class="stack" novalidate x-data="scanReview()"
+          data-page-url="{{ url_for('scan.page', doc_id=doc.id, n=0, v=ver)|replace('/page/0.jpg', '/page/{n}.jpg') }}"{{ ' data-pages' if (doc.page_count or 1) > 1 }}>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <section class="card scan-invoice">
+        <div class="inv-head">
+          {# the customer - for an invoice or a note the business issued #}
+          <div class="inv-party" x-show="salesSide()" x-cloak>
+            <div class="inv-ledger">
+              <span class="inv-label">Customer in your books</span>
+              <select name="customer_id" class="inv-select" x-model="customer">
+                {% for c in customer_options %}<option value="{{ c.id }}">{{ c.name }}{{ ' · ' ~ c.gstin if c.gstin }}</option>{% endfor %}
+                <option value="new">+ New customer (from this invoice)</option>
+              </select>
+            </div>
+            <input type="text" name="customer_name"{{ zoom('receiver_name') }} class="inv-input inv-name" value="{{ val('customer_name', ex.get('receiver_name') or '') }}" placeholder="Customer name" maxlength="255" aria-label="Customer name">
+            <input type="text" name="customer_address"{{ zoom('receiver_address') }} class="inv-input" value="{{ val('customer_address', ex.get('receiver_address') or '') }}" placeholder="Address" maxlength="255" aria-label="Customer address">
+            <label><span class="inv-label">Customer's GSTIN</span>
+              <input type="text" name="customer_gstin"{{ zoom('receiver_gstin') }} class="inv-input inv-mono" x-model="customerGstin" maxlength="15" placeholder="Unregistered" autocapitalize="characters" spellcheck="false"></label>
+            <p class="inv-note" x-show="customer !== 'new'">Goes to the customer chosen above.</p>
+          </div>
+          {# the seller #}
+          <div class="inv-party" x-show="!salesSide()">
+            <div class="inv-ledger">
+              <span class="inv-label">Supplier in your books</span>
+              <select name="supplier_id" class="inv-select" x-model="supplier">
+                {% for s in supplier_options %}<option value="{{ s.id }}">{{ s.name }}{{ ' · ' ~ s.gstin if s.gstin }}</option>{% endfor %}
+                <option value="new">+ New supplier (from this bill)</option>
+              </select>
+            </div>
+            <input type="text" name="supplier_name"{{ zoom('supplier_name') }} class="inv-input inv-name {{ flag(flagged, 'supplier_name') }}" value="{{ val('supplier_name', ex.get('supplier_name') or '') }}" placeholder="Supplier name" maxlength="255" aria-label="Supplier name">
+            <input type="text" name="supplier_address"{{ zoom('supplier_address') }} class="inv-input {{ flag(flagged, 'supplier_address') }}" value="{{ val('supplier_address', ex.get('supplier_address') or '') }}" placeholder="Address" maxlength="255" aria-label="Supplier address">
+            <div class="inv-pair">
+              <label><span class="inv-label">GSTIN</span>
+                <input type="text" name="supplier_gstin"{{ zoom('supplier_gstin') }} class="inv-input inv-mono {{ 'is-flagged' if 'supplier_gstin' in flagged or (sup_gstin and not gstin_ok(sup_gstin)) }}" x-model="supplierGstin" maxlength="15" placeholder="Unregistered" autocapitalize="characters" spellcheck="false"></label>
+              <label><span class="inv-label">Phone</span>
+                <input type="text" name="supplier_phone"{{ zoom('supplier_phone') }} class="inv-input" value="{{ val('supplier_phone', ex.get('supplier_phone') or '') }}" maxlength="20"></label>
+            </div>
+            {% if sup_gstin and not gstin_ok(sup_gstin) %}<p class="inv-note scan-warn">This GSTIN fails its check digit - compare it with the bill.</p>{% endif %}
+            <p class="inv-note" x-show="supplier !== 'new'">Posts to the supplier chosen above; these details are as read.</p>
+          </div>
+          {# the invoice #}
+          <div class="inv-meta">
+            <p class="inv-title">TAX INVOICE <small>(as read)</small></p>
+            {% set qr = einv.get('qr') or {} %}
+            <label><span class="inv-label">Invoice no.{% if qr.get('invoice_number') %} <span class="inv-qr" title="From the e-invoice QR">QR</span>{% endif %}</span>
+              <input type="text" name="invoice_number"{{ zoom('invoice_number') }} class="inv-input inv-mono {{ flag(flagged, 'invoice_number', 'inv_number') if not qr.get('invoice_number') }}" value="{{ val('invoice_number', ex.get('invoice_number') or '') }}" maxlength="50"></label>
+            <label><span class="inv-label">Date{% if qr.get('invoice_date') %} <span class="inv-qr" title="From the e-invoice QR">QR</span>{% endif %}</span>
+              <input type="date" name="invoice_date"{{ zoom('invoice_date') }} class="inv-input {{ flag(flagged, 'invoice_date', 'date_sane') if not qr.get('invoice_date') }}" value="{{ val('invoice_date', ex.get('invoice_date') or '') }}"></label>
+            <label><span class="inv-label" x-text="salesSide() ? 'Issued by (you)' : 'Billed to'">Billed to</span>
+              {% if gstins|length > 1 %}
+              <select name="gstin_id" class="inv-select" x-model="gstin">
+                {% for g in gstins %}<option value="{{ g.id }}">{{ tenant.legal_name }} · {{ g.gstin or 'Unregistered' }}</option>{% endfor %}
+              </select>
+              {% else %}<span class="inv-static"{{ zoom('receiver_gstin') }}>{{ tenant.legal_name }}{% if own and own.gstin %}<br><span class="inv-mono">{{ own.gstin }}</span>{% endif %}</span>
+              <input type="hidden" name="gstin_id" value="{{ own.id if own else '' }}">{% endif %}
+            </label>
+            <p class="inv-note">
+              <span x-text="intra() ? 'Within the state - CGST + SGST' : 'Another state - IGST'"></span>
+              {% if ex.get('place_of_supply') %} · Place of supply {{ ex.get('place_of_supply') }}{% endif %}
+              {% if ex.get('irn') %} · IRN printed{% endif %}
+            </p>
+            <label class="inv-check"><input type="checkbox" name="is_rcm" value="1" x-model="rcm"> Reverse charge</label>
+          </div>
+        </div>
+
+        {# the lines #}
+        <div class="table-wrap inv-table-wrap">
+          <table class="inv-table">
+            <thead>
+              <tr><th class="num">#</th><th>Description</th><th>HSN/SAC</th><th class="num">Qty</th><th>Unit</th>
+                <th class="num">Rate</th><th class="num">Disc</th><th class="num">Taxable</th><th class="num">GST %</th>
+                <th class="num" x-text="intra() ? 'CGST+SGST' : 'IGST'">GST</th>
+                <th class="num">Amount</th><th><span class="sr-only">Remove</span></th></tr>
+            </thead>
+            <template x-for="(l, i) in lines" :key="i">
+              <tbody class="inv-line" :data-zoom="l.box ? JSON.stringify(l.box) : null">
+                <tr>
+                  <td class="num inv-sno" x-text="i + 1"></td>
+                  <td class="inv-desc" :data-zoom="cell(l, 'description')">
+                    <input class="inv-input" name="line_description[]" x-model="l.description" aria-label="Description">
+                    <button type="button" class="inv-more-btn" @click="l.open = !l.open" :aria-expanded="l.open ? 'true' : 'false'" x-text="moreLabel(l)"></button>
+                    <select class="inv-select inv-item" name="line_product_id[]" x-model="l.product_id" x-show="kind === 'purchase' || kind === 'sale'" :disabled="kind !== 'purchase' && kind !== 'sale'" aria-label="Item in your catalogue">
+                      <option value="new" :selected="l.product_id === 'new'">+ New item in catalogue</option>
+                      <option value="" :selected="l.product_id === ''">Not a stock item</option>
+                      <template x-for="o in l.options" :key="o.id"><option :value="o.id" x-text="'Item: ' + o.name" :selected="o.id === l.product_id"></option></template>
+                    </select>
+                  </td>
+                  <td :data-zoom="cell(l, 'hsn_sac')"><input class="inv-input inv-mono inv-w-hsn" name="line_hsn[]" x-model="l.hsn" inputmode="numeric" aria-label="HSN"
+                             :class="{ 'is-flagged': l.hsn && [4, 6, 8].indexOf(String(l.hsn).replace(/\D/g, '').length) < 0 }"></td>
+                  <td :data-zoom="cell(l, 'quantity')"><input class="inv-input num inv-w-qty" name="line_qty[]" x-model="l.qty" inputmode="decimal" aria-label="Quantity"></td>
+                  <td :data-zoom="cell(l, 'unit')"><input class="inv-input inv-w-unit" name="line_unit[]" x-model="l.unit" aria-label="Unit"></td>
+                  <td :data-zoom="cell(l, 'rate_per_unit')"><input class="inv-input num inv-w-rate" name="line_rate[]" x-model="l.rate" inputmode="decimal" aria-label="Rate"></td>
+                  <td class="inv-disc" :data-zoom="cell(l, 'discount')"><input class="inv-input num inv-w-disc" x-model="l.discount" inputmode="decimal" :aria-label="l.disc_type === 'amt' ? 'Discount in rupees' : 'Discount percent'">
+                    <select class="inv-select inv-disc-type" x-model="l.disc_type" aria-label="Discount as a percentage or rupees" title="% of the line, or rupees off it - as the bill prints it">
+                      <option value="pct">%</option><option value="amt">Rs.</option></select>
+                    <input type="hidden" name="line_discount[]" :value="l.disc_type === 'amt' ? '0' : l.discount">
+                    <input type="hidden" name="line_discount_flat[]" :value="l.disc_type === 'amt' ? l.discount : '0'"></td>
+                  <td class="num" x-text="money(taxable(l))" :data-zoom="cell(l, 'taxable_value')"></td>
+                  <td :data-zoom="cell(l, 'gst_rate')"><select class="inv-select inv-w-gst" name="line_gst_rate[]" x-model="l.gst_rate" aria-label="GST rate">
+                    {% for r in ['0','0.1','0.25','1','1.5','3','5','6','7.5','12','18','28','40'] %}<option value="{{ r }}" :selected="l.gst_rate === '{{ r }}'">{{ r }}%</option>{% endfor %}</select>
+                    <input type="hidden" name="line_itc[]" value="eligible"></td>
+                  <td class="num" x-text="money(tax(l))" :data-zoom="cell(l, 'tax')"></td>
+                  <td class="num" :data-zoom="cell(l, 'amount')"><strong x-text="money(taxable(l) + tax(l))"></strong></td>
+                  <td><button type="button" class="inv-remove" @click="lines.splice(i, 1)" :disabled="lines.length < 2" aria-label="Remove this line">{{ icon('x') }}</button></td>
+                </tr>
+                <tr class="inv-more" x-show="l.open">
+                  <td></td>
+                  <td colspan="11">
+                    <div class="inv-more-grid">
+                      <label class="inv-more-serials"><span class="inv-label">Serial / IMEI nos. <small x-show="serialCount(l)" x-text="'(' + serialCount(l) + ')'"></small></span>
+                        <textarea class="inv-input inv-mono" name="line_serials[]" x-model="l.serials" rows="2" placeholder="One per line, or separated by commas" spellcheck="false"></textarea></label>
+                      <label :data-zoom="cell(l, 'item_code')"><span class="inv-label">Item / part code</span>
+                        <input class="inv-input inv-mono" name="line_item_code[]" x-model="l.item_code" maxlength="64"></label>
+                      <label><span class="inv-label">Batch</span>
+                        <input class="inv-input inv-mono" name="line_batch[]" x-model="l.batch" maxlength="64"></label>
+                      <label><span class="inv-label">Mfg. date</span>
+                        <input type="date" class="inv-input" name="line_mfg[]" x-model="l.mfg"></label>
+                      <label><span class="inv-label">Expiry</span>
+                        <input type="date" class="inv-input" name="line_expiry[]" x-model="l.expiry"></label>
+                      <label><span class="inv-label">MRP</span>
+                        <input class="inv-input num" name="line_mrp[]" x-model="l.mrp" inputmode="decimal"></label>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </template>
+          </table>
+        </div>
+        <button type="button" class="btn btn-quiet btn-sm" @click="lines.push({product_id: '', options: [], description: '', hsn: '', qty: '1', unit: 'NOS', rate: '0', discount: '0', disc_type: 'pct', gst_rate: '18', serials: '', item_code: '', batch: '', mfg: '', expiry: '', mrp: '', open: false})">{{ icon('plus') }}Add a line</button>
+
+        {# tax summary and totals #}
+        <div class="inv-foot">
+          <table class="inv-summary">
+            <thead><tr><th class="num">GST %</th><th class="num">Taxable</th><th class="num" x-show="intra()">CGST</th><th class="num" x-show="intra()">SGST</th><th class="num" x-show="!intra()">IGST</th></tr></thead>
+            <tbody>
+              <template x-for="s in slabs()" :key="s.rate">
+                <tr><td class="num" x-text="s.rate + '%'"></td><td class="num" x-text="money(s.taxable)"></td>
+                  <td class="num" x-show="intra()" x-text="money(s.tax / 2)"></td><td class="num" x-show="intra()" x-text="money(s.tax / 2)"></td>
+                  <td class="num" x-show="!intra()" x-text="money(s.tax)"></td></tr>
+              </template>
+            </tbody>
+          </table>
+          <dl class="inv-totals">
+            <div{{ zoom('taxable_value') }}><dt>Taxable value</dt><dd x-text="money(sum('taxable'))"></dd></div>
+            <div x-show="intra()"{{ zoom('cgst') }}><dt>CGST</dt><dd x-text="money(sum('tax') / 2)"></dd></div>
+            <div x-show="intra()"{{ zoom('sgst') }}><dt>SGST</dt><dd x-text="money(sum('tax') / 2)"></dd></div>
+            <div x-show="!intra()"{{ zoom('igst') }}><dt>IGST</dt><dd x-text="money(sum('tax'))"></dd></div>
+            <div{{ zoom('round_off') }}><dt>Round off</dt><dd x-text="money(total() - exact())"></dd></div>
+            <div class="inv-grand"><dt>Total</dt><dd x-text="'Rs. ' + money(total())"></dd></div>
+            <div class="inv-tds"{{ zoom('tds') }}><dt>Less TDS
+                <select name="tds_section" class="inv-select" x-model="tdsSection" aria-label="TDS section">
+                  {% for code, label in tds_sections %}<option value="{{ code }}">{{ code if code and code != 'OTHER' else ('section' if not code else 'other') }}</option>{% endfor %}
+                </select></dt>
+              <dd><input type="text" name="tds_amount" class="inv-input num" inputmode="decimal" x-model="tds" placeholder="0.00" aria-label="TDS deducted"></dd></div>
+            <div class="inv-grand" x-show="num(tds) > 0" x-cloak><dt>Net payable</dt><dd x-text="'Rs. ' + money(total() - num(tds))"></dd></div>
+            <div class="inv-printed {{ flag(flagged, 'invoice_value', 'totals_match') if not (einv.get('qr') or {}).get('invoice_value') }}"><dt{{ zoom('invoice_value') }}>Total printed on the bill</dt>
+              <dd{{ zoom('invoice_value') }}><input type="text" name="bill_total" class="inv-input num" inputmode="decimal" x-model="billTotal" aria-label="Total printed on the bill"></dd></div>
+            <div class="inv-diff" x-show="billTotal > 0 && Math.abs(diff()) > 1"><dt>Difference</dt><dd x-text="'Rs. ' + money(Math.abs(diff()))"></dd></div>
+          </dl>
+        </div>
+        <p class="inv-note" x-show="num(tds) > 0" x-cloak>TDS is income tax you hold back and pay to the government: the bill and its GST stay at the full total; the supplier is owed the net.</p>
+        {% if ex.get('cgst') or ex.get('sgst') or ex.get('igst') %}
+        <p class="inv-note">As read from the bill: taxable {{ (ex.get('taxable_value') or 0)|inr }}{% if ex.get('cgst') %}, CGST {{ ex.get('cgst')|inr }}{% endif %}{% if ex.get('sgst') %}, SGST {{ ex.get('sgst')|inr }}{% endif %}{% if ex.get('igst') %}, IGST {{ ex.get('igst')|inr }}{% endif %}{% if ex.get('round_off') %}, round off {{ ex.get('round_off')|inr }}{% endif %}, total {{ (ex.get('invoice_value') or 0)|inr }}.</p>
+        {% endif %}
+
+        {% set any_detail = details.values()|select|list %}
+        <details class="inv-details" {{ 'open' if any_detail }}>
+          <summary><strong>Other details on the bill</strong> <span class="text-muted">- references, bank details, terms{% if any_detail %} · {{ any_detail|length }} found{% endif %}</span></summary>
+          <div class="inv-details-grid">
+            {% for key, label in detail_fields %}
+            <label><span class="inv-label">{{ label }}</span>
+              <input type="text" name="detail_{{ key }}"{{ zoom(key) }} class="inv-input {{ 'inv-mono' if key in ('irn', 'bank_account', 'bank_ifsc', 'ewb_number', 'ack_number') }}" value="{{ details.get(key, '') }}" maxlength="500"></label>
+            {% endfor %}
+            <label><span class="inv-label">Discount on the bill (Rs.)</span>
+              <input type="text" name="detail_discount" class="inv-input num" inputmode="decimal" value="{{ details.get('discount', '') }}"></label>
+          </div>
+          <p class="inv-note">Not needed for GST - kept with the posted bill for warranty claims, follow-ups and payments.</p>
+        </details>
+      </section>
+
+      {# The purchase order this bill belongs to (app/purchases/matching.py). #}
+      {% if po %}
+      <section class="card stack po-match" x-show="kind === 'purchase'" x-cloak>
+        <input type="hidden" name="purchase_order_id" value="{{ po.chosen.order.id if po.chosen else '' }}" :disabled="kind !== 'purchase'">
+        {% if po.chosen %}
+        {% set m = po.chosen %}
+        <div class="row row-between items-center flex-wrap">
+          <h2 class="m-0">Purchase order <a href="{{ url_for('purchases.view_order', order_id=m.order.id) }}" target="_blank">{{ m.order.number }}</a>
+            <span class="tag {{ 'tag-fast' if m.clean else 'tag-warn' }}">{{ 'Agrees' if m.clean else 'Differs' }}</span></h2>
+          <small class="text-muted">{{ po.labels[m.by] }} Ordered {{ m.order.order_date.strftime('%d %b %Y') }}.</small>
+        </div>
+        <div class="table-wrap">
+          <table class="po-table">
+            <thead><tr><th>Item on the order</th><th class="num">Ordered</th>{% if m.pairs|selectattr('received', 'ne', none)|list %}<th class="num">Received</th>{% endif %}<th class="num">Billed before</th><th class="num">This bill</th><th>What differs</th></tr></thead>
+            <tbody>
+            {% for p in m.pairs %}
+              <tr class="{{ 'po-problem' if p.problems }}">
+                <td>{% if p.line %}{{ p.line.description }}{% else %}<em>{{ p.row.description }}</em>{% endif %}</td>
+                <td class="num">{{ p.line.qty|qty if p.line else '-' }}</td>
+                {% if m.pairs|selectattr('received', 'ne', none)|list %}<td class="num">{{ p.received|qty if p.received is not none else '-' }}</td>{% endif %}
+                <td class="num">{{ p.line.billed_qty|qty if p.line else '-' }}</td>
+                <td class="num">{{ p.row.qty|qty if p.row else '-' }}</td>
+                <td>{% for kind, text in p.remarks %}<span class="{{ 'po-bad' if kind == 'problem' else 'text-muted' }}">{{ text }}</span>{% if not loop.last %}<br>{% endif %}{% else %}<span class="text-muted">Agrees</span>{% endfor %}</td>
+              </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <p class="text-muted m-0">Posting ties this bill to the order: what it bills is counted off, and the order stays open for the rest. Edits to the lines above are checked again when you post.
+          <a href="{{ url_for('scan.review', doc_id=doc.id, po='none') }}">Post without an order</a>{% for o in po.others %}{% if loop.first %} · or match to {% endif %}<a href="{{ url_for('scan.review', doc_id=doc.id, po=o.order.id) }}">{{ o.order.number }}</a>{{ ', ' if not loop.last }}{% endfor %}</p>
+        {% else %}
+        <h2 class="m-0">Purchase order <span class="tag">None</span></h2>
+        <p class="text-muted m-0">{{ 'You chose to post this bill without an order.' if po.picked_none else po.why }}
+          {% for o in po.others %}{% if loop.first %}Match it to {% endif %}<a href="{{ url_for('scan.review', doc_id=doc.id, po=o.order.id) }}">{{ o.order.number }}</a> <small>({{ o.order.order_date.strftime('%d %b') }}, {{ o.score }}% alike)</small>{{ ', ' if not loop.last }}{% endfor %}</p>
+        {% endif %}
+      </section>
+      {% endif %}
+
+      {# where it goes #}
+      <section class="card stack">
+        <div class="row row-between items-center">
+          <h2 class="m-0">Post it as</h2>
+          <div class="filter-chips m-0" role="radiogroup" aria-label="Post this as">
+            {% for k in kinds %}<label class="filter-chip" :class="{ 'is-on': kind === '{{ k }}' }"><input type="radio" name="kind" value="{{ k }}" x-model="kind" class="sr-only">{{ kind_labels[k] }}</label>{% endfor %}
+          </div>
+        </div>
+        <p class="text-muted m-0" x-show="kind === 'sale'" x-cloak>A sales invoice you issued outside ARFA: it goes into your sales under its own number <strong>{{ ex.get('invoice_number') or '' }}</strong> - the customer's account, GSTR-1 and stock for the lines linked to items.</p>
+        <div class="form-grid" x-show="kind === 'sales_note' || kind === 'supplier_note'" x-cloak>
+          <fieldset class="field m-0 scan-note-type"><legend class="field-label">This note</legend>
+            <label><input type="radio" name="note_type" value="credit" x-model="noteType" :disabled="!isNote()">
+              <span><strong>Credit note</strong> <small class="text-muted" x-text="kind === 'supplier_note' ? '- you owe the supplier less' : '- the customer owes you less'"></small></span></label>
+            <label><input type="radio" name="note_type" value="debit" x-model="noteType" :disabled="!isNote()">
+              <span><strong>Debit note</strong> <small class="text-muted" x-text="kind === 'supplier_note' ? '- you owe the supplier more' : '- the customer owes you more'"></small></span></label>
+          </fieldset>
+          <label class="field" x-show="kind === 'sales_note'"><span class="field-label">Against your invoice{% if original_number %} <small class="text-muted">(the note says {{ original_number }})</small>{% endif %}</span>
+            <select name="original_invoice_id" class="field-input" :disabled="kind !== 'sales_note'">
+              <option value="">- pick the invoice -</option>
+              {% for i in invoice_options %}<option value="{{ i.id }}" {{ 'selected' if (val('original_invoice_id') == i.id|string) or (not form and original_invoice and i.id == original_invoice.id) }}>{{ i.invoice_number }} · {{ i.invoice_date.strftime('%d %b %Y') }} · {{ i.customer_snapshot.name }} · Rs. {{ '%.2f'|format(i.grand_total) }}</option>{% endfor %}
+            </select>
+            {% if not invoice_options %}<small class="text-muted">No invoice of this customer in ARFA yet - scan and post that invoice first.</small>{% endif %}</label>
+          <label class="field" x-show="kind === 'supplier_note'"><span class="field-label">Against their bill <small class="text-muted">(optional{{ ' - the note says ' ~ original_number if original_number }})</small></span>
+            <select name="purchase_bill_id" class="field-input" :disabled="kind !== 'supplier_note'">
+              <option value="">- not against one bill -</option>
+              {% for b in bill_options %}<option value="{{ b.id }}" {{ 'selected' if (val('purchase_bill_id') == b.id|string) or (not form and original_bill and b.id == original_bill.id) }}>{{ b.supplier_invoice_no }} · {{ b.supplier_invoice_date.strftime('%d %b %Y') }} · Rs. {{ '%.2f'|format(b.grand_total) }}</option>{% endfor %}
+            </select></label>
+          <label class="field"><span class="field-label">Reason</span>
+            <input type="text" name="reason" class="field-input" maxlength="300" value="{{ val('reason', ex.get('notes') or '') }}" placeholder="Rate difference, discount, goods returned…" :disabled="!isNote()"></label>
+        </div>
+        <p class="text-muted m-0" x-show="kind === 'supplier_note'" x-cloak>Goods sent back to the supplier? Use <em>Return goods</em> on their purchase bill instead - it takes the goods out of stock.</p>
+        <p class="text-muted m-0" x-show="kind === 'purchase'">Purchases: input tax credit, the supplier's account, and stock for the lines linked to catalogue items.{% if locations|length > 1 %}
+          Received at <select name="location_id" class="inv-select" :disabled="kind !== 'purchase'">{% for l in locations %}<option value="{{ l.id }}">{{ l.name }}</option>{% endfor %}</select>{% endif %}</p>
+        <p class="text-muted m-0" x-show="kind === 'file'" x-cloak>For a document ARFA doesn't post - a receipt, a quotation, a statement. The picture is kept with your scanned bills.</p>
+        <div class="form-grid" x-show="kind === 'expense'" x-cloak>
+          <label class="field"><span class="field-label">Expense category</span>
+            <select name="category_id" class="field-input" :disabled="kind !== 'expense'">
+              {% for c in categories %}<option value="{{ c.id }}" {{ 'selected' if category and c.id == category.id }}>{{ c.name }}</option>{% endfor %}
+            </select></label>
+          <label class="field"><span class="field-label">Paid by</span>
+            <select name="payment_mode" class="field-input" :disabled="kind !== 'expense'">
+              {% for mode, label in payment_modes.items() %}<option value="{{ mode.value }}">{{ label }}</option>{% endfor %}
+            </select></label>
+          <label class="field"><span class="field-label">Amount (with GST)</span>
+            <input type="text" name="amount" class="field-input num" inputmode="decimal" :value="num(tds) > 0 ? total() : (billTotal || total())" :disabled="kind !== 'expense'"></label>
+          <label class="field"><span class="field-label">GST rate</span>
+            <select name="gst_rate" class="field-input" :disabled="kind !== 'expense'">
+              {% for r in ['0','5','12','18','28','40','0.1','0.25','1','1.5','3','6','7.5'] %}<option value="{{ r }}" {{ 'selected' if r == main_rate|string }}>{{ r }}%</option>{% endfor %}
+            </select></label>
+          <label class="field"><span class="field-label">Input tax credit</span>
+            <select name="itc" class="field-input" :disabled="kind !== 'expense'">
+              <option value="eligible">Can be claimed</option><option value="blocked">Blocked (food, travel, ...)</option><option value="ineligible">Not claimable</option>
+            </select></label>
+          <label class="row gap-6 field"><input type="checkbox" name="is_gst_bill" value="1" {{ 'checked' if has_tax and gstin_ok(sup_gstin) }} :disabled="kind !== 'expense'"> A GST bill (the supplier's GSTIN is on it)</label>
+        </div>
+        <label class="row gap-6" x-show="kind !== 'expense' && kind !== 'file' && billTotal > 0 && Math.abs(diff()) > 1"><input type="checkbox" name="accept_difference" value="1" :disabled="kind === 'expense' || kind === 'file'"> Post anyway, with ARFA's total</label>
+        <label class="field"><span class="field-label">Note <small class="text-muted">(optional)</small></span>
+          <input type="text" name="notes" class="field-input" maxlength="500" value="{{ val('notes') }}"></label>
+        <button type="submit" class="btn btn-primary btn-lg btn-block">
+          <span x-show="kind === 'purchase'">Approve &amp; post the purchase bill</span>
+          <span x-show="kind === 'expense'" x-cloak>Approve &amp; post the expense</span>
+          <span x-show="kind === 'sale'" x-cloak>Approve &amp; enter the sales invoice</span>
+          <span x-show="kind === 'sales_note'" x-cloak>Approve &amp; enter the note to the customer</span>
+          <span x-show="kind === 'supplier_note'" x-cloak>Approve &amp; enter the supplier's note</span>
+          <span x-show="kind === 'file'" x-cloak>Keep on file</span>
+        </button>
+        {% if position is not none and position + 1 < queue|length %}<p class="text-muted text-center m-0">The next bill opens after this one is posted.</p>{% endif %}
+      </section>
+    </form>
+    {% endif %}
+
+    {% if doc.status in ('to_check', 'rejected', 'failed') %}
+    <div class="row">
+      {% if doc.status != 'to_check' %}
+      <form method="post" action="{{ url_for('scan.post', doc_id=doc.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="kind" value="file">
+        <button class="btn btn-secondary">Keep on file anyway</button></form>
+      {% endif %}
+      <form method="post" action="{{ url_for('scan.reread', doc_id=doc.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-secondary">Read it again</button></form>
+      <form method="post" action="{{ url_for('scan.discard', doc_id=doc.id) }}" data-confirm="Discard this scan?" data-danger>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-quiet">Discard</button></form>
+    </div>
+    {% endif %}
+  </div>
+</div></div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/scan_zoom.js') }}" defer></script>
+<script nonce="{{ csp_nonce() }}">
+  /* The scanned bill as a tax invoice (app/scan). Its data comes from the
+     JSON block above, so nothing in the bill can break the page's markup. */
+  function scanReview() {
+    var el = document.getElementById("scan-data");
+    var d = el ? JSON.parse(el.textContent) : {};
+    var r2 = function (v) { return Math.round(v * 100) / 100; };
+    return {
+      lines: (d.lines || []).map(function (l) {
+        l.open = !!(l.serials || l.item_code || l.batch || l.mfg || l.expiry || parseFloat(l.mrp));
+        return l;
+      }),
+      billTotal: Number(d.billTotal) || 0, kind: d.kind || "purchase",
+      tds: d.tds || "", tdsSection: d.tdsSection || "",
+      supplier: String(d.supplier || "new"), supplierGstin: d.supplierGstin || "", gstin: String(d.gstin || ""),
+      customer: String(d.customer || "new"), customerGstin: d.customerGstin || "", noteType: d.noteType || "credit",
+      salesSide: function () { return this.kind === "sale" || this.kind === "sales_note"; },
+      isNote: function () { return this.kind === "sales_note" || this.kind === "supplier_note"; },
+      rcm: !!d.rcm,
+      num: function (v) { var n = parseFloat(String(v === undefined || v === null ? "" : v).replace(/,/g, "")); return isNaN(n) ? 0 : n; },
+      ownState: function () {
+        var i = (d.gstinStates || []).indexOf(this.gstin);
+        return i >= 0 ? (d.gstinStateCodes || [])[i] : ((d.gstinStateCodes || [])[0] || "");
+      },
+      sellerState: function () {
+        // the other party: the supplier - or, for a document you issued, the customer
+        var side = this.salesSide();
+        var g = side ? this.customerGstin : this.supplierGstin;
+        var pick = side ? this.customer : this.supplier;
+        if (pick !== "new") {
+          var ids = side ? d.customers : d.suppliers, gs = side ? d.customerGstins : d.supplierGstins;
+          var i = (ids || []).indexOf(pick);
+          if (i >= 0 && (gs || [])[i]) g = gs[i];
+        }
+        g = String(g || "").trim();
+        return /^\d{2}/.test(g) ? g.slice(0, 2) : "";
+      },
+      intra: function () {
+        var seller = this.sellerState(), own = this.ownState();
+        if (seller && own) return seller === own;
+        return !(this.num(d.readIgst) > 0);   // no GSTIN to go by: as the bill charged it
+      },
+      taxable: function (l) {
+        // As the server works it out: a percentage, or rupees off, then to the paisa.
+        var gross = this.num(l.qty) * this.num(l.rate), d = this.num(l.discount);
+        return r2(gross - (l.disc_type === "amt" ? r2(d) : r2(gross * d / 100)));
+      },
+      tax: function (l) { return r2(this.taxable(l) * this.num(l.gst_rate) / 100); },
+      sum: function (what) {
+        var self = this;
+        return this.lines.reduce(function (t, l) { return t + (what === "tax" ? self.tax(l) : self.taxable(l)); }, 0);
+      },
+      slabs: function () {
+        var self = this, by = {};
+        this.lines.forEach(function (l) {
+          var k = String(self.num(l.gst_rate));
+          by[k] = by[k] || { rate: k, taxable: 0, tax: 0 };
+          by[k].taxable += self.taxable(l); by[k].tax += self.tax(l);
+        });
+        return Object.keys(by).sort(function (a, b) { return a - b; }).map(function (k) { return by[k]; });
+      },
+      exact: function () { return this.sum("taxable") + (this.rcm ? 0 : this.sum("tax")); },
+      total: function () { return Math.round(this.exact()); },
+      diff: function () {
+        // The printed total is the invoice total - or, on a bill that
+        // prints "Less TDS", the net after it: whichever is nearer.
+        var gross = this.total() - this.num(this.billTotal), net = gross - this.num(this.tds);
+        return this.num(this.tds) > 0 && Math.abs(net) < Math.abs(gross) ? net : gross;
+      },
+      // where one of a line's values is printed (its own cell), else the whole row
+      cell: function (l, key) {
+        var b = (l.cells || {})[key] || l.box;
+        return b ? JSON.stringify(b) : null;
+      },
+      serialCount: function (l) { return String(l.serials || "").split(/[,\n]+/).filter(function (x) { return x.trim(); }).length; },
+      moreLabel: function (l) {
+        var bits = [], n = this.serialCount(l);
+        if (n) bits.push(n + " serial no" + (n > 1 ? "s" : ""));
+        if (l.batch) bits.push("batch " + l.batch);
+        if (l.item_code) bits.push("code " + l.item_code);
+        if (l.expiry) bits.push("exp " + l.expiry);
+        return (l.open ? "▾ " : "▸ ") + (bits.length ? bits.join(" · ") : "Serial nos., batch, code, MRP");
+      },
+      money: function (v) { return Number(v || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+    };
+  }
+</script>
+{% endblock %}

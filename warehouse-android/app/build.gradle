@@ -1,0 +1,134 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+    id 'org.jetbrains.kotlin.plugin.compose'
+    id 'com.google.devtools.ksp'
+}
+
+// ARFA Warehouse - pickers in a warehouse: the order pipeline, scanning each
+// unit's label (camera barcode + text reading on the phone, ARFA's reader as
+// the last resort), receiving purchases and counting stock. Talks only to
+// /api/wh/v1 with its own tokens (app/warehouse_api on the server).
+
+def envOr = { String name, String fallback ->
+    def value = System.getenv(name)
+    return (value == null || value.isEmpty()) ? fallback : value
+}
+
+android {
+    namespace 'com.arfa.warehouse'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.arfa.warehouse"
+        minSdk 26
+        targetSdk 34
+        def ciVersionCode = (System.getenv("ANDROID_VERSION_CODE") ?: "1").toInteger()
+        versionCode ciVersionCode
+        versionName "1.${ciVersionCode}"
+        buildConfigField "String", "SERVER_BASE_URL", "\"${envOr('WAREHOUSE_SERVER_URL', 'https://arfa.live')}\""
+        buildConfigField "String", "RELEASE_REPO", "\"abdulkadhersoofi-dot/pearl_city_biriyani\""
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        ndk {
+            abiFilters 'arm64-v8a', 'armeabi-v7a'
+        }
+    }
+
+    // The same shared key as ARFA Counter and ARFA Scan (a different app id),
+    // so every build installs over the last. A Play Store key is a separate
+    // decision - none is made here.
+    signingConfigs {
+        shared {
+            storeFile file(envOr("ANDROID_KEYSTORE_FILE", "../../android/app/arfa-counter-debug.keystore"))
+            storePassword envOr("ANDROID_KEYSTORE_PASSWORD", "android")
+            keyAlias envOr("ANDROID_KEY_ALIAS", "arfacounter")
+            keyPassword envOr("ANDROID_KEY_PASSWORD", "android")
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            signingConfig signingConfigs.shared
+        }
+        debug {
+            signingConfig signingConfigs.shared
+        }
+    }
+
+    buildFeatures {
+        buildConfig true
+        compose true
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+    testOptions {
+        unitTests.returnDefaultValues = true
+    }
+    packaging {
+        resources {
+            excludes += ['/META-INF/{AL2.0,LGPL2.1}', 'META-INF/DEPENDENCIES']
+        }
+    }
+}
+
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+
+dependencies {
+    def composeBom = platform('androidx.compose:compose-bom:2024.09.03')
+    implementation composeBom
+    androidTestImplementation composeBom
+    implementation 'androidx.compose.ui:ui'
+    implementation 'androidx.compose.material3:material3'
+    implementation 'androidx.compose.material:material-icons-core'
+    implementation 'androidx.compose.ui:ui-tooling-preview'
+    debugImplementation 'androidx.compose.ui:ui-tooling'
+    implementation 'androidx.activity:activity-compose:1.9.2'
+    implementation 'androidx.lifecycle:lifecycle-runtime-compose:2.8.6'
+    implementation 'androidx.lifecycle:lifecycle-viewmodel-compose:2.8.6'
+    implementation 'androidx.lifecycle:lifecycle-process:2.8.6'
+    implementation 'androidx.core:core-ktx:1.13.1'
+
+    // Camera and reading on the phone - the models are bundled in the APK,
+    // so scanning works the moment it's installed, with no signal.
+    def camerax = '1.3.4'
+    implementation "androidx.camera:camera-core:$camerax"
+    implementation "androidx.camera:camera-camera2:$camerax"
+    implementation "androidx.camera:camera-lifecycle:$camerax"
+    implementation "androidx.camera:camera-view:$camerax"
+    implementation 'com.google.mlkit:barcode-scanning:17.3.0'
+    implementation 'com.google.mlkit:text-recognition:16.0.1'
+
+    // Offline: orders and their serials cached, scans queued and sent.
+    def room = '2.6.1'
+    implementation "androidx.room:room-runtime:$room"
+    implementation "androidx.room:room-ktx:$room"
+    ksp "androidx.room:room-compiler:$room"
+    implementation 'androidx.work:work-runtime-ktx:2.9.1'
+
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1'
+    implementation 'androidx.security:security-crypto:1.1.0-alpha06'
+    // Pushes - the Firebase settings come from the server at run time
+    // (/api/wh/v1/app/config), so no google-services.json is built in.
+    implementation 'com.google.firebase:firebase-messaging:24.0.3'
+
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.json:json:20240303'
+    testImplementation 'org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1'
+    androidTestImplementation 'androidx.test.ext:junit:1.2.1'
+    androidTestImplementation 'androidx.test:runner:1.6.2'
+    androidTestImplementation 'androidx.compose.ui:ui-test-junit4'
+    androidTestImplementation 'com.squareup.okhttp3:mockwebserver:4.12.0'
+    debugImplementation 'androidx.compose.ui:ui-test-manifest'
+}

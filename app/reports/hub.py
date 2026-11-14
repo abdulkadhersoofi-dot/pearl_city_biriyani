@@ -18,8 +18,11 @@ class Report:
     icon: str
     features: tuple = ()
     kwargs: dict = field(default_factory=dict)
+    any_features: tuple = ()      # at least one of these on
 
     def visible(self) -> bool:
+        if self.any_features and not any(current_tenant_has(f) for f in self.any_features):
+            return False
         return all(current_tenant_has(f) for f in self.features)
 
 
@@ -64,10 +67,15 @@ GROUPS = [
                "were filed.", "reports.filing_status", "calendar-clock", ("business_reports",)),
         Report("Margin register", "Every second-hand unit sold under the margin scheme (Rule 32(5)) - purchase "
                "and sale, margin and GST. Excel or PDF.", "reports.margin_register", "coins", ("margin_scheme",)),
+        Report("e-Invoice & e-Way bills", "Generate, track and cancel IRNs and e-way bills, and your portal "
+               "sign-in.", "einvoice.index", "scan-line", any_features=("einvoice", "eway_bill")),
         Report("e-Invoice log", "Every IRN generated or cancelled, with the portal's replies.", "einvoice.log",
                "scan-line", ("einvoice",)),
     ]),
     ("accounts", "Accounts & registers", "landmark", [
+        Report("Books check", "Do the figures agree? The dashboard, the reports, the GST returns, stock and "
+               "accounts, each checked against the others and the records behind them.", "reports.books_check",
+               "file-check"),
         Report("Customer accounts", "Who owes you, how long it's been due, and statements to send.",
                "accounts.receivables_index", "users", ("receivables",)),
         Report("Supplier accounts", "What you owe each supplier and when it's due.", "accounts.payables_index",
@@ -88,6 +96,21 @@ GROUPS = [
                ("loyalty",)),
     ]),
 ]
+
+
+# The answers asked for most days, pinned above the library.
+DAILY = [
+    Report("Sales report", "What you sold, any period.", "reports.sales_view", "receipt-text"),
+    Report("Profit & loss", "What you made.", "reports.profit_loss", "trending-up", ("business_reports",)),
+    Report("Stock on hand", "What is where, and its value.", "inventory.index", "boxes", ("inventory",)),
+    Report("Customer accounts", "Who owes you.", "accounts.receivables_index", "users", ("receivables",)),
+    Report("Books check", "Do the figures agree?", "reports.books_check", "file-check"),
+]
+
+
+def daily_reports() -> list[dict]:
+    return [{"title": r.title, "description": r.description, "url": url_for(r.endpoint, **r.kwargs), "icon": r.icon}
+            for r in DAILY if r.visible()]
 
 
 def hub_groups() -> list[dict]:

@@ -3,7 +3,7 @@
    this device only (localStorage "arfa.theme"). Runs before the page is
    painted so it never flashes the wrong colours. #}
 <meta name="color-scheme" content="light dark">
-<script>
+<script nonce="{{ csp_nonce() }}">
   (function () {
     var t = null;
     try { t = localStorage.getItem("arfa.theme"); } catch (e) { /* private window */ }

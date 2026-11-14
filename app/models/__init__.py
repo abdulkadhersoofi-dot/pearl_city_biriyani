@@ -15,7 +15,7 @@ from app.models.inventory import (
 )
 from app.models.purchase import (
     Supplier, PurchaseBill, PurchaseBillLine, PurchaseReturn, PurchaseReturnLine, PurchaseOrder,
-    PurchaseOrderLine, Gstr2bImport, Gstr2bEntry,
+    PurchaseOrderLine, Gstr2bImport, Gstr2bEntry, SupplierNote,
 )
 from app.models.margin import MarginAllocation
 from app.models.expense import ExpenseCategory, Expense, RecurringExpense
@@ -30,7 +30,7 @@ from app.models.business import (
     Salesman,
 )
 from app.models.platform import (
-    Cashier, CounterDevice, DevicePairing, OfflineBill, OfflineBillStatus, PlatformInvoice, PlatformInvoiceStatus,
+    Cashier, CounterDevice, DevicePairing, LoginHandoff, OfflineBill, SignInDomain, OfflineBillStatus, PlatformInvoice, PlatformInvoiceStatus,
     PlatformProfile,
     PlatformSeries,
 )
@@ -38,6 +38,12 @@ from app.models.note import CreditDebitNote, NoteLine, NoteStatus
 from app.models.audit_log import AuditLog
 from app.models.package import AuditorPowers, LoginGrant, ModuleRequest, Package, TenantPackage
 from app.models.stock import BranchStockAllocation
+from app.models.sap import SapCall, SapConnection, SapMapping, SapOrder
+from app.models.scan import ScanAppToken, ScanDocument, ScanLesson
+from app.models.warehouse import (
+    DeliveryScan, Financier, ReceivedUnit, SerialPick, SerialSwap, StockCount, StockCountScan, WarehouseLogin,
+    WarehouseNotice, WarehouseReceipt, WarehouseSession, PincodeGeo, WarehouseServiceArea,
+)
 from app.models import indexes as _indexes  # noqa: E402,F401 - registers the business+date indexes
 
 __all__ = [
@@ -78,4 +84,9 @@ __all__ = [
     "NoteStatus",
     "AuditLog",
     "BranchStockAllocation",
+    "ScanAppToken",
+    "ScanDocument", "ScanLesson", "SapCall", "SapConnection", "SapMapping", "SapOrder",
+    "WarehouseLogin", "WarehouseSession", "SerialPick", "WarehouseNotice", "WarehouseReceipt", "ReceivedUnit",
+    "StockCount", "StockCountScan", "Financier", "DeliveryScan", "SerialSwap", "PincodeGeo",
+    "WarehouseServiceArea",
 ]

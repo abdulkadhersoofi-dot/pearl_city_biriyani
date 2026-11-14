@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Count at {{ c.location.name }} - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Count at {{ c.location.name }}</h1>
+    <p class="text-muted mt-0">Started {{ c.created_at|ist('%d %b %Y %I:%M %p') }}{% if c.started_by %} by {{ c.started_by.name }}{% endif %} · {{ 'finished ' ~ c.finished_at|ist('%d %b %I:%M %p') if c.finished_at else 'still counting' }}</p>
+  </div>
+  <a href="{{ url_for('warehouse.count', count_id=c.id, format='xlsx') }}" class="btn btn-secondary">Download Excel</a>
+</div>
+{% include "warehouse/_nav.html" %}
+<div class="card mb-16 row gap-16 flex-wrap">
+  <div><span class="field-label">Scanned</span><div class="stat-num">{{ result.scanned }}</div></div>
+  <div><span class="field-label">In ARFA here</span><div class="stat-num">{{ result.in_stock }}</div></div>
+  <div><span class="field-label">Matched</span><div class="stat-num">{{ result.matched }}</div></div>
+  <div><span class="field-label">Not scanned</span><div class="stat-num">{{ result.missing|length }}</div></div>
+  <div><span class="field-label">Not in ARFA here</span><div class="stat-num">{{ result.extra|length }}</div></div>
+</div>
+<h2 class="section-title">In ARFA's stock here, not found on the floor</h2>
+<div class="card table-wrap mb-16"><table>
+  <thead><tr><th>Serial</th><th>Item</th><th>Model no.</th></tr></thead>
+  <tbody>{% for u in result.missing %}<tr><td class="mono">{{ u.serial_no }}</td><td>{{ u.product.name if u.product }}</td><td class="mono">{{ u.product.model_no if u.product and u.product.model_no else '' }}</td></tr>{% else %}<tr><td colspan="3" class="text-muted">None.</td></tr>{% endfor %}</tbody>
+</table></div>
+<h2 class="section-title">On the floor, not in ARFA's stock here</h2>
+<div class="card table-wrap"><table>
+  <thead><tr><th>Serial</th><th>Why</th></tr></thead>
+  <tbody>{% for e in result.extra %}<tr><td class="mono">{{ e.serial_no }}</td><td>{{ e.why }}</td></tr>{% else %}<tr><td colspan="2" class="text-muted">None.</td></tr>{% endfor %}</tbody>
+</table></div>
+{% endblock %}

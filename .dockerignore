@@ -13,6 +13,7 @@ dump.rdb
 tests/
 # Not part of the server image.
 android/
+warehouse-android/
 tests/
 backups/
 deploy/firebase/

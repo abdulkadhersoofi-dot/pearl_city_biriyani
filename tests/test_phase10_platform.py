@@ -355,6 +355,14 @@ def test_healthz_reports_its_checks(client):
     assert res.get_json()["checks"]["database"] == "ok"
 
 
+def test_health_answers_on_both_paths(client):
+    # /health is what the Cloud Run deploy checks (Cloud Run keeps paths
+    # ending in "z" for itself); /healthz stays for the phones and Render.
+    a, b = client.get("/healthz"), client.get("/health")
+    assert a.status_code == b.status_code
+    assert a.get_json()["status"] == b.get_json()["status"]
+
+
 def test_healthz_is_503_when_the_database_is_down(app, client):
     with mock.patch("app.main.routes.db.session.execute", side_effect=RuntimeError("down")):
         res = client.get("/healthz")

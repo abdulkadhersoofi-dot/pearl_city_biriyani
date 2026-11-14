@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}{{ f.name }} settlement - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header"><div><h1>{{ f.name }} - settlement</h1><p class="text-muted mt-0">Financed invoices, what {{ f.name }} owes on each and what it has paid. Its payouts are receipt vouchers on its account; charges it deducts (subvention, processing) go in as an expense.</p></div>
+  <a href="{{ url_for('expenses.new_expense') }}" class="btn btn-secondary">Record charges as an expense</a></div>
+{% include "warehouse/_nav.html" %}
+<div class="card mb-16 row gap-16 flex-wrap">
+  <div><span class="field-label">Financed</span><div class="stat-num">{{ totals.due|inr }}</div></div>
+  <div><span class="field-label">Received</span><div class="stat-num">{{ totals.received|inr }}</div></div>
+  <div><span class="field-label">Outstanding</span><div class="stat-num">{{ totals.outstanding|inr }}</div></div>
+</div>
+
+{% if preview is not none %}
+<form method="post" action="{{ url_for('warehouse.payouts', financier_id=f.id) }}" class="card mb-16">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="step" value="confirm">
+  <input type="hidden" name="rows" value="{{ rows_json }}">
+  <h2 class="section-title mt-0">Check the matches</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Date</th><th>Loan ref</th><th>Invoice (statement)</th><th class="num">Paid</th><th>UTR</th><th>Set against</th></tr></thead>
+    <tbody>{% for r in preview %}{% set n = loop.index0 %}<tr>
+      <td>{{ r.date }}</td><td class="mono">{{ r.loan_ref }}</td><td class="mono">{{ r.invoice }}</td><td class="num">{{ r.amount }}{% if r.charges %}<br><small class="text-muted">charges {{ r.charges }}</small>{% endif %}</td><td class="mono">{{ r.utr }}</td>
+      <td><select name="invoice_{{ n }}" class="field-input"><option value="">Don't record</option>
+        {% for i in items if i.outstanding > 0 %}<option value="{{ i.invoice.id }}" {{ 'selected' if r.invoice_id == i.invoice.id }}>{{ i.invoice.invoice_number }} · {{ i.outstanding|inr }} due{% if i.invoice.loan_ref %} · {{ i.invoice.loan_ref }}{% endif %}</option>{% endfor %}
+      </select>{% if r.how %}<small class="text-muted">matched by {{ r.how }}</small>{% else %}<small class="field-error-msg">no match - choose one</small>{% endif %}</td></tr>
+    {% else %}<tr><td colspan="6" class="text-muted">No payout rows found in the file.</td></tr>{% endfor %}</tbody>
+  </table></div>
+  <button class="btn btn-primary mt-12">Record the payouts</button>
+</form>
+{% else %}
+<form method="post" action="{{ url_for('warehouse.payouts', financier_id=f.id) }}" enctype="multipart/form-data" class="card row gap-10 items-end flex-wrap mb-16">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label class="field m-0 grow"><span class="field-label">Import {{ f.name }}'s payout statement (Excel)</span><input type="file" name="statement" accept=".xlsx" class="field-input" required>
+    <span class="field-help">Matched by loan ref, then invoice number, then amount - you check every match before anything is recorded.</span></label>
+  <button class="btn btn-secondary">Read the statement</button>
+</form>
+{% endif %}
+
+<div class="card table-wrap"><table>
+  <thead><tr><th>Invoice</th><th>Date</th><th>Customer</th><th>Loan ref</th><th class="num">Financed</th><th class="num">Received</th><th class="num">Outstanding</th></tr></thead>
+  <tbody>{% for i in items %}<tr><td>{{ i.invoice.invoice_number }}</td><td>{{ i.invoice.invoice_date.strftime('%d %b %Y') }}</td><td>{{ i.invoice.customer_snapshot.name }}</td><td class="mono">{{ i.invoice.loan_ref or '' }}</td>
+    <td class="num">{{ i.due|inr }}</td><td class="num">{{ i.received|inr }}</td><td class="num">{{ i.outstanding|inr }}</td></tr>
+  {% else %}<tr><td colspan="7" class="text-muted">No financed invoices yet.</td></tr>{% endfor %}</tbody>
+</table></div>
+{% endblock %}

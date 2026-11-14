@@ -16,7 +16,7 @@ from app.utils import gst_config
 from app.utils.financial_year import financial_year_for
 from app.utils.form_arrays import posted_flag
 from app.utils.gst import allowed_document_types, compute_invoice_totals, compute_line
-from app.utils.numbering import allocate_number, get_or_create_series
+from app.utils.numbering import allocate_number, claim_number, get_or_create_series, number_in
 
 
 class InvoiceValidationError(Exception):
@@ -56,6 +56,17 @@ class InvoiceInput:
     # itself from the branch's own branch_type.
     branch_user_id: int | None = None
     lines: list[LineInput] = field(default_factory=list)
+    # The number of an invoice issued outside ARFA (scanned); None = ARFA's next.
+    number: str | None = None
+    # Made from a sales order a warehouse picked (app/warehouse): stock and
+    # the scanned serials leave from that warehouse, not the main store.
+    dispatch_location_id: int | None = None
+    # An EMI sale: this much is due from the financier (app/accounts/receivables.py).
+    financier_id: int | None = None
+    finance_amount: Decimal | None = None
+    loan_ref: str | None = None
+    # Delivered elsewhere than the billing address (from the sales order).
+    ship_to: dict | None = None
 
 
 def _to_decimal(value: str, field_name: str) -> Decimal:
@@ -146,6 +157,11 @@ def create_invoice(tenant: Tenant, created_by, data: InvoiceInput) -> Invoice:
     gstin = Gstin.query.filter_by(id=data.gstin_id, tenant_id=tenant.id, is_active=True).first()
     if not gstin:
         raise InvoiceValidationError("Select a valid GSTIN to bill from.")
+    # A month whose GSTR-1 is filed takes no new documents (app/finance/periods.py).
+    from app.finance import periods
+
+    periods.ensure_open(tenant.id, gstin.id, data.invoice_date, periods.SALES, InvoiceValidationError,
+                        "add an invoice")
 
     customer = None
     if branch:
@@ -201,7 +217,8 @@ def create_invoice(tenant: Tenant, created_by, data: InvoiceInput) -> Invoice:
                         f"{product.name}: pick the serial/IMEI being sold - sell it from Second-hand goods -> Sell, "
                         "or at the counter.")
                 try:
-                    inventory_hooks._check_serials(tenant.id, product, line)
+                    inventory_hooks._check_serials(tenant.id, product, line,
+                                                   inventory_ledger.default_location(tenant.id).id)
                 except inventory_ledger.StockError as exc:
                     raise InvoiceValidationError(exc.message)
         document_type = DocumentType.MARGIN_SCHEME_INVOICE
@@ -261,7 +278,7 @@ def create_invoice(tenant: Tenant, created_by, data: InvoiceInput) -> Invoice:
     # before a number is taken - a refused invoice leaves no gap.
     try:
         inventory_hooks.check_sale(
-            tenant, inventory_ledger.default_location(tenant.id).id,
+            tenant, data.dispatch_location_id or inventory_ledger.default_location(tenant.id).id,
             [inventory_hooks.SaleLine(l.product_id, l.qty) for l in data.lines if l.product_id],
             require_serials=False,
         )
@@ -271,7 +288,19 @@ def create_invoice(tenant: Tenant, created_by, data: InvoiceInput) -> Invoice:
     series = get_or_create_series(
         tenant.id, gstin.id, document_type, financial_year_for(data.invoice_date)
     )
-    invoice_number = allocate_number(series)
+    if data.number:
+        # A document issued outside ARFA (a scanned invoice) keeps the number printed on it.
+        invoice_number = data.number.strip()[:64]
+        if Invoice.query.filter_by(tenant_id=tenant.id, invoice_number=invoice_number).first() is not None:
+            raise InvoiceValidationError(f"Invoice {invoice_number} is already in your books.")
+        # Typed in the series' own format ahead of it (INV/2026-27/0050 while
+        # the series is at 42): the series carries on after it, so ARFA never
+        # gives that number out a second time.
+        serial = number_in(series, invoice_number)
+        if serial is not None and serial >= series.next_number:
+            claim_number(series, serial)
+    else:
+        invoice_number = allocate_number(series)
 
     invoice = Invoice(
         tenant_id=tenant.id,
@@ -287,8 +316,14 @@ def create_invoice(tenant: Tenant, created_by, data: InvoiceInput) -> Invoice:
         status=InvoiceStatus.ISSUED,
         notes=data.notes,
         created_by_id=created_by.id,
+        financier_id=data.financier_id if data.finance_amount else None,
+        finance_amount=data.finance_amount or None,
+        loan_ref=data.loan_ref if data.finance_amount else None,
+        ship_to=data.ship_to or None,
         **totals,
     )
+    if invoice.finance_amount and Decimal(invoice.finance_amount) > Decimal(invoice.grand_total):
+        raise InvoiceValidationError("The finance amount can't be more than the invoice total.")
     db.session.add(invoice)
     db.session.flush()
 
@@ -344,7 +379,8 @@ def create_invoice(tenant: Tenant, created_by, data: InvoiceInput) -> Invoice:
             margin_services.record(tenant.id, "invoice", invoice.id, saved.id, invoice.invoice_number,
                                    data.invoice_date, saved.product_id, item)
     serials = {saved.id: list(line.serials) for saved, line in zip(invoice.lines, data.lines) if line.serials}
-    inventory_hooks.post_invoice(tenant, invoice, created_by.id, serials_by_line=serials)
+    inventory_hooks.post_invoice(tenant, invoice, created_by.id, serials_by_line=serials,
+                                 location_id=data.dispatch_location_id)
     return invoice
 
 
@@ -353,6 +389,10 @@ def void_invoice(invoice: Invoice, voided_by, reason: str) -> None:
         raise InvoiceValidationError("Invoice is already void.")
     if not reason or not reason.strip():
         raise InvoiceValidationError("A reason is required to void an invoice.")
+    from app.finance import periods
+
+    periods.ensure_open(invoice.tenant_id, invoice.gstin_id, invoice.invoice_date, periods.SALES,
+                        InvoiceValidationError, "void an invoice")
     if invoice.irn and not invoice.irn_cancelled_at:
         raise InvoiceValidationError(f"This invoice has an IRN on the IRP - cancel the IRN first (allowed within {gst_config.IRN_CANCEL_HOURS} "
                                      "hours of generating it), or issue a credit note against it.")

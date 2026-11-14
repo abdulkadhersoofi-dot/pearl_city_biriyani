@@ -36,3 +36,20 @@ class FilingStatus(db.Model, TenantScopedMixin, TimestampMixin):
     filed_by_id = db.Column(db.Integer, db.ForeignKey("users.id", name="fk_filing_statuses_filed_by"))
 
     gstin = db.relationship("Gstin")
+
+
+class BooksCheckRun(db.Model, TenantScopedMixin):
+    """One run of the Books check (app/finance/checks.py) for a business
+    and a month: whether every figure agreed, and each check's result as it
+    was shown. Kept so the last result opens at once and a failure can be
+    seen under "Needs you"; the nightly job adds one a night."""
+
+    __tablename__ = "books_check_runs"
+    __table_args__ = (db.Index("ix_books_check_runs_tenant_period", "tenant_id", "period", "ran_at"),)
+
+    id = db.Column(db.Integer, primary_key=True)
+    period = db.Column(db.String(7), nullable=False)  # "2026-11"
+    ran_at = db.Column(db.DateTime(timezone=True), nullable=False)
+    ok = db.Column(db.Boolean, nullable=False, default=True)
+    failed_count = db.Column(db.Integer, nullable=False, default=0, server_default="0")
+    results = db.Column(db.JSON, nullable=False, default=list)

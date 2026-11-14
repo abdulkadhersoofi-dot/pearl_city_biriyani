@@ -111,7 +111,7 @@
 {% endblock %}
 
 {% block scripts %}
-<script>
+<script nonce="{{ csp_nonce() }}">
 // Onboarding steps: "Next" checks only the fields of the step it leaves
 // (the browser's own required / pattern checks), so a mistake shows where
 // it was made. The server checks it all again on submit.

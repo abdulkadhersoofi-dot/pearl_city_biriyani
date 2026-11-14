@@ -9,7 +9,7 @@ body.capp { margin: 0; min-height: 100dvh; background: var(--color-bg); color: v
 .capp-pair { background: radial-gradient(120% 70% at 50% 0%, var(--color-primary-soft), var(--color-bg) 70%); }
 .pair { max-width: 420px; margin: 0 auto; padding: calc(28px + env(safe-area-inset-top)) 18px 32px; display: flex; flex-direction: column; align-items: stretch; gap: 14px; }
 .pair-hero { display: grid; place-items: center; margin-top: 12px; }
-.pair-logo { width: 96px; height: 96px; filter: drop-shadow(0 10px 18px rgba(31, 122, 77, 0.25)); animation: capp-bob 3.2s ease-in-out infinite; }
+.pair-logo { width: 96px; height: 96px; border-radius: 22px; filter: drop-shadow(0 10px 18px rgba(5, 56, 66, 0.3)); animation: capp-bob 3.2s ease-in-out infinite; }
 @keyframes capp-bob { 50% { transform: translateY(-5px); } }
 @media (prefers-reduced-motion: reduce) { .pair-logo { animation: none; } }
 .pair-title { text-align: center; margin: 2px 0 6px; font-family: var(--font-display); font-size: 1.6rem; letter-spacing: -0.02em; }

@@ -19,12 +19,16 @@
     <span class="field-label">Address (printed on delivery challans)</span>
     <input type="text" name="address" class="field-input">
   </label>
+  <label class="field m-0 maxw-130">
+    <span class="field-label">Pincode</span>
+    <input type="text" name="pincode" inputmode="numeric" maxlength="6" class="field-input">
+  </label>
   <button class="btn btn-primary">Add location</button>
 </form>
 
 <div class="card table-wrap mt-16">
   <table>
-    <thead><tr><th>Name</th><th>Type</th><th>Address</th><th class="num">Items in stock</th><th>Status</th><th></th></tr></thead>
+    <thead><tr><th>Name</th><th>Type</th><th>Address</th><th class="num">Items in stock</th><th>Status</th>{% if godowns is defined %}<th>Warehouse dispatch</th>{% endif %}<th></th></tr></thead>
     <tbody>
     {% for loc in locations %}
       <tr>
@@ -33,6 +37,44 @@
         <td>{{ loc.address or '-' }}</td>
         <td class="num">{{ counts.get(loc.id, 0) }}</td>
         <td>{{ 'Active' if loc.is_active else 'Off' }}</td>
+        {% if godowns is defined %}
+        <td>
+          {% if loc.is_active %}
+          <form method="post" action="{{ url_for('warehouse.location_settings', location_id=loc.id) }}" class="wh-loc-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            {% if loc.kind.value == 'godown' %}
+            <label class="field m-0"><span class="field-label">Warehouse computer</span>
+              <select name="computer_user_id" class="field-input">
+                <option value="">None</option>
+                {% for u in branch_logins %}<option value="{{ u.id }}" {{ 'selected' if loc.branch_user_id == u.id }}>{{ u.name }}</option>{% endfor %}
+              </select></label>
+            <div class="row gap-6">
+              <label class="field m-0 grow"><span class="field-label">Pincode</span><input type="text" name="pincode" inputmode="numeric" maxlength="6" value="{{ loc.pincode or '' }}" class="field-input" {{ 'required' }}></label>
+            </div>
+            {% if not loc.pincode %}<p class="field-error-msg m-0">Give its pincode - the nearest-warehouse default needs it.</p>{% endif %}
+            <details><summary class="small-note">Exact point &amp; service area</summary>
+              <div class="row gap-6 mt-12">
+                <label class="field m-0"><span class="field-label">Latitude</span><input type="text" name="latitude" value="{{ loc.latitude if loc.latitude is not none else '' }}" class="field-input" placeholder="from pincode"></label>
+                <label class="field m-0"><span class="field-label">Longitude</span><input type="text" name="longitude" value="{{ loc.longitude if loc.longitude is not none else '' }}" class="field-input" placeholder="from pincode"></label>
+              </div>
+              <label class="field m-0 mt-12"><span class="field-label">Always serves these pincodes (overrides distance)</span>
+                <input type="text" name="service_area" value="{{ (service_areas.get(loc.id) or [])|join(', ') }}" class="field-input" placeholder="628001, 628002, 629">
+                <span class="field-help">Exact pincodes or their first digits - for a river, a district border or a road the straight line doesn't see.</span></label>
+            </details>
+            <label class="checkbox-row"><input type="checkbox" name="address_registered" value="1" {{ 'checked' if loc.address_registered }}> Address is on the GSTIN (additional place of business)</label>
+            {% if not loc.address_registered %}<p class="field-error-msg m-0">GST: goods may only be kept and dispatched from a place on your registration - add it as an additional place of business.</p>{% endif %}
+            {% else %}
+            <label class="field m-0"><span class="field-label">Fallback warehouse (when the delivery pincode isn't found)</span>
+              <select name="default_dispatch_location_id" class="field-input">
+                <option value="">None</option>
+                {% for g in godowns %}<option value="{{ g.id }}" {{ 'selected' if loc.default_dispatch_location_id == g.id }}>{{ g.name }}</option>{% endfor %}
+              </select></label>
+            {% endif %}
+            <button class="btn btn-quiet btn-sm">Save</button>
+          </form>
+          {% endif %}
+        </td>
+        {% endif %}
         <td>
           {% if loc.is_active and not loc.is_default and loc.kind.value != 'branch' %}
           <form method="post" action="{{ url_for('inventory.deactivate_location', location_id=loc.id) }}" data-confirm="Switch off {{ loc.name }}?" data-danger>

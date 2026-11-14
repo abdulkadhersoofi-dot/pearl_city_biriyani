@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}{{ note.note_number }} - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>{{ note.label }} {{ note.note_number }}</h1>
+    <p class="text-muted mt-0">{{ note.supplier_snapshot.name }} ·
+      <span class="status-badge {{ 'status-void' if note.status.value == 'voided' else 'status-issued' }}">{{ note.status.value|title }}</span></p>
+  </div>
+  {% if note.attachment_id %}<a href="{{ url_for('purchases.supplier_note_attachment', note_id=note.id) }}" class="btn btn-secondary" target="_blank">The supplier's note</a>{% endif %}
+</div>
+{% include "purchases/_nav.html" %}
+<div class="card mb-16">
+  <div class="form-grid">
+    <div><strong>Supplier</strong><p>{{ note.supplier_snapshot.name }}<br>{% if note.supplier_snapshot.gstin %}GSTIN: {{ note.supplier_snapshot.gstin }}{% endif %}</p></div>
+    <div><strong>Note</strong><p>{{ note.note_number }}<br>{{ note.note_date.strftime('%d %b %Y') }}</p></div>
+    <div><strong>Against</strong><p>{% if note.bill %}<a href="{{ url_for('purchases.view_bill', bill_id=note.purchase_bill_id) }}">{{ note.bill.supplier_invoice_no }}</a> ({{ note.bill.number }}){% else %}-{% endif %}</p></div>
+    <div><strong>Your registration</strong><p>{{ note.gstin.display_label }}</p></div>
+  </div>
+  {% if note.reason %}<p><strong>Reason:</strong> {{ note.reason }}</p>{% endif %}
+  {% if note.notes %}<p><strong>Notes:</strong> {{ note.notes }}</p>{% endif %}
+  {% if note.void_reason %}<p><strong>Voided:</strong> {{ note.void_reason }}</p>{% endif %}
+</div>
+<div class="table-wrap card">
+  <table>
+    <thead><tr><th>Item</th><th>HSN</th><th class="num">Qty</th><th class="num">Rate</th><th class="num">Taxable</th><th class="num">GST</th><th class="num">Total</th></tr></thead>
+    <tbody>
+    {% for l in note.lines %}
+      <tr><td>{{ l.description }}</td><td>{{ l.hsn or '' }}</td><td class="num">{{ l.qty }} {{ l.unit }}</td><td class="num">{{ l.rate }}</td>
+        <td class="num">{{ l.taxable_value }}</td><td class="num">{{ '%.2f'|format((l.cgst_amount|float) + (l.sgst_amount|float) + (l.igst_amount|float)) }}<br><small class="text-muted">{{ l.gst_rate }}%</small></td>
+        <td class="num">{{ l.line_total }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+<div class="totals-panel">
+  <div class="totals-box">
+    <div class="totals-row"><span>Taxable value</span><span>{{ '%.2f'|format(note.total_taxable_value) }}</span></div>
+    {% if note.total_igst %}<div class="totals-row"><span>IGST</span><span>{{ '%.2f'|format(note.total_igst) }}</span></div>
+    {% else %}<div class="totals-row"><span>CGST</span><span>{{ '%.2f'|format(note.total_cgst) }}</span></div>
+    <div class="totals-row"><span>SGST</span><span>{{ '%.2f'|format(note.total_sgst) }}</span></div>{% endif %}
+    {% if note.round_off %}<div class="totals-row"><span>Round off</span><span>{{ '%.2f'|format(note.round_off) }}</span></div>{% endif %}
+    <div class="totals-row grand"><span>{{ 'You owe the supplier less' if note.is_credit else 'You owe the supplier more' }}</span><span>Rs. {{ '%.2f'|format(note.grand_total) }}</span></div>
+    <div class="totals-row"><span>Input tax credit {{ 'reversed' if note.is_credit else 'claimed' }}</span><span>{{ '%.2f'|format(note.itc_total) }}</span></div>
+  </div>
+</div>
+{% if note.status.value == 'posted' %}
+<form method="post" action="{{ url_for('purchases.void_supplier_note', note_id=note.id) }}" class="card row void-box gap-10 items-end">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label class="field m-0 grow"><span class="field-label">Void this note - reason</span>
+    <input type="text" name="reason" class="field-input" required></label>
+  <button class="btn btn-danger" data-confirm="Void note {{ note.note_number }}?" data-danger>Void</button>
+</form>
+{% endif %}
+{% endblock %}

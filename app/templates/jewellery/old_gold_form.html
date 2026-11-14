@@ -13,7 +13,7 @@
     <label class="field"><span class="field-label">ID proof</span><input type="text" name="id_proof" value="{{ form.get('id_proof', '') }}" placeholder="Aadhaar XXXX 1234" class="field-input"></label>
     <label class="field"><span class="field-label">What it is</span><input type="text" name="description" value="{{ form.get('description', '') }}" placeholder="Old chain, broken bangle" class="field-input"></label>
     <label class="field"><span class="field-label">Metal &amp; purity</span>
-      <select name="metal_purity" class="field-input" onchange="var v=this.value.split('|'); this.form.metal.value=v[0]; this.form.purity.value=v[1];">
+      <select name="metal_purity" class="field-input" data-split-into="metal purity">
         {% for r in board %}<option value="{{ r.metal }}|{{ r.purity }}" {{ 'selected' if r.metal == 'gold' and r.purity == '22K' }}>{{ r.metal|title }} {{ r.purity }}{% if r.rate %} - Rs. {{ '%.2f'|format(r.rate) }}/g today{% endif %}</option>{% endfor %}
       </select>
       <input type="hidden" name="metal" value="gold"><input type="hidden" name="purity" value="22K"></label>

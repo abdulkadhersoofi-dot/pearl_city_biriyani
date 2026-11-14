@@ -30,6 +30,7 @@ from app.models.tenant import Gstin
 from app.utils.financial_year import financial_year_for
 from app.utils.gst import allowed_document_types, compute_invoice_totals, compute_line
 from app.utils.numbering import allocate_number, get_or_create_series
+from app.warehouse import dispatch
 
 ZERO = Decimal("0.00")
 MAX_RUNS_PER_PASS = 36
@@ -57,6 +58,24 @@ class SalesDocInput:
     challan_purpose: ChallanPurpose | None = None
     notes: str | None = None
     terms: str | None = None
+    # Warehouse dispatch: the godown a sales order ships from (required for
+    # a sales order when the module is on).
+    dispatch_location_id: int | None = None
+    # An EMI (finance) sale (warehouse dispatch, stage 5B).
+    is_finance_sale: bool = False
+    financier_id: int | None = None
+    loan_ref: str | None = None
+    finance_amount: Decimal | None = None
+    down_payment: Decimal | None = None
+    # Where the goods go (blank: the customer's address) and, when no single
+    # warehouse has it all, whether to split the order across warehouses.
+    ship_to: dict | None = None
+    split: bool = False
+    # Set when this order is one part of a split (internal).
+    split_group_id: int | None = None
+    # No warehouse can supply it yet: saved without a warehouse or a hold
+    # (app/sell); sent to one later with dispatch.send_waiting.
+    await_stock: bool = False
 
 
 def _customer_snapshot(customer: Customer) -> dict:
@@ -84,6 +103,23 @@ def create_sales_document(tenant, user, data: SalesDocInput) -> SalesDocument:
         raise SalesError("Say why the goods are going out (job work, sale on approval...).")
     if data.valid_until and data.valid_until < data.doc_date:
         raise SalesError("'Valid until' can't be before the date.")
+    warehouse, ship_to, reason = None, None, None
+    waiting = data.kind == SalesDocumentKind.SALES_ORDER and data.await_stock and dispatch.is_on(tenant)
+    if waiting:
+        ship_to = _ship_to(customer, data.ship_to)
+    elif data.kind == SalesDocumentKind.SALES_ORDER and dispatch.is_on(tenant):
+        ship_to = _ship_to(customer, data.ship_to)
+        if data.split_group_id is not None:
+            reason = "split"
+            try:
+                warehouse = dispatch.resolve_warehouse(tenant, data.dispatch_location_id)
+                dispatch.check_free(tenant, warehouse, data.lines)
+            except dispatch.DispatchError as exc:
+                raise SalesError(exc.message)
+        else:
+            warehouse, reason, parts = _choose_warehouse(tenant, user, data, ship_to)
+            if parts:
+                return _create_split(tenant, user, data, ship_to, parts)
     charge_gst = data.invoice_document_type not in (DocumentType.BILL_OF_SUPPLY, DocumentType.EXPORT_INVOICE_LUT)
     is_intra = data.place_of_supply_state_code == gstin.state_code
     computed = []
@@ -94,6 +130,7 @@ def create_sales_document(tenant, user, data: SalesDocInput) -> SalesDocument:
                          is_intra_state=is_intra, charge_gst=charge_gst, price_includes_tax=line.price_includes_tax)
         computed.append({**c, "input": line})
     totals = compute_invoice_totals(computed)
+    finance = _finance(tenant, data, totals["grand_total"]) if warehouse is not None and data.is_finance_sale else {}
     series = get_or_create_series(tenant.id, gstin.id, SALES_DOCUMENT_SERIES[data.kind], financial_year_for(data.doc_date))
     doc = SalesDocument(
         tenant_id=tenant.id, kind=data.kind, gstin_id=gstin.id, invoice_series_id=series.id,
@@ -102,7 +139,9 @@ def create_sales_document(tenant, user, data: SalesDocInput) -> SalesDocument:
         valid_until=data.valid_until, invoice_document_type=data.invoice_document_type,
         challan_purpose=data.challan_purpose if data.kind == SalesDocumentKind.DELIVERY_CHALLAN else None,
         status=SalesDocumentStatus.OPEN, notes=(data.notes or "").strip() or None,
-        terms=(data.terms or "").strip() or None, created_by_id=user.id, **totals,
+        terms=(data.terms or "").strip() or None, created_by_id=user.id, **totals, **finance,
+        ship_to=ship_to, dispatch_choice_reason=reason, split_group_id=data.split_group_id or None,
+        awaiting_stock=waiting,
     )
     for order, item in enumerate(computed):
         li = item["input"]
@@ -115,7 +154,110 @@ def create_sales_document(tenant, user, data: SalesDocInput) -> SalesDocument:
         ))
     db.session.add(doc)
     db.session.flush()
+    if warehouse is not None:
+        try:
+            dispatch.start(tenant, doc, warehouse)
+        except dispatch.DispatchError as exc:
+            raise SalesError(exc.message)
     return doc
+
+
+SHIP_TO_KEYS = ("name", "address_line1", "address_line2", "city", "state_code", "pincode", "phone")
+
+
+def _ship_to(customer: Customer, given: dict | None) -> dict:
+    """The delivery address: what the order says, else the customer's."""
+    base = {"name": customer.name, "address_line1": customer.address_line1, "address_line2": customer.address_line2,
+            "city": customer.city, "state_code": customer.state_code, "pincode": customer.pincode,
+            "phone": customer.phone}
+    given = {k: (str(v).strip()[:255] if v is not None else "") for k, v in (given or {}).items() if k in SHIP_TO_KEYS}
+    if any(given.get(k) for k in ("address_line1", "city", "pincode")):
+        out = {k: given.get(k) or "" for k in SHIP_TO_KEYS}
+        out["name"] = out["name"] or customer.name
+    else:
+        out = {k: (base.get(k) or "") for k in SHIP_TO_KEYS}
+    from app.warehouse.nearest import clean_pincode
+
+    if out.get("pincode") and not clean_pincode(out["pincode"]):
+        raise SalesError("The delivery pincode should be 6 digits.")
+    return out
+
+
+def _choose_warehouse(tenant, user, data: SalesDocInput, ship_to: dict):
+    """(warehouse, why, split plan or None): the one picked on the form (its
+    reason "manual" unless it is what ARFA suggested), else ARFA's suggestion
+    (bulk / API orders). With split on and the warehouse short, a plan to
+    spread the order over warehouses, nearest first."""
+    from app.warehouse import nearest
+
+    home = dispatch.ledger.location_for_user(tenant.id, user)
+    suggestion = nearest.suggest_warehouse(tenant, ship_to.get("pincode"), data.lines,
+                                           fallback=home.default_dispatch_location)
+    try:
+        if data.dispatch_location_id:
+            warehouse = dispatch.resolve_warehouse(tenant, data.dispatch_location_id)
+            reason = suggestion.reason if suggestion.location and suggestion.location.id == warehouse.id else "manual"
+        elif suggestion.location is not None:
+            warehouse, reason = suggestion.location, suggestion.reason
+        else:
+            raise dispatch.DispatchError("Pick the warehouse this order ships from. " + suggestion.message)
+        try:
+            dispatch.check_free(tenant, warehouse, data.lines)
+        except dispatch.DispatchError:
+            if not data.split:
+                raise
+            if data.is_finance_sale:
+                raise dispatch.DispatchError("An EMI sale is invoiced once, with every serial - it can't be split "
+                                             "across warehouses. Pick one warehouse that has it all.")
+            ranked = sorted(suggestion.ranked, key=lambda o: o.location.id != warehouse.id)   # the chosen one first
+            plan = nearest.plan_split(tenant, ranked, data.lines)
+            if plan is None:
+                raise dispatch.DispatchError("Even all the warehouses together don't have this order free.")
+            return warehouse, "split", plan
+    except dispatch.DispatchError as exc:
+        raise SalesError(exc.message)
+    return warehouse, reason, None
+
+
+def _create_split(tenant, user, data: SalesDocInput, ship_to: dict, plan) -> SalesDocument:
+    """One order per warehouse, each with its share of the lines; every part
+    points at the first (split_group_id). Returns the first; .split_parts holds all."""
+    from dataclasses import replace
+
+    parts = []
+    for location, shares in plan:
+        lines = [replace(data.lines[i], qty=Decimal(q)) for i, q in sorted(shares.items()) if q > 0]
+        part = create_sales_document(tenant, user, replace(
+            data, lines=lines, dispatch_location_id=location.id, split=False, ship_to=ship_to,
+            split_group_id=parts[0].id if parts else 0))
+        if not parts:
+            part.split_group_id = part.id
+        parts.append(part)
+    db.session.flush()
+    parts[0].split_parts = parts
+    return parts[0]
+
+
+def _finance(tenant, data: SalesDocInput, total) -> dict:
+    """An EMI sale's split: what the financier pays (finance amount) and what
+    the customer pays (down payment) - together the order's total."""
+    from app.models.warehouse import Financier
+
+    financier = (Financier.query.filter_by(id=data.financier_id, tenant_id=tenant.id, is_active=True).first()
+                 if data.financier_id else None)
+    if financier is None:
+        raise SalesError("Pick the financier (Bajaj Finserv, HDB...) for this EMI sale.")
+    total = Decimal(total)
+    finance = Decimal(data.finance_amount or 0)
+    if finance <= 0 or finance > total:
+        raise SalesError(f"The finance amount must be more than 0 and at most the order total (Rs. {total:.2f}).")
+    down = Decimal(data.down_payment) if data.down_payment not in (None, "") else total - finance
+    if abs(down + finance - total) > Decimal("1.00"):
+        raise SalesError(f"Down payment Rs. {down:.2f} + finance Rs. {finance:.2f} should make the order total "
+                         f"Rs. {total:.2f}.")
+    return {"is_finance_sale": True, "financier_id": financier.id,
+            "loan_ref": (data.loan_ref or "").strip()[:60] or None, "finance_amount": finance,
+            "down_payment": total - finance}
 
 
 def lines_of(doc_lines) -> list[LineInput]:
@@ -151,6 +293,8 @@ def convert_to_invoice(tenant, user, doc: SalesDocument, invoice_date: date | No
     _require_open(doc)
     if doc.customer_id is None:
         raise SalesError("This document has no customer.")
+    if doc.dispatch_status is not None:
+        return convert_picked_order(tenant, user, doc, invoice_date)
     try:
         invoice = create_invoice(tenant, user, InvoiceInput(
             gstin_id=doc.gstin_id, document_type=doc.invoice_document_type, customer_id=doc.customer_id,
@@ -163,10 +307,53 @@ def convert_to_invoice(tenant, user, doc: SalesDocument, invoice_date: date | No
     return invoice
 
 
+def convert_picked_order(tenant, user, doc: SalesDocument, invoice_date: date | None = None):
+    """A warehouse-dispatched order: invoiced once its warehouse has picked
+    it, with each line's scanned serials, from that warehouse's stock."""
+    from app.models.inventory import SerialStatus
+    from app.models.warehouse import DispatchStatus
+
+    if doc.dispatch_status != DispatchStatus.PICKED:
+        raise SalesError("This order is still at the warehouse - it is invoiced there once every unit is "
+                         "scanned and the picker has confirmed it.")
+    progress = dispatch.line_progress(doc)
+    lines = lines_of(doc.lines)
+    for line_in, line in zip(lines, doc.lines):
+        if not dispatch.needs_scan(line):
+            continue
+        info = progress[line.id]
+        if info["picked"] < info["qty"]:
+            raise SalesError(f"{line.description}: only {info['picked']} of {info['qty']} picked.")
+        for pick in info["picks"]:
+            unit = pick.serial
+            if unit is None:
+                continue
+            if unit.status != SerialStatus.PICKED or unit.picked_sales_line_id != line.id \
+                    or unit.location_id != doc.dispatch_location_id:
+                raise SalesError(f"{line.description}: serial {unit.serial_no} is no longer held at "
+                                 f"{doc.dispatch_location.name} for this order - undo and scan it again.")
+        line_in.serials = list(info["serials"])
+    try:
+        invoice = create_invoice(tenant, user, InvoiceInput(
+            gstin_id=doc.gstin_id, document_type=doc.invoice_document_type, customer_id=doc.customer_id,
+            place_of_supply_state_code=doc.place_of_supply_state_code, invoice_date=invoice_date or date.today(),
+            notes=doc.notes, lines=lines, dispatch_location_id=doc.dispatch_location_id,
+            financier_id=doc.financier_id if doc.is_finance_sale else None,
+            finance_amount=doc.finance_amount if doc.is_finance_sale else None, loan_ref=doc.loan_ref,
+            ship_to=doc.ship_to,
+        ))
+    except InvoiceValidationError as exc:
+        raise SalesError(exc.message)
+    mark_converted(doc, invoice, user)
+    dispatch.mark_invoiced(doc, invoice)
+    return invoice
+
+
 def cancel_document(doc: SalesDocument, user, reason: str) -> None:
     _require_open(doc)
     if not (reason or "").strip():
         raise SalesError("A reason is required.")
+    dispatch.cancelled(doc)
     doc.status = SalesDocumentStatus.CANCELLED
     doc.cancel_reason = reason.strip()
     doc.closed_at = utcnow()

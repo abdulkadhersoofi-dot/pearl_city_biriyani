@@ -176,7 +176,11 @@ def _collect_supply_lines(tenant: Tenant, gstin: Gstin, period: str) -> tuple[li
             Invoice.invoice_date >= start,
             Invoice.invoice_date <= end,
             Invoice.status != InvoiceStatus.VOID,
-            Invoice.document_type != DocumentType.BILL_OF_SUPPLY,
+            # Not supplies under this return: a Bill of Supply, and a
+            # Delivery Challan - stock sent to a branch the business owns
+            # moves goods within one registration, it sells nothing (it is
+            # still listed in the document summary, with the challans).
+            Invoice.document_type.notin_((DocumentType.BILL_OF_SUPPLY, DocumentType.DELIVERY_CHALLAN)),
         )
         .options(selectinload(Invoice.lines))
         .order_by(Invoice.invoice_date, Invoice.invoice_number)
@@ -202,6 +206,21 @@ def _collect_supply_lines(tenant: Tenant, gstin: Gstin, period: str) -> tuple[li
         )
         .options(selectinload(POSBill.lines))
         .order_by(POSBill.completed_at)
+        .all()
+    )
+    # A counter refund is reported in the month of the refund, like a credit
+    # note - never by changing the month the bill was made in, which may
+    # already be filed.
+    refunded_bills = (
+        POSBill.query.filter(
+            POSBill.tenant_id == tenant.id,
+            POSBill.gstin_id == gstin.id,
+            POSBill.status == POSBillStatus.REFUNDED,
+            POSBill.refunded_at >= day_start,
+            POSBill.refunded_at <= day_end,
+        )
+        .options(selectinload(POSBill.lines))
+        .order_by(POSBill.refunded_at)
         .all()
     )
     voided_pos_bills = POSBill.query.filter(
@@ -269,15 +288,6 @@ def _collect_supply_lines(tenant: Tenant, gstin: Gstin, period: str) -> tuple[li
 
     for bill in pos_bills:
         cust = bill.customer_snapshot or {}
-        # Refunds share the same two-entry philosophy as the Day-book: the
-        # original sale's lines count in full, and a proportional negative
-        # adjustment covers however much of it was refunded (partial
-        # refunds are common - a full line-by-line record of exactly which
-        # items were refunded isn't kept, so this is an even split across
-        # the bill's own lines, scaled by the refunded share of the total).
-        refund_ratio = ZERO
-        if bill.status == POSBillStatus.REFUNDED and bill.grand_total:
-            refund_ratio = min(Decimal(bill.refunded_amount or 0) / Decimal(bill.grand_total), Decimal("1"))
         for l in bill.lines:
             lines.append(
                 SupplyLine(
@@ -299,27 +309,41 @@ def _collect_supply_lines(tenant: Tenant, gstin: Gstin, period: str) -> tuple[li
                     margin_remainder=_remainder(l),
                 )
             )
-            if refund_ratio:
-                lines.append(
-                    SupplyLine(
-                        doc_type=DocumentType.POS_BILL.value,
-                        doc_number=f"{bill.bill_number or f'held-{bill.id}'} (refund)",
-                        doc_date=bill.refunded_at.date() if bill.refunded_at else start,
-                        customer_name=cust.get("name", "Walk-in"),
-                        customer_gstin=normalized_customer_gstin(cust),
-                        place_of_supply=bill.gstin.state_code if bill.gstin else gstin.state_code,
-                        hsn=l.hsn_or_sac_code or "",
-                        gst_rate=l.gst_rate,
-                        unit=l.unit,
-                        qty=l.qty * refund_ratio,
-                        taxable_value=l.taxable_value * refund_ratio,
-                        cgst=l.cgst_amount * refund_ratio,
-                        sgst=l.sgst_amount * refund_ratio,
-                        igst=l.igst_amount * refund_ratio,
-                        sign=-1,
-                        margin_remainder=_remainder(l) * refund_ratio,
-                    )
+
+    # Refunds share the two-entry philosophy of the Day-book: the sale's
+    # lines count in full in the month of the sale, and a proportional
+    # negative adjustment, in the month of the refund, covers however much
+    # was refunded (partial refunds are common - a line-by-line record of
+    # exactly which items were refunded isn't kept, so this is an even split
+    # across the bill's own lines, scaled by the refunded share of the total).
+    for bill in refunded_bills:
+        if not bill.grand_total:
+            continue
+        refund_ratio = min(Decimal(bill.refunded_amount or 0) / Decimal(bill.grand_total), Decimal("1"))
+        if not refund_ratio:
+            continue
+        cust = bill.customer_snapshot or {}
+        for l in bill.lines:
+            lines.append(
+                SupplyLine(
+                    doc_type=DocumentType.POS_BILL.value,
+                    doc_number=f"{bill.bill_number or f'held-{bill.id}'} (refund)",
+                    doc_date=bill.refunded_at.date() if bill.refunded_at else start,
+                    customer_name=cust.get("name", "Walk-in"),
+                    customer_gstin=normalized_customer_gstin(cust),
+                    place_of_supply=bill.gstin.state_code if bill.gstin else gstin.state_code,
+                    hsn=l.hsn_or_sac_code or "",
+                    gst_rate=l.gst_rate,
+                    unit=l.unit,
+                    qty=l.qty * refund_ratio,
+                    taxable_value=l.taxable_value * refund_ratio,
+                    cgst=l.cgst_amount * refund_ratio,
+                    sgst=l.sgst_amount * refund_ratio,
+                    igst=l.igst_amount * refund_ratio,
+                    sign=-1,
+                    margin_remainder=_remainder(l) * refund_ratio,
                 )
+            )
 
     for ret in pos_returns:
         cust = ret.customer_snapshot or {}
@@ -392,7 +416,15 @@ def _collect_supply_lines(tenant: Tenant, gstin: Gstin, period: str) -> tuple[li
             SalesDocument.kind == SalesDocumentKind.DELIVERY_CHALLAN, SalesDocument.doc_date >= start,
             SalesDocument.doc_date <= end).all()
 
+    # Stock sent to an owned branch: not a supply, but a numbered document
+    # this registration issued - it stays in the document summary.
+    branch_challans = Invoice.query.filter(
+        Invoice.tenant_id == tenant.id, Invoice.gstin_id == gstin.id, Invoice.invoice_date >= start,
+        Invoice.invoice_date <= end, Invoice.status != InvoiceStatus.VOID,
+        Invoice.document_type == DocumentType.DELIVERY_CHALLAN).all()
+
     raw = {
+        "branch_challans": branch_challans,
         "receipt_vouchers": receipt_vouchers,
         "refund_vouchers": refund_vouchers,
         "sales_challans": sales_challans,
@@ -424,6 +456,9 @@ def _document_summaries(tenant: Tenant, gstin: Gstin, raw: dict) -> list[DocSeri
             s.to_number = number
 
     for inv in raw["invoices"]:
+        prefix = inv.invoice_number.rsplit("/", 1)[0] if inv.invoice_number else ""
+        record(DOCUMENT_TYPE_LABELS.get(inv.document_type, inv.document_type.value), prefix, inv.invoice_number)
+    for inv in raw.get("branch_challans", []):
         prefix = inv.invoice_number.rsplit("/", 1)[0] if inv.invoice_number else ""
         record(DOCUMENT_TYPE_LABELS.get(inv.document_type, inv.document_type.value), prefix, inv.invoice_number)
     for inv in raw["voided_invoices"]:
@@ -844,6 +879,19 @@ def itc_summary(tenant: Tenant, gstin: Gstin, period: str) -> dict:
         b2["cgst"] += ret.itc_cgst
         b2["sgst"] += ret.itc_sgst
         b2["igst"] += ret.itc_igst
+    # The suppliers' own notes: a credit note's GST comes back off the
+    # credit (with the returns, 4B(2)); a debit note's is credit (4A(5)).
+    from app.models.purchase import SupplierNote
+
+    for note in SupplierNote.query.filter(
+        SupplierNote.tenant_id == tenant.id, SupplierNote.gstin_id == gstin.id,
+        SupplierNote.status == PurchaseStatus.POSTED, SupplierNote.note_date >= start, SupplierNote.note_date <= end,
+    ):
+        target = b2 if note.is_credit else a5
+        target["taxable_value"] += note.total_taxable_value
+        target["cgst"] += note.itc_cgst
+        target["sgst"] += note.itc_sgst
+        target["igst"] += note.itc_igst
     # Expenses with a GST bill count exactly like a purchase bill: their
     # tax is availed in 4A and whatever of it isn't credit (blocked, or
     # the client can't claim) is reversed in 4B(1).

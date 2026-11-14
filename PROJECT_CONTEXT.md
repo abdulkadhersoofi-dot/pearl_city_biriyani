@@ -729,6 +729,98 @@ this list is just the index.
   (organisation account arfasoftware@gmail.com; key creation allowed for
   this project by `scripts/gcp/allow_key.sh`). Render's database is
   PostgreSQL 18 - so is Cloud SQL (`POSTGRES_18`).
+  **Scan bills (flag `doc_scan`, 31 Oct 2026):** the ARFA Invoice Parser
+  merged in as a module - `app/scan/engine/` (reader.py: e-invoice QR read in
+  parallel, two-tier Gemini read, GSTIN repair, retry; validators.py ported
+  unchanged), `app/scan/services.py` (store in `scan_documents`, bundle split,
+  duplicates, post as PurchaseBill / Expense with the picture attached),
+  `/scan` pages + JSON endpoints for a future phone app. Reads through Vertex
+  AI with the server's service account (SCAN_PROVIDER="vertex" in
+  settings.env; Vertex API on + roles/aiplatform.user for arfa-run, see
+  docs/cloud-setup.md); an AI Studio key (arfa-gemini-key) also works.
+  Since 2 Nov 2026: a supplier is never added twice (services.find_supplier
+  - same GSTIN, a misread GSTIN, or the same name written differently when
+  the GSTINs don't conflict; even when "new" is picked); the e-invoice QR's
+  GSTINs / number / date / total win over the print; per-line serial nos.,
+  item code, batch, dates, MRP and the bill's references / bank details are
+  read and kept (PurchaseBill.details, PurchaseBillLine.details); TDS on a
+  purchase bill (PurchaseBill.tds_amount / tds_section - also on the manual
+  bill form) leaves the supplier owed the net, and the Tally journal credits
+  "TDS Payable".
+  Since 3 Nov 2026: a purchase line takes a discount in rupees as well as a
+  percentage (PurchaseBillLine.discount_flat, pro-rated on a return; the
+  manual bill form has a "Disc Rs." column); a scan takes the one that lands
+  on the printed taxable value to the paisa, and spreads a discount printed
+  once at the foot over the lines. The reader also returns where each value
+  is printed (extracted["boxes"], line_items[].box: [page, ymin, xmin, ymax,
+  xmax] 0-1000, mapped back from a stitched image by reader.place_boxes);
+  pointing at a field on the review zooms into that spot
+  (static/js/scan_zoom.js, pages from /scan/<id>/page/<n>.jpg).
+  Every bill is kept upright: a PDF with real text is turned by its text
+  direction before it is read (reader.pdf_text_turns); a photo or scan by
+  the model's "rotation" answer, after it (the stored file is turned, boxes
+  with it - reader.turn_boxes); ↺ / ↻ on the review turn it by hand
+  (services.turn). The review page is full width (body.is-wide); from a
+  1240px content width the bill sits in a tall sticky viewer that zooms
+  into the spot pointed at, below that a large pop-up does. The reader also
+  places the items table's columns (extracted["columns"]); each line's cell
+  is its row across the column (services.line_cells), so pointing at an HSN
+  or an amount zooms to that one cell. "Show all" marks every value read on
+  the bill; a mark takes you to its field. The list (/scan, full width) is
+  one table for every tab with when each bill was uploaded and last read;
+  search as you type, filters (supplier, check result, kind, uploaded) and
+  column sorting run in the page (static/js/scan_list.js) and the same
+  search/filters on the server (routes._apply_filters) for more than the
+  1000 bills a page shows.
+  **ARFA Scan app (3 Nov 2026):** android/scan (com.arfa.scan) - native
+  Kotlin, ML Kit document scanner + on-device OCR and QR, WhatsApp-like chat,
+  background sending (WorkManager), a bill page that zooms to the value
+  tapped, Approve & post, Retake. Server: app/scan/api.py (/api/scan/v1,
+  token per phone in scan_app_tokens - only its hash, and a password stamp so
+  a new password signs phones out). Owner and branches (Staff) sign in; a
+  branch sees its own bills; who approves is the owner's choice
+  (module_settings "scan".approvers: "admin" | "branches"). The phone's OCR
+  text goes to the reader as a hint (Context.phone_text); its QR is used when
+  the picture's can't be decoded.
+  Scan bills posts more than purchases and expenses (services.post):
+  a sales invoice issued outside ARFA (create_invoice with its own number -
+  InvoiceInput.number), a credit / debit note issued to a customer (against
+  its ARFA invoice, found from the "against invoice" printed - NoteInput.number),
+  and a credit / debit note from a supplier - SupplierNote (app/models/purchase.py,
+  value only, no stock): the supplier's account (payables), the ITC (GSTR-3B
+  4B(2) for credit, 4A(5) for debit) and Tally (Debit Note / Credit Note).
+  Purchases > Supplier credit / debit notes lists them.
+
+  **Warehouse dispatch by serial scan (flag `warehouse_dispatch`, 8 Nov
+  2026):** a sales order names its warehouse (godown) and is held there; the
+  warehouse's pickers claim it on the ARFA Warehouse phone app
+  (`warehouse-android/`, its own Gradle project and workflow, API
+  `/api/wh/v1` in `app/warehouse_api`), scan each unit's label, confirm; the
+  warehouse computer (a branch login bound to the godown) invoices the scanned
+  serials from that warehouse (`app/warehouse`). One service for every rule:
+  `app/warehouse/dispatch.py` (holds, claims, picks, release, confirm). The
+  owner's decisions: pushes like a chat message (FCM + polling), idle claims
+  auto-release after 30 minutes, ARFA's label reader reuses the Scan bills
+  Gemini set-up, and a serial never entered in ARFA is added and picked when
+  the product is right (flagged for checking). Receive mode (PO scanned in,
+  then billed) and count mode in `app/warehouse/receiving.py`; reports in
+  `app/warehouse/reports.py`. Pushes need `scripts/gcp/warehouse_push_setup.sh`
+  once and `warehouse-push` in OPTIONAL_SECRETS.
+  Stage 5B (EMI sales, `app/warehouse/emi.py`): finance orders ring first and
+  are *locked* (EMI-HOLD bin) instead of confirmed; the showroom invoices with
+  the locked serials (finance split on the invoice; the financier's customer
+  account owes its share); every invoiced order gets a delivery check; a swap
+  needs approval and keeps the invoice (recorded on the slip - owner's choice);
+  racks (bin_code), showroom serial choice ordered EMI READY -> racked, and
+  financier settlement with payout import.
+  Nearest warehouse (`app/warehouse/nearest.py`): delivery address (ship_to)
+  on orders -> invoice -> e-way bill; suggest_warehouse (service area > nearest
+  with stock > nearest > branch fallback), straight-line km from the shared
+  `pincode_geo` table (`flask pincodes-build` / `pincodes-load`, data/); orders
+  may be split across warehouses (owner's choice), never an EMI sale. The
+  bundled pincode file is India Post's 30 May 2019 directory (no coordinates):
+  warehouses rank by district > area > state until a lat/long directory is
+  built in (`flask pincodes-build`).
 
 ## 5. Chronological development history (this session)
 
@@ -1044,7 +1136,8 @@ source for "is this really done."
 
 ## 12. How to pick up work in a new session
 
-1. Read this file, then `README.md`, then `android/README.md` in full.
+1. Read this file, then `README.md`, then `android/README.md` and
+   `warehouse-android/README.md` in full.
 2. `git log --oneline -20` and `git status` to confirm branch/commit
    state matches what's described here (this file can go stale too).
 3. Bootstrap the dev environment per §8 if you need to run/verify

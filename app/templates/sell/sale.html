@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Sale - {{ firm_name }}{% endblock %}
+{% block content %}
+{# Everything one New sale made (app/sell): the invoice for what was in the
+   showroom, the order(s) for the rest, and where each stands. #}
+<div class="page-header">
+  <div>
+    <h1>This sale</h1>
+    <p class="text-muted mt-0">{{ (invoices|length + documents|length) }} document{{ 's' if (invoices|length + documents|length) != 1 }} made together{% if invoices %} for {{ (invoices[0].customer_snapshot or {}).get('name', '') }}{% elif documents %} for {{ (documents[0].customer_snapshot or {}).get('name', '') }}{% endif %}.</p>
+  </div>
+  <a href="{{ url_for('sell.new_sale') }}" class="btn btn-primary">New sale</a>
+</div>
+<div class="sale-parts">
+  {% for inv in invoices %}
+  <section class="card sale-part">
+    <h2 class="m-0">{{ icon('receipt-text') }} Billed now <span class="tag tag-fast">Invoice</span></h2>
+    <p class="m-0"><strong>{{ inv.invoice_number }}</strong> - Rs. {{ inv.grand_total|inr }} - {{ inv.lines|length }} item{{ 's' if inv.lines|length != 1 }}</p>
+    <div class="row mt-10">
+      <a href="{{ url_for('sell.invoice_pdf', invoice_id=inv.id) }}" class="btn btn-secondary" target="_blank">Open the invoice (PDF)</a>
+      {% if current_user.is_client_admin %}<a href="{{ url_for('invoicing.view_invoice', invoice_id=inv.id) }}" class="btn btn-quiet">Details</a>{% endif %}
+    </div>
+  </section>
+  {% endfor %}
+  {% for doc in documents %}
+  <section class="card sale-part">
+    <h2 class="m-0">{{ icon('truck') }}
+      {% if doc.awaiting_stock %}Waiting for stock <span class="tag tag-warn">Order</span>
+      {% elif doc.dispatch_location %}Ordered from {{ doc.dispatch_location.name }} <span class="tag">Order</span>
+      {% else %}{{ doc.label }} <span class="tag">{{ doc.status.value|title }}</span>{% endif %}</h2>
+    <p class="m-0"><strong>{{ doc.number }}</strong> - Rs. {{ doc.grand_total|inr }} - {{ doc.lines|length }} item{{ 's' if doc.lines|length != 1 }}
+      {% if doc.dispatch_status %}<span class="tag tag-emi">{{ doc.dispatch_status.value|replace('_', ' ')|title }}</span>{% endif %}</p>
+    {% if doc.awaiting_stock %}<p class="text-muted m-0">No warehouse has this free yet. Send it to a warehouse from the order once stock arrives.</p>{% endif %}
+    <div class="row mt-10"><a href="{{ url_for('sales.view_document', doc_id=doc.id) }}" class="btn btn-secondary">Open the order</a></div>
+  </section>
+  {% endfor %}
+</div>
+{% endblock %}

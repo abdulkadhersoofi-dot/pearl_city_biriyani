@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Picking - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header"><div><h1>Picking</h1><p class="text-muted mt-0">Orders waiting too long, and where scans fail.</p></div></div>
+{% include "warehouse/_nav.html" %}
+{% include "warehouse/_reports_nav.html" %}
+<form method="get" class="row gap-10 items-end mb-16">
+  <label class="field m-0"><span class="field-label">Waiting longer than (hours)</span><input type="number" name="hours" value="{{ hours }}" min="1" class="field-input"></label>
+  <label class="field m-0"><span class="field-label">Scans over the last (days)</span><input type="number" name="days" value="{{ days }}" min="1" class="field-input"></label>
+  <button class="btn btn-secondary">Show</button>
+</form>
+<h2 class="section-title">Waiting over {{ hours }} hour{{ 's' if hours != 1 }}</h2>
+<div class="card table-wrap mb-16"><table>
+  <thead><tr><th>Order</th><th>Warehouse</th><th>Customer</th><th>Status</th><th>Waiting</th></tr></thead>
+  <tbody>{% for d in late %}<tr><td><a href="{{ url_for('warehouse.order', doc_id=d.id) }}">{{ d.number }}</a></td><td>{{ d.dispatch_location.name }}</td><td>{{ d.customer_snapshot.name }}</td>
+    <td>{{ 'Picking: ' ~ d.claimed_by.name if d.claimed_by else 'Waiting for a picker' }}</td><td>{{ ((now - d.created_at).total_seconds() // 3600)|int }} h</td></tr>
+  {% else %}<tr><td colspan="5" class="text-muted">None.</td></tr>{% endfor %}</tbody>
+</table></div>
+<h2 class="section-title">Failed scans by reason</h2>
+<div class="card table-wrap mb-16"><table>
+  <thead><tr><th>Reason</th><th class="num">Scans</th></tr></thead>
+  <tbody>{% for r, n in by_reason.items() %}<tr><td>{{ labels[r] }}</td><td class="num">{{ n }}</td></tr>{% else %}<tr><td colspan="2" class="text-muted">No failed scans.</td></tr>{% endfor %}</tbody>
+</table></div>
+<h2 class="section-title">By picker</h2>
+<div class="card table-wrap"><table>
+  <thead><tr><th>Picker</th><th class="num">Orders confirmed</th><th class="num">Good scans</th><th class="num">Failed</th><th>Most failed as</th></tr></thead>
+  <tbody>{% for row in by_picker %}<tr><td>{{ row.login.name if row.login else '-' }}</td><td class="num">{{ orders_done.get(row.login.id if row.login else None, 0) }}</td><td class="num">{{ row.good }}</td><td class="num">{{ row.failed }}</td>
+    <td>{% for r, n in row.reasons.items() %}{{ labels[r] }} ({{ n }}){% if not loop.last %}, {% endif %}{% endfor %}</td></tr>
+  {% else %}<tr><td colspan="5" class="text-muted">No scans yet.</td></tr>{% endfor %}</tbody>
+</table></div>
+{% endblock %}

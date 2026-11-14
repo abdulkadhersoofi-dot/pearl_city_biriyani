@@ -285,3 +285,22 @@ def test_refund_route_redirects_back_to_the_requested_day_book_date(client, db, 
     )
     assert resp.status_code == 302
     assert "date=2025-01-15" in resp.headers["Location"]
+
+
+def test_z_report_day_runs_midnight_to_midnight_in_india(db, tenant, client_admin):
+    """A bill made at 12:30 AM belongs to that day, not the one before (the
+    report used the UTC day: 5:30 AM to 5:30 AM in India)."""
+    from datetime import datetime, time, timedelta
+
+    from app.models.pos_bill import PaymentMode
+
+    today = date.today()
+    just_after_midnight = checkout(tenant, client_admin, _cart(qty="1", rate="100", gst_rate="18"), PaymentMode.CASH)
+    late_last_night = checkout(tenant, client_admin, _cart(qty="1", rate="50", gst_rate="18"), PaymentMode.CASH)
+    db.session.commit()
+    just_after_midnight.completed_at = datetime.combine(today, time(0, 30)).astimezone()
+    late_last_night.completed_at = datetime.combine(today - timedelta(days=1), time(23, 30)).astimezone()
+    db.session.commit()
+
+    assert z_report(tenant.id, today)["total_sales"] == just_after_midnight.grand_total
+    assert z_report(tenant.id, today - timedelta(days=1))["total_sales"] == late_last_night.grand_total

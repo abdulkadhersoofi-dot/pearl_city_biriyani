@@ -15,7 +15,7 @@ from flask_login import current_user
 
 from app.auth.decorators import roles_required
 from app.bulk import bulk_bp
-from app.bulk.excel import MAX_UPLOAD_BYTES, WorkbookError, build_export, build_template, preview
+from app.bulk.excel import MAX_UPLOAD_BYTES, WorkbookError, build_csv_template, build_export, build_template, preview
 from app.bulk.specs import SPECS
 from app.extensions import db
 from app.models.user import UserRole
@@ -53,6 +53,14 @@ def template(kind):
     return send_file(build_template(spec), as_attachment=True, download_name=f"{spec.kind}-template.xlsx", mimetype=_XLSX)
 
 
+@bulk_bp.route("/<kind>/template.csv")
+@roles_required(UserRole.CLIENT_ADMIN)
+def template_csv(kind):
+    spec = _spec_or_404(kind)
+    return send_file(build_csv_template(spec), as_attachment=True, download_name=f"{spec.kind}-template.csv",
+                     mimetype="text/csv")
+
+
 @bulk_bp.route("/<kind>/export.xlsx")
 @roles_required(UserRole.CLIENT_ADMIN)
 def export(kind):
@@ -71,16 +79,16 @@ def upload(kind):
     spec = _spec_or_404(kind)
     file = request.files.get("file")
     if not file or not file.filename:
-        flash("Choose an Excel file to upload.", "error")
+        flash("Choose an Excel (.xlsx) or CSV file to upload.", "error")
         return redirect(url_for("bulk.index", kind=kind))
     data = file.read(MAX_UPLOAD_BYTES + 1)
     try:
-        rows, _ctx = preview(spec, current_user.tenant, data)
+        rows, _ctx = preview(spec, current_user.tenant, data, file.filename)
     except WorkbookError as exc:
         flash(str(exc), "error")
         return redirect(url_for("bulk.index", kind=kind))
     if not rows:
-        flash("No rows found below the headings on the first sheet.", "error")
+        flash("No rows found below the headings.", "error")
         return redirect(url_for("bulk.index", kind=kind))
 
     session[_SESSION_KEY] = {
@@ -104,7 +112,7 @@ def confirm(kind):
     tenant = current_user.tenant
     data = base64.b64decode(pending["data"])
     try:
-        rows, ctx = preview(spec, tenant, data)
+        rows, ctx = preview(spec, tenant, data, pending.get("filename"))
     except WorkbookError as exc:
         flash(str(exc), "error")
         return redirect(url_for("bulk.index", kind=kind))

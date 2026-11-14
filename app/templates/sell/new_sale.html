@@ -1,0 +1,107 @@
+{% extends "invoicing/form.html" %}
+{# New sale: one form. Where each item is decides what is made - an invoice
+   now, a sales order to a warehouse, or both (app/sell/decide.py). The
+   sentence above the button and the stock beside each line come from
+   /sell/new/plan.json (static/js/new_sale.js). #}
+{% block form_title %}New sale{% endblock %}
+{% block form_subtitle %}<p class="text-muted mt-0">Pick the customer and the items. ARFA bills what is {{ 'in ' ~ here.name if here else 'sold' }} now{% if can_order %} and orders the rest from a warehouse{% endif %}.</p>{% endblock %}
+{% block hidden_extras %}{% endblock %}
+{% block bill_to_toggle %}{% endblock %}
+{% block header_extras %}
+  {% if here %}
+  <div class="field">
+    <label class="field-label" for="selling_from">Selling from</label>
+    {% if places %}
+    <select name="selling_from" id="selling_from" class="field-input" data-sale-watch>
+      {% for l in places %}<option value="{{ l.id }}" {{ 'selected' if l.id == here.id }}>{{ l.name }}</option>{% endfor %}
+    </select>
+    {% else %}
+    <input class="field-input" value="{{ here.name }}" disabled>
+    {% endif %}
+    <span class="field-help">Items in stock here are billed now.</span>
+  </div>
+  {% endif %}
+  {% if modes_on %}
+  <div class="field" x-data="{ mode: '{{ request.form.get('sale_mode', 'sale') }}' }">
+    <span class="field-label">This is</span>
+    <select name="sale_mode" class="field-input" x-model="mode" data-sale-watch>
+      <option value="sale">A sale</option>
+      <option value="quote">Only a price for now (quotation)</option>
+      <option value="proforma">Only a price for now (proforma invoice)</option>
+      <option value="challan">Goods sent without a bill (delivery challan)</option>
+    </select>
+    <div x-show="mode === 'quote' || mode === 'proforma'" x-cloak class="mt-12">
+      <label class="field m-0"><span class="field-label">Valid until (optional)</span>
+        <input type="date" name="valid_until" value="{{ request.form.get('valid_until', '') }}" class="field-input"></label>
+    </div>
+    <div x-show="mode === 'challan'" x-cloak class="mt-12">
+      <label class="field m-0"><span class="field-label">Why the goods are going out</span>
+        <select name="challan_purpose" class="field-input">{% for p, text in purposes.items() %}<option value="{{ p.value }}" {{ 'selected' if request.form.get('challan_purpose') == p.value }}>{{ text }}</option>{% endfor %}</select></label>
+    </div>
+  </div>
+  {% endif %}
+  {% if warehouses %}
+  <div class="field wh-ship sale-wide" x-data="{ other: {{ 'true' if request.form.get('ship_elsewhere') else 'false' }} }">
+    <span class="field-label">Deliver ordered items to</span>
+    <label class="checkbox-row"><input type="checkbox" name="ship_elsewhere" value="1" x-model="other" data-sale-watch> A different address than the customer's</label>
+    <div x-show="other" x-cloak class="form-grid mt-12">
+      <label class="field m-0"><span class="field-label">Name</span><input type="text" name="ship_name" value="{{ request.form.get('ship_name', '') }}" class="field-input"></label>
+      <label class="field m-0"><span class="field-label">Address</span><input type="text" name="ship_address_line1" value="{{ request.form.get('ship_address_line1', '') }}" class="field-input"></label>
+      <label class="field m-0"><span class="field-label">Area / landmark</span><input type="text" name="ship_address_line2" value="{{ request.form.get('ship_address_line2', '') }}" class="field-input"></label>
+      <label class="field m-0"><span class="field-label">City</span><input type="text" name="ship_city" value="{{ request.form.get('ship_city', '') }}" class="field-input"></label>
+      <label class="field m-0"><span class="field-label">Pincode</span><input type="text" name="ship_pincode" inputmode="numeric" maxlength="6" value="{{ request.form.get('ship_pincode', '') }}" class="field-input" data-sale-watch></label>
+      <label class="field m-0"><span class="field-label">Phone</span><input type="tel" name="ship_phone" value="{{ request.form.get('ship_phone', '') }}" class="field-input"></label>
+      <input type="hidden" name="ship_state_code" value="{{ request.form.get('ship_state_code', '') }}">
+    </div>
+    <label class="checkbox-row mt-12"><input type="checkbox" name="together" value="1" {{ 'checked' if request.form.get('together') }} data-sale-watch> Send everything as one order (bill nothing now)</label>
+  </div>
+  <div class="field emi-box sale-wide" x-data="{ emi: {{ 'true' if request.form.get('is_finance_sale') else 'false' }} }">
+    <label class="checkbox-row"><input type="checkbox" name="is_finance_sale" value="1" x-model="emi" data-sale-watch> <strong>Finance (EMI) sale</strong> - one order; the warehouse locks the real unit while the loan is processed</label>
+    <div x-show="emi" x-cloak class="form-grid mt-12">
+      <label class="field m-0"><span class="field-label">Financier</span>
+        <select name="financier_id" class="field-input">
+          <option value="">Pick the financier</option>
+          {% for f in financiers %}<option value="{{ f.id }}" {{ 'selected' if request.form.get('financier_id') == f.id|string }}>{{ f.name }}</option>{% endfor %}
+        </select></label>
+      <label class="field m-0"><span class="field-label">Loan ref / DO no. (optional)</span><input type="text" name="loan_ref" maxlength="60" value="{{ request.form.get('loan_ref', '') }}" class="field-input"></label>
+      <label class="field m-0"><span class="field-label">Finance amount</span><input type="number" step="0.01" min="0" name="finance_amount" value="{{ request.form.get('finance_amount', '') }}" class="field-input"></label>
+      <label class="field m-0"><span class="field-label">Down payment (optional)</span><input type="number" step="0.01" min="0" name="down_payment" value="{{ request.form.get('down_payment', '') }}" class="field-input"></label>
+    </div>
+  </div>
+  {% endif %}
+{% endblock %}
+{% block line_under_item %}
+  {% if here %}
+  {# Where this line comes from, and what is in stock where (filled in by new_sale.js). #}
+  <div class="sale-from">
+    <label class="sale-from-row"><span>From</span>
+      <select name="line_from[]" class="sale-from-pick" x-model="line.from" aria-label="Where this item comes from">
+        <option value="auto">Decide for me</option>
+        <option value="here">{{ here.name }}</option>
+        {% for w in warehouses %}<option value="{{ w.id }}">{{ w.name }}</option>{% endfor %}
+      </select></label>
+    <small class="sale-stock" data-line-stock></small>
+    {% if serials_on %}
+    <input type="text" name="line_serials[]" x-model="line.serials" class="sale-serials" hidden data-line-serials
+           placeholder="Serial numbers, comma between" aria-label="Serial numbers for this item">
+    {% endif %}
+  </div>
+  {% endif %}
+{% endblock %}
+{% block footer_extras %}
+  {% if can_order %}
+  <label class="field"><span class="field-label">Terms for an order or quote (optional)</span>
+    <textarea name="terms" class="field-input" rows="2">{{ request.form.get('terms', '') }}</textarea></label>
+  {% endif %}
+{% endblock %}
+{% block before_submit %}
+  <div class="sale-outcome" data-sale-outcome data-plan-url="{{ url_for('sell.plan_json') }}" role="status" aria-live="polite">
+    <p class="sale-sentence m-0" data-sale-sentence>Add an item to see what this will do.</p>
+    <ul class="sale-problems" data-sale-problems hidden></ul>
+  </div>
+{% endblock %}
+{% block submit_label %}Bill now{% endblock %}
+{% block scripts %}
+{{ super() }}
+<script src="{{ url_for('static', filename='js/new_sale.js') }}" defer></script>
+{% endblock %}

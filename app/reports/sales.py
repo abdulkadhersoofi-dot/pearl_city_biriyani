@@ -1,5 +1,6 @@
-"""Date-range sales report - invoices and POS bills combined, across every
-active GSTIN, for any date range and any registration type. Unlike the
+"""Date-range sales report - invoices, credit and debit notes, POS bills,
+refunds and returns combined, across every active GSTIN, for any date range
+and any registration type. Unlike the
 GSTR-1/3B working papers (one calendar month, one GSTIN, Regular scheme
 only, line-item level for HSN aggregation), this is a document-level
 list meant for the client's own records: "what did I sell between these
@@ -8,13 +9,12 @@ POS activity only; this covers any range and includes invoices too.
 """
 
 from dataclasses import dataclass
-from datetime import date, datetime, time
+from datetime import date
 from decimal import Decimal
 
-from app.models.invoice import Invoice, InvoiceStatus
+from app.finance import sales_figures
 from app.models.invoice_series import DOCUMENT_TYPE_LABELS
-from app.models.pos_bill import PaymentMode, POSBill, POSBillStatus
-from app.models.pos_return import POSReturn, POSReturnStatus
+from app.models.pos_bill import PaymentMode
 from app.models.tenant import Tenant
 from app.reports.gstr import normalized_customer_gstin
 
@@ -42,156 +42,62 @@ class SalesReportRow:
         return self.sign * self.total
 
 
+def _payment(bill) -> str | None:
+    # A split bill shows as e.g. "cash 300.00 + upi 200.00".
+    if bill.payment_mode == PaymentMode.MIXED and bill.payments:
+        return " + ".join(f"{p.mode.value} {p.amount:.2f}" for p in bill.payments)
+    return bill.payment_mode.value if bill.payment_mode else None
+
+
+def _row(e: sales_figures.Entry) -> SalesReportRow:
+    doc = e.doc
+    cust = doc.customer_snapshot or {}
+    gstin = doc.gstin.display_label if doc.gstin else ""
+    walk_in = e.kind in (sales_figures.POS_BILL, sales_figures.POS_REFUND, sales_figures.POS_RETURN)
+    common = dict(doc_date=e.on, billing_gstin=gstin, customer_name=cust.get("name", "Walk-in" if walk_in else ""),
+                  customer_gstin=normalized_customer_gstin(cust), taxable_value=e.taxable, cgst=e.cgst, sgst=e.sgst,
+                  igst=e.igst, total=e.total, sign=e.sign)
+    if e.kind == sales_figures.INVOICE:
+        return SalesReportRow(doc_type=DOCUMENT_TYPE_LABELS.get(doc.document_type, doc.document_type.value),
+                              doc_number=doc.invoice_number, payment_mode=None, **common)
+    if e.kind in (sales_figures.CREDIT_NOTE, sales_figures.DEBIT_NOTE):
+        return SalesReportRow(doc_type=DOCUMENT_TYPE_LABELS.get(doc.document_type, doc.document_type.value),
+                              doc_number=doc.note_number, payment_mode=None, **common)
+    if e.kind == sales_figures.POS_BILL:
+        return SalesReportRow(doc_type="POS Bill", doc_number=doc.bill_number or f"held-{doc.id}",
+                              payment_mode=_payment(doc), **common)
+    if e.kind == sales_figures.POS_REFUND:
+        # The sale stays a full + row on its own day; a refund is a separate
+        # - row on the day of the refund, for however much was refunded.
+        return SalesReportRow(doc_type="POS Bill (refund)",
+                              doc_number=f"{doc.bill_number or f'held-{doc.id}'} (refund)",
+                              payment_mode=_payment(doc), **common)
+    return SalesReportRow(doc_type="POS Sales Return", doc_number=doc.return_number,
+                          payment_mode=doc.refund_mode.value, **common)
+
+
 def sales_report_data(tenant: Tenant, start: date, end: date, branch_ids: list[int] | None = None) -> dict:
-    day_start, day_end = datetime.combine(start, time.min), datetime.combine(end, time.max)
-
-    invoice_query = Invoice.query.filter(
-        Invoice.tenant_id == tenant.id,
-        Invoice.invoice_date >= start,
-        Invoice.invoice_date <= end,
-        Invoice.status != InvoiceStatus.VOID,
-    )
-    pos_bill_query = POSBill.query.filter(
-        POSBill.tenant_id == tenant.id,
-        POSBill.status.in_([POSBillStatus.COMPLETED, POSBillStatus.REFUNDED]),
-        POSBill.completed_at >= day_start,
-        POSBill.completed_at <= day_end,
-    )
-    # A "branch" filter means "sales attributable to this branch login" -
-    # branch_user_id on the invoice (stock billed to that branch) or
-    # created_by_id on the POS bill (rung up by that branch's own
-    # till). An ordinary customer invoice has no branch_user_id, so it
-    # correctly drops out once a branch filter is active.
-    if branch_ids:
-        invoice_query = invoice_query.filter(Invoice.branch_user_id.in_(branch_ids))
-        pos_bill_query = pos_bill_query.filter(POSBill.created_by_id.in_(branch_ids))
-
-    pos_return_query = POSReturn.query.filter(
-        POSReturn.tenant_id == tenant.id,
-        POSReturn.status == POSReturnStatus.COMPLETED,
-        POSReturn.returned_at >= day_start,
-        POSReturn.returned_at <= day_end,
-    )
-    if branch_ids:
-        pos_return_query = pos_return_query.filter(POSReturn.created_by_id.in_(branch_ids))
-
-    invoices = invoice_query.order_by(Invoice.invoice_date, Invoice.invoice_number).all()
-    pos_bills = pos_bill_query.order_by(POSBill.completed_at).all()
-    pos_returns = pos_return_query.order_by(POSReturn.returned_at).all()
-
-    rows: list[SalesReportRow] = []
-
-    for inv in invoices:
-        cust = inv.customer_snapshot or {}
-        rows.append(
-            SalesReportRow(
-                doc_type=DOCUMENT_TYPE_LABELS.get(inv.document_type, inv.document_type.value),
-                doc_number=inv.invoice_number,
-                doc_date=inv.invoice_date,
-                billing_gstin=inv.gstin.display_label if inv.gstin else "",
-                customer_name=cust.get("name", ""),
-                customer_gstin=normalized_customer_gstin(cust),
-                payment_mode=None,
-                taxable_value=inv.total_taxable_value,
-                # An RCM invoice carries its tax in total_rcgst/rsgst/rigst
-                # instead (see app.models.invoice.Invoice) - folded back in
-                # here since this report is just "what did I sell", not a
-                # tax-liability figure.
-                cgst=inv.total_cgst + inv.total_rcgst,
-                sgst=inv.total_sgst + inv.total_rsgst,
-                igst=inv.total_igst + inv.total_rigst,
-                total=inv.grand_total,
-            )
-        )
-
-    for bill in pos_bills:
-        cust = bill.customer_snapshot or {}
-        billing_gstin = bill.gstin.display_label if bill.gstin else ""
-        # A split bill shows as e.g. "cash 300.00 + upi 200.00".
-        if bill.payment_mode == PaymentMode.MIXED and bill.payments:
-            payment_mode = " + ".join(f"{p.mode.value} {p.amount:.2f}" for p in bill.payments)
-        else:
-            payment_mode = bill.payment_mode.value if bill.payment_mode else None
-        rows.append(
-            SalesReportRow(
-                doc_type="POS Bill",
-                doc_number=bill.bill_number or f"held-{bill.id}",
-                doc_date=bill.completed_at.date() if bill.completed_at else start,
-                billing_gstin=billing_gstin,
-                customer_name=cust.get("name", "Walk-in"),
-                customer_gstin=normalized_customer_gstin(cust),
-                payment_mode=payment_mode,
-                taxable_value=bill.total_taxable_value,
-                cgst=bill.total_cgst,
-                sgst=bill.total_sgst,
-                igst=bill.total_igst,
-                total=bill.grand_total,
-            )
-        )
-        # Same two-entry philosophy as the Day-book: the original sale
-        # stays a full + row, and a refund is a separate - row for
-        # however much was actually refunded (partial refunds are
-        # common), not a flipped status on the original.
-        if bill.status == POSBillStatus.REFUNDED and bill.grand_total:
-            refund_ratio = min(Decimal(bill.refunded_amount or 0) / Decimal(bill.grand_total), Decimal("1"))
-            if refund_ratio:
-                rows.append(
-                    SalesReportRow(
-                        doc_type="POS Bill (refund)",
-                        doc_number=f"{bill.bill_number or f'held-{bill.id}'} (refund)",
-                        doc_date=bill.refunded_at.date() if bill.refunded_at else start,
-                        billing_gstin=billing_gstin,
-                        customer_name=cust.get("name", "Walk-in"),
-                        customer_gstin=normalized_customer_gstin(cust),
-                        payment_mode=payment_mode,
-                        taxable_value=bill.total_taxable_value * refund_ratio,
-                        cgst=bill.total_cgst * refund_ratio,
-                        sgst=bill.total_sgst * refund_ratio,
-                        igst=bill.total_igst * refund_ratio,
-                        total=bill.grand_total * refund_ratio,
-                        sign=-1,
-                    )
-                )
-
-    # Item-wise sales returns: their own numbered documents, dated the day
-    # the goods came back.
-    for ret in pos_returns:
-        cust = ret.customer_snapshot or {}
-        rows.append(
-            SalesReportRow(
-                doc_type="POS Sales Return",
-                doc_number=ret.return_number,
-                doc_date=ret.returned_at.date(),
-                billing_gstin=ret.gstin.display_label if ret.gstin else "",
-                customer_name=cust.get("name", "Walk-in"),
-                customer_gstin=normalized_customer_gstin(cust),
-                payment_mode=ret.refund_mode.value,
-                taxable_value=ret.total_taxable_value,
-                cgst=ret.total_cgst,
-                sgst=ret.total_sgst,
-                igst=ret.total_igst,
-                total=ret.grand_total,
-                sign=-1,
-            )
-        )
-
+    """Every document that counts as sales in the period - the same ones,
+    on the same days, as the dashboard and Profit & loss
+    (app/finance/sales_figures.py). A "branch" filter means "sales
+    attributable to this branch login": a counter bill rung up there, or an
+    invoice billed to that branch (an ordinary customer invoice drops out
+    once a branch filter is active)."""
+    found = sales_figures.entries(tenant, start, end, branch_ids)
+    rows = [_row(e) for e in found]
     rows.sort(key=lambda r: (r.doc_date, r.doc_number))
 
-    totals = {
-        "taxable_value": sum((r.sign * r.taxable_value for r in rows), ZERO),
-        "cgst": sum((r.sign * r.cgst for r in rows), ZERO),
-        "sgst": sum((r.sign * r.sgst for r in rows), ZERO),
-        "igst": sum((r.sign * r.igst for r in rows), ZERO),
-        "total": sum((r.signed_total for r in rows), ZERO),
-    }
+    def count(*kinds):
+        return sum(1 for e in found if e.kind in kinds)
 
     return {
         "tenant": tenant,
         "start": start,
         "end": end,
         "rows": rows,
-        "invoice_count": len(invoices),
-        "pos_bill_count": len(pos_bills),
-        "pos_return_count": len(pos_returns),
-        "totals": totals,
+        "invoice_count": count(sales_figures.INVOICE),
+        "pos_bill_count": count(sales_figures.POS_BILL),
+        "pos_return_count": count(sales_figures.POS_RETURN),
+        "note_count": count(sales_figures.CREDIT_NOTE, sales_figures.DEBIT_NOTE),
+        "totals": sales_figures.totals(found),
     }

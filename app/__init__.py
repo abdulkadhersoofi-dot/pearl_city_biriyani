@@ -1,4 +1,3 @@
-import logging
 import os
 import time
 
@@ -26,8 +25,16 @@ def create_app(config_object=None):
 
         app.wsgi_app = ProxyFix(app.wsgi_app, x_for=app.config.get("PROXY_FIX_X_FOR", 0), x_proto=1,
                                 x_host=app.config.get("PROXY_FIX_X_HOST", 0))
+    # First of the request hooks (before CSRF's): a flood is turned away
+    # before anything else runs.
+    from app.ratelimit import init_rate_limits
+
+    init_rate_limits(app)
     _init_extensions(app)
     _register_blueprints(app)
+    from app.security_headers import init_security_headers
+
+    init_security_headers(app)
     _register_error_handlers(app)
     _register_cli(app)
     _register_context_processors(app)
@@ -54,12 +61,12 @@ def _set_process_clock(app: Flask) -> None:
 
 
 def _configure_logging(app: Flask) -> None:
-    # A bare `flask run` / gunicorn process has no handler on the root
-    # logger by default, so anything logged via logging.getLogger(...)
-    # would silently vanish. Give the root logger a handler if nothing
-    # else has.
-    if not logging.getLogger().handlers:
-        logging.basicConfig(level=logging.WARNING, format="%(levelname)s:%(name)s:%(message)s")
+    # Plain text locally; one JSON object per line on Cloud Run, so Cloud
+    # Logging sees each line's severity and Error Reporting its stack trace
+    # (app/monitoring.py).
+    from app.monitoring import configure_logging
+
+    configure_logging()
 
 
 def _init_extensions(app: Flask) -> None:
@@ -115,6 +122,7 @@ def _register_blueprints(app: Flask) -> None:
     from app.sales import sales_bp
     from app.settings import settings_bp
     from app.tenants import tenants_bp
+    from app.scan import scan_bp
     from app.main import main_bp
 
     app.register_blueprint(main_bp)
@@ -146,10 +154,44 @@ def _register_blueprints(app: Flask) -> None:
     app.register_blueprint(wholesale_bp)
     app.register_blueprint(loyalty_bp)
     app.register_blueprint(subscriptions_bp)
+    app.register_blueprint(scan_bp)
+    from app.scan.api import scan_api_bp
+
+    app.register_blueprint(scan_api_bp)
+    from app.warehouse import warehouse_bp
+    from app.warehouse_api import warehouse_api_bp
+
+    app.register_blueprint(warehouse_bp)
+    app.register_blueprint(warehouse_api_bp)
+    from app.apps import apps_bp
+
+    app.register_blueprint(apps_bp)
+    from app.hubs import hubs_bp
+
+    app.register_blueprint(hubs_bp)
+    from app.sell import sell_bp
+
+    app.register_blueprint(sell_bp)
+    from app.integrations.sap import sap_bp
+
+    app.register_blueprint(sap_bp)
 
 
 def _register_error_handlers(app: Flask) -> None:
     from flask import render_template
+
+    from flask_wtf.csrf import CSRFError
+
+    @app.errorhandler(CSRFError)
+    def csrf_failed(e):
+        # A form posted without its token: an expired page, or a forged
+        # request from another site - logged, then the usual 400.
+        from flask import request
+
+        from app.monitoring import security_event
+
+        security_event("csrf_failed", path=request.path, reason=e.description)
+        return e
 
     @app.errorhandler(403)
     def forbidden(_e):
@@ -242,6 +284,7 @@ def _register_context_processors(app: Flask) -> None:
     app.jinja_env.globals["palette_entries"] = navigation.palette_entries
     app.jinja_env.globals["bottom_tabs"] = navigation.bottom_tabs
     app.jinja_env.globals["has_menu"] = navigation.has_menu
+    app.jinja_env.globals["menu_style"] = navigation.menu_style
     app.jinja_env.globals["icon"] = navigation.icon
     # {% if has_feature('categories') %} / {% if can('refund') %} - the
     # template-side counterparts of feature_required/permission_required,
@@ -362,8 +405,9 @@ def _register_context_processors(app: Flask) -> None:
 
 READ_ONLY_FLAG = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "deploy", "render-read-only")
 # Signing in and out still work on a read-only copy, so its records can be looked at.
-_READ_ONLY_ALLOWED = {"auth.login", "auth.logout", "auth.two_factor", "auth.two_factor_setup", "counterapp.resume",
-                      "counterapp.pair", "counterapp.ping"}
+_READ_ONLY_ALLOWED = {"auth.login", "auth.logout", "auth.two_factor", "auth.two_factor_setup", "auth.handoff",
+                      "counterapp.resume",
+                      "counterapp.pair", "counterapp.ping", "csp_report"}
 
 
 def read_only_mode() -> bool:
@@ -381,6 +425,10 @@ def _register_request_hooks(app: Flask) -> None:
     from app.utils.delivery import init_delivery
 
     init_delivery(app)
+    # First: a client's own sign-in domain serves only the sign-in screens.
+    from app.auth.login_domain import init_login_domains
+
+    init_login_domains(app)
 
     @app.before_request
     def refuse_changes_when_read_only():
@@ -478,6 +526,9 @@ def _register_request_hooks(app: Flask) -> None:
 
 
 def _register_cli(app: Flask) -> None:
+    from app.warehouse.pincodes import register as register_pincodes
+
+    register_pincodes(app)
     import click
 
     @app.cli.command("create-super-admin")
@@ -596,16 +647,83 @@ def _register_cli(app: Flask) -> None:
         from app.utils.web_session import delete_expired
 
         click.echo(f"{delete_expired()} expired session(s) deleted.")
+        from app.auth.login_domain import delete_expired as delete_old_handoffs
+
+        click.echo(f"{delete_old_handoffs()} old sign-in hand-over(s) deleted.")
+
+    @app.cli.command("books-check")
+    @click.option("--tenant-id", type=int, default=None, help="Only this business.")
+    def books_check(tenant_id):
+        """Runs the Books check (app/finance/checks.py) for every business,
+        for this month and last, and keeps each result. A month whose
+        figures don't agree is logged as an error - "books check failed" -
+        which raises an alert (scripts/gcp/monitoring_setup.sh), and shows
+        under the owner's "Needs you"."""
+        import logging
+        from datetime import date
+
+        from app.finance import checks
+        from app.models.tenant import Tenant
+
+        books_log = logging.getLogger("arfa.books")
+        today = date.today()
+        first = today.replace(day=1)
+        last_month = first.fromordinal(first.toordinal() - 1)
+        periods = [f"{today.year:04d}-{today.month:02d}", f"{last_month.year:04d}-{last_month.month:02d}"]
+        ran = failed = 0
+        query = Tenant.query.order_by(Tenant.id)
+        if tenant_id:
+            query = query.filter_by(id=tenant_id)
+        for tenant in query.all():
+            if not tenant.is_active:
+                continue
+            for period in periods:
+                try:
+                    report = checks.run(tenant, period)
+                    checks.save(tenant, report)
+                    db.session.commit()
+                except Exception:  # noqa: BLE001 - one business must not stop the rest
+                    db.session.rollback()
+                    books_log.exception("books check could not run: tenant=%s period=%s", tenant.id, period)
+                    failed += 1
+                    continue
+                ran += 1
+                if not report.ok:
+                    failed += 1
+                    books_log.error("books check failed: tenant=%s period=%s checks=%s", tenant.id, period,
+                                    ",".join(c.key for c in report.failed))
+        click.echo(f"{ran} month(s) checked, {failed} with figures that don't agree.")
+
+    @app.cli.command("sap-pull")
+    def sap_pull():
+        """Fetches purchase orders from SAP for every business with the SAP
+        link switched on (app/integrations/sap). Meant to run every 15
+        minutes (Cloud Scheduler -> the "arfa-sap-pull" Cloud Run Job); the
+        nightly run does it too."""
+        import logging
+
+        from app.integrations.sap import sync as sap_sync
+
+        results = sap_sync.pull_all()
+        for tenant_id, said in results:
+            click.echo(f"tenant {tenant_id}: {said}")
+        if not results:
+            click.echo("No business has the SAP link switched on.")
+        failed = [t for t, said in results if said.startswith("failed")]
+        if failed:
+            logging.getLogger("arfa.sap").error("sap pull failed: tenants=%s", ",".join(str(t) for t in failed))
 
     @app.cli.command("nightly")
     @click.pass_context
     def nightly(ctx):
         """The jobs that run every night on Google Cloud (Cloud Scheduler ->
         the "nightly" Cloud Run Job): expired sessions, recurring expense
-        and invoice drafts. Each step runs even if an earlier one failed."""
+        and invoice drafts, the Books check. Each step runs even if an
+        earlier one failed."""
         failed = []
         steps = [("sessions-cleanup", sessions_cleanup), ("expenses-generate-drafts", expenses_generate_drafts),
-                 ("recurring-invoices-generate", recurring_invoices_generate)]
+                 ("recurring-invoices-generate", recurring_invoices_generate), ("books-check", books_check),
+                 ("sap-pull", sap_pull)]
         for name, command in steps:
             try:
                 ctx.invoke(command)

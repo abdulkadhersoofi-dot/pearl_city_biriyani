@@ -195,6 +195,16 @@ def draft_from(tenant, source, user) -> EWayBill:
         ewb.doc_type = {DocumentType.BILL_OF_SUPPLY: "BIL", DocumentType.DELIVERY_CHALLAN: "CHL"}.get(dt, "INV")
         ewb.sub_supply_type = "3" if export else ("5" if dt == DocumentType.DELIVERY_CHALLAN else "1")
     ewb.to_party = _party(source.customer_snapshot or {}, export)
+    ship = getattr(source, "ship_to", None) or {}
+    if ship and not export and (ship.get("pincode") or ship.get("address_line1")):
+        # Delivered elsewhere than the billing address: the goods go there.
+        ewb.to_party.update({"addr1": ship.get("address_line1") or "", "addr2": ship.get("address_line2") or "",
+                             "place": ship.get("city") or "", "pincode": str(ship.get("pincode") or "")})
+    if isinstance(source, Invoice):
+        # Made from a sales order a warehouse picked: the goods leave from there.
+        order = SalesDocument.query.filter_by(tenant_id=source.tenant_id, converted_invoice_id=source.id).first()
+        if order is not None and order.dispatch_location is not None and order.dispatch_location.address:
+            ewb.from_party = _own(tenant, source.gstin, order.dispatch_location.address)
     ewb.items, totals = _line_items(source.lines, rcm)
     ewb.total_value, ewb.cgst_value = totals["taxable"], totals["cgst"]
     ewb.sgst_value, ewb.igst_value = totals["sgst"], totals["igst"]

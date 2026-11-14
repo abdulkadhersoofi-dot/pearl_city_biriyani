@@ -1,10 +1,20 @@
+import os
+import time
+
 import pytest
 
-from app import create_app
-from app.config import TestingConfig
-from app.extensions import db as _db
-from app.models.tenant import BillingCycle, Gstin, RegistrationType, Tenant
-from app.models.user import User, UserRole
+# The app runs on Indian time (app._set_process_clock). Set the same clock
+# before any test module reads today's date at import, or between midnight
+# and 5:30 AM in India a test's "today" is a day behind the app's.
+os.environ["TZ"] = os.environ.get("APP_TIMEZONE_POSIX", "IST-5:30")
+if hasattr(time, "tzset"):
+    time.tzset()
+
+from app import create_app  # noqa: E402
+from app.config import TestingConfig  # noqa: E402
+from app.extensions import db as _db  # noqa: E402
+from app.models.tenant import BillingCycle, Gstin, RegistrationType, Tenant  # noqa: E402
+from app.models.user import User, UserRole  # noqa: E402
 
 
 @pytest.fixture()

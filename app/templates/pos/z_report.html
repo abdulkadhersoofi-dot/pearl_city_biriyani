@@ -4,7 +4,7 @@
 <div class="page-header">
   <h1>End-of-day Z-report</h1>
   <form method="get" class="row">
-    <input type="date" name="date" value="{{ report.date.isoformat() }}" class="field-input" onchange="this.form.submit()">
+    <input type="date" name="date" value="{{ report.date.isoformat() }}" class="field-input" data-autosubmit>
     <a href="{{ url_for('pos.day_book', date=report.date.isoformat()) }}" class="btn btn-secondary">Day-book</a>
   </form>
 </div>

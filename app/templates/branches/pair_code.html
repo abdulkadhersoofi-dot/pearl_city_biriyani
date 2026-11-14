@@ -1,29 +1,58 @@
 {% extends "base.html" %}
-{% block title %}Pair a phone - {{ firm_name }}{% endblock %}
+{% block title %}Pair phones - {{ firm_name }}{% endblock %}
 {% block content %}
-{# The code that signs a phone in as this branch (counter app, stage 1) -
-   shown this once; it works for a few minutes, one time. #}
+{# The code that signs phones in as this branch (counter app, stage 1) -
+   shown this once; it works for a few minutes, for as many phones as it
+   was made for. The page asks every few seconds which have joined. #}
 <div class="page-header">
   <div>
-    <a href="{{ url_for('branches.list_branches') }}" class="back-link">{{ icon('chevron-right', 'icon-sm icon-flip') }}Branches</a>
-    <h1>Pair a phone with {{ branch.name }}</h1>
-    <p class="text-muted mt-0">The phone will bill as {{ branch.name }} - no email or password at the counter.</p>
+    <a href="{{ url_for('branches.list_branches', _anchor='phones-' ~ branch.id) }}" class="back-link">{{ icon('chevron-right', 'icon-sm icon-flip') }}Branches</a>
+    <h1>Pair {{ 'a phone' if record.max_uses == 1 else record.max_uses ~ ' phones' }} with {{ branch.name }}</h1>
+    <p class="text-muted mt-0">{{ 'The phone bills' if record.max_uses == 1 else 'Each phone bills' }} as {{ branch.name }} - no email or password at the counter.{% if record.max_uses > 1 %} They can all bill at the same time, each in its own bill series.{% endif %}</p>
   </div>
 </div>
-<div class="card pair-show" x-data="{ left: {{ minutes * 60 }} }" x-init="setInterval(() => { if (left > 0) left-- }, 1000)">
+<div class="card pair-show"
+     data-status-url="{{ url_for('branches.pairing_status', pairing_id=record.id) }}"
+     x-data="{ left: {{ minutes * 60 }}, paired: [], max: {{ record.max_uses }}, done: false }"
+     x-init="setInterval(() => { if (left > 0) left-- }, 1000);
+             setInterval(() => {
+               if (done || left === 0) return;
+               fetch($el.dataset.statusUrl, { headers: { Accept: 'application/json' } })
+                 .then(r => r.ok ? r.json() : null)
+                 .then(d => { if (d) { paired = d.paired; done = d.done; } })
+                 .catch(() => {});
+             }, 3000)">
   <ol class="pair-steps">
-    <li>Install and open the <strong>ARFA Counter</strong> app on the phone (or open <code>{{ url_for('counterapp.index', _external=True) }}</code> in its browser).</li>
-    <li>Type this code:</li>
+    <li>Install and open the <strong>ARFA Counter</strong> app on {{ 'the phone' if record.max_uses == 1 else 'each phone' }} (or open <code>{{ url_for('counterapp.index', _external=True) }}</code> in its browser).</li>
+    <li>Type this code{% if record.max_uses > 1 %} on each one{% endif %}, and give the phone a name staff know it by (Counter 1, Counter 2...):</li>
   </ol>
   <p class="pair-big" aria-label="Pairing code {{ code|join(' ') }}"><span>{{ code[:3] }}</span><span>{{ code[3:] }}</span></p>
-  <p class="text-muted m-0" aria-live="polite" x-show="left > 0">Works once, for the next <strong x-text="Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0')">{{ minutes }}:00</strong>.</p>
-  <p class="flash flash-warning m-0" x-show="left === 0" x-cloak>This code has expired - make a new one.</p>
-  <div class="row mt-16">
-    <form method="post" action="{{ url_for('branches.pair_phone', user_id=branch.id) }}">
+  <p class="text-muted m-0" aria-live="polite" x-show="left > 0 && !done">
+    Works for {{ 'one phone' if record.max_uses == 1 else 'up to ' ~ record.max_uses ~ ' phones' }}, for the next
+    <strong x-text="Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0')">{{ minutes }}:00</strong>.
+  </p>
+  <p class="flash flash-warning m-0" x-show="left === 0 && !done" x-cloak>This code has expired - make a new one.</p>
+
+  <div aria-live="polite">
+    <p class="m-0 mt-16" x-show="paired.length" x-cloak>
+      <strong x-text="paired.length + ' of ' + max">0</strong> phone<span x-show="max !== 1">s</span> paired<span x-show="done"> - all done</span>.
+    </p>
+    <ul class="pair-joined" x-show="paired.length" x-cloak>
+      <template x-for="p in paired" :key="p.code">
+        <li>{{ icon('smartphone', 'icon-sm') }}<strong x-text="p.name"></strong><small class="text-muted" x-text="'bill series ' + p.code"></small></li>
+      </template>
+    </ul>
+  </div>
+
+  <div class="row mt-16 flex-wrap">
+    <form method="post" action="{{ url_for('branches.pair_phone', user_id=branch.id) }}" class="row gap-6 items-center">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label class="row gap-6 items-center"><span>New code for</span>
+        <input type="number" name="phones" value="{{ record.max_uses }}" min="1" max="{{ max_phones }}" class="field-input phones-count" aria-label="How many phones">
+        <span>phone(s)</span></label>
       <button class="btn btn-secondary">New code</button>
     </form>
-    <a href="{{ url_for('branches.list_branches', _anchor='sec-devices') }}" class="btn btn-primary">Done</a>
+    <a href="{{ url_for('branches.list_branches', _anchor='phones-' ~ branch.id) }}" class="btn btn-primary">Done</a>
   </div>
 </div>
 {% endblock %}

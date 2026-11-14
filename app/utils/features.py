@@ -87,6 +87,15 @@ FEATURES = {
             available=True,
         ),
         Feature(
+            "warehouse_dispatch",
+            "Warehouse dispatch by serial scan",
+            "The showroom sells the item and quantity only and picks the warehouse it ships from; every picker "
+            "there gets the order on the ARFA Warehouse phone app, scans each unit's label (barcode or text), and "
+            "the warehouse computer invoices it with the scanned serials. Also receives purchases and counts stock "
+            "by scanning. Needs Serial / IMEI and Inventory.",
+            available=True,
+        ),
+        Feature(
             "margin_scheme",
             "Margin scheme (second-hand goods)",
             "Used phones, vehicles and other second-hand goods: buy on your own voucher (with the seller's ID), "
@@ -250,6 +259,22 @@ FEATURES = {
             "Cashier PINs",
             "Several cashiers share one branch counter: each switches in with their own PIN, every bill shows who "
             "rang it up, and the counter can lock itself when left idle.",
+            available=True,
+        ),
+        Feature(
+            "doc_scan",
+            "Scan bills",
+            "Photograph or upload purchase bills and expense bills - the AI reads the supplier, GSTINs, items and "
+            "tax, checks the arithmetic and any e-invoice QR, and you post it as a purchase bill or an expense in "
+            "one tap. PDFs holding several invoices are split by themselves.",
+            available=True,
+        ),
+        Feature(
+            "sap_link",
+            "SAP purchase orders",
+            "Fetch purchase orders from your SAP S/4HANA into ARFA (read only - ARFA never changes SAP), so a "
+            "scanned supplier bill finds the SAP order it belongs to. Needs Purchases, and your SAP team's "
+            "address and a read-only login.",
             available=True,
         ),
         Feature(

@@ -118,7 +118,7 @@ app/
 ├── staff/           # Client Admin: create/deactivate/reset staff logins
 ├── invoicing/        # form, PDF, GST calc, numbering
 ├── customers/, products/   # tenant-scoped catalog CRUD
-├── bulk/             # Excel import/export (items, customers): template,
+├── bulk/             # Excel/CSV import, Excel export (items, customers, suppliers): template,
 │                     # row-by-row preview, confirm - specs.py per kind
 ├── branches/         # branch logins, stock, per-branch permissions
 ├── settings/         # Client Admin settings: branding, business profile,
@@ -143,7 +143,9 @@ app/
 ├── loyalty/         # points ledger and history (Phase 9)
 ├── subscriptions/   # the firm's own subscription invoices (Phase 10)
 ├── onboarding.py    # first-run checklist (Phase 10)
-├── monitoring.py    # Sentry, only with SENTRY_DSN (Phase 10)
+├── monitoring.py    # JSON logs on Cloud Run, security events; Sentry only with SENTRY_DSN
+├── security_headers.py # HSTS, CSP (per-request nonce), frame/sniff/referrer/permissions headers
+├── ratelimit.py     # per-caller request limits (sign-in, API, pages, PDFs)
 ├── api/              # small JSON endpoints (product lookup today; POS
 │                     # cart/checkout from Phase 2) - kept separate so a
 │                     # future SPA frontend can reuse them
@@ -213,10 +215,13 @@ Optional environment variables (nothing breaks without them):
 | Variable | What it does |
 |---|---|
 | `SENTRY_DSN` (+ `SENTRY_ENVIRONMENT`, `SENTRY_TRACES_SAMPLE_RATE`) | error reports to Sentry; off when unset |
+| `LOG_FORMAT` (json on Cloud Run, else text), `LOG_LEVEL` (WARNING) | how logs are written |
+| `RATE_LIMITS_ENABLED` (1), `RATE_LIMIT_AUTH` (30), `RATE_LIMIT_API` (300), `RATE_LIMIT_WEB` (600), `RATE_LIMIT_HEAVY` (40), `RATE_LIMIT_REPORT` (30) | requests a minute per caller (app/ratelimit.py); 0 = no limit for that kind |
+| `CSP_MODE` (enforce) | `report` = log what the Content-Security-Policy would block without blocking; `off` |
 | `SMTP_HOST`, `SMTP_PORT` (587), `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM`, `SMTP_USE_TLS` (1) | the owner's day summary by email; WhatsApp sharing works without |
 | `PROXY_FIX_X_FOR` | set to `1` behind Render / nginx so lockout and limits see the real client IP |
 | `ADMIN_2FA_REQUIRED` (1), `ADMIN_IDLE_MINUTES` (30), `LOGIN_IP_LIMIT` (40) | sign-in security for the firm's own logins |
-| `ANDROID_RELEASE_REPO` | where the app's update check looks (the APK's `RELEASE_REPO` must match) |
+| `APPS_BUCKET` (or `APPS_DIR` in development) | where the Android apps' builds are, for the Phone apps page (/apps) and the apps' update check (scripts/gcp/apps_setup.sh) |
 
 The first time the Ultra Admin signs in after this phase, the app asks
 them to set up two-step sign-in (an authenticator app) - have the phone
@@ -838,7 +843,11 @@ Gunicorn workers or add app servers behind Nginx as load grows.
   leading zero from (901 -> 0901) or GST rates entered as a percentage
   cell (0.18 -> 18) are repaired rather than rejected. Rows match an
   existing item by SKU then name, a customer by GSTIN then name -
-  always within the tenant only.
+  always within the tenant only. An upload may be .xlsx or CSV (same
+  headings; a blank CSV template too): a CSV saved by Excel on Windows
+  (cp1252, ; or tab between columns) reads correctly, and a code column
+  Excel shortened (8.90123E+12) is refused with the reason. Reached from
+  the list's "Bulk add (Excel / CSV)" button and New -> "Items in bulk".
 - **Per-staff permissions** (`app/utils/permissions.py`, Branches ->
   Permissions): give discounts (with a max %), change price at billing,
   refund, void, see Day-book/Z-report, adjust stock. Defaults equal
@@ -1810,10 +1819,166 @@ Five new flags, all off by default; with them off nothing changes (routes
   cashier. Lock / switch, auto-lock after the Client Admin's idle
   minutes, five wrong PINs = a minute's wait. Offline, the cashier on the
   counter stays (a PIN needs the server).
-- **Monitoring.** Sentry only when `SENTRY_DSN` is set (`app/monitoring.py`;
-  user id and role only, no email or form data; tracing off unless
+- **Monitoring.** On Cloud Run every log line is JSON (`app/monitoring.py`):
+  severity, method and path (no query string), trace; errors carry their
+  stack trace for Error Reporting. `security_event(kind, ...)` logs failed
+  sign-ins, lockouts, rate limits and CSP violations (ids only, never an
+  email). `scripts/gcp/monitoring_setup.sh <email>` sets up the uptime check,
+  log-based metrics and email alerts. Sentry only when `SENTRY_DSN` is set
+  (user id and role only, no email or form data; tracing off unless
   `SENTRY_TRACES_SAMPLE_RATE`). `/healthz` checks the database and Redis
   and answers 503 naming the part that's down.
+- **One definition of sales** (`app/finance/sales_figures.py`): which
+  documents count as sales, and on which day - invoices (not delivery
+  challans), counter bills, counter refunds (on the day of the refund),
+  counter returns, credit and debit notes. The dashboard, the Sales report,
+  the owner's summary and Profit & loss all read `entries()`; the GST
+  working papers follow the same rule line by line. Fixed when they were
+  joined up: a challan for stock sent to an owned branch was counted as a
+  sale in the Sales report and as taxable turnover in GSTR-1 / GSTR-3B; a
+  refund of an earlier month's counter bill changed that earlier month in
+  the Sales report and the GST papers; the Sales report left out credit and
+  debit notes.
+- **Books check** (`app/finance/checks.py`, Reports > Books check): twelve
+  checks, each working a figure out two ways - dashboard against the Sales
+  report, the Sales report against P&L, GSTR-1, GSTR-3B and the accounting
+  journal, every document's top against its lines, stock never below zero,
+  serial numbers against stock, each customer's and supplier's ledger
+  against their unpaid bills, receipts against what they are set against,
+  the cash and bank books. A check that can't answer fairly for a business
+  says "not checked" (a margin-scheme month, for one). Results are kept
+  (`BooksCheckRun`); `flask books-check` runs it for every business for
+  this month and last (part of `flask nightly`) and logs "books check
+  failed", which `scripts/gcp/monitoring_setup.sh` turns into an alert; a
+  failing month shows under Needs you. Marking a month "ready to file"
+  runs it first: with a blocking check failing, the owner fixes it or
+  writes why it stands (kept in the audit log).
+  `tests/test_books_agree.py` is the test business with hand-worked answers
+  that every one of those screens must match to the paisa.
+- **Closed months** (`app/finance/periods.py`): once GSTR-1 is marked filed
+  for a GSTIN and month, no invoice or note can be added with a date in it
+  or voided out of it; GSTR-3B does the same for purchase bills, returns to
+  suppliers, supplier notes and expenses. Corrections are notes dated in an
+  open month. Unmarking the return (the firm's filing tracker) reopens it.
+- **The seven doors** (`app/doors.py`, `app/hubs/`): the simple menu - Home,
+  Sell, Buy, Stock, Money, Reports, Setup - each a hub page with one main
+  button and every screen that existed before behind it (nothing removed;
+  `tests/test_doors.py` proves every menu entry still has a home). The
+  Classic menu stays as a switch (cookie `arfa_menu`; `MENU_DEFAULT`).
+- **New sale** (`app/sell/`, Sell > New sale): one form for a bill, a sales
+  order, a quotation, a proforma and a challan. `decide.decide()` puts each
+  line where it can be served from - billed now from this place's stock,
+  ordered from the nearest warehouse that has it, or kept waiting for stock
+  (`awaiting_stock`) - and shows the plan before saving (`/sell/new/plan.json`).
+  `save()` makes the documents with the existing invoice and sales-order
+  code; the parts of one sale share a `sale_ref` and open together at
+  `/sell/sale/<ref>`. A waiting order is sent on to a warehouse from its own
+  page once stock is there (`dispatch.send_waiting`).
+- **Purchase orders billed in parts, and bills that find their order**
+  (`app/purchases/matching.py`): each order line counts what is billed
+  (`billed_qty`), each bill line names the order line it settles, and an
+  order is Open, Partly billed or Billed; voiding a bill gives its share
+  back, and the rest "not coming" closes the order short with a reason. On
+  the scan check screen a purchase bill is matched to its order - by the
+  order number printed on it (cleaned of spaces, prefixes and leading
+  zeros), else by its items, quantities and rates, proposed only when one
+  order is clearly ahead - and shown beside it line by line with what
+  differs in words (quantity over, rate beyond 1% or Rs. 1, GST rate, item
+  not on the order, more billed than the warehouse has scanned in). The
+  owner can pick another order or none; posting ties the bill to the order.
+  **Post N matched bills** on Scan bills posts in one go the bills a person
+  need not open: every check passed, not entered already, a supplier and
+  items ARFA already knows, and an order they agree with on every line
+  (`services.matched_and_agreeing`). Each is posted on its own and looked
+  at again just before, so two bills for one order's goods don't both go
+  through; anything else stays to be checked by hand.
+- **Bill reader training** (Setup > Bill reader training, `/scan/teach`;
+  `app/scan/lessons.py`): besides the rows it learns from corrections and
+  the owner's notes, the reader is taught **headings** - "on this supplier's
+  bills, 'Cust. PO' means your order (PO) number", or a column heading
+  ("Basic" is the rate). A heading lesson (`ScanLesson.kind = "heading"`,
+  per supplier GSTIN or for every supplier; the Ultra Admin's reach every
+  business) is told to the reader with the bill and then applied as a fixed
+  rule to what it returned (`reader.apply_headings`): a value read under
+  another field whose printed label is the taught heading is moved, a
+  "label: value" left in other references is taken, a column read under the
+  wrong name is moved or swapped back. Only values the reader read are
+  moved; the reader is asked for the printed labels only when headings have
+  been taught. **Train on a bill** (`/scan/teach/bill/<id>`): click a heading
+  on the bill's picture and ARFA reads it into the box (`reader.read_label`),
+  pick what it means, then **Read again** shows that bill before and after
+  without changing it. Training reads are capped at 40 a day per business.
+- **SAP link** (module "SAP purchase orders", Setup > SAP link;
+  `app/integrations/sap/`): purchase orders are fetched from a client's SAP
+  S/4HANA - read only, ARFA never writes to SAP - so a scanned supplier bill
+  finds the SAP order it belongs to. `client.py` speaks SAP's Purchase Order
+  OData service in both versions (V2 `API_PURCHASEORDER_PROCESS_SRV`, which
+  SAP marks deprecated, and its V4 successor `API_PURCHASEORDER_2`), asks
+  only for orders changed since the last fetch, pages through them, and
+  never follows a link to another host. **Test** reads the service's own
+  `$metadata` and names any field ARFA reads that the system lacks.
+  `sync.py` keeps each order as it came (`SapOrder`), then makes or updates
+  the ARFA purchase order (its number is SAP's number, tagged SAP, changed
+  and cancelled only in SAP). SAP's vendor codes and material numbers are
+  matched to the business's own suppliers and items (`SapMapping`): a
+  supplier by GSTIN (looked up in SAP's Business Partner service when the
+  login may read it), an item by its SAP number being the ARFA SKU; the rest
+  wait on the **to match** list for a person - an order waits until its
+  supplier is matched, an unmatched item comes in under SAP's own name.
+  Nothing is guessed. What is already billed survives changes in SAP: a
+  quantity is never taken below what is billed. The login is kept encrypted
+  (`app/einvoice/vault.py`), the address must be public https (or on
+  `SAP_ALLOWED_HOSTS`), and every call is logged (`SapCall`: when, what,
+  how it went - never the login or SAP's answer). `flask sap-pull` fetches
+  for every business with the link on: the `arfa-sap-pull` Cloud Run job,
+  every 15 minutes once `scripts/gcp/setup.sh sap-scheduler` is run, and in
+  the nightly run. **Going live needs the client's SAP team:** the address,
+  which service version their system exposes, and a read-only technical
+  user (or OAuth client) allowed to read purchase orders. The code is
+  tested against SAP's published field names with a stand-in SAP
+  (`tests/test_sap_orders.py`), not yet against a real system.
+- **The dashboard in 3D** (`static/js/dash3d.js`, `templates/reports/dashboard.html`):
+  3D is how the figures are *shown*; every figure stays printed as text and
+  links to the report that proves it. **Branches today** is a skyline - one
+  tower per branch login (and "Head office" for what belongs to none), its
+  height today's sales, its colour ahead of or behind the same weekday last
+  week - from `sales_figures.by_branch()`, the one definition of sales, so
+  the towers add up to the Sales today tile and each equals the Sales
+  report for that branch (`tests/test_dashboard_3d.py`). The 14-day trend
+  is a ribbon. The flat charts and the screen-reader table stay in the
+  page: the 3D view is drawn over them only after the numbers are on
+  screen, and the page is flat by itself with no WebGL, with "reduce
+  motion" or data saver on, or on a weak phone. The Flat view / 3D view
+  button is remembered on the device. On a narrow screen the towers'
+  labels give way to the list under them (tap a tower for its label).
+  three.js 0.180 (MIT) is served from `static/vendor/three/` - nothing is
+  loaded from another server - and only on this page.
+- **Search finds records** (`app/search.py`, `/find.json`): the search box
+  (Ctrl K) lists screens as before and, a moment after typing stops, the
+  owner's own records that match - bills, notes, counter bills, orders and
+  quotes, customers (name, phone, GSTIN), items (name, SKU, barcode),
+  suppliers, purchase bills and orders (an SAP order by its SAP number),
+  serial numbers - a few of each, only for modules that are on, only this
+  business's. **What moved where** (`/moved`, in the account menu and under
+  Setup) lists every classic menu entry beside the door it is behind now,
+  built from the two menus themselves. A **branch login's menu** is three
+  groups: Counter, New sale (with the orders it made), Today. The Classic
+  menu switch stays (the plan keeps it for a month after the simple menu
+  is live). Every screen was opened at phone width (390 px) in a browser:
+  none scrolls sideways.
+- **Security headers** (`app/security_headers.py`): HSTS over HTTPS
+  (includeSubDomains on PUBLIC_URL's domain only), a Content-Security-Policy
+  on pages - scripts only from /static or inline blocks with the response's
+  nonce (`<script nonce="{{ csp_nonce() }}">`), no inline `onclick=` (use the
+  data- attributes in `static/js/actions.js`), connect/img/font from ARFA
+  only, no framing by other sites; violations go to `/csp-report` and the
+  logs. `'unsafe-eval'` stays for Alpine.js. `CSP_MODE=report` logs without
+  blocking.
+- **Rate limits** (`app/ratelimit.py`): per caller per minute - sign-in
+  posts 30 per network, PDFs/spreadsheets 40 per login, `/api/` 300 per app
+  token, pages 600 per login; 429 with Retry-After. Counts are per server
+  process (a flood is stopped; the firm-wide failed-sign-in cap stays in the
+  database).
 - **First-run checklist** (`app/onboarding.py`) for a new Client Admin -
   business profile (Settings saved once), GSTIN / location, first item,
   first customer, first bill, printer test (a sample receipt on the
@@ -2641,11 +2806,15 @@ and tables & KOT where the business has them. It opens the website's own
 phone screens (`/app/`) inside the Android shell, so billing rules, GST
 and numbering are the website's. Stage 1 is how a phone gets in.
 
-- **The owner pairs a phone** - Branches > **Pair a phone** next to a
-  branch login shows a 6-digit code, good once for 15 minutes. A new code
-  for that branch retires the old one. Only a Client Admin makes codes,
-  and only for an active branch login of their own business. The code is
-  kept only as a hash.
+- **The owner pairs phones** - Branches > **Billing phones & tablets**
+  lists every phone under its branch (rename it, switch it off). "Add [n]
+  phone(s) > Get pairing code" shows a 6-digit code good for 15 minutes
+  and for up to n phones (1-10) of that branch - type the same code on
+  each; the code page lists each phone as it joins. A branch may bill on
+  any number of phones at once, each in its own offline series. A new
+  code for that branch retires the old one. Only a Client Admin makes
+  codes, and only for an active branch login of their own business. The
+  code is kept only as a hash.
 - **The phone types the code once** - `/app/` shows the pairing screen.
   With the right code the phone becomes one of the business's counter
   devices: the same record offline billing numbers its bills from
@@ -3037,11 +3206,224 @@ which one it is decides only through settings. Setup: `docs/cloud-setup.md`
   `test_cloud_deploy_files.py`, the image test in `test_branding.py`, the
   one-by-one export in `test_admin_drilldown.py`.
 
+### Warehouse dispatch by serial scan (stages 1-7)
+
+The showroom sells the item and quantity only; the warehouse scans the actual
+unit's label and the serial is fixed at that moment. Module
+`warehouse_dispatch` (needs Serial / IMEI and Inventory; offered as a choice in
+the Mobiles & Electronics package), off for everyone until switched on - with
+it off, sales orders and invoices behave exactly as before.
+
+- **Stage 1 - orders, warehouses, holds** (`app/warehouse/dispatch.py`). A
+  sales order names the godown it ships from (required, validated in the
+  service: an active godown of the same business). What it takes is *held*
+  there: a warehouse's free quantity = stock there - what open, un-invoiced
+  orders shipping from it hold, one function used by the order form, the
+  Warehouse picker (`/warehouse/free.json`) and the save. Serial-tracked items
+  can never be promised beyond what's free; other items follow their own
+  "stop at zero". Moving an unclaimed order moves its hold and re-notifies;
+  a claimed order keeps its warehouse. Branch logins make sales orders (only
+  sales orders, only their own); each branch (and the main store) has a usual
+  warehouse on Stock locations. `Product.model_no` on the item form and the
+  spreadsheet. `_check_serials` now also refuses a serial that is somewhere
+  else than where it's sold (units with no recorded place pass).
+- **Stage 2 - the ARFA Warehouse API** (`app/warehouse_api`, `/api/wh/v1`).
+  Per-person `WarehouseLogin`s (Argon2id password and PIN), managed under
+  Warehouse > App logins and counted against the new "Warehouse app logins"
+  package limit. A phone signs in once (business code = the client's login
+  slug or its number, login id, password; the website's lockout settings) for
+  a refresh token kept only as a hash (`WarehouseSession`), then each PIN
+  unlock issues a 12-hour access token and makes older ones stale; five wrong
+  PINs sign the phone out. Tenant, login and allowed warehouses come from the
+  session only; every lookup is scoped to them (anything else is a 404).
+  Claims are one conditional UPDATE (`... WHERE claimed_by_id IS NULL AND
+  dispatch_status = 'to_pick'`), so of two phones exactly one wins (tested with
+  two threads). Picks are idempotent on `client_pick_id`. A claim with no scan
+  for 30 minutes goes back to the pipeline with its scans undone (the owner's
+  choice); the website shows claims idle 15+ minutes. Pushes go through an
+  outbox (`WarehouseNotice`) written with the change and sent after the
+  commit (FCM HTTP v1, high-priority data messages, as the service account):
+  a new order rings every phone of that warehouse and no other; claims,
+  releases, moves and cancels refresh silently. The app also polls every 30 s.
+- **Stage 3 - the app** (`warehouse-android/`, its own Gradle project and
+  workflow; see its README). Compose, CameraX, ML Kit with bundled models,
+  Room + WorkManager offline queue, Firebase set up at run time from
+  `/api/wh/v1/app/config` (no google-services.json in the build).
+- **Stage 4 - scanning.** Matching, not reading: the phone gets the serials
+  in stock at that warehouse for each line (`allowed_serials`, capped at 2000)
+  and matches barcodes exactly, then (after 2 s) text read on the phone,
+  normalised (O/0, I/1, S/5, separators) and still only an exact match.
+  ARFA's label reader (`app/warehouse/labels.py`, the Scan bills Gemini set-up,
+  768 px, strict JSON, `LABEL_DAILY_LIMIT`) is the last resort and is checked
+  like any scan. The server is authoritative, with the serial row locked:
+  unknown / wrong product / not in stock / already picked / wrong location /
+  line full - every attempt kept as a `SerialPick`. A serial ARFA never had,
+  on a box of the right product, is **added to stock and picked** when the
+  picker says so (the owner's choice) - flagged `added_at_pick` and listed in
+  the reports to check. Typing a serial is a per-login permission.
+- **Stage 5 - receiving and counting** (`app/warehouse/receiving.py`). A
+  purchase order is sent to a warehouse; the pickers scan its units in
+  (checked against the batch, every serial the business has and other open
+  receipts); "Make the purchase bill" opens the bill with those serials and
+  that warehouse filled in, and it posts as always. Count mode lists serials
+  ARFA has there that weren't found and serials found that ARFA doesn't have
+  there, with an Excel download.
+- **Stage 6 - invoicing at the warehouse** (`app/warehouse/routes.py`). The
+  warehouse computer is a branch login bound to a godown (Stock locations);
+  its home is Ready to invoice (its own warehouse only; the owner sees all,
+  with a filter), which chimes and pops up when a picker confirms. Make
+  invoice goes through the existing convert-to-invoice path with each line's
+  scanned serials (re-checked: still held, still at that warehouse); stock
+  leaves that warehouse and the serials become SOLD with `sold_invoice_id`;
+  voiding puts them back IN_STOCK there. Delivery slip with serials per line;
+  the e-way bill's dispatch-from is the warehouse's address. "Edit & invoice"
+  isn't offered for these orders. The GST warning on a godown not marked as an
+  additional place of business. Invoice numbering and GST computation are
+  untouched.
+- **Stage 7 - reports** (`app/warehouse/reports.py`): serial history (bought
+  -> received -> picked by / photo -> invoiced to), orders waiting too long,
+  failed scans by reason and picker, the phones (last seen, version, push,
+  scans on unconfirmed orders), count results.
+
+### Warehouse dispatch - stage 5B (EMI / finance sales)
+
+For an EMI sale the financier needs the serial on the invoice, so the showroom
+invoices at once - but the warehouse still chooses the unit, in the minutes the
+loan takes (`app/warehouse/dispatch.py`, `app/warehouse/emi.py`).
+
+- **The finance order.** A sales order ticked *Finance (EMI) sale* names its
+  `Financier` (a tenant master; Bajaj Finserv and HDB are one-click
+  suggestions, never fixed), loan ref, finance amount and down payment
+  (together the order total, checked in the service). It gets
+  `priority = high`: the push is a separate kind (`new_emi_order`) that the app
+  rings on an alarm-stream channel (sounds even on silent), and it is pinned
+  first in the pipeline in red with "customer waiting N min".
+- **Lock for EMI.** The same claim, scan and server checks; Confirm reads *Lock
+  for EMI* and puts the units in the `EMI-HOLD` bin (`ProductSerial.bin_code`,
+  the unit stays at its warehouse location). The showroom's order page polls
+  `/sales/documents/<id>/dispatch.json` and shows "LG 1.5T - SN ABC123 locked".
+- **The showroom invoices** (`/sales/documents/<id>/emi-invoice`, owner or the
+  branch that made it) through the same convert path: serials read-only, stock
+  out of the dispatch warehouse. The invoice carries `financier_id`,
+  `finance_amount`, `loan_ref` and prints "Financed by". The order stays
+  `picked` with `invoiced_at_showroom` and appears under **To deliver**, never
+  Ready to invoice.
+- **Receivable split.** `receivables.invoice_receivable` takes the finance
+  amount off the customer's side; the financier's own customer account gets an
+  open item for the same invoice (`financed_invoices`), so its payouts are
+  ordinary receipt vouchers allocated against it - no new ledger.
+- **Delivery check (both paths).** Every invoiced order is scanned again before
+  it leaves (`/api/wh/v1/orders/<id>/deliver-scans`, then `/deliver`; status
+  `delivered`). Only an invoiced serial passes; anything else is blocked and
+  kept (`DeliveryScan`).
+- **Swaps** (owner's choice: keep the invoice, note it on the slip). The picker
+  scans a replacement with a reason; it is held (`SerialSwap`, PICKED) until the
+  owner or the showroom approves. Approval: the old serial back IN_STOCK at the
+  warehouse, the new one SOLD on the same invoice line, two `serial_swap` stock
+  movements (net zero), and the delivery slip prints "XYZ in place of ABC on the
+  invoice". Voiding the invoice later reverses the swap's movements too.
+- **When the showroom must pick** (warehouse closed, no signal, a rush): on the
+  order page it chooses serials itself - EMI READY units first, then units on a
+  rack, units with no rack hidden unless "show all". They are held like scans
+  (`PickMethod.SHOWROOM`); the app's Deliver screen says "Fetch SN ABC123 from
+  rack C3", and **Locate** beeps on that box.
+- **Racks.** Warehouse > Racks prints rack labels (Code 128 `RACK:C3`, plus
+  EMI READY). In the app, scanning a rack label while receiving puts the next
+  units on it (putaway - carried to the serials when the bill posts), and
+  **Move** re-shelves units (`/api/wh/v1/bins/move`).
+- **Financier settlement** (Warehouse > Financiers): financed, received and
+  outstanding per invoice; the payout statement (.xlsx) is read by its header
+  words, matched by loan ref, then invoice number, then a unique amount, shown
+  for checking, then recorded as receipts; charges deducted are flagged to go
+  in as an expense.
+
+### Warehouse dispatch - the nearest-warehouse default (and split orders)
+
+A sales order defaults to the warehouse nearest its **delivery address**
+(`app/warehouse/nearest.py`, owner's choices: straight-line distance plus
+manual service areas; splitting allowed).
+
+- **Deliver to** (`SalesDocument.ship_to`): the customer's address, or a
+  different one for this order only; carried to the invoice (`Invoice.ship_to`,
+  printed as "Ship to") and to the e-way bill's to-address and to-pincode.
+- **suggest_warehouse(tenant, pincode, lines) -> (location, reason, ranked)**:
+  a manual service area first (exact pincode beats the longest prefix; per
+  warehouse on Stock locations); else the nearest active godown by haversine
+  km that has every line free ("nearest", or "nearest_in_stock" with why the
+  nearer one was passed over: "A (12 km) is short of LG 1.5T - defaulted to B
+  (38 km)"); none can fill it: the nearest, with its shortage; an unknown or
+  blank pincode: the branch's **fallback warehouse**, flagged "Pincode not
+  found". The order form asks `/warehouse/suggest.json` as the customer,
+  address and items change: every warehouse with distance and free quantity,
+  the default selected until the salesperson picks by hand, and a one-line
+  reason. Saving recomputes it on the server: `dispatch_choice_reason` is
+  `service_area | nearest | nearest_in_stock | fallback | manual | split`.
+  Orders made without a warehouse (bulk / API) take the suggestion.
+- **Split** (owner's choice): when no single warehouse has the whole order, the
+  salesperson may tick "Split across warehouses": one sales order per
+  warehouse, nearest first, each with its share of the lines (a line may be
+  divided), each picked and invoiced on its own, all pointing at the first
+  (`split_group_id`). An EMI sale is never split (one invoice to the financier).
+- **Warehouses** get a pincode (required for a godown with the module on), an
+  optional exact point (latitude/longitude, else the pincode's), and a service
+  area ("628001, 629" - a code can belong to one warehouse only).
+- **The pincode table** (`pincode_geo`, shared reference data, not per
+  business) comes from India Post's All India Pincode Directory on data.gov.in
+  (Government Open Data Licence - India). It can only be downloaded in a
+  browser, so `flask pincodes-build <csv>` compacts it into
+  `data/pincode_geo.csv.gz` (one row per pincode; offices' average, else the
+  district's, else the 3-digit area's - the level is kept) and
+  `flask pincodes-load` (in deploy/migrate.sh) loads it.
+  **Bundled now: `Pincode_30052019.csv`** - India Post's All India Pincode
+  Directory of **30 May 2019** (155,599 offices, 19,252 pincodes), supplied by
+  the owner on 9 Nov 2026; licence GODL (source: Department of Posts, Ministry
+  of Communications, Government of India - data.gov.in). It has **no
+  coordinates**, so every pincode is level "none" and warehouses are ranked by
+  the delivery pincode's **district, then its sorting area (first three
+  digits), then its state** - still stock-aware, service areas still win, an
+  unmatched pincode uses the fallback. Run `flask pincodes-build` on the
+  directory *with latitude and longitude* and commit the result to switch to
+  distance in km (the same file format, no code change).
+
+### Warehouse dispatch - how to run it (hand-over)
+
+1. Ultra Admin: switch **Warehouse dispatch by serial scan** on for the client
+   (with Serial / IMEI, Inventory and Quotations, orders & challans).
+2. Owner: **Stock locations** - add each warehouse as a Godown with its
+   address, tick "Address is on the GSTIN", pick its **Warehouse computer**
+   (a branch login), and give each branch its **usual warehouse**.
+3. Owner: **Warehouse > App logins** - one login per picker, ticking their
+   warehouse(s). Give them the business code, login id and password.
+4. Pickers: install **ARFA Warehouse** from arfa.live/apps, sign in once,
+   choose a PIN.
+5. Before go-live: on the app, **Receive > Start a count** in each warehouse;
+   fix what the count report shows.
+6. Every day: the salesperson makes a sales order and picks the warehouse;
+   the phones ring; a picker taps **Start picking**, scans each unit,
+   **Confirm**; the warehouse computer's **Ready to invoice** chimes ->
+   **Make invoice** -> print the invoice and the delivery slip.
+7. Optional, once: `scripts/gcp/warehouse_push_setup.sh` (docs/cloud-setup.md)
+   so orders ring with the app closed.
+8. Nearest warehouse: on **Stock locations** give each warehouse its pincode
+   (and, where distance misleads, the pincodes it always serves) and each
+   branch a fallback warehouse. The order form then picks the nearest
+   warehouse with stock for the delivery address; tick "Split across
+   warehouses" when none has it all.
+9. EMI sales: **Warehouse > Financiers** - add Bajaj Finserv / HDB (one
+   click) or others. **Warehouse > Racks** - print rack labels and the EMI
+   READY label; pickers scan a rack label before shelving units. The
+   salesperson ticks *Finance (EMI) sale* on the order; the phones ring
+   loudly; a picker taps **Lock for EMI**; the showroom's order page shows
+   the serial and **Make invoice**. On delivery day the app's **Deliver** tab
+   checks each unit; a damaged box goes through **Ask for a swap**, approved
+   on the website. Payouts: Financiers -> Settlement -> import the statement.
+
 ### Counter app - how to run it (hand-over)
 
-**The owner, once per phone**
-1. Website -> **Branches** -> **Pair a phone** next to the branch. A
-   6-digit code shows for 15 minutes.
+**The owner, once per branch (one code can pair several phones)**
+1. Website -> **Branches** -> **Billing phones & tablets** -> next to the
+   branch, "Add [how many] phone(s)" -> **Get pairing code**. A 6-digit
+   code shows for 15 minutes; type it on each phone.
 2. Optional: **Settings > Modules > Offline billing** on, so phones keep
    billing without internet.
 

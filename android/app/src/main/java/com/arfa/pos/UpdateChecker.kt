@@ -3,6 +3,7 @@ package com.arfa.pos
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
+import android.webkit.CookieManager
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import org.json.JSONObject
@@ -11,12 +12,16 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 /**
- * In-app update check: the GitHub Actions build publishes the APK and a
- * small version.json ({"versionCode": N, "versionName": "...", "apk": url})
- * on the "android-latest" release (.github/workflows/android-apk.yml).
- * When that versionCode is newer than this build's, the app offers the
- * download; Android's own installer does the rest. Checked at most twice
- * a day on start, or on demand from App settings.
+ * In-app update check. The ARFA server answers /apps/counter/latest.json
+ * ({"versionCode": N, "versionName": "...", "apk": url}) for the phone's
+ * signed-in session (the WebView's own cookie), with a day-long download
+ * link (app/apps on the server). Only when the server can't answer, or has
+ * no build published yet, does the app read the version.json on GitHub's
+ * "android-latest" release (.github/workflows/android-apk.yml), as older
+ * builds did - which is also how a phone hears that the server has moved
+ * (server_url). When the versionCode is newer than this build's, the app
+ * offers the download; Android's own installer does the rest. Checked at
+ * most twice a day on start, or on demand from App settings.
  */
 object UpdateChecker {
 
@@ -28,17 +33,14 @@ object UpdateChecker {
     fun check(activity: MainActivity, settings: PrinterSettings, server: ServerAddress, manual: Boolean) {
         val now = System.currentTimeMillis()
         if (!manual && now - settings.lastUpdateCheck < INTERVAL_MS) return
+        val base = server.current
+        // Read here, on the main thread: the WebView's signed-in session.
+        val cookie = try { CookieManager.getInstance().getCookie(base) } catch (e: Exception) { null }
         Thread {
             try {
-                val connection = URL(latestUrl("version.json")).openConnection() as HttpURLConnection
-                connection.connectTimeout = 10000
-                connection.readTimeout = 10000
-                connection.instanceFollowRedirects = true
-                if (connection.responseCode != HttpURLConnection.HTTP_OK) {
-                    throw IOException("HTTP ${connection.responseCode}")
-                }
-                val body = connection.inputStream.bufferedReader().use { it.readText() }
-                val json = JSONObject(body)
+                val site = try { fetch("$base/apps/counter/latest.json", cookie, redirects = false) } catch (e: Exception) { null }
+                val json = if (site != null && site.optBoolean("available") && site.optInt("versionCode", 0) > 0) site
+                           else fetch(latestUrl("version.json"), null, redirects = true)
                 settings.lastUpdateCheck = now
                 val latest = json.optInt("versionCode", 0)
                 val name = json.optString("versionName", latest.toString())
@@ -67,6 +69,25 @@ object UpdateChecker {
                 }
             }
         }.start()
+    }
+
+    private fun fetch(url: String, cookie: String?, redirects: Boolean): JSONObject {
+        val connection = URL(url).openConnection() as HttpURLConnection
+        connection.connectTimeout = 10000
+        connection.readTimeout = 10000
+        // The server's own check never follows a redirect: a signed-out
+        // session would land on the sign-in page, not on JSON.
+        connection.instanceFollowRedirects = redirects
+        connection.setRequestProperty("Accept", "application/json")
+        if (!cookie.isNullOrEmpty()) connection.setRequestProperty("Cookie", cookie)
+        try {
+            if (connection.responseCode != HttpURLConnection.HTTP_OK) {
+                throw IOException("HTTP ${connection.responseCode}")
+            }
+            return JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
+        } finally {
+            connection.disconnect()
+        }
     }
 
     private fun open(activity: MainActivity, url: String) {

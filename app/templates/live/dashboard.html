@@ -2,7 +2,7 @@
 {% block title %}Live - {{ firm_name }}{% endblock %}
 
 {% block head %}
-<script>
+<script nonce="{{ csp_nonce() }}">
   const INITIAL_SNAPSHOT = {{ snapshot|tojson }};
   const LIVE_DATA_URL = {{ url_for('live.data_json')|tojson }};
   // A small fixed palette, cycled by index - no charting library is
@@ -113,7 +113,7 @@
 {% endblock %}
 
 {% block scripts %}
-<script>
+<script nonce="{{ csp_nonce() }}">
 function liveDashboard() {
   return {
     branches: INITIAL_SNAPSHOT.branches,

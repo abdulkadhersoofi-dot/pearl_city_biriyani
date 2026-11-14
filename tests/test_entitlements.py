@@ -77,6 +77,8 @@ def test_the_migration_ships_the_same_packages_as_the_code():
         key, name, order, unlisted, modules, settings, limits, branding, _ = frozen[p["key"]]
         if "pos" not in modules and unlisted != CHOICE:
             modules = {**modules, "pos": INCLUDED}   # added by d5e1a7c3f924 (POS as a module)
+        if key == "electronics":                       # offered by c9d5a7f2e346 (warehouse dispatch)
+            modules = {**modules, "sales_documents": CHOICE, "warehouse_dispatch": CHOICE}
         assert (name, order, unlisted, modules, settings, limits, branding) == (
             p["name"], p["sort_order"], p.get("unlisted_modules", OFF), p["modules"], p["settings"], p["limits"],
             p["own_branding"]), key

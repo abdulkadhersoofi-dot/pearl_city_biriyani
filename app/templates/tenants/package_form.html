@@ -247,7 +247,7 @@
 {% endblock %}
 
 {% block scripts %}
-<script>
+<script nonce="{{ csp_nonce() }}">
 // The package editor: which tab shows, live counts per kind, "Set all" for
 // one tab, and the business type's pre-set (its trade pack(s) Included and
 // its usual modules switched on). Nothing is saved until "Save package".

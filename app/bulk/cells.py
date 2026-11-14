@@ -65,7 +65,8 @@ def yes_no(value, default: bool) -> bool:
 def hsn(value) -> str | None:
     """A numeric cell loses leading zeros (0401 -> 401); real HSN/SAC
     codes are always an even number of digits, so an odd-length number
-    gets its zero back. Text cells are taken exactly as typed."""
+    gets its zero back - and so does an odd-length string of digits (a CSV
+    saved by Excel). Anything else is taken exactly as typed."""
     if value is None:
         return None
     if isinstance(value, (int, float)) and not isinstance(value, bool):
@@ -75,7 +76,11 @@ def hsn(value) -> str | None:
         if len(code) % 2:
             code = "0" + code
         return code
-    return text(value)
+    code = text(value)
+    # A CSV saved by Excel drops the zero the same way ("0401" -> "401").
+    if code and code.isdigit() and len(code) % 2:
+        code = "0" + code
+    return code
 
 
 def gst_rate(value) -> Decimal:

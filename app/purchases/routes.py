@@ -12,6 +12,7 @@ from app.models.inventory import StockLocation
 from app.models.media import UploadedImage
 from app.models.product import Product
 from app.models.purchase import (
+    SupplierNote,
     ITC_LABELS,
     ItcEligibility,
     MATCH_STATUS_LABELS,
@@ -182,6 +183,7 @@ def _bill_form(form=None, rows=None, order=None, status=200):
         "purchases/bill_form.html", form=form or {}, rows=rows or [], suppliers=_suppliers(), gstins=_gstins(),
         locations=_locations(), catalog=_catalog_json(), itc_labels=_itc_choices(),
         slabs=[float(s) for s in GST_RATE_SLABS], order=order, today=date.today(), claims_itc=services.can_claim_itc(_tenant()),
+        tds_sections=services.TDS_SECTIONS,
     ), status
 
 
@@ -192,7 +194,7 @@ def _itc_choices():
 
 
 def _rows_from_form(form):
-    keys = ("product_id", "description", "hsn", "qty", "unit", "rate", "discount", "gst_rate", "itc",
+    keys = ("product_id", "description", "hsn", "qty", "unit", "rate", "discount", "discount_flat", "gst_rate", "itc",
             "batch", "expiry", "mfg", "mrp", "serials")
     cols = {k: form.getlist(f"line_{k}[]") for k in keys}
     rows = []
@@ -204,9 +206,12 @@ def _rows_from_form(form):
 
 
 def _rows_from_order(order):
+    """What is still to come on the order (all of it, on an order billed
+    before orders were billed in parts)."""
+    lines = [l for l in order.lines if l.outstanding > 0] or list(order.lines)
     return [{"product_id": str(l.product_id or ""), "description": l.description, "hsn": l.hsn_or_sac_code or "",
-             "qty": f"{l.qty.normalize():f}", "unit": l.unit, "rate": f"{l.rate:.2f}", "discount": "",
-             "gst_rate": f"{l.gst_rate.normalize():f}", "itc": "eligible"} for l in order.lines]
+             "qty": f"{(l.outstanding or l.qty).normalize():f}", "unit": l.unit, "rate": f"{l.rate:.2f}",
+             "discount": "", "gst_rate": f"{l.gst_rate.normalize():f}", "itc": "eligible"} for l in lines]
 
 
 @purchases_bp.route("/new", methods=["GET", "POST"])
@@ -218,12 +223,22 @@ def new_bill():
     if order_id:
         order = tenant_query(PurchaseOrder).filter_by(id=order_id).first_or_404()
         assert_owns(order)
+    # Received at a warehouse with the ARFA Warehouse app: the scanned serials
+    # and that warehouse fill the bill in (app/warehouse/receiving.py).
+    receipt = None
+    receipt_id = _int(request.values.get("receipt"))
+    if receipt_id and _tenant().has_feature("warehouse_dispatch"):
+        from app.models.warehouse import ReceiptStatus, WarehouseReceipt
+
+        receipt = tenant_query(WarehouseReceipt).filter_by(id=receipt_id, status=ReceiptStatus.OPEN).first_or_404()
+        order = receipt.purchase_order
     if request.method == "POST":
         form = request.form
         try:
             other = Decimal((form.get("other_charges") or "0").strip() or "0")
+            tds = Decimal((form.get("tds_amount") or "0").replace(",", "").strip() or "0")
         except InvalidOperation:
-            flash("Other charges must be a number.", "error")
+            flash("Other charges and TDS must be numbers.", "error")
             return _bill_form(form, _rows_from_form(form), order, 400)
         try:
             lines = services.parse_purchase_lines(form)
@@ -235,6 +250,7 @@ def new_bill():
                 location_id=_int(form.get("location_id")), lines=lines, bill_date=_date(form.get("bill_date")),
                 is_rcm=bool(form.get("is_rcm")), other_charges=other, other_charges_label=form.get("other_charges_label"),
                 notes=form.get("notes"), purchase_order_id=order.id if order else None, attachment_id=attachment_id,
+                tds_amount=tds, tds_section=form.get("tds_section"),
             )
             bill = services.create_purchase_bill(_tenant(), current_user, data)
         except (services.PurchaseError, UploadError) as e:
@@ -245,12 +261,21 @@ def new_bill():
                      entity_id=bill.id, details={"number": bill.number, "supplier": bill.supplier_snapshot.get("name"),
                                                 "supplier_invoice_no": bill.supplier_invoice_no,
                                                 "grand_total": str(bill.grand_total)})
+        if receipt is not None:
+            from app.warehouse.receiving import mark_billed
+
+            mark_billed(receipt, bill)
         db.session.commit()
         flash(f"Purchase bill {bill.number} posted - stock received.", "success")
         return redirect(url_for("purchases.view_bill", bill_id=bill.id))
     form = {}
     if order is not None:
         form = {"supplier_id": str(order.supplier_id), "gstin_id": str(order.gstin_id)}
+    if receipt is not None:
+        from app.warehouse.receiving import bill_rows
+
+        form["location_id"] = str(receipt.location_id)
+        return _bill_form(form, bill_rows(receipt), order)
     return _bill_form(form, _rows_from_order(order) if order else [], order)
 
 
@@ -425,7 +450,31 @@ def _order_form(form, rows, status=200):
 def view_order(order_id):
     order = tenant_query(PurchaseOrder).filter_by(id=order_id).first_or_404()
     assert_owns(order)
-    return render_template("purchases/order_view.html", order=order)
+    from app.purchases import matching
+
+    return render_template("purchases/order_view.html", order=order, received=matching.received_by_line(order))
+
+
+@purchases_bp.route("/orders/<int:order_id>/close", methods=["POST"])
+@roles_required(ADMIN)
+@feature_required("purchases")
+def close_order(order_id):
+    """The rest of a partly billed order isn't coming: close it as it stands."""
+    from app.purchases import matching
+
+    order = tenant_query(PurchaseOrder).filter_by(id=order_id).first_or_404()
+    assert_owns(order)
+    try:
+        matching.close_short(order, request.form.get("reason"))
+    except services.PurchaseError as e:
+        flash(e.message, "error")
+        return redirect(url_for("purchases.view_order", order_id=order.id))
+    record_audit(current_user, "purchase_order_closed_short", tenant_id=current_user.tenant_id,
+                 entity_type="purchase_order", entity_id=order.id, details={"number": order.number,
+                                                                            "reason": order.cancel_reason})
+    db.session.commit()
+    flash(f"{order.number} closed.", "success")
+    return redirect(url_for("purchases.view_order", order_id=order.id))
 
 
 @purchases_bp.route("/orders/<int:order_id>/cancel", methods=["POST"])
@@ -552,3 +601,56 @@ def gstr2b_rematch(import_id):
     db.session.commit()
     flash("Matched again against your purchase bills.", "success")
     return redirect(url_for("purchases.gstr2b_view", import_id=imp.id))
+
+
+# --- credit and debit notes from suppliers ------------------------------------------------------
+
+@purchases_bp.route("/supplier-notes")
+@roles_required(ADMIN)
+@feature_required("purchases")
+def supplier_notes():
+    rows = tenant_query(SupplierNote).order_by(SupplierNote.note_date.desc(), SupplierNote.id.desc()).limit(300).all()
+    return render_template("purchases/supplier_notes.html", notes=rows)
+
+
+@purchases_bp.route("/supplier-notes/<int:note_id>")
+@roles_required(ADMIN)
+@feature_required("purchases")
+def view_supplier_note(note_id):
+    note = tenant_query(SupplierNote).filter_by(id=note_id).first_or_404()
+    assert_owns(note)
+    return render_template("purchases/supplier_note_view.html", note=note)
+
+
+@purchases_bp.route("/supplier-notes/<int:note_id>/attachment")
+@roles_required(ADMIN)
+@feature_required("purchases")
+def supplier_note_attachment(note_id):
+    note = tenant_query(SupplierNote).filter_by(id=note_id).first_or_404()
+    assert_owns(note)
+    record = db.session.get(UploadedImage, note.attachment_id) if note.attachment_id else None
+    if record is None:
+        abort(404)
+    ext = {"application/pdf": "pdf", "image/png": "png"}.get(record.content_type, "jpg")
+    return Response(record.data, mimetype=record.content_type, headers={
+        "Content-Disposition": f'inline; filename="supplier-note-{note.id}.{ext}"',
+        "Cache-Control": "private, no-store"})
+
+
+@purchases_bp.route("/supplier-notes/<int:note_id>/void", methods=["POST"])
+@roles_required(ADMIN)
+@feature_required("purchases")
+def void_supplier_note(note_id):
+    note = tenant_query(SupplierNote).filter_by(id=note_id).first_or_404()
+    assert_owns(note)
+    try:
+        services.void_supplier_note(note, current_user, request.form.get("reason"))
+    except services.PurchaseError as e:
+        db.session.rollback()
+        flash(e.message, "error")
+        return redirect(url_for("purchases.view_supplier_note", note_id=note.id))
+    record_audit(current_user, "supplier_note_voided", tenant_id=current_user.tenant_id, entity_type="supplier_note",
+                 entity_id=note.id, details={"number": note.note_number, "reason": note.void_reason})
+    db.session.commit()
+    flash(f"Note {note.note_number} voided.", "success")
+    return redirect(url_for("purchases.view_supplier_note", note_id=note.id))

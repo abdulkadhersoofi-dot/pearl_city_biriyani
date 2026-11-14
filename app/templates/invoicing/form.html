@@ -3,13 +3,14 @@
 {% block title %}{% block form_title %}New invoice{% endblock %} - {{ firm_name }}{% endblock %}
 
 {% block head %}
-<script>
+<script nonce="{{ csp_nonce() }}">
   const GSTIN_STATE = { {% for g in current_user.tenant.gstins %}{{ g.id }}: "{{ g.state_code }}",{% endfor %} };
   const CUSTOMER_STATE = { {% for c in customers %}"{{ c.id }}": "{{ c.state_code or '' }}",{% endfor %} };
   const BRANCH_TYPE = { {% for b in branches %}"{{ b.id }}": "{{ b.branch_type.value }}",{% endfor %} };
   const WHOLESALE_PRICE_URL = {{ (url_for('wholesale.price') if has_feature('wholesale') else '')|tojson }};
   const PRODUCTS_BY_NAME = { {% for p in products %}{{ p.name|tojson }}: {hsn: {{ (p.hsn_or_sac_code or '')|tojson }}, rate: {{ p.sale_price }}, incl: {{ p.price_includes_tax|tojson }}, gst_rate: {{ p.gst_rate }}, unit: {{ p.unit|tojson }}, id: {{ p.id }}},{% endfor %} };
   const NO_GST_DOC_TYPES = ["bill_of_supply", "delivery_challan"];
+  const NUMBERING_URL = {{ ({"next": url_for('invoicing.next_number'), "save": url_for('invoicing.save_numbering'), "csrf": csrf_token()} if numbering else None)|tojson }};
   // A third-party branch gets a Tax Invoice only from a regular (GST)
   // business; a composition or unregistered one bills it on a Bill of Supply.
   const SELLER_REGISTERED = {{ (current_user.tenant.registration_type.value == 'regular')|tojson }};
@@ -48,6 +49,47 @@
         <p class="field-help">Automatic - set by the branch's type below.</p>
       </div>
       {{ field(form.invoice_date) }}
+      {% if numbering %}
+      {# The number this invoice gets: the series' next, shown live; type
+         over it for a number of your own (routes.typed_number). #}
+      <div class="field inv-number" @keydown.escape="numbering.open = false">
+        <label class="field-label" for="invoice_number">Invoice number</label>
+        <div class="inv-number-row">
+          <input id="invoice_number" name="invoice_number" class="field-input" maxlength="16" autocomplete="off"
+                 x-model="number" @input="numberTyped = number.trim() !== '' && number.trim() !== autoNumber"
+                 :placeholder="autoNumber || 'Next in the series'" value="{{ typed }}">
+          <button type="button" class="icon-btn inv-number-gear" @click="openNumbering()"
+                  :aria-expanded="numbering.open" aria-controls="inv-numbering" title="Numbering"
+                  aria-label="Invoice numbering settings">{{ icon('settings') }}</button>
+        </div>
+        <input type="hidden" name="auto_number" :value="autoNumber">
+        <p class="field-help" x-show="!numberTyped">Next in your series - yours when you save.</p>
+        <p class="field-help" x-show="numberTyped" x-cloak>Your own number for this invoice.
+          <button type="button" class="link-btn" @click="useAutoNumber()">Use <span x-text="autoNumber"></span></button></p>
+
+        <div class="card inv-numbering" id="inv-numbering" x-show="numbering.open" x-cloak
+             @click.outside="numbering.open = false" role="dialog" aria-labelledby="inv-numbering-title">
+          <h2 class="m-0" id="inv-numbering-title">Invoice numbering</h2>
+          <p class="text-muted mt-4 mb-0"><span x-text="numbering.label"></span> &middot; <span x-text="numbering.gstin"></span>
+            &middot; <span class="nowrap">FY <span x-text="numbering.fy"></span></span></p>
+          <div class="inv-numbering-grid mt-12">
+            <label class="field m-0"><span class="field-label">Prefix</span>
+              <input class="field-input" x-model="numbering.prefix" maxlength="10" :disabled="numbering.locked"></label>
+            <label class="field m-0"><span class="field-label">Next number</span>
+              <input class="field-input" type="number" min="1" step="1" x-model="numbering.next"></label>
+          </div>
+          <p class="field-help mt-8">The next invoice will be <strong x-text="numberingPreview()"></strong>, and each one after
+            carries on from it.<span x-show="numbering.locked"> The prefix is fixed while e-invoicing is on.</span></p>
+          <p class="flash flash-error mt-8 mb-0" x-show="numbering.error" x-text="numbering.error" role="alert"></p>
+          <div class="row mt-12">
+            <button type="button" class="btn btn-primary btn-sm" @click="saveNumbering()" :disabled="numbering.saving">Save</button>
+            <button type="button" class="btn btn-quiet btn-sm" @click="numbering.open = false">Cancel</button>
+          </div>
+          <p class="text-muted mt-12 mb-0 inv-numbering-note">To give just this one invoice a different number, type it in
+            the box instead.</p>
+        </div>
+      </div>
+      {% endif %}
       {% block header_extras %}{% endblock %}
     </div>
   </div>
@@ -119,6 +161,7 @@
               <td>
                 <input type="text" list="product-names" x-model="line.description" maxlength="255"
                        @change="applyProduct(line)" name="line_description[]" placeholder="Item name">
+                {% block line_under_item %}{% endblock %}
               </td>
               <td><input type="text" x-model="line.hsn" name="line_hsn[]" maxlength="8"></td>
               <td><input type="number" step="0.001" min="0" x-model.number="line.qty" @input="recalc()" @change="suggestPrice(line)" name="line_qty[]"></td>
@@ -165,12 +208,13 @@
   {{ field(form.notes) }}
   {% block footer_extras %}{% endblock %}
 
-  <button type="submit" class="btn btn-primary btn-lg btn-block">{% block submit_label %}Save &amp; issue invoice{% endblock %}</button>
+  {% block before_submit %}{% endblock %}
+  <button type="submit" class="btn btn-primary btn-lg btn-block" data-submit>{% block submit_label %}Save &amp; issue invoice{% endblock %}</button>
 </form>
 {% endblock %}
 
 {% block scripts %}
-<script>
+<script nonce="{{ csp_nonce() }}">
 function invoiceForm() {
   return {
     lines: PREFILL_LINES.length ? PREFILL_LINES : [{description:'', hsn:'', qty:1, rate:0, discount:0, gst_rate:0, incl:DEFAULT_INCL, unit:'pcs', product_id:null}],
@@ -179,7 +223,80 @@ function invoiceForm() {
     branchId: document.querySelector('[name=branch_user_id]')?.value || '',
     placeOfSupply: document.querySelector('[name=place_of_supply_state_code]')?.value || '',
     totals: { taxable: 0, cgst: 0, sgst: 0, igst: 0, grand: 0 },
-    init() { this.recalc(); },
+    // The invoice number (only on the new-invoice page: NUMBERING_URL set).
+    number: document.getElementById('invoice_number')?.value || '',
+    autoNumber: '',
+    numberTyped: !!(document.getElementById('invoice_number')?.value),
+    numbering: { open: false, prefix: '', next: 1, fy: '', label: '', gstin: '', locked: false, error: '', saving: false },
+    init() {
+      this.recalc();
+      if (!NUMBERING_URL) return;
+      ['gstin_id', 'document_type', 'invoice_date'].forEach(name =>
+        document.querySelector(`[name=${name}]`)?.addEventListener('change', () => this.refreshNumber()));
+      this.$watch('billTo', () => this.refreshNumber());
+      this.$watch('branchId', () => this.refreshNumber());
+      this.refreshNumber();
+    },
+    // The document type this invoice will be - a branch's is set by its type.
+    effectiveDocType() {
+      if (this.billTo === 'branch') {
+        if (!this.branchId) return '';
+        if (BRANCH_TYPE[this.branchId] === 'owned') return 'delivery_challan';
+        return SELLER_REGISTERED ? 'tax_invoice' : 'bill_of_supply';
+      }
+      return document.querySelector('[name=document_type]')?.value || '';
+    },
+    seriesQuery() {
+      return new URLSearchParams({
+        gstin_id: document.querySelector('[name=gstin_id]')?.value || '',
+        document_type: this.effectiveDocType(),
+        date: document.querySelector('[name=invoice_date]')?.value || '',
+      });
+    },
+    async refreshNumber() {
+      const query = this.seriesQuery();
+      if (!query.get('document_type')) return;
+      try {
+        const res = await fetch(NUMBERING_URL.next + '?' + query, { headers: { Accept: 'application/json' } });
+        if (!res.ok) return;
+        this.applySeries(await res.json());
+      } catch (e) { /* offline: the number is still given when saving */ }
+    },
+    applySeries(info) {
+      this.autoNumber = info.number;
+      if (!this.numberTyped) this.number = info.number;
+      Object.assign(this.numbering, { prefix: info.prefix, next: info.next, fy: info.fy, locked: !!info.prefix_locked });
+      if (info.label) Object.assign(this.numbering, { label: info.label, gstin: info.gstin });
+    },
+    useAutoNumber() { this.number = this.autoNumber; this.numberTyped = false; },
+    openNumbering() {
+      this.numbering.error = '';
+      this.numbering.open = !this.numbering.open;
+      if (this.numbering.open) this.refreshNumber();
+    },
+    numberingPreview() {
+      const n = parseInt(this.numbering.next, 10);
+      return (this.numbering.prefix || '?') + '/' + this.numbering.fy + '/' + String(isNaN(n) ? '' : n).padStart(4, '0');
+    },
+    async saveNumbering() {
+      this.numbering.saving = true; this.numbering.error = '';
+      try {
+        const query = this.seriesQuery();
+        const res = await fetch(NUMBERING_URL.save, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRFToken': NUMBERING_URL.csrf },
+          body: JSON.stringify({ ...Object.fromEntries(query), prefix: this.numbering.prefix, next: String(this.numbering.next) }),
+        });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) { this.numbering.error = body.error || 'That could not be saved - try again.'; return; }
+        this.applySeries(body);
+        this.numbering.open = false;
+      } catch (e) {
+        this.numbering.error = 'No connection - try again.';
+      } finally {
+        this.numbering.saving = false;
+      }
+    },
     // Not called from init(): duplicating an invoice already restores its
     // original place of supply (routes.py), which must win over the
     // customer's current state - this only fires on an actual pick.

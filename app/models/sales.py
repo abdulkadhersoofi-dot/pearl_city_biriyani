@@ -22,6 +22,7 @@ from app.extensions import db
 from app.models.expense import Frequency
 from app.models.invoice_series import DocumentType
 from app.models.mixins import TenantScopedMixin, TimestampMixin
+from app.models.warehouse import DispatchStatus
 
 
 class SalesDocumentKind(str, enum.Enum):
@@ -105,12 +106,54 @@ class SalesDocument(db.Model, TenantScopedMixin, TimestampMixin):
     closed_by_id = db.Column(db.Integer, db.ForeignKey("users.id", name="fk_sales_documents_closed_by"))
     created_by_id = db.Column(db.Integer, db.ForeignKey("users.id", name="fk_sales_documents_created_by"), nullable=False)
 
+    # Warehouse dispatch (module "warehouse_dispatch", app/warehouse): the
+    # godown a sales order ships from, and where it is on its way there.
+    # Kept apart from `status` so the existing flows aren't touched.
+    dispatch_location_id = db.Column(db.Integer, db.ForeignKey("stock_locations.id", name="fk_sales_documents_dispatch_location"),
+                                     index=True)
+    dispatch_status = db.Column(db.Enum(DispatchStatus, name="dispatch_status"), index=True)
+    claimed_by_id = db.Column(db.Integer, db.ForeignKey("warehouse_logins.id", name="fk_sales_documents_claimed_by"))
+    claimed_at = db.Column(db.DateTime(timezone=True))
+    dispatch_activity_at = db.Column(db.DateTime(timezone=True))   # last claim or scan - idle claims are released
+    picked_confirmed_at = db.Column(db.DateTime(timezone=True))
+    picked_confirmed_by_id = db.Column(db.Integer, db.ForeignKey("warehouse_logins.id", name="fk_sales_documents_picked_by"))
+    delivered_at = db.Column(db.DateTime(timezone=True))
+    delivered_by_id = db.Column(db.Integer, db.ForeignKey("warehouse_logins.id", name="fk_sales_documents_delivered_by"))
+    # EMI (finance) sale, stage 5B: the warehouse locks the real unit while the
+    # loan is processed, and the showroom invoices with that serial.
+    is_finance_sale = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
+    financier_id = db.Column(db.Integer, db.ForeignKey("financiers.id", name="fk_sales_documents_financier"))
+    loan_ref = db.Column(db.String(60))
+    down_payment = db.Column(db.Numeric(12, 2))
+    finance_amount = db.Column(db.Numeric(12, 2))
+    priority = db.Column(db.String(10))          # "high" for an EMI sale (the customer is waiting)
+    invoiced_at_showroom = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
+    # Where the goods go (name, address_line1/2, city, state_code, pincode, phone):
+    # from the customer, editable per order; carried to the invoice and e-way bill.
+    ship_to = db.Column(db.JSON)
+    # Why this warehouse: service_area | nearest | nearest_in_stock | fallback | manual | split.
+    dispatch_choice_reason = db.Column(db.String(20))
+    # An order split across warehouses: every part points at the first one.
+    split_group_id = db.Column(db.Integer, db.ForeignKey("sales_documents.id", name="fk_sales_documents_split_group"),
+                               index=True)
+    # One sale made on the New sale form (app/sell): the invoice for what was
+    # in the showroom and the order(s) for the rest carry the same reference.
+    sale_ref = db.Column(db.String(16), index=True)
+    # A sales order nothing could supply yet: no warehouse holds it. It is
+    # sent to a warehouse (dispatch.send_waiting) once stock arrives.
+    awaiting_stock = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
+
     gstin = db.relationship("Gstin")
     customer = db.relationship("Customer")
     converted_invoice = db.relationship("Invoice")
     created_by = db.relationship("User", foreign_keys=[created_by_id])
     lines = db.relationship("SalesDocumentLine", backref="document", cascade="all, delete-orphan",
                             order_by="SalesDocumentLine.sort_order")
+    dispatch_location = db.relationship("StockLocation")
+    claimed_by = db.relationship("WarehouseLogin", foreign_keys=[claimed_by_id])
+    picked_confirmed_by = db.relationship("WarehouseLogin", foreign_keys=[picked_confirmed_by_id])
+    delivered_by = db.relationship("WarehouseLogin", foreign_keys=[delivered_by_id])
+    financier = db.relationship("Financier")
 
     @property
     def label(self) -> str:

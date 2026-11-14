@@ -194,6 +194,9 @@ on two-step sign-in, then create clients from there):
    - `arfa-super-admin-password`: a strong password (12+ characters) -
      keep it in your notepad.
 
+Tell Claude which of these you filled: Claude lists them in
+`deploy/gcp/settings.env` (`OPTIONAL_SECRETS`) so the deploy passes them on.
+
 Tell Claude "step 7 done". From here Claude builds the database, staging,
 the nightly job and the push trigger itself (`scripts/gcp/setup.sh`), puts
 the app live on Google Cloud, and reports back.
@@ -219,6 +222,124 @@ address change never needs the phones.
 
 ---
 
+## VVIP sign-in domains (any time)
+
+A sign-in domain (for example `pcbinvoice.com`) shows only a sign-in page.
+You decide which clients may use it: every login of those clients - the
+owner's, staff and every branch login - can sign in there, and so can you
+as Ultra Admin. After signing in, everyone carries on at
+https://arfa.live. Anyone else is sent to https://arfa.live. Any client
+can be put on a domain at any time, whatever their package - that is how
+a client becomes a VVIP client.
+
+1. The domain must be **owned** by you or the client (GoDaddy or similar).
+   One domain can serve several clients; each client is on at most one.
+2. Ultra Admin: menu **Sign-in domains** -> type the domain -> **Add
+   domain**.
+3. On the domain's page: **Add client** for each client who may use it
+   (or, from any client's page, **Logo** card -> **Sign-in domain** -> pick
+   it -> **Save**). Choose whose logo and colours the page wears under
+   **Look and status** (with one client, theirs).
+4. Claude runs `scripts/gcp/setup.sh domain THE-DOMAIN` and gives you its
+   DNS records; add exactly those at the registrar. The certificate
+   follows by itself within a few hours.
+
+To pause a domain: its page -> switch **On** off -> **Save**. To stop using
+it: **Remove domain** (its clients go back to arfa.live; ask Claude to
+disconnect it from hosting).
+
+---
+
+## Scan bills: switch on Gemini through Google Cloud (once)
+
+The Scan bills module reads photos of bills with Google's Gemini AI,
+through this Google Cloud project (Vertex AI): no API key, and the cost is
+on the same Google Cloud bill as everything else (paid after use; the
+free sign-up credit covers it while it lasts). Until this is done, bills
+can be uploaded but wait to be read.
+
+1. Open https://console.cloud.google.com signed in as the project's owner,
+   pick the **ARFA** project at the top, and click **Activate Cloud Shell**
+   (the `>_` button, top right).
+2. Run, one at a time:
+   ```
+   gcloud config set project arfa-gst-prod-1
+   gcloud services enable aiplatform.googleapis.com
+   gcloud projects add-iam-policy-binding arfa-gst-prod-1 --member serviceAccount:arfa-run@arfa-gst-prod-1.iam.gserviceaccount.com --role roles/aiplatform.user --condition=None
+   ```
+   The second takes up to a minute and ends with "finished successfully";
+   the third prints the project's permissions (a long list) - that's success.
+3. Tell Claude "Vertex is on, deploy it". Claude deploys and reads one test
+   bill to confirm.
+
+(`deploy/gcp/settings.env` has `SCAN_PROVIDER="vertex"`. To use an AI
+Studio key instead, store it in the secret `arfa-gemini-key`, set
+`SCAN_PROVIDER="gemini"` and add `gemini` to `OPTIONAL_SECRETS`.)
+
+Then, per client: **Settings -> Modules -> Scan bills** (or the Ultra Admin
+under the client's package). Each client can read up to 300 bills a day
+(`SCAN_DAILY_LIMIT`), which caps the cost.
+
+## The phone apps from arfa.live instead of GitHub (once)
+
+The Android build still runs on GitHub, but the apps are handed out from
+arfa.live: the **Phone apps** page (account menu, or Branches -> Phone apps),
+for people signed in only, and both apps' update checks. The builds sit in a
+private Google Cloud Storage bucket; GitHub signs in to Google without a key
+and may only write to that bucket.
+
+1. Open https://console.cloud.google.com signed in as the project's owner,
+   pick the **ARFA** project, and click **Activate Cloud Shell** (`>_`).
+2. Run, one at a time:
+   ```
+   git clone https://github.com/abdulkadhersoofi-dot/pearl_city_biriyani.git
+   cd pearl_city_biriyani && git checkout claude/exciting-franklin-cb4jaj
+   bash scripts/gcp/apps_setup.sh
+   ```
+   It takes a minute or two and ends with "Done.".
+3. Tell Claude "apps setup done". Claude starts a fresh Android build, which
+   lands in the bucket, and checks arfa.live/apps hands it out.
+
+Until then the page says the apps aren't published here yet, and the apps
+keep updating from GitHub as before. Phones on ARFA Scan 1.14 / ARFA Counter
+1.14 or older update once more from GitHub; from the next version on they
+ask arfa.live.
+
+## ARFA Warehouse: new orders ring on the pickers' phones (once)
+
+Warehouse dispatch works without this - the app checks for new orders every
+30 seconds while it is open. This makes a new order ring like a WhatsApp
+message even with the app closed (Firebase Cloud Messaging).
+
+1. In Cloud Shell (as above): `cd pearl_city_biriyani && git pull`
+2. `bash scripts/gcp/warehouse_push_setup.sh` - ends with "Done.".
+3. Tell Claude "push setup done". Claude adds `warehouse-push` to
+   OPTIONAL_SECRETS and deploys; phones pick the push up at their next
+   sign-in or app start.
+
+## Monitoring and alerts by email (once)
+
+The app already writes its logs the way Google Cloud reads them (each line's
+severity, errors with their stack traces, and a `security_event` line for
+failed sign-ins, lockouts, rate limits and blocked scripts). This step tells
+Google Cloud to watch them and email you:
+
+1. In Cloud Shell (as above): `cd pearl_city_biriyani && git pull`
+2. `bash scripts/gcp/monitoring_setup.sh you@yourfirm.in` (add more addresses
+   after it, separated by spaces) - ends with "Done.".
+3. The one click the script can't do: open the Error Reporting link it
+   prints, then **Configure notifications**, and tick the "ARFA alerts"
+   channel. That emails you on a new kind of error.
+
+What emails you: the site down (checked every minute), server errors,
+slow responses, nearly all servers busy, bursts of errors or security
+events, database CPU / memory / disk / connections high, or a failed
+nightly job. Every email says what to check. Run the script again any time:
+it updates instead of adding copies. Security events from Cloud Shell:
+`bash scripts/gcp/logs.sh security 24`.
+
+---
+
 ## THINGS ONLY ABDUL CAN DO
 
 1. (Optional - demo data only) the GitHub secret `BACKUP_DATABASE_URL` (step 0).
@@ -233,6 +354,10 @@ address change never needs the phones.
 9. Add DNS records at your domain registrar (step 8).
 10. Install the new APK on each phone and pair it again, once (step 9).
 11. Say **"go"** for switching Render off once Google Cloud is live.
+12. Run `scripts/gcp/apps_setup.sh` in Cloud Shell, once, so the phone apps
+    come from arfa.live ("The phone apps from arfa.live", above).
+13. Run `scripts/gcp/warehouse_push_setup.sh` in Cloud Shell, once, so new
+    warehouse orders ring on the pickers' phones ("ARFA Warehouse", above).
 
 Everything else is Claude's to run.
 

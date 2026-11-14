@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Warehouse" parent="android:Theme.Material.NoActionBar">
+        <item name="android:statusBarColor">#123F29</item>
+        <item name="android:navigationBarColor">#111512</item>
+        <item name="android:windowBackground">#111512</item>
+    </style>
+</resources>

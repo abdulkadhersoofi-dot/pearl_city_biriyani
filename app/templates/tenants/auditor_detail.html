@@ -241,7 +241,7 @@
 {% endblock %}
 
 {% block scripts %}
-<script>
+<script nonce="{{ csp_nonce() }}">
 // Tabs on a console page: one shows at a time; the URL keeps ?tab= so a
 // reload or shared link opens the same one; an old #sec-... link opens the
 // tab holding it and scrolls there.

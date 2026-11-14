@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal, InvalidOperation
 
 from app.extensions import db
@@ -769,7 +769,11 @@ def void_bill(bill: POSBill, voided_by, reason: str, today: date | None = None) 
 
 
 def _day_bounds(on_date: date) -> tuple[datetime, datetime]:
-    start = datetime.combine(on_date, time.min, tzinfo=timezone.utc)
+    """The business's own day: midnight to midnight in India (the process
+    clock, app._set_process_clock). This was the UTC day - 5:30 AM to
+    5:30 AM in India - so a bill made after midnight landed on the day
+    before in the Z-report, unlike every other report."""
+    start = datetime.combine(on_date, time.min).astimezone()
     return start, start + timedelta(days=1)
 
 

@@ -19,6 +19,7 @@ from app.models.invoice_series import DocumentType
 from app.models.mixins import utcnow
 from app.models.product import Product
 from app.models.purchase import (
+    SupplierNote,
     ItcEligibility,
     PurchaseBill,
     PurchaseBillLine,
@@ -33,7 +34,7 @@ from app.models.purchase import (
 from app.models.tenant import Gstin, RegistrationType
 from app.utils import itc
 from app.utils.financial_year import financial_year_for
-from app.utils.gst import compute_invoice_totals, return_line_amounts
+from app.utils.gst import compute_invoice_totals, line_gross, return_line_amounts
 from app.utils.gst_config import GST_RATE_SLABS
 from app.utils.numbering import allocate_number, get_or_create_series
 
@@ -57,12 +58,17 @@ class PurchaseLineInput:
     rate: Decimal
     gst_rate: Decimal
     discount_percent: Decimal = Decimal("0")
+    discount_flat: Decimal = Decimal("0")   # rupees off the line, after the percentage
     itc_eligibility: ItcEligibility = ItcEligibility.ELIGIBLE
     batch_no: str | None = None
     mfg_date: date | None = None
     expiry_date: date | None = None
     mrp: Decimal | None = None
     serials: list = field(default_factory=list)
+    item_code: str | None = None     # the supplier's code / part no. for the item
+    # The purchase order line this settles; left empty, a bill made against
+    # an order is matched to its lines by item (app/purchases/matching.py).
+    order_line_id: int | None = None
 
 
 @dataclass
@@ -84,6 +90,16 @@ class PurchaseInput:
     # own series; with no seller invoice, the voucher is the document.
     kind: str = "bill"
     seller_details: dict | None = None
+    # Income tax deducted at source from the supplier's payment.
+    tds_amount: Decimal = Decimal("0")
+    tds_section: str | None = None
+    details: dict | None = None      # references, bank details... as printed
+
+
+# Sections TDS is usually deducted under on a supplier's bill.
+TDS_SECTIONS = (("", "-"), ("194Q", "194Q - goods bought"), ("194C", "194C - contract / job work"),
+                ("194J", "194J - professional / technical fees"), ("194H", "194H - commission"),
+                ("194I", "194I - rent"), ("OTHER", "Another section"))
 
 
 def _num(value, label, default=None):
@@ -131,12 +147,14 @@ def parse_purchase_lines(form) -> list[PurchaseLineInput]:
             rate=_num(at("line_rate[]"), f"Rate of {description}"),
             gst_rate=_num(at("line_gst_rate[]"), f"GST rate of {description}", Decimal("0")),
             discount_percent=_num(at("line_discount[]"), "Discount", Decimal("0")),
+            discount_flat=_num(at("line_discount_flat[]").replace(",", ""), f"Discount on {description}", Decimal("0")),
             itc_eligibility=eligibility,
             batch_no=at("line_batch[]").strip() or None,
             expiry_date=_date(at("line_expiry[]"), "Expiry date"),
             mfg_date=_date(at("line_mfg[]"), "Manufacturing date"),
             mrp=_num(at("line_mrp[]"), "MRP", ZERO) or None,
             serials=[s.strip() for s in at("line_serials[]").replace("\n", ",").split(",") if s.strip()],
+            item_code=at("line_item_code[]").strip()[:64] or None,
         ))
     if not lines:
         raise PurchaseError("Add at least one item.")
@@ -184,6 +202,10 @@ def _validate_lines(tenant, lines, products) -> None:
             raise PurchaseError(f"Rate of {line.description} can't be negative.")
         if line.discount_percent < 0 or line.discount_percent > 100:
             raise PurchaseError("A discount must be between 0% and 100%.")
+        if line.discount_flat < 0:
+            raise PurchaseError(f"The discount on {line.description} can't be negative.")
+        if line.discount_flat and line.discount_flat > line_gross(line.qty, line.rate) * (1 - line.discount_percent / 100):
+            raise PurchaseError(f"The discount on {line.description} is more than the line is worth.")
         if line.gst_rate not in slabs:
             raise PurchaseError(f"{line.gst_rate}% isn't a GST rate.")
         product = products.get(line.product_id)
@@ -239,6 +261,9 @@ def create_purchase_bill(tenant, user, data: PurchaseInput) -> PurchaseBill:
     other_charges = Decimal(data.other_charges or 0)
     if other_charges < 0:
         raise PurchaseError("Other charges can't be negative.")
+    tds = Decimal(data.tds_amount or 0).quantize(Decimal("0.01"))
+    if tds < 0:
+        raise PurchaseError("TDS can't be negative.")
     products = _catalog(tenant, data.lines)
     _validate_lines(tenant, data.lines, products)
     if not can_claim_itc(tenant, gstin):
@@ -254,12 +279,17 @@ def create_purchase_bill(tenant, user, data: PurchaseInput) -> PurchaseBill:
             line.itc_eligibility = ItcEligibility.INELIGIBLE
 
     is_intra = (supplier.state_code or gstin.state_code) == gstin.state_code
-    computed = [itc.compute_purchase_line(l.qty, l.rate, l.discount_percent, l.gst_rate, is_intra) for l in data.lines]
+    computed = [itc.compute_purchase_line(l.qty, l.rate, l.discount_percent, l.gst_rate, is_intra, l.discount_flat)
+                for l in data.lines]
     eligibilities = [l.itc_eligibility for l in data.lines]
     totals = itc.purchase_totals(computed, eligibilities, other_charges, data.is_rcm)
     costs = itc.landed_costs(computed, [l.qty for l in data.lines], eligibilities, other_charges)
 
     bill_date = data.bill_date or date.today()
+    # A month whose GSTR-3B is filed takes no new purchases (app/finance/periods.py).
+    from app.finance import periods
+
+    periods.ensure_open(tenant.id, gstin.id, bill_date, periods.BUYING, PurchaseError, "enter a purchase bill")
     series = get_or_create_series(tenant.id, gstin.id,
                                   DocumentType.MARGIN_PURCHASE if voucher else DocumentType.PURCHASE_BILL,
                                   financial_year_for(bill_date))
@@ -275,8 +305,11 @@ def create_purchase_bill(tenant, user, data: PurchaseInput) -> PurchaseBill:
         purchase_order_id=data.purchase_order_id, other_charges=other_charges,
         other_charges_label=(data.other_charges_label or "").strip()[:60] or None,
         notes=(data.notes or "").strip() or None, attachment_id=data.attachment_id, created_by_id=user.id,
-        **totals,
+        tds_amount=tds, tds_section=((data.tds_section or "").strip().upper()[:10] or None) if tds else None,
+        details=_clean_details(data.details), **totals,
     )
+    if tds >= Decimal(bill.grand_total or 0) and tds > 0:
+        raise PurchaseError("The TDS can't be the whole bill - check the amount.")
     db.session.add(bill)
     db.session.flush()
 
@@ -289,9 +322,10 @@ def create_purchase_bill(tenant, user, data: PurchaseInput) -> PurchaseBill:
         bill_line = PurchaseBillLine(
             bill_id=bill.id, product_id=line.product_id, description=line.description,
             hsn_or_sac_code=line.hsn_or_sac_code, qty=line.qty, unit=line.unit, rate=line.rate,
-            discount_percent=line.discount_percent, gst_rate=line.gst_rate, itc_eligibility=line.itc_eligibility,
+            discount_percent=line.discount_percent, discount_flat=line.discount_flat or 0, gst_rate=line.gst_rate,
+            itc_eligibility=line.itc_eligibility,
             charges_share=share, unit_cost=unit_cost, batch_id=batch.id if batch else None, sort_order=order,
-            is_margin_scheme=line.product_id in margin_ids,
+            is_margin_scheme=line.product_id in margin_ids, details=_line_details(line),
             **{f: amounts[f] for f in _AMOUNT_FIELDS},
         )
         db.session.add(bill_line)
@@ -316,10 +350,31 @@ def create_purchase_bill(tenant, user, data: PurchaseInput) -> PurchaseBill:
 
     if data.purchase_order_id:
         order = PurchaseOrder.query.filter_by(id=data.purchase_order_id, tenant_id=tenant.id).first()
-        if order is not None and order.status == PurchaseOrderStatus.OPEN:
-            order.status = PurchaseOrderStatus.CONVERTED
+        if order is not None:
+            from app.purchases import matching
+
+            db.session.flush()
+            matching.settle(order, bill, [l.order_line_id for l in data.lines])
     db.session.flush()
     return bill
+
+
+def _clean_details(details: dict | None) -> dict | None:
+    """{label: value} with the blanks dropped (None when nothing is left)."""
+    out = {str(k)[:60]: str(v).strip()[:500] for k, v in (details or {}).items() if v is not None and str(v).strip()}
+    return out or None
+
+
+def _line_details(line: PurchaseLineInput) -> dict | None:
+    """What was printed against a line, kept on it whether or not the item
+    tracks batches or serial numbers - for warranty claims and stock
+    queries later."""
+    out = {"serials": list(line.serials) or None, "item_code": line.item_code, "batch": line.batch_no,
+           "mfg": line.mfg_date.isoformat() if line.mfg_date else None,
+           "expiry": line.expiry_date.isoformat() if line.expiry_date else None,
+           "mrp": f"{line.mrp:.2f}" if line.mrp else None}
+    out = {k: v for k, v in out.items() if v}
+    return out or None
 
 
 def void_purchase_bill(bill: PurchaseBill, user, reason: str) -> None:
@@ -327,6 +382,10 @@ def void_purchase_bill(bill: PurchaseBill, user, reason: str) -> None:
         raise PurchaseError("This bill is already voided.")
     if not (reason or "").strip():
         raise PurchaseError("A reason is required to void a purchase bill.")
+    from app.finance import periods
+
+    periods.ensure_open(bill.tenant_id, bill.gstin_id, bill.bill_date, periods.BUYING, PurchaseError,
+                        "void a purchase bill")
     if PurchaseReturn.query.filter_by(purchase_bill_id=bill.id, status=PurchaseStatus.POSTED).first() is not None:
         raise PurchaseError("Goods on this bill were returned to the supplier - void those returns first.")
     from app.margin.services import sold_from
@@ -341,6 +400,10 @@ def void_purchase_bill(bill: PurchaseBill, user, reason: str) -> None:
         if line.product is not None and ledger.sells_from_stock(line.product):
             ledger.unreceive_cost(line.product, line.qty, line.unit_cost)
     ledger.reverse_source(bill.tenant_id, "purchase_bill", bill.id, user.id, f"{bill.number} voided")
+    if bill.purchase_order_id:
+        from app.purchases import matching
+
+        matching.unsettle(bill)
     from app.accounts.services import release_payment_allocations
 
     release_payment_allocations(bill.tenant_id, purchase_bill_id=bill.id)
@@ -397,7 +460,8 @@ def create_purchase_return(bill: PurchaseBill, user, quantities: dict[int, Decim
                 raise PurchaseError(f"Only {unsold.normalize():f} of {line.description} from this bill are unsold "
                                     "- the rest were sold under the margin scheme.")
         amounts = return_line_amounts(
-            original={"rate": line.rate, "discount_percent": line.discount_percent, "discount_flat": 0,
+            original={"rate": line.rate, "discount_percent": line.discount_percent,
+                      "discount_flat": line.discount_flat or 0,
                       "gst_rate": line.gst_rate, "price_includes_tax": False, "is_intra_state": not line.igst_amount,
                       **{f: getattr(line, f) for f in _AMOUNT_FIELDS}},
             original_qty=line.qty, already_returned=done_amounts, already_returned_qty=done_qty, return_qty=qty,
@@ -420,6 +484,10 @@ def create_purchase_return(bill: PurchaseBill, user, quantities: dict[int, Decim
     totals = compute_invoice_totals([a for _, _, a in computed])
     itc_back = [itc.return_itc(a, line.itc_eligibility) for line, _, a in computed]
     return_date = return_date or date.today()
+    from app.finance import periods
+
+    periods.ensure_open(bill.tenant_id, bill.gstin_id, return_date, periods.BUYING, PurchaseError,
+                        "record a return to the supplier")
     series = get_or_create_series(bill.tenant_id, bill.gstin_id, DocumentType.PURCHASE_RETURN, financial_year_for(return_date))
     ret = PurchaseReturn(
         tenant_id=bill.tenant_id, gstin_id=bill.gstin_id, invoice_series_id=series.id, number=allocate_number(series),
@@ -463,6 +531,10 @@ def void_purchase_return(ret: PurchaseReturn, user, reason: str) -> None:
         raise PurchaseError("This return is already voided.")
     if not (reason or "").strip():
         raise PurchaseError("A reason is required to void it.")
+    from app.finance import periods
+
+    periods.ensure_open(ret.tenant_id, ret.gstin_id, ret.return_date, periods.BUYING, PurchaseError,
+                        "void a return to the supplier")
     for line in ret.lines:
         if line.product is not None and ledger.sells_from_stock(line.product):
             ledger.receive_cost(line.product, line.qty, line.unit_cost)
@@ -509,9 +581,108 @@ def create_purchase_order(tenant, user, supplier_id, gstin_id, lines: list[Purch
 
 
 def cancel_purchase_order(order: PurchaseOrder, reason: str) -> None:
+    if getattr(order, "source", "arfa") == "sap":
+        raise PurchaseError("This order came from SAP - cancel it there, and it is cancelled here on the next fetch.")
     if order.status != PurchaseOrderStatus.OPEN:
         raise PurchaseError("Only an open order can be cancelled.")
     if not (reason or "").strip():
         raise PurchaseError("A reason is required to cancel an order.")
     order.status = PurchaseOrderStatus.CANCELLED
     order.cancel_reason = reason.strip()
+
+
+# --- credit and debit notes from suppliers ----------------------------------------------------
+
+@dataclass
+class SupplierNoteInput:
+    kind: str                       # "credit" (owed less) / "debit" (owed more)
+    supplier_id: int
+    gstin_id: int
+    note_number: str                # the supplier's own number
+    note_date: date
+    lines: list[PurchaseLineInput]
+    purchase_bill_id: int | None = None
+    reason: str | None = None
+    notes: str | None = None
+    attachment_id: int | None = None
+
+
+def create_supplier_note(tenant, user, data: SupplierNoteInput) -> SupplierNote:
+    """A note the supplier issued (SupplierNote): value only - no stock
+    moves (goods sent back are a purchase return). A credit note takes its
+    GST back off the input tax credit; a debit note adds to it."""
+    if data.kind not in ("credit", "debit"):
+        raise PurchaseError("Pick a credit note or a debit note.")
+    supplier = _supplier(tenant, data.supplier_id)
+    gstin = _gstin(tenant, data.gstin_id)
+    number = (data.note_number or "").strip()[:50]
+    if not number:
+        raise PurchaseError("Enter the supplier's note number.")
+    if not data.note_date:
+        raise PurchaseError("Enter the note's date.")
+    from app.finance import periods
+
+    periods.ensure_open(tenant.id, gstin.id, data.note_date, periods.BUYING, PurchaseError,
+                        "record a supplier's note")
+    if not data.lines:
+        raise PurchaseError("Add at least one line.")
+    duplicate = SupplierNote.query.filter(
+        SupplierNote.tenant_id == tenant.id, SupplierNote.supplier_id == supplier.id,
+        db.func.lower(SupplierNote.note_number) == number.lower(), SupplierNote.status == PurchaseStatus.POSTED,
+    ).first()
+    if duplicate is not None:
+        raise PurchaseError(f"Note {number} from {supplier.name} is already entered.")
+    bill = None
+    if data.purchase_bill_id:
+        bill = PurchaseBill.query.filter_by(id=data.purchase_bill_id, tenant_id=tenant.id,
+                                            supplier_id=supplier.id).first()
+        if bill is None:
+            raise PurchaseError("That purchase bill isn't from this supplier.")
+    slabs = {Decimal(str(s)) for s in GST_RATE_SLABS}
+    is_intra = (supplier.state_code or gstin.state_code) == gstin.state_code
+    claims = can_claim_itc(tenant, gstin)
+    rows, computed = [], []
+    for line in data.lines:
+        if line.qty <= 0 or line.rate < 0:
+            raise PurchaseError(f"Check the quantity and rate of {line.description}.")
+        if line.gst_rate not in slabs:
+            raise PurchaseError(f"{line.gst_rate}% isn't a GST rate.")
+        amounts = itc.compute_purchase_line(line.qty, line.rate, line.discount_percent, line.gst_rate, is_intra,
+                                            line.discount_flat)
+        computed.append(amounts)
+        rows.append({"description": line.description, "hsn": line.hsn_or_sac_code, "qty": f"{line.qty.normalize():f}",
+                     "unit": line.unit, "rate": f"{line.rate:.2f}", "discount_percent": f"{line.discount_percent:.2f}",
+                     "discount_flat": f"{(line.discount_flat or 0):.2f}", "gst_rate": f"{line.gst_rate.normalize():f}",
+                     **{k: f"{amounts[k]:.2f}" for k in ("taxable_value", "cgst_amount", "sgst_amount",
+                                                         "igst_amount", "line_total")}})
+    totals = compute_invoice_totals(computed)
+    exact = totals["total_taxable_value"] + totals["total_cgst"] + totals["total_sgst"] + totals["total_igst"]
+    grand = exact.quantize(Decimal("1"), rounding="ROUND_HALF_UP")
+    note = SupplierNote(
+        tenant_id=tenant.id, kind=data.kind, gstin_id=gstin.id, supplier_id=supplier.id,
+        supplier_snapshot=supplier.snapshot(), note_number=number, note_date=data.note_date,
+        purchase_bill_id=bill.id if bill else None, reason=(data.reason or "").strip() or None, lines=rows,
+        total_taxable_value=totals["total_taxable_value"], total_cgst=totals["total_cgst"],
+        total_sgst=totals["total_sgst"], total_igst=totals["total_igst"], round_off=grand - exact, grand_total=grand,
+        itc_cgst=totals["total_cgst"] if claims else ZERO, itc_sgst=totals["total_sgst"] if claims else ZERO,
+        itc_igst=totals["total_igst"] if claims else ZERO, attachment_id=data.attachment_id,
+        notes=(data.notes or "").strip() or None, created_by_id=user.id,
+    )
+    db.session.add(note)
+    db.session.flush()
+    return note
+
+
+def void_supplier_note(note: SupplierNote, user, reason: str) -> None:
+    if note.status != PurchaseStatus.POSTED:
+        raise PurchaseError("This note is already voided.")
+    if not (reason or "").strip():
+        raise PurchaseError("A reason is required to void a note.")
+    from app.finance import periods
+
+    periods.ensure_open(note.tenant_id, note.gstin_id, note.note_date, periods.BUYING, PurchaseError,
+                        "void a supplier's note")
+    note.status = PurchaseStatus.VOIDED
+    note.void_reason = reason.strip()
+    note.voided_at = utcnow()
+    note.voided_by_id = user.id

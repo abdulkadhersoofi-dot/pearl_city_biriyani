@@ -10,6 +10,9 @@ from app.models.media import UploadedImage
 
 
 @main_bp.route("/healthz")
+# Cloud Run's front end keeps every path ending in "z" for itself and
+# answers 404 there without reaching the app, so the deploy checks /health.
+@main_bp.route("/health")
 def healthz():
     # Unauthenticated, no template render - proves the app can reach its
     # database (and Redis, where sessions live). Used by the hosting
@@ -93,6 +96,11 @@ def branch_landing(user, in_app: bool = False) -> str:
     """Where a branch login starts: its counter - or, with counter billing
     (the "pos" module) off for the business, its first other screen."""
     tenant = user.tenant
+    if tenant is not None and tenant.has_feature("warehouse_dispatch") and not in_app:
+        from app.warehouse.routes import computer_location
+
+        if computer_location(user) is not None:      # a warehouse computer starts at its queue
+            return url_for("warehouse.queue")
     if tenant is not None and tenant.has_feature("pos"):
         return url_for("counterapp.index") if in_app else url_for("pos.terminal")
     if tenant is not None and tenant.has_feature("job_cards"):

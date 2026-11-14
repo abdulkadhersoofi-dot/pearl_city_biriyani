@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+{% block title %}Scan bills - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Scan bills</h1>
+    <p class="text-muted mt-0">Photograph or upload your purchase and expense bills. ARFA reads them, checks the
+      arithmetic, and you post each one with a tap.</p>
+  </div>
+  <a href="{{ url_for('scan.teach') }}" class="btn btn-secondary">{{ icon('scan-line') }}Train the bill reader</a>
+</div>
+
+{% if not set_up %}
+<p class="flash flash-warning">Reading bills isn't switched on for this server yet - you can upload now and they'll be
+  read once it is.</p>
+{% endif %}
+
+<section class="card scan-drop" id="scan-app"
+         data-csrf="{{ csrf_token() }}" data-upload="{{ url_for('scan.upload') }}"
+         data-read="{{ url_for('scan.read', doc_id=0) }}" data-review="{{ url_for('scan.review', doc_id=0) }}"
+         data-pending="{{ pending|join(',') }}" data-ready="{{ '1' if set_up else '0' }}">
+  <div class="scan-drop-inner">
+    {{ icon('scan-line', 'scan-drop-icon') }}
+    <p class="m-0"><strong>Drop bills here</strong> <span class="text-muted">- photos or PDFs, as many as you like</span></p>
+    <div class="row scan-pick">
+      <label class="btn btn-primary btn-lg scan-camera">{{ icon('scan-line') }}Take a photo
+        <input type="file" accept="image/*" capture="environment" multiple hidden data-scan-input></label>
+      <label class="btn btn-secondary btn-lg">{{ icon('plus') }}Choose files
+        <input type="file" accept="image/*,application/pdf" multiple hidden data-scan-input></label>
+    </div>
+    <p class="text-muted m-0 scan-tip">Tip: lay the bill flat, fill the frame, avoid shadows. A PDF of several invoices is
+      split by itself.</p>
+  </div>
+  <ul class="scan-queue" data-scan-queue aria-live="polite"></ul>
+  <div class="scan-queue-done" data-scan-done hidden>
+    <a href="{{ url_for('scan.index', tab='check') }}" class="btn btn-primary">Check them now</a>
+  </div>
+</section>
+
+{% if matched %}
+<form method="post" action="{{ url_for('scan.post_matched') }}" class="card row row-between items-center flex-wrap gap-10 mt-16 scan-matched"
+      data-confirm="Post {{ matched }} bill{{ '' if matched == 1 else 's' }} now? Each agrees with its purchase order on every line and passed every check. Stock comes in and the supplier's balance goes up.">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <p class="m-0"><strong>{{ matched }} bill{{ '' if matched == 1 else 's' }} agree{{ 's' if matched == 1 else '' }} with {{ 'its' if matched == 1 else 'their' }} purchase order</strong>
+    <span class="text-muted">- every check passed, every item and quantity is as ordered. Post {{ 'it' if matched == 1 else 'them' }} without opening each one, or check any of them below first.</span></p>
+  <button class="btn btn-primary">Post {{ matched }} matched bill{{ '' if matched == 1 else 's' }}</button>
+</form>
+{% endif %}
+<div class="filter-chips mt-16" role="tablist" aria-label="Scanned bills">
+  {% for key, (label, _) in scan_tabs.items() %}
+  <a href="{{ url_for('scan.index', tab=key) }}" class="filter-chip {{ 'is-on' if key == tab }}"
+     role="tab" aria-selected="{{ 'true' if key == tab else 'false' }}">{{ label }} <b>{{ counts[key] }}</b></a>
+  {% endfor %}
+</div>
+
+{% set f = filters %}
+{% if tab == 'check' and docs %}
+<div class="row row-between items-center mb-8">
+  <p class="text-muted m-0">Check each bill against its picture, correct anything wrong, and approve it - the next one opens by itself.</p>
+  <a href="{{ url_for('scan.review', doc_id=docs[0].id) }}" class="btn btn-primary">Start checking ›</a>
+</div>
+{% endif %}
+
+<form method="get" action="{{ url_for('scan.index') }}" class="card scan-finder" data-scan-finder>
+  <input type="hidden" name="tab" value="{{ tab }}">
+  <label class="scan-search">{{ icon('search', 'icon-sm') }}
+    <input type="search" name="q" value="{{ f.q }}" placeholder="Search supplier, GSTIN, bill no., amount, date…" autocomplete="off"
+           spellcheck="false" aria-label="Search the bills" data-scan-search>
+    <kbd title="Press / to search">/</kbd></label>
+  <div class="scan-filters">
+    <select name="supplier" class="field-input" aria-label="Supplier" data-filter="supplier">
+      <option value="">All suppliers</option>
+      {% for value, label in suppliers %}<option value="{{ value }}" {{ 'selected' if f.supplier == value }}>{{ label }}</option>{% endfor %}
+    </select>
+    <select name="check" class="field-input" aria-label="Checks" data-filter="check">
+      <option value="">Any check result</option>
+      {% for value, label in checks.items() %}<option value="{{ value }}" {{ 'selected' if f.check == value }}>{{ label }}</option>{% endfor %}
+    </select>
+    {% if kinds|length > 1 or f.kind %}
+    <select name="kind" class="field-input" aria-label="Post as" data-filter="kind">
+      <option value="">Any kind of bill</option>
+      {% for value, label in kinds %}<option value="{{ value }}" {{ 'selected' if f.kind == value }}>{{ label }}</option>{% endfor %}
+    </select>
+    {% endif %}
+    <select name="uploaded" class="field-input" aria-label="Uploaded" data-filter="uploaded">
+      <option value="">Uploaded any time</option>
+      {% for value, label in spans.items() %}<option value="{{ value }}" {{ 'selected' if f.uploaded == value }}>{{ label }}</option>{% endfor %}
+    </select>
+    <span class="scan-range" data-range {{ 'hidden' if f.uploaded != 'range' }}>
+      <input type="date" name="from" class="field-input" value="{{ f['from'] or '' }}" aria-label="Uploaded from" data-filter="from">
+      <span class="text-muted">to</span>
+      <input type="date" name="to" class="field-input" value="{{ f.to or '' }}" aria-label="Uploaded to" data-filter="to"></span>
+    <button type="button" class="btn btn-quiet btn-sm" data-clear hidden>Clear</button>
+  </div>
+  <p class="scan-count text-muted m-0" aria-live="polite"><span data-count>{{ docs|length }}</span> of {{ total }} bill{{ 's' if total != 1 }}
+    {% if total > docs|length %}<span class="scan-more">· showing the latest {{ docs|length }} - press Enter to search them all</span>{% endif %}</p>
+  <noscript><button class="btn btn-secondary btn-sm">Search</button></noscript>
+</form>
+
+{% if docs %}
+<div class="table-wrap card scan-queue-table">
+  <table data-scan-table>
+    <thead><tr>
+      <th class="num">#</th>
+      <th data-sort="supplier">Supplier</th><th data-sort="bill">Bill no.</th><th data-sort="date">Bill date</th>
+      <th class="num" data-sort="taxable">Taxable</th><th class="num" data-sort="gst">GST</th>
+      <th class="num" data-sort="total">Total</th><th data-sort="kind">Post as</th>
+      <th data-sort="check">{{ 'Checks' if tab == 'check' else 'Status' }}</th>
+      <th data-sort="uploaded">Uploaded</th><th data-sort="read">Last read</th><th></th></tr></thead>
+    <tbody>
+    {% for d in docs %}
+      {% set ex = d.extracted or {} %}
+      {% set check = (d.validation or {}).get('status') %}
+      {% set gst = (ex.cgst or 0) + (ex.sgst or 0) + (ex.igst or 0) %}
+      {% set state = 'dup' if d.duplicate_of else ('passed' if check == 'verified' else 'look') %}
+      {% set who = party(d) %}
+      <tr data-supplier="{{ (who[1] or who[0] or '')|trim }}" data-check="{{ state }}"
+          data-kind="{{ d.category or '' }}" data-uploaded="{{ d.created_at|ist('%Y-%m-%d') }}"
+          data-s-supplier="{{ (who[0] or d.filename)|lower }}" data-s-bill="{{ ex.invoice_number or '' }}"
+          data-s-date="{{ ex.invoice_date or '' }}" data-s-taxable="{{ ex.taxable_value or 0 }}" data-s-gst="{{ gst }}"
+          data-s-total="{{ ex.invoice_value or 0 }}" data-s-kind="{{ d.category or '' }}" data-s-check="{{ state }}"
+          data-s-uploaded="{{ d.created_at.isoformat() if d.created_at else '' }}" data-s-read="{{ d.read_at.isoformat() if d.read_at else '' }}"
+          data-text="{{ [who[0], who[1], ex.invoice_number, ex.invoice_date, d.filename,
+                         ((ex.invoice_value or 0)|inr), ex.invoice_value, ex.taxable_value, (ex.taxable_value or 0)|inr,
+                         labels.get(d.category or '', d.category), d.created_at|ist('%d %b %Y'), d.duplicate_of, d.message]
+                        |select|join(' ')|lower }}">
+        <td class="num" data-n>{{ loop.index }}</td>
+        <td><a href="{{ url_for('scan.review', doc_id=d.id) }}"><strong data-hl>{{ who[0] or d.filename }}</strong></a>
+          <small class="block text-muted" data-hl>{{ who[1] or ('No GSTIN' if d.read_at else d.filename) }}</small></td>
+        <td data-hl>{{ ex.invoice_number or '-' }}</td>
+        <td>{{ ex.invoice_date or '-' }}</td>
+        <td class="num">{{ (ex.taxable_value or 0)|inr }}</td>
+        <td class="num">{{ gst|inr }}</td>
+        <td class="num"><strong data-hl>{{ (ex.invoice_value or 0)|inr }}</strong></td>
+        <td>{{ labels.get(d.category or '', d.category or '-') }}</td>
+        <td>
+          {% if d.status == 'to_check' %}
+            {% if d.duplicate_of %}<span class="pill pill-warn" title="{{ d.duplicate_of }}">Already entered?</span>
+            {% elif check == 'verified' %}<span class="pill pill-ok">All passed</span>
+            {% else %}<span class="pill pill-warn">{{ ((d.validation or {}).get('checks') or [])|rejectattr('ok')|list|length or 1 }} to look at</span>{% endif %}
+          {% elif d.status == 'posted' %}{% if posted_urls[d.id] %}<a href="{{ posted_urls[d.id] }}" class="pill pill-ok">Posted ›</a>{% else %}<span class="pill pill-ok">Posted</span>{% endif %}
+            <small class="block text-muted">{{ d.posted_at|ist('%d %b %Y') }}</small>
+          {% elif d.status == 'filed' %}<span class="pill pill-muted">On file</span>
+          {% elif d.status == 'rejected' %}<span class="pill pill-warn" title="{{ d.message }}">Rejected</span><small class="block text-muted scan-why">{{ d.message }}</small>
+          {% elif d.status == 'failed' %}<span class="pill pill-warn" title="{{ d.message }}">Couldn't read</span>
+          {% else %}<span class="pill pill-muted">Reading…</span>{% endif %}</td>
+        <td class="scan-when">{{ d.created_at|ist('%d %b %Y') }}<small class="block text-muted">{{ d.created_at|ist('%I:%M %p') }}{% if d.uploaded_by and d.uploaded_by.role.value == 'staff' %} · {{ d.uploaded_by.name }}{% endif %}</small></td>
+        <td class="scan-when">{% if d.read_at %}{{ d.read_at|ist('%d %b %Y') }}<small class="block text-muted">{{ d.read_at|ist('%I:%M %p') }}</small>{% else %}<span class="text-muted">Not yet</span>{% endif %}</td>
+        <td><a href="{{ url_for('scan.review', doc_id=d.id) }}" class="btn btn-secondary btn-sm">{{ 'Check ›' if d.status == 'to_check' else 'Open ›' }}</a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="empty-state m-0" data-none hidden>No bills match - try fewer words, or press Enter to search all of them.</p>
+</div>
+{% else %}
+<p class="empty-state card">{% if f.q or f.supplier or f.check or f.kind or f.uploaded %}No bills match that search. <a href="{{ url_for('scan.index', tab=tab) }}">Show them all</a>{% else %}{{ {'check': 'Nothing waiting to be checked.', 'reading': 'Nothing being read.', 'done': 'No bills posted from scans yet.', 'rejected': 'Nothing rejected.'}[tab] }}{% endif %}</p>
+{% endif %}
+<p class="text-muted text-center mt-16">{{ used }} of {{ limit }} bills read today.</p>
+
+<section class="card scan-app-card mt-16">
+  <div class="scan-app-card-text">
+    <h2 class="m-0">{{ icon('scan-line') }} The ARFA Scan phone app</h2>
+    <p class="text-muted m-0">You and your branches sign in with your ARFA email and password, photograph bills, and they arrive here to check. A branch sees only the bills it sent.</p>
+  </div>
+  <form method="post" action="{{ url_for('scan.set_approvers') }}" class="scan-approvers">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="tab" value="{{ tab }}">
+    <fieldset class="m-0"><legend class="field-label">Who approves the bills scanned on phones?</legend>
+      {% for value, label in approver_choices.items() %}
+      <label class="row gap-6 items-center"><input type="radio" name="approvers" value="{{ value }}" {{ 'checked' if approvers == value }}> {{ label }}</label>
+      {% endfor %}
+    </fieldset>
+    <button class="btn btn-secondary btn-sm">Save</button>
+  </form>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/scan.js') }}" defer></script>
+<script src="{{ url_for('static', filename='js/scan_list.js') }}" defer></script>{% endblock %}

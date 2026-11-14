@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block title %}{{ app.name }} - ARFA{% endblock %}
+{% block content %}
+<section class="card app-note">
+  <h1 class="m-0">{{ app.name }} can't be downloaded just now</h1>
+  <p class="mt-12">ARFA couldn't reach its app store. Please try again in a minute.</p>
+</section>
+{% endblock %}

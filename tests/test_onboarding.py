@@ -197,3 +197,62 @@ def test_client_admin_cannot_reset_another_tenants_staff(client, db, client_admi
         data={"new_password": "ShouldNotWork123", "confirm_password": "ShouldNotWork123"},
     )
     assert resp.status_code == 404
+
+
+def test_the_reset_password_button_is_on_every_login_of_the_client(client, db, super_admin, tenant, client_admin,
+                                                                    staff):
+    _login(client, super_admin.email, "SuperSecret123")
+    html = client.get(f"/admin/clients/{tenant.id}?tab=users").get_data(as_text=True)
+    for user in (client_admin, staff):
+        assert f"/admin/clients/{tenant.id}/users/{user.id}/reset-password" in html
+    page = client.get(f"/admin/clients/{tenant.id}/users/{staff.id}/reset-password")
+    assert page.status_code == 200 and staff.email.encode() in page.data
+
+
+def test_resetting_a_forgotten_password_unlocks_the_login(app, client, db, super_admin, tenant, client_admin):
+    from app.auth import security
+    from app.models.audit_log import AuditLog
+
+    # The owner forgot it and guessed until the account locked.
+    for _ in range(app.config["LOGIN_LOCKOUT_ATTEMPTS"]):
+        client.post("/auth/login", data={"email": client_admin.email, "password": "wrong-guess-1"})
+    db.session.refresh(client_admin)
+    assert security.locked_until(client_admin) is not None
+
+    _login(client, super_admin.email, "SuperSecret123")
+    assert b"locked until" in client.get(f"/admin/clients/{tenant.id}?tab=users").data
+    resp = client.post(f"/admin/clients/{tenant.id}/users/{client_admin.id}/reset-password",
+                       data={"new_password": "BrandNewPass123", "confirm_password": "BrandNewPass123"},
+                       follow_redirects=True)
+    assert b"unlocked" in resp.data
+    db.session.refresh(client_admin)
+    assert security.locked_until(client_admin) is None and client_admin.must_change_password is True
+    row = AuditLog.query.filter_by(action="client_password_reset_by_firm", entity_id=client_admin.id).one()
+    assert row.details == {"unlocked": True}
+
+    client.get("/auth/logout")
+    res = client.post("/auth/login", data={"email": client_admin.email, "password": "BrandNewPass123"})
+    assert res.status_code == 302 and res.headers["Location"].endswith("/auth/change-password")
+
+
+def test_a_branch_login_s_password_is_reset_the_same_way(client, db, super_admin, tenant, staff):
+    _login(client, super_admin.email, "SuperSecret123")
+    client.post(f"/admin/clients/{tenant.id}/users/{staff.id}/reset-password",
+                data={"new_password": "BranchNewPass123", "confirm_password": "BranchNewPass123"})
+    db.session.refresh(staff)
+    assert staff.check_password("BranchNewPass123")
+
+
+def test_a_login_of_another_client_cant_be_reset_from_this_client(client, db, super_admin, tenant, client_admin):
+    from app.models.tenant import BillingCycle, RegistrationType, Tenant
+
+    other = Tenant(legal_name="Other Co", registration_type=RegistrationType.REGULAR, onboarded_by_id=super_admin.id,
+                   billing_cycle=BillingCycle.MONTHLY)
+    db.session.add(other)
+    db.session.commit()
+    _login(client, super_admin.email, "SuperSecret123")
+    res = client.post(f"/admin/clients/{other.id}/users/{client_admin.id}/reset-password",
+                      data={"new_password": "BrandNewPass123", "confirm_password": "BrandNewPass123"})
+    assert res.status_code == 404
+    db.session.refresh(client_admin)
+    assert client_admin.check_password("ClientSecret123")

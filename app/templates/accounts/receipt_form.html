@@ -11,7 +11,7 @@
 
 <form method="get" class="search-bar">
   {% if is_advance %}<input type="hidden" name="advance" value="1">{% endif %}
-  <select name="customer_id" class="field-input" onchange="this.form.submit()">
+  <select name="customer_id" class="field-input" data-autosubmit>
     <option value="">Pick the customer...</option>
     {% for c in customers %}<option value="{{ c.id }}" {{ 'selected' if customer and customer.id == c.id }}>{{ c.name }}</option>{% endfor %}
   </select>

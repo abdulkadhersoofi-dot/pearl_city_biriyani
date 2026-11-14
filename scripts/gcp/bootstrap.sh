@@ -142,6 +142,8 @@ done
 # Your Ultra Admin login on the new server (used once, by the migrate job).
 secret arfa-super-admin-email arfa-run
 secret arfa-super-admin-password arfa-run
+# The AI key Scan bills reads bills with (a Gemini API key from Google AI Studio).
+secret arfa-gemini-key arfa-run
 secret arfa-db-admin-url arfa-ops
 secret arfa-render-db-url arfa-build
 secret arfa-db-url arfa-run arfa-build      # the build reads it only for a rollback copy back to Render

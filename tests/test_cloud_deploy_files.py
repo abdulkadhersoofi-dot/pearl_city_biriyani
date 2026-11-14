@@ -39,11 +39,19 @@ def test_the_connection_budget_fits_the_database():
 def test_production_waits_for_its_data_and_a_healthy_candidate():
     release = (ROOT / "scripts/gcp/release.sh").read_text()
     assert 'PRODUCTION_ENABLED" != "1"' in release
-    assert "--no-traffic --tag candidate" in release and "update-traffic" in release
+    assert "NO_TRAFFIC=\"--no-traffic\"" in release and "$NO_TRAFFIC --tag candidate" in release
+    assert "update-traffic" in release
+    assert '"$URL/health"' in release                   # /healthz never reaches a Cloud Run app
     assert release.index("jobs execute") < release.index("gcloud run deploy")      # migrate before deploy
     assert _settings()["PRODUCTION_ENABLED"] in ("0", "1")
     assert "SUPER_ADMIN_PASSWORD=arfa-super-admin-password" in release   # the first login, for the job only
     assert release.index("JOB_SECRETS") < release.index("gcloud run deploy")
+    # The build account can't look secrets up, so optional ones are listed, never probed.
+    assert "gcloud secrets versions describe" not in release
+    assert set(_settings()["OPTIONAL_SECRETS"].split()) <= {"sentry", "smtp", "super-admin", "gemini", "warehouse-push"}
+    assert "GEMINI_API_KEY=arfa-gemini-key" in release
+    assert 'COMMIT=$SHORT_SHA' in (ROOT / "cloudbuild.yaml").read_text()
+    assert "SHORT_SHA:-" not in (ROOT / "cloudbuild.yaml").read_text()   # Cloud Build has no ${X:-default}
     build = (ROOT / "cloudbuild.yaml").read_text()
     assert build.index("id: staging") < build.index("id: production") < build.index("id: hosting")
 
@@ -75,5 +83,18 @@ def test_the_phones_can_be_moved_to_a_new_address_without_reinstalling():
     assert "server_url" in (ROOT / ".github/workflows/android-apk.yml").read_text()
     activity = (ROOT / "android/app/src/main/java/com/arfa/pos/MainActivity.kt").read_text()
     assert "startMove()" in activity and "restoreCarried()" in activity and '"AndroidMove"' in activity
-    assert "/healthz" in activity                       # never moves to an address that doesn't answer
+    assert '"/health", "/healthz"' in activity        # never moves to an address that doesn't answer (Cloud Run: /health)
     assert "server.offer(" in (ROOT / "android/app/src/main/java/com/arfa/pos/UpdateChecker.kt").read_text()
+
+
+def test_phones_move_to_arfa_live_the_careful_way():
+    # New installs start on arfa.live; installed phones are told to move.
+    gradle = (ROOT / "android/app/build.gradle").read_text()
+    assert '"SERVER_BASE_URL", "\\"https://arfa.live\\""' in gradle
+    assert json.loads((ROOT / "android/server.json").read_text())["server_url"] == "https://arfa.live"
+    # A phone updated from a Render-built version stays on Render until that
+    # move (which sends its waiting bills first) - never a jump on update.
+    address = (ROOT / "android/app/src/main/java/com/arfa/pos/ServerAddress.kt").read_text()
+    assert 'EARLIER_BUILT_IN = "https://gst-billing-app-prdx.onrender.com"' in address
+    assert "lastUpdateTime > info.firstInstallTime" in address
+    assert 'putString("current", it)' in address  # written down once, so a later rebuild never moves it

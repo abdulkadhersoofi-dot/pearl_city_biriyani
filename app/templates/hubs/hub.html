@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}{{ hub.door.label }} - {{ firm_name }}{% endblock %}
+{% block content %}
+{# The hub behind a door of the simple menu (app/doors.py): the main thing
+   to do, what is waiting, and every screen in this area. #}
+<div class="hub">
+  <header class="hub-head">
+    <div>
+      <h1>{{ hub.door.label }}</h1>
+      <p class="text-muted m-0">{{ hub.door.intro }}</p>
+    </div>
+    {% if hub.actions %}
+    <div class="hub-actions">
+      {% for a in hub.actions %}
+      <a href="{{ a.url }}" class="btn {{ 'btn-primary btn-lg hub-main' if loop.first else 'btn-secondary' }}">{{ icon(a.icon) }}<span>{{ a.label }}</span></a>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </header>
+
+  {% if hub.waiting %}
+  <section class="hub-waiting" aria-label="Waiting for you">
+    <h2 class="hub-title">Waiting for you</h2>
+    <div class="hub-waiting-list">
+      {% for w in hub.waiting %}
+      <a href="{{ w.url }}" class="hub-wait hub-wait-{{ w.tone or 'info' }}">
+        {{ icon(w.icon or 'arrow-right') }}
+        <span><strong>{{ w.label }}</strong><small>{{ w.detail }}</small></span>
+        {{ icon('chevron-right', 'icon-sm') }}
+      </a>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% if doors %}
+  <section aria-label="Where to go">
+    <h2 class="hub-title">Where to go</h2>
+    <div class="hub-tiles hub-doors">
+      {% for d in doors if d.key != 'home' %}
+      <a href="{{ d.url }}" class="hub-tile hub-door">{{ icon(d.icon) }}<span>{{ d.label }}</span></a>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% for s in hub.sections %}
+  <section aria-labelledby="hub-{{ loop.index }}">
+    <h2 class="hub-title" id="hub-{{ loop.index }}">{{ s.title }}</h2>
+    <div class="hub-tiles">
+      {% for t in s.tiles %}
+      <a href="{{ t.url }}" class="hub-tile">{{ icon(t.icon) }}<span>{{ t.label }}</span></a>
+      {% endfor %}
+    </div>
+  </section>
+  {% endfor %}
+</div>
+{% endblock %}

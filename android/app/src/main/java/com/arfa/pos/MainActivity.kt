@@ -90,7 +90,7 @@ class MainActivity : AppCompatActivity() {
     // Paths a counter login is allowed to be on. Anything else means the
     // account that just signed in isn't a counter login - see
     // handlePageFinished().
-    private val allowedPrefixes = listOf("/app/", "/auth/", "/pos/", "/media/", "/static/", "/healthz", "/restaurant/")
+    private val allowedPrefixes = listOf("/app/", "/auth/", "/pos/", "/media/", "/static/", "/health", "/restaurant/")
     private val startUrl: String get() = "$baseUrl/app/?start=1"
 
     private var isHandlingBlockedRole = false
@@ -373,13 +373,17 @@ class MainActivity : AppCompatActivity() {
                 // Only to an address that answers: a new address whose DNS
                 // isn't ready yet must not strand the phone.
                 Thread {
-                    val healthy = try {
-                        val c = URL("$target/healthz").openConnection() as HttpURLConnection
-                        c.connectTimeout = 10000
-                        c.readTimeout = 10000
-                        c.responseCode == HttpURLConnection.HTTP_OK
-                    } catch (e: Exception) {
-                        false
+                    // /health on Google Cloud (Cloud Run answers 404 itself on
+                    // any path ending in "z"); /healthz on older servers.
+                    val healthy = listOf("/health", "/healthz").any { path ->
+                        try {
+                            val c = URL("$target$path").openConnection() as HttpURLConnection
+                            c.connectTimeout = 10000
+                            c.readTimeout = 10000
+                            c.responseCode == HttpURLConnection.HTTP_OK
+                        } catch (e: Exception) {
+                            false
+                        }
                     }
                     runOnUiThread {
                         if (!healthy) {

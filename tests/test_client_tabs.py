@@ -131,12 +131,12 @@ def test_act_as_lists_only_active_owner_and_branch_logins(client, db, tenant, cl
     assert "Pause access" in head
 
 
-def test_login_resets_sit_in_each_logins_menu(client, db, tenant, client_admin, ultra):
+def test_each_login_shows_reset_password_and_keeps_the_rest_in_its_menu(client, db, tenant, client_admin, ultra):
     users = _panel(client.get(f"/admin/clients/{tenant.id}").get_data(as_text=True), "users")
     row = users.split(client_admin.email, 1)[1].split("</tr>", 1)[0]
-    menu = row.split('role="menu"', 1)[1]
-    assert "Reset password" in menu and "Deactivate" in menu
-    assert ">Act as</button>" in row.split('role="menu"', 1)[0]
+    visible, menu = row.split('role="menu"', 1)
+    assert ">Act as</button>" in visible and "Reset password</a>" in visible  # a forgotten password is common
+    assert "Deactivate" in menu and "Reset password" not in menu
 
 
 # --- overview and the package tab -----------------------------------------------------------------

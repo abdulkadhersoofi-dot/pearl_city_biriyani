@@ -8,7 +8,7 @@ from decimal import Decimal
 
 from app.extensions import db
 from app.inventory import ledger
-from app.models.inventory import MovementType, ProductSerial, SerialStatus, StockMovement
+from app.models.inventory import MovementType, ProductSerial, SerialStatus, StockLocation, StockMovement
 from app.models.mixins import utcnow
 from app.models.product import Product
 
@@ -61,10 +61,10 @@ def check_sale(tenant, location_id: int, lines, require_serials: bool = True) ->
             product = products.get(line.product_id)
             if product is None or not product.track_serial:
                 continue
-            _check_serials(tenant.id, product, line)
+            _check_serials(tenant.id, product, line, location_id)
 
 
-def _check_serials(tenant_id: int, product: Product, line) -> None:
+def _check_serials(tenant_id: int, product: Product, line, location_id: int | None = None) -> None:
     serials = [s.strip() for s in line.serials if s and s.strip()]
     if Decimal(line.qty) != len(serials) or len(set(serials)) != len(serials):
         raise ledger.StockError(f"{product.name}: pick one serial/IMEI for each unit ({ledger._fmt(line.qty)}).")
@@ -78,8 +78,15 @@ def _check_serials(tenant_id: int, product: Product, line) -> None:
         unit = by_no.get(no)
         if unit is None:
             raise ledger.StockError(f"{product.name}: serial/IMEI {no} isn't in your stock.")
+        if unit.status == SerialStatus.PICKED:
+            raise ledger.StockError(f"{product.name}: serial/IMEI {no} is held for a sales order at the warehouse.")
         if unit.status != SerialStatus.IN_STOCK:
             raise ledger.StockError(f"{product.name}: serial/IMEI {no} was already sold.")
+        # A unit is sold from where it is (units recorded before locations
+        # were kept have none, and pass).
+        if location_id is not None and unit.location_id is not None and unit.location_id != location_id:
+            where = unit.location.name if unit.location is not None else "another location"
+            raise ledger.StockError(f"{product.name}: serial/IMEI {no} is at {where}, not here.")
 
 
 def _expired(batch, today) -> bool:
@@ -107,6 +114,9 @@ def post_sale(tenant, location_id: int, lines, source_type: str, source_id: int,
             for unit in units:
                 unit.status = SerialStatus.SOLD
                 unit.sold_at = utcnow()
+                if source_type == "invoice":
+                    unit.sold_invoice_id = source_id
+                    unit.sold_invoice_line_id = line.line_id
                 if pos_bill is not None:
                     unit.sold_pos_bill_id = pos_bill.id
                     unit.sold_pos_line_id = line.line_id
@@ -136,13 +146,32 @@ def undo_sale(tenant_id: int, source_type: str, source_id: int, user_id: int | N
     ledger.reverse_source(tenant_id, source_type, source_id, user_id, note)
     # Serial/IMEI units an invoice sold (second-hand goods) go back in stock too.
     if source_type == "invoice":
+        # A unit swapped at dispatch (warehouse dispatch, stage 5B): undo the swap's
+        # own movements, and whatever unit the invoice now sells goes back too.
+        from app.models.sales import SalesDocument
+        from app.models.warehouse import SerialSwap, SwapStatus
+
+        order = SalesDocument.query.filter_by(tenant_id=tenant_id, converted_invoice_id=source_id).first()
+        if order is not None:
+            for swap in SerialSwap.query.filter_by(sales_document_id=order.id, status=SwapStatus.APPROVED).all():
+                ledger.reverse_source(tenant_id, "serial_swap", swap.id, user_id, note)
+        for unit in ProductSerial.query.filter_by(tenant_id=tenant_id, sold_invoice_id=source_id).all():
+            if unit.status == SerialStatus.SOLD:
+                unit.status = SerialStatus.IN_STOCK
+                unit.sold_at = None
+                unit.sold_invoice_id = unit.sold_invoice_line_id = None
+                unit.picked_sales_line_id = unit.picked_by_id = unit.picked_at = None
         sold_ids = {m.serial_id for m in StockMovement.query.filter_by(
             tenant_id=tenant_id, source_type=source_type, source_id=source_id, reversal_of_id=None)
             if m.serial_id and m.qty < 0}
         for unit in ProductSerial.query.filter(ProductSerial.id.in_(sold_ids)).all() if sold_ids else []:
             if unit.status == SerialStatus.SOLD:
+                # Back in stock where it was sold from (a warehouse-dispatched
+                # unit: at its warehouse, free to be picked again).
                 unit.status = SerialStatus.IN_STOCK
                 unit.sold_at = None
+                unit.sold_invoice_id = unit.sold_invoice_line_id = None
+                unit.picked_sales_line_id = unit.picked_by_id = unit.picked_at = None
     if source_type == "pos_bill":
         for unit in ProductSerial.query.filter_by(tenant_id=tenant_id, sold_pos_bill_id=source_id).all():
             unit.status = SerialStatus.IN_STOCK
@@ -198,12 +227,13 @@ def pos_lines(bill) -> list[SaleLine]:
     return [SaleLine(l.product_id, l.qty, l.id, getattr(l, "_serials", None)) for l in bill.lines if l.product_id]
 
 
-def post_invoice(tenant, invoice, user_id: int | None, serials_by_line=None) -> None:
-    """A customer invoice sells from the main store. An invoice billed to
-    a branch is how stock reaches that branch: a transfer from the main
-    store into the branch's location (the daily branch counter is fed
-    separately, as before)."""
-    store = ledger.default_location(tenant.id)
+def post_invoice(tenant, invoice, user_id: int | None, serials_by_line=None, location_id: int | None = None) -> None:
+    """A customer invoice sells from the main store (or, made from a sales
+    order shipped by a warehouse, from that warehouse - location_id). An
+    invoice billed to a branch is how stock reaches that branch: a transfer
+    from the main store into the branch's location (the daily branch
+    counter is fed separately, as before)."""
+    store = db.session.get(StockLocation, location_id) if location_id else ledger.default_location(tenant.id)
     serials_by_line = serials_by_line or {}
     lines = [SaleLine(l.product_id, l.qty, l.id, serials_by_line.get(l.id)) for l in invoice.lines if l.product_id]
     if invoice.branch_user_id:

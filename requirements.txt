@@ -20,3 +20,6 @@ requests==2.33.1
 cryptography==50.0.2
 sentry-sdk[flask]==2.19.2
 python-barcode==0.15.1
+# Scan bills (app/scan): PDF pages to pictures, and the e-invoice QR (needs libzbar0, Dockerfile).
+PyMuPDF==1.26.0
+pyzbar==0.1.9

@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% block title %}Train on a bill - {{ firm_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Train on this bill</h1>
+    <p class="text-muted mt-0">{{ name or 'Supplier' }}{% if gstin %} &middot; {{ gstin }}{% endif %} &middot;
+      invoice {{ (doc.extracted or {}).get('invoice_number') or '-' }}. What you teach here is used on every later bill from this supplier.</p>
+  </div>
+  <a href="{{ url_for('scan.teach', supplier=gstin or none) }}#lessons" class="btn btn-secondary">Back to training</a>
+</div>
+
+<ol class="teach-steps">
+  <li><strong>Click a heading</strong> on the picture{% if set_up %} - ARFA reads it into the box. Or type it yourself.{% else %} to mark it, and type it in the box.{% endif %}</li>
+  <li><strong>Pick what it means</strong> and press Teach.</li>
+  <li><strong>Read again</strong> to see this bill before and after.</li>
+</ol>
+
+<div class="teach-bill">
+  <aside class="card teach-picture" data-teach-picture data-pages="{{ pages }}"
+         data-page-url="{{ url_for('scan.page', doc_id=doc.id, n=0, v=ver)|replace('/page/0.jpg', '/page/{n}.jpg') }}"
+         data-label-url="{{ url_for('scan.teach_label', doc_id=doc.id) }}" data-csrf="{{ csrf_token() }}"
+         data-can-read="{{ '1' if set_up else '' }}">
+    <div class="teach-stage"><img class="teach-stage-img" src="{{ url_for('scan.page', doc_id=doc.id, n=0, v=ver) }}"
+         alt="The scanned bill - click a heading on it" draggable="false"><span class="teach-pin" hidden></span></div>
+    <div class="scan-viewer-bar">
+      {% if pages > 1 %}
+      <span class="row gap-6 items-center"><button type="button" class="btn btn-quiet btn-sm" data-page-step="-1" aria-label="Previous page">&lsaquo;</button>
+        <span data-page-label>Page 1 of {{ pages }}</span>
+        <button type="button" class="btn btn-quiet btn-sm" data-page-step="1" aria-label="Next page">&rsaquo;</button></span>
+      {% endif %}
+      <span class="text-muted" data-teach-status role="status">{{ 'Click a heading on the bill.' if set_up else 'Type the heading in the box.' }}</span>
+    </div>
+  </aside>
+
+  <div class="stack">
+    <section class="card stack">
+      <h2 class="m-0 teach-h2">Teach a heading</h2>
+      <form method="post" action="{{ url_for('scan.teach_heading') }}" class="teach-heading-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="doc" value="{{ doc.id }}">
+        <input type="hidden" name="name" value="{{ name }}">
+        <label class="field m-0"><span class="field-label">Heading on the bill</span>
+          <input class="field-input" name="heading" maxlength="60" required placeholder="e.g. Cust. PO" data-teach-heading></label>
+        <label class="field m-0"><span class="field-label">It means</span>
+          <select class="field-input" name="field" required>
+            <option value="">Pick one</option>
+            {% for key, label in fields.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+          </select></label>
+        <label class="field m-0"><span class="field-label">For</span>
+          <select class="field-input" name="gstin">
+            {% if gstin %}<option value="{{ gstin }}">{{ name or gstin }}'s bills</option>{% endif %}
+            <option value="">Every supplier's bills</option>
+          </select></label>
+        <button class="btn btn-primary">Teach</button>
+      </form>
+
+      {% if taught %}
+      <div class="table-wrap">
+        <table class="teach-rows">
+          <thead><tr><th>Heading</th><th>Means</th><th>For</th><th></th></tr></thead>
+          <tbody>
+          {% for l in taught %}
+            <tr class="{{ '' if l.active else 'is-off' }}">
+              <td><strong>{{ l.text }}</strong></td>
+              <td>{{ fields.get((l.example or {}).get('field'), '-') }}</td>
+              <td>{{ 'This supplier' if l.supplier_gstin else 'Every supplier' }}{% if not l.active %} <span class="pill pill-muted">Off</span>{% endif %}</td>
+              <td class="num">
+                <form method="post" action="{{ url_for('scan.teach_delete', lesson_id=l.id) }}" data-confirm="Delete this heading? ARFA forgets it." data-danger>
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="back" value="{{ gstin }}">
+                  <button class="btn btn-quiet btn-sm">Delete</button></form></td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="text-muted m-0">No headings taught for this supplier yet.</p>
+      {% endif %}
+    </section>
+
+    <section class="card stack" id="read-again">
+      <div class="row row-between items-center flex-wrap">
+        <h2 class="m-0 teach-h2">{{ 'Before and after' if trial else 'What ARFA read on this bill' }}</h2>
+        <form method="post" action="{{ url_for('scan.teach_read_again', doc_id=doc.id) }}#read-again">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn-secondary" {{ '' if set_up else 'disabled' }}>Read again</button>
+        </form>
+      </div>
+      {% if trial %}
+        <p class="m-0">{% if trial.changed %}<span class="pill pill-ok">The reading changed</span>{% else %}<span class="pill pill-muted">Nothing changed</span>{% endif %}
+          <span class="text-muted">This bill itself is left as it was{{ ' - press Read again on its check screen to use the new reading' if doc.status == 'to_check' else '' }}.</span></p>
+        {% if trial.rules %}<ul class="scan-check-list">{% for r in trial.rules %}<li>{{ r }}</li>{% endfor %}</ul>{% endif %}
+        <div class="table-wrap">
+          <table class="teach-rows teach-compare">
+            <thead><tr><th>Field</th><th>Before</th><th>After</th></tr></thead>
+            <tbody>
+            {% for f in trial.fields %}
+              <tr class="{{ 'is-changed' if f.changed }}"><td>{{ f.label }}</td><td>{{ f.before or '-' }}</td><td>{{ f.after or '-' }}</td></tr>
+            {% else %}<tr><td colspan="3" class="text-muted">Nothing read in the fields that can be taught.</td></tr>{% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% if trial.lines %}
+        <div class="table-wrap">
+          <table class="teach-rows teach-compare">
+            <thead><tr><th>#</th>{% for c in trial.columns %}<th>{{ c }}</th>{% endfor %}</tr></thead>
+            <tbody>
+            {% for row in trial.lines %}
+              <tr><td>{{ loop.index }}</td>
+                {% for c in row %}<td class="{{ 'is-changed' if c.changed }}">{% if c.changed %}<s class="text-muted">{{ c.before or '-' }}</s> {{ c.after or '-' }}{% else %}{{ c.after or '-' }}{% endif %}</td>{% endfor %}</tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% endif %}
+      {% else %}
+        <div class="table-wrap">
+          <table class="teach-rows">
+            <thead><tr><th>Field</th><th>Read as</th></tr></thead>
+            <tbody>
+            {% for f in read %}<tr><td>{{ f.label }}</td><td>{{ f.value }}</td></tr>
+            {% else %}<tr><td colspan="2" class="text-muted">Nothing read in the fields that can be taught.</td></tr>{% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <p class="text-muted m-0">A field that is missing or wrong here is the one to teach: click its heading on the bill.</p>
+      {% endif %}
+    </section>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/scan_teach.js') }}" defer></script>{% endblock %}

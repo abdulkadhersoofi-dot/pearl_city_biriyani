@@ -1,13 +1,14 @@
 import time
-from datetime import timedelta
+from datetime import date, timedelta
 
 from flask import abort, current_app, flash, redirect, render_template, request, session, url_for
 from flask_login import current_user, login_required, login_user, logout_user
 
 from app.auth import auth_bp
+from app.auth import login_domain
 from app.auth import security
 from app.auth.forms import ChangePasswordForm, LoginForm, TwoFactorCodeForm, TwoFactorDisableForm
-from app.extensions import db
+from app.extensions import csrf, db
 from app.models.audit_log import AuditLog
 from app.models.mixins import utcnow
 from app.models.tenant import Tenant
@@ -31,8 +32,21 @@ def in_counter_app() -> bool:
             or APP_AGENT in (request.user_agent.string or ""))
 
 
+# An administrator setting someone's password: wrong guesses before it no
+# longer count against signing in (the forgotten-password case).
+PASSWORD_RESET_ACTIONS = ("client_password_reset_by_firm", "auditor_password_reset_by_ultra_admin",
+                          "branch_password_reset")
+
+
 def _recent_failed_logins(email: str, window_minutes: int) -> int:
     since = utcnow() - timedelta(minutes=window_minutes)
+    account = User.query.filter_by(email=email).first()
+    if account is not None:
+        last_reset = db.session.query(db.func.max(AuditLog.created_at)).filter(
+            AuditLog.action.in_(PASSWORD_RESET_ACTIONS), AuditLog.entity_type == "user",
+            AuditLog.entity_id == account.id, AuditLog.created_at >= since).scalar()
+        if last_reset is not None:
+            since = last_reset
     recent = AuditLog.query.filter(
         AuditLog.action == "login_failed", AuditLog.created_at >= since
     ).all()
@@ -61,7 +75,8 @@ def _login_view(login_tenant=None):
     # /app/ (its device secret), and the app pairs a new phone there - send
     # it there instead of asking for an email and password. ?web=1 still
     # shows this form.
-    if request.method == "GET" and in_counter_app() and not request.args.get("web") and login_tenant is None:
+    if (request.method == "GET" and in_counter_app() and not request.args.get("web") and login_tenant is None
+            and login_domain.on_sign_in_domain() is None):
         return redirect(url_for("counterapp.index"))
 
     form = LoginForm()
@@ -90,6 +105,14 @@ def _login_view(login_tenant=None):
 
         if user and user.is_active and user.check_password(form.password.data):
             security.clear_failures(user)
+            domain = login_domain.on_sign_in_domain()
+            if domain is not None and not login_domain.may_sign_in_here(user, domain):
+                # A sign-in domain is for the logins of the clients on it.
+                record_audit(user, "login_refused_other_domain", tenant_id=user.tenant_id,
+                             details={"host": login_domain.request_host()})
+                db.session.commit()
+                flash(f"This account doesn't sign in here - use {login_domain.public_url()}.", "error")
+                return render_template("auth/login.html", form=form, login_tenant=login_tenant)
             if user.tenant_id is not None:
                 status = tenant_access_status(user.tenant)
                 if status.blocked:
@@ -132,6 +155,12 @@ def _login_view(login_tenant=None):
 
 
 def _finish_login(user, method: str = "password"):
+    if login_domain.on_sign_in_domain() is not None:
+        # On a sign-in domain: hand over to the main address,
+        # which does the signing in (app/auth/login_domain.py).
+        handoff = login_domain.start_handoff(user, method)
+        db.session.commit()
+        return render_template("auth/handoff.html", handoff=handoff)
     login_user(user, remember=False)
     session["last_active"] = time.time()
     user.last_login_at = utcnow()
@@ -229,6 +258,11 @@ def two_factor_setup():
             codes = security.enable_two_factor(user, secret)
             session.pop("2fa_new_secret", None)
             record_audit(user, "two_factor_enabled", tenant_id=user.tenant_id)
+            if pending and login_domain.on_sign_in_domain() is not None:
+                _clear_pending()
+                handoff = login_domain.start_handoff(user, "totp_setup", login_domain.HANDOFF_AFTER_SETUP_SECONDS)
+                db.session.commit()
+                return render_template("auth/two_factor_codes.html", codes=codes, user=user, handoff=handoff)
             if pending:
                 _clear_pending()
                 login_user(user, remember=False)
@@ -285,7 +319,25 @@ def account_security():
 
 @auth_bp.route("/login", methods=["GET", "POST"])
 def login():
-    return _login_view()
+    # On a sign-in domain, the page in its brand client's look.
+    return _login_view(login_tenant=login_domain.current_login_tenant())
+
+
+@auth_bp.route("/handoff", methods=["GET", "POST"])
+@csrf.exempt
+def handoff():
+    """Signs in, on the main address, a user whose password (and code) was
+    checked on their client's own sign-in address a moment ago. CSRF-exempt:
+    the post comes from that other address; the one-time token is what
+    proves it."""
+    if request.method != "POST" or login_domain.on_sign_in_domain() is not None:
+        return redirect(url_for("auth.login"))
+    user = login_domain.redeem(request.form.get("token", ""))
+    if user is None:
+        db.session.commit()
+        flash("That sign-in took too long or was already used - please sign in again.", "error")
+        return redirect(url_for("auth.login"))
+    return _finish_login(user, "own_address")
 
 
 @auth_bp.route("/login/<slug>", methods=["GET", "POST"])
@@ -309,13 +361,17 @@ def logout():
         return redirect(url_for("auth.login"))
     record_audit(current_user, "logout", tenant_id=current_user.tenant_id)
     db.session.commit()
+    # Back to the client's own sign-in address, if they have one - not for
+    # an admin acting as them, nor in the counter app (it stays on its server).
+    own_address = (None if session.get("impersonator_id") or in_counter_app()
+                   else login_domain.sign_in_address_for(current_user))
     logout_user()
     session.pop("impersonator_id", None)
     session.pop("cashier_id", None)
     # A paired phone signs back in with its own secret (which sets this
     # again); anyone signing in by email here next isn't that phone.
     session.pop("counter_device_id", None)
-    return redirect(url_for("auth.login"))
+    return redirect(own_address or url_for("auth.login"))
 
 
 @auth_bp.route("/stop-impersonating")
@@ -373,7 +429,9 @@ def change_password():
                 billing_subject = current_user
 
             if billing_subject is not None and billing_subject.cycle_anchor_date is None:
-                billing_subject.cycle_anchor_date = utcnow().date()
+                # Today in India (the process clock), not the UTC date - which is
+                # still yesterday until 5:30 AM.
+                billing_subject.cycle_anchor_date = date.today()
                 billing_subject.next_billing_due = advance_billing_cycle(
                     billing_subject, billing_subject.cycle_anchor_date
                 )

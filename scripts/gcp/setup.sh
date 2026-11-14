@@ -9,6 +9,7 @@
 #   scripts/gcp/setup.sh image         builds the first image (no deploy)
 #   scripts/gcp/setup.sh staging       first staging release + its Firebase site
 #   scripts/gcp/setup.sh scheduler     the nightly job at 01:30 IST
+#   scripts/gcp/setup.sh sap-scheduler purchase orders from SAP every 15 minutes (only when a client uses the SAP link)
 #   scripts/gcp/setup.sh trigger       git push -> deploy (needs the GitHub connection, setup guide step 5)
 #   scripts/gcp/setup.sh domain        asks Firebase for arfa.live and prints the DNS records to add
 set -euo pipefail
@@ -108,7 +109,7 @@ connections)
   ;;
 
 image)
-  gcloud builds submit --project "$PROJECT_ID" --region "$REGION" \
+  gcloud builds submit --project "$PROJECT_ID" --region "$REGION" --gcs-source-staging-dir "gs://$PROJECT_ID-transfer/_source" \
     --service-account "projects/$PROJECT_ID/serviceAccounts/$(sa arfa-build)" \
     --config deploy/gcp/cloudbuild-image.yaml --substitutions "_REGION=$REGION,_REPO=$REPO" .
   ;;
@@ -119,9 +120,37 @@ staging)
   scripts/gcp/deploy.sh
   ;;
 
-scheduler)
-  gcloud run jobs add-iam-policy-binding arfa-nightly --project "$PROJECT_ID" --region "$REGION" \
+sap-scheduler)
+  # The arfa-sap-pull Cloud Run job appears with a production release
+  # (release.sh). Run this once a client switches the SAP link on.
+  if ! gcloud run jobs describe arfa-sap-pull --project "$PROJECT_ID" --region "$REGION" >/dev/null 2>&1; then
+    echo "The arfa-sap-pull job doesn't exist yet - it appears with the next production release. Run this again after it."
+    exit 1
+  fi
+  gcloud run jobs add-iam-policy-binding arfa-sap-pull --project "$PROJECT_ID" --region "$REGION" \
     --member "serviceAccount:$(sa arfa-scheduler)" --role roles/run.invoker --quiet >/dev/null
+  URI="https://run.googleapis.com/v2/projects/$PROJECT_ID/locations/$REGION/jobs/arfa-sap-pull:run"
+  if gcloud scheduler jobs describe arfa-sap-pull --location "$REGION" --project "$PROJECT_ID" >/dev/null 2>&1; then
+    VERB=update
+  else
+    VERB=create
+  fi
+  gcloud scheduler jobs "$VERB" http arfa-sap-pull --location "$REGION" --project "$PROJECT_ID" \
+    --schedule "*/15 * * * *" --time-zone "Asia/Kolkata" --uri "$URI" --http-method POST \
+    --oauth-service-account-email "$(sa arfa-scheduler)" --attempt-deadline 10m
+  echo "Purchase orders are fetched from SAP every 15 minutes."
+  ;;
+
+scheduler)
+  # The nightly Cloud Run job exists only once production is released
+  # (release.sh). Until then the schedule is created paused; running this
+  # step again after the cutover binds the invoker and resumes it.
+  HAVE_JOB=""
+  if gcloud run jobs describe arfa-nightly --project "$PROJECT_ID" --region "$REGION" >/dev/null 2>&1; then
+    HAVE_JOB=1
+    gcloud run jobs add-iam-policy-binding arfa-nightly --project "$PROJECT_ID" --region "$REGION" \
+      --member "serviceAccount:$(sa arfa-scheduler)" --role roles/run.invoker --quiet >/dev/null
+  fi
   URI="https://run.googleapis.com/v2/projects/$PROJECT_ID/locations/$REGION/jobs/arfa-nightly:run"
   if gcloud scheduler jobs describe arfa-nightly --location "$REGION" --project "$PROJECT_ID" >/dev/null 2>&1; then
     VERB=update
@@ -131,12 +160,21 @@ scheduler)
   gcloud scheduler jobs "$VERB" http arfa-nightly --location "$REGION" --project "$PROJECT_ID" \
     --schedule "30 1 * * *" --time-zone "Asia/Kolkata" --uri "$URI" --http-method POST \
     --oauth-service-account-email "$(sa arfa-scheduler)" --attempt-deadline 30m
+  if [ -n "$HAVE_JOB" ]; then
+    gcloud scheduler jobs resume arfa-nightly --location "$REGION" --project "$PROJECT_ID" --quiet 2>/dev/null || true
+    echo "Nightly job scheduled at 01:30 IST and enabled."
+  else
+    gcloud scheduler jobs pause arfa-nightly --location "$REGION" --project "$PROJECT_ID" --quiet
+    echo "Nightly job scheduled at 01:30 IST but PAUSED: the arfa-nightly job appears with the production release."
+    echo "Run scripts/gcp/setup.sh scheduler again after the cutover to enable it."
+  fi
   ;;
 
 trigger)
-  REPO_PATH=$(gcloud builds repositories list --connection github --region "$REGION" --project "$PROJECT_ID" \
+  REPO_NAME=$(gcloud builds repositories list --connection github --region "$REGION" --project "$PROJECT_ID" \
     --format 'value(name)' | head -1)
-  [ -n "$REPO_PATH" ] || { echo "No GitHub connection yet (setup guide step 5)."; exit 1; }
+  [ -n "$REPO_NAME" ] || { echo "No GitHub connection yet (setup guide step 5)."; exit 1; }
+  REPO_PATH="projects/$PROJECT_ID/locations/$REGION/connections/github/repositories/${REPO_NAME##*/}"
   gcloud builds triggers describe arfa-push --region "$REGION" --project "$PROJECT_ID" >/dev/null 2>&1 && \
     { echo "Trigger arfa-push exists."; exit 0; }
   gcloud builds triggers create github --name arfa-push --region "$REGION" --project "$PROJECT_ID" \
@@ -151,14 +189,21 @@ domain)
   curl -sS -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
     "$API?customDomainId=$DOMAIN" -d '{}' >/dev/null || true
   sleep 5
-  curl -sS -H "Authorization: Bearer $TOKEN" "$API/$DOMAIN" | python3 -c '
+  STATE=$(curl -sS -H "Authorization: Bearer $TOKEN" "$API/$DOMAIN")
+  python3 - "$STATE" <<'PY'
 import json, sys
-d = json.load(sys.stdin)
+d = json.loads(sys.argv[1])
+if "error" in d:
+    sys.exit("Firebase answered: " + d["error"].get("message", str(d["error"])))
 print("Status:", d.get("hostState"), "/", d.get("ownershipState"), "/ certificate:", (d.get("cert") or {}).get("state"))
-for upd in ((d.get("requiredDnsUpdates") or {}).get("desired") or []):
-    for rec in upd.get("records", []):
-        print(f"  {rec.get(\"requiredAction\", \"ADD\"):6} {rec.get(\"type\"):6} {rec.get(\"domainName\")}  ->  {rec.get(\"rdata\")}")
-'
+dns = d.get("requiredDnsUpdates") or {}
+for title, key in (("Records to have", "desired"), ("Records found now", "discovered")):
+    print(title + ":")
+    for upd in dns.get(key) or []:
+        for rec in upd.get("records", []):
+            action = rec.get("requiredAction", "") if key == "desired" else ""
+            print(f"  {action:6} {rec.get('type', ''):6} {rec.get('domainName', '')}  ->  {rec.get('rdata', '')}")
+PY
   ;;
 
 *)

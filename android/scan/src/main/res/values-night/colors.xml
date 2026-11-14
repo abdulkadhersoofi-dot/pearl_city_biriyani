@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ARFA Scan at night (the phone's dark theme, or Appearance -> Dark). -->
+<resources>
+    <color name="arfa_primary">#2E9E65</color>
+    <color name="arfa_primary_dark">#0E1A15</color>
+    <color name="chat_bg">#0F1613</color>
+    <color name="bubble">#17402D</color>
+    <color name="bubble_pending">#1A2A22</color>
+    <color name="ink">#E8ECE9</color>
+    <color name="muted">#B9C2BD</color>
+    <color name="faint">#9AA49F</color>
+    <color name="tick_read">#53BDEB</color>
+    <color name="tick_sent">#8A968F</color>
+    <color name="tag_ok_bg">#1F4D35</color>
+    <color name="tag_ok">#A6E6C0</color>
+    <color name="tag_warn_bg">#4A3714</color>
+    <color name="tag_warn">#F6CB82</color>
+    <color name="tag_bad_bg">#4D211C</color>
+    <color name="tag_bad">#F5A99E</color>
+    <color name="tag_muted_bg">#2A332E</color>
+    <color name="flag_bg">#3D2F16</color>
+    <color name="flag_line">#E8892F</color>
+    <color name="card">#1B2420</color>
+    <color name="page_bg">#121915</color>
+    <color name="mark">#2ECC71</color>
+    <color name="header">#1C2B24</color>
+    <color name="header_dark">#121D18</color>
+    <color name="surface">#1F2924</color>
+    <color name="thumb_bg">#26302B</color>
+    <color name="thumb_line">#36423C</color>
+    <color name="card_bad_bg">#3A1F1B</color>
+    <color name="card_bad_line">#6B2E26</color>
+    <color name="card_warn_bg">#362B17</color>
+    <color name="card_warn_line">#6B5426</color>
+    <color name="image_bg">#0A0F0D</color>
+    <color name="field_line">#2A332E</color>
+    <color name="chip_idle">#2B3A33</color>
+    <bool name="light_bars">false</bool>
+</resources>

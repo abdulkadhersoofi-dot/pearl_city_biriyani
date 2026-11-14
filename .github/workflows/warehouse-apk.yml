@@ -1,0 +1,129 @@
+name: Build the ARFA Warehouse app
+
+# Builds only warehouse-android/ (the pickers' app). The website's own tests
+# and deploys never run here, and this never touches android/ (ARFA Counter,
+# ARFA Scan). Runs on GitHub's runners: the authoring sandbox can't reach the
+# Android SDK host, so this is where the app compiles and its unit tests run.
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "warehouse-android/**"
+      - ".github/workflows/warehouse-apk.yml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write   # the "warehouse-latest" release
+  id-token: write   # signing in to Google Cloud without a key (the arfa.live upload)
+
+env:
+  APPS_BUCKET: arfa-gst-prod-1-apps
+  GCP_WORKLOAD_PROVIDER: projects/695809637488/locations/global/workloadIdentityPools/github/providers/github
+  GCP_UPLOADER: arfa-github@arfa-gst-prod-1.iam.gserviceaccount.com
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: "platform-tools platforms;android-34 build-tools;34.0.0"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Use the repo's own signing key, if it has one
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/arfa.keystore"
+            echo "ANDROID_KEYSTORE_FILE=$RUNNER_TEMP/arfa.keystore" >> "$GITHUB_ENV"
+          fi
+
+      # Serial matching and the offline queue's rules (JVM), then the
+      # instrumented scan -> confirm test is compiled (it runs on a device or
+      # emulator: ./gradlew :app:connectedDebugAndroidTest), then the release APK.
+      - name: Unit tests, build the instrumented test, build the APK
+        working-directory: warehouse-android
+        env:
+          ANDROID_VERSION_CODE: ${{ github.run_number }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest :app:assembleDebugAndroidTest :app:assembleRelease --no-daemon --stacktrace
+
+      - name: Unit test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: warehouse-unit-tests
+          path: warehouse-android/app/build/reports/tests/testDebugUnitTest
+          retention-days: 14
+
+      - name: Name the APK and its version file
+        working-directory: warehouse-android
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/release/app-release.apk dist/ARFA-Warehouse.apk
+          BUILT_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          printf '{"versionCode": %s, "versionName": "1.%s", "commit": "%s", "built_at": "%s", "size": %s, "apk": "https://github.com/%s/releases/download/warehouse-latest/ARFA-Warehouse.apk"}\n' \
+            "${{ github.run_number }}" "${{ github.run_number }}" "${{ github.sha }}" "$BUILT_AT" "$(stat -c %s dist/ARFA-Warehouse.apk)" "${{ github.repository }}" > dist/warehouse-version.json
+
+      - name: Upload the build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ARFA-Warehouse-apk
+          path: warehouse-android/dist/ARFA-Warehouse.apk
+          retention-days: 90
+
+      - name: Sign in to Google Cloud (no key)
+        id: gcp
+        continue-on-error: true
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.GCP_WORKLOAD_PROVIDER }}
+          service_account: ${{ env.GCP_UPLOADER }}
+
+      - name: Set up gcloud
+        if: steps.gcp.outcome == 'success'
+        uses: google-github-actions/setup-gcloud@v2
+
+      # The APK first, then the version file that announces it.
+      - name: Publish to arfa.live (the apps bucket)
+        if: steps.gcp.outcome == 'success'
+        continue-on-error: true
+        working-directory: warehouse-android/dist
+        run: |
+          gcloud storage cp ARFA-Warehouse.apk "gs://$APPS_BUCKET/latest/" \
+            --content-type application/vnd.android.package-archive --cache-control "private, max-age=0"
+          gcloud storage cp warehouse-version.json "gs://$APPS_BUCKET/latest/" \
+            --content-type application/json --cache-control "no-store"
+          echo "Published to arfa.live/apps: ARFA Warehouse build ${{ github.run_number }}"
+
+      - name: Publish/update the "warehouse-latest" release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: warehouse-latest
+          name: "ARFA Warehouse - latest build"
+          body: |
+            Auto-built from commit ${{ github.sha }} on branch `${{ github.ref_name }}`.
+
+            The pickers' app for warehouse dispatch by serial scan. Install it from
+            arfa.live/apps (signed in) - or this APK - and sign in with the business
+            code, login id and password from Warehouse > App logins on the website.
+          prerelease: true
+          files: |
+            warehouse-android/dist/ARFA-Warehouse.apk
+            warehouse-android/dist/warehouse-version.json

@@ -8,9 +8,9 @@
   </div>
   <div class="row">
     <form method="get" class="row">
-      <input type="date" name="day" value="{{ data.day.isoformat() }}" class="field-input" onchange="this.form.submit()">
+      <input type="date" name="day" value="{{ data.day.isoformat() }}" class="field-input" data-autosubmit>
     </form>
-    <a href="{{ whatsapp }}" target="_blank" rel="noopener" class="btn btn-primary" onclick="openShare(this.href); return false;">Share on WhatsApp</a>
+    <a href="{{ whatsapp }}" target="_blank" rel="noopener" class="btn btn-primary" data-share>Share on WhatsApp</a>
     {% if email_ready %}
     <form method="post" action="{{ url_for('reports.owner_summary_email', day=data.day.isoformat()) }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

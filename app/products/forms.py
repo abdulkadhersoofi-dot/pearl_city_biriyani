@@ -56,6 +56,7 @@ class ProductForm(FlaskForm):
     cost_price = DecimalField("Cost price", places=2, validators=[Optional(), NumberRange(min=0)])
     sku = StringField("SKU / item code", validators=[Optional(), Length(max=64)], filters=[_strip_or_none])
     barcode = StringField("Barcode", validators=[Optional(), Length(max=64)], filters=[_strip_or_none])
+    model_no = StringField("Model no.", validators=[Optional(), Length(max=64)], filters=[_strip_or_none])
     alt_unit = SelectField(
         "Bigger pack unit", choices=[("", "None")] + UQC_CHOICES, validators=[Optional()], filters=[_uqc_case]
     )

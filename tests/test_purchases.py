@@ -275,11 +275,17 @@ def test_order_converts_to_a_bill(client, db, tenant, client_admin, supplier, ri
     _login(client, "admin@acme.example.com", "ClientSecret123")
     page = client.get(f"/purchases/new?order={order.id}")
     assert page.status_code == 200 and b"Rice 25kg" in page.data
+    # 5 of the 20 bags are billed: the order stays open for the other 15.
     _bill_via_form(client, tenant, supplier, rice, extra={"order": str(order.id)})
     db.session.refresh(order)
-    assert order.status == PurchaseOrderStatus.CONVERTED and len(order.bills) == 1
+    assert order.status == PurchaseOrderStatus.PARTLY and len(order.bills) == 1
+    assert order.lines[0].billed_qty == 5 and order.lines[0].outstanding == 15
     with pytest.raises(ps.PurchaseError):
         ps.cancel_purchase_order(order, "too late")
+    _bill_via_form(client, tenant, supplier, rice, invoice_no="F-2",
+                   extra={"order": str(order.id), "line_qty[]": ["15"]})
+    db.session.refresh(order)
+    assert order.status == PurchaseOrderStatus.CONVERTED and len(order.bills) == 2
 
 
 def _bill_via_form(client, tenant, supplier, product, invoice_no="F-1", extra=None, files=None):

@@ -4,7 +4,7 @@
 <div class="page-header">
   <div>
     <h1>GST filing - {{ period }}</h1>
-    <p class="text-muted mt-0">When every bill, purchase and expense for the month is in, mark it ready - your accountant files from it and marks it filed here.</p>
+    <p class="text-muted mt-0">When every bill, purchase and expense for the month is in, mark it ready - your accountant files from it and marks it filed here. Marking it ready runs the <a href="{{ url_for('reports.books_check', period=period) }}">Books check</a> first.</p>
   </div>
   <form method="get" class="row gap-8 items-end">
     <label class="field m-0"><span class="field-label">Month</span><input type="month" name="period" value="{{ period }}" class="field-input"></label>
@@ -27,7 +27,8 @@
     {% for r in c.returns %}
       <tr><td>{{ r.label }}</td><td>{{ r.due.strftime('%d %b %Y') }}</td>
         <td>{% if r.status and r.status.data_ready %}<span class="tag tag-fast">Ready</span>{% else %}<span class="tag">Not yet</span>{% endif %}</td>
-        <td>{% if r.status and r.status.filed %}<span class="tag tag-fast">Filed {{ r.status.filed_on.strftime('%d %b %Y') }}</span>{% if r.status.arn %} <small class="text-muted">ARN {{ r.status.arn }}</small>{% endif %}{% else %}-{% endif %}</td></tr>
+        <td>{% if r.status and r.status.filed %}<span class="tag tag-fast">Filed {{ r.status.filed_on.strftime('%d %b %Y') }}</span>{% if r.status.arn %} <small class="text-muted">ARN {{ r.status.arn }}</small>{% endif %}
+          <small class="block text-muted">{{ 'Sales' if r.label == 'GSTR-1' else 'Purchases and expenses' }} for the month are closed: nothing new dated in it, nothing voided. Corrections go in as credit or debit notes.</small>{% else %}-{% endif %}</td></tr>
     {% endfor %}
     </tbody>
   </table>

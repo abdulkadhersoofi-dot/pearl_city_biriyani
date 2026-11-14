@@ -36,8 +36,21 @@ class StockLocation(db.Model, TenantScopedMixin, TimestampMixin):
     is_default = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
     is_active = db.Column(db.Boolean, nullable=False, default=True, server_default=db.true())
     address = db.Column(db.Text)
+    # GST: a godown must be an additional place of business on the GSTIN.
+    address_registered = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
+    # Warehouse dispatch: the warehouse a branch's (or the main store's)
+    # sales orders ship from unless the salesperson picks another.
+    default_dispatch_location_id = db.Column(db.Integer, db.ForeignKey("stock_locations.id",
+                                                                       name="fk_stock_locations_default_dispatch"))
 
     branch_user = db.relationship("User")
+    # Where it is, for the nearest-warehouse default: its pincode, and the point
+    # (filled from the pincode table, editable).
+    pincode = db.Column(db.String(6))
+    latitude = db.Column(db.Float)
+    longitude = db.Column(db.Float)
+
+    default_dispatch_location = db.relationship("StockLocation", remote_side="StockLocation.id")
 
     def __repr__(self):
         return f"<StockLocation {self.id} {self.name}>"
@@ -134,6 +147,7 @@ class SerialStatus(str, enum.Enum):
     IN_STOCK = "in_stock"
     SOLD = "sold"
     RETURNED_TO_SUPPLIER = "returned_to_supplier"
+    PICKED = "picked"  # scanned against a sales order at the warehouse and held for it
 
 
 class ProductSerial(db.Model, TenantScopedMixin, TimestampMixin):
@@ -156,9 +170,25 @@ class ProductSerial(db.Model, TenantScopedMixin, TimestampMixin):
     sold_pos_line_id = db.Column(db.Integer, db.ForeignKey("pos_bill_lines.id", name="fk_product_serials_pos_line"))
     sold_at = db.Column(db.DateTime(timezone=True))
     warranty_end = db.Column(db.Date)
+    # Warehouse dispatch: the order line this unit was scanned for, by whom,
+    # and the label photo; the invoice that sold it.
+    picked_sales_line_id = db.Column(db.Integer, db.ForeignKey("sales_document_lines.id",
+                                                               name="fk_product_serials_picked_line"), index=True)
+    picked_by_id = db.Column(db.Integer, db.ForeignKey("warehouse_logins.id", name="fk_product_serials_picked_by"))
+    picked_at = db.Column(db.DateTime(timezone=True))
+    pick_photo_id = db.Column(db.Integer, db.ForeignKey("uploaded_images.id", name="fk_product_serials_pick_photo"))
+    sold_invoice_id = db.Column(db.Integer, db.ForeignKey("invoices.id", name="fk_product_serials_invoice"), index=True)
+    sold_invoice_line_id = db.Column(db.Integer, db.ForeignKey("invoice_lines.id", name="fk_product_serials_invoice_line"))
+    # Scanned in the warehouse though it was never entered in ARFA (the product
+    # matched) - listed for the owner to check.
+    added_at_pick = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
+    # The rack it sits on at its location ("C3", or EMI-HOLD / EMI-READY) -
+    # set by putaway and Move in the ARFA Warehouse app.
+    bin_code = db.Column(db.String(32), index=True)
 
     product = db.relationship("Product")
     location = db.relationship("StockLocation")
+    picked_by = db.relationship("WarehouseLogin")
 
 
 class StockDocStatus(str, enum.Enum):

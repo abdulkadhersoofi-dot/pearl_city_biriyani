@@ -38,11 +38,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from app.extensions import db
 from app.models.expense import Expense, ExpenseStatus
 from app.models.inventory import MovementType, StockLocation, StockMovement
-from app.models.invoice import Invoice, InvoiceStatus
 from app.models.invoice_series import DocumentType
-from app.models.note import CreditDebitNote, NoteStatus
-from app.models.pos_bill import POSBill, POSBillStatus
-from app.models.pos_return import POSReturn, POSReturnStatus
 from app.models.purchase import PurchaseBill, PurchaseReturn, PurchaseStatus
 from app.models.user import BranchType, User
 
@@ -122,67 +118,55 @@ def _margin_sale_value(lines) -> Decimal:
 
 
 def revenue(tenant, start: date, end: date, location_id: int | None, p: Places) -> Section:
+    """Revenue before tax. Which documents count, and on which day, comes
+    from app/finance/sales_figures.py - the same as the dashboard and the
+    Sales report. What differs here is the amount: before tax, and for a
+    margin-scheme sale the price less the GST paid on the margin."""
+    from app.finance import sales_figures as sf
+
     s = Section("revenue", "Revenue")
     at_store = location_id is None or location_id == p.default_id
     margin_tax = ZERO
 
-    if at_store:
-        for inv in Invoice.query.filter(
-            Invoice.tenant_id == tenant.id, Invoice.status == InvoiceStatus.ISSUED,
-            Invoice.document_type.notin_(NOT_SALES), Invoice.invoice_date >= start, Invoice.invoice_date <= end,
-        ):
-            if inv.document_type == DocumentType.MARGIN_SCHEME_INVOICE:
-                s.add("sales_invoices", "Sales - invoices", _margin_sale_value(inv.lines))
-                margin_tax += inv.total_cgst + inv.total_sgst + inv.total_igst
+    for e in sf.entries(tenant, start, end):
+        doc = e.doc
+        if e.kind == sf.INVOICE:
+            if not at_store:
+                continue
+            if doc.document_type == DocumentType.MARGIN_SCHEME_INVOICE:
+                s.add("sales_invoices", "Sales - invoices", _margin_sale_value(doc.lines))
+                margin_tax += doc.total_cgst + doc.total_sgst + doc.total_igst
             else:
-                s.add("sales_invoices", "Sales - invoices", inv.total_taxable_value)
-        for note in CreditDebitNote.query.filter(
-            CreditDebitNote.tenant_id == tenant.id, CreditDebitNote.status == NoteStatus.ISSUED,
-            CreditDebitNote.note_date >= start, CreditDebitNote.note_date <= end,
-        ):
-            if note.document_type == DocumentType.DEBIT_NOTE:
-                s.add("debit_notes", "Debit notes", note.total_taxable_value)
+                s.add("sales_invoices", "Sales - invoices", doc.total_taxable_value)
+        elif e.kind == sf.DEBIT_NOTE:
+            if at_store:
+                s.add("debit_notes", "Debit notes", doc.total_taxable_value)
+        elif e.kind == sf.CREDIT_NOTE:
+            if at_store:
+                s.add("credit_notes", "Less: credit notes", -doc.total_taxable_value)
+        elif e.kind == sf.POS_BILL:
+            if location_id is not None and p.for_user(doc.created_by_id) != location_id:
+                continue
+            if doc.is_margin_scheme:
+                s.add("sales_counter", "Sales - counter (POS)", _margin_sale_value(doc.lines))
+                margin_tax += doc.total_cgst + doc.total_sgst + doc.total_igst
             else:
-                s.add("credit_notes", "Less: credit notes", -note.total_taxable_value)
-
-    lo, hi = day_start(start), day_start(end + timedelta(days=1))
-    bills = POSBill.query.filter(
-        POSBill.tenant_id == tenant.id, POSBill.status.in_([POSBillStatus.COMPLETED, POSBillStatus.REFUNDED]),
-        POSBill.completed_at >= lo, POSBill.completed_at < hi,
-    ).all()
-    for bill in bills:
-        if location_id is not None and p.for_user(bill.created_by_id) != location_id:
-            continue
-        if bill.is_margin_scheme:
-            s.add("sales_counter", "Sales - counter (POS)", _margin_sale_value(bill.lines))
-            margin_tax += bill.total_cgst + bill.total_sgst + bill.total_igst
-        else:
-            s.add("sales_counter", "Sales - counter (POS)", bill.total_taxable_value)
-    refunded = POSBill.query.filter(
-        POSBill.tenant_id == tenant.id, POSBill.status == POSBillStatus.REFUNDED,
-        POSBill.refunded_at >= lo, POSBill.refunded_at < hi,
-    ).all()
-    for bill in refunded:
-        if location_id is not None and p.for_user(bill.created_by_id) != location_id:
-            continue
-        if not bill.grand_total:
-            continue
-        ratio = min(Decimal(bill.refunded_amount or 0) / Decimal(bill.grand_total), Decimal("1"))
-        base = _margin_sale_value(bill.lines) if bill.is_margin_scheme else Decimal(bill.total_taxable_value)
-        s.add("returns", "Less: returns & refunds", -money(base * ratio))
-        if bill.is_margin_scheme:
-            margin_tax -= money((bill.total_cgst + bill.total_sgst + bill.total_igst) * ratio)
-    for ret in POSReturn.query.filter(
-        POSReturn.tenant_id == tenant.id, POSReturn.status == POSReturnStatus.COMPLETED,
-        POSReturn.returned_at >= lo, POSReturn.returned_at < hi,
-    ):
-        if location_id is not None and p.for_user(ret.bill.created_by_id if ret.bill else None) != location_id:
-            continue
-        if ret.bill is not None and ret.bill.is_margin_scheme:
-            s.add("returns", "Less: returns & refunds", -_margin_sale_value(ret.lines))
-            margin_tax -= ret.total_cgst + ret.total_sgst + ret.total_igst
-        else:
-            s.add("returns", "Less: returns & refunds", -ret.total_taxable_value)
+                s.add("sales_counter", "Sales - counter (POS)", doc.total_taxable_value)
+        elif e.kind == sf.POS_REFUND:
+            if location_id is not None and p.for_user(doc.created_by_id) != location_id:
+                continue
+            base = _margin_sale_value(doc.lines) if doc.is_margin_scheme else Decimal(doc.total_taxable_value)
+            s.add("returns", "Less: returns & refunds", -money(base * e.ratio))
+            if doc.is_margin_scheme:
+                margin_tax -= money((doc.total_cgst + doc.total_sgst + doc.total_igst) * e.ratio)
+        elif e.kind == sf.POS_RETURN:
+            if location_id is not None and p.for_user(doc.bill.created_by_id if doc.bill else None) != location_id:
+                continue
+            if doc.bill is not None and doc.bill.is_margin_scheme:
+                s.add("returns", "Less: returns & refunds", -_margin_sale_value(doc.lines))
+                margin_tax -= doc.total_cgst + doc.total_sgst + doc.total_igst
+            else:
+                s.add("returns", "Less: returns & refunds", -doc.total_taxable_value)
     if margin_tax:
         s.add("margin_tax", "Less: GST paid on margin-scheme sales", -margin_tax)
     return s
